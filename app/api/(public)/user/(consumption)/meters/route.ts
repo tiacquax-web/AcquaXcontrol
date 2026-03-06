@@ -225,7 +225,9 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
             (t: { id: string, name: string }) => t.name.toLowerCase().trim() === rowTipo.toLowerCase().trim()
         );
         if (!typeMeter) {
-            errors.push({ row: idx + 2, message: `Tipo de medidor '${rowTipo}' não encontrado` });
+            const availableTypes = typeMeterList.map((t: { name: string }) => t.name).join(', ');
+            const hint = availableTypes ? ` Tipos disponíveis: ${availableTypes}.` : ' Nenhum tipo de medidor cadastrado no sistema.';
+            errors.push({ row: idx + 2, message: `Tipo de medidor '${rowTipo}' não encontrado.${hint}` });
             continue;
         }
 
