@@ -7,11 +7,6 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true
   },
-  allowedDevOrigins: [
-    "www.acquaxcontrol.com.br",
-    "acquaxcontrol.com.br",
-    "3001-ic9ibhg7qmv99d3pr7e8o-a402f90a.sandbox.novita.ai",
-  ],
   images: {
     remotePatterns: [
       {
