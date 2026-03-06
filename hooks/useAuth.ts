@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { login as loginService, type LoginPayload, type LoginResponse } from "@/services/authService";
 
 export const useLogin = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Limpa o erro ao montar o componente (evita mostrar erro de sessão anterior)
+  useEffect(() => {
+    setError(null);
+  }, []);
 
   const login = async (payload: LoginPayload): Promise<LoginResponse> => {
     setLoading(true);

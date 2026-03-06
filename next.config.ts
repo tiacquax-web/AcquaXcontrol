@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: [
     "www.acquaxcontrol.com.br",
     "acquaxcontrol.com.br",
-    "*.sandbox.novita.ai",
+    "3001-ic9ibhg7qmv99d3pr7e8o-a402f90a.sandbox.novita.ai",
   ],
   images: {
     remotePatterns: [
