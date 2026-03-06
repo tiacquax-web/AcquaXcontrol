@@ -3,6 +3,18 @@ import { compare } from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '@/lib/prisma';
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+    },
+  });
+}
+
 const JWT_SECRET = process.env.JWT_SECRET!;
 
 export async function POST(req: Request) {
