@@ -1,0 +1,1448 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                        String    @id @map("_id") @default(uuid())
+  name                      String
+  
+  email                     String    @unique
+  emailVerifiedAt           DateTime? @db.Timestamp
+  
+  password                  String
+
+  resetToken                String?   // Token de reset
+  resetTokenExpiry          DateTime? // Expiração do token de reset
+  mustUpdateCredentials     Boolean   @default(false)
+  
+  photo                     String?
+  telephone                 String?   
+  cell                      String?   
+  
+  genreId                   String?
+  documentPerson            String?   
+  
+  createdAt                 DateTime  @default(now()) @db.Timestamp
+  updatedAt                 DateTime  @updatedAt @db.Timestamp
+  deletedAt                 DateTime? @db.Timestamp
+
+  createdByUserId           String?
+  updatedByUserId           String?
+
+  // Relacionamento com sessions
+  sessions Session[]
+
+  // Relacionamento com complex
+  createdComplexes Complex[] @relation("CreatedByUser")
+  updatedComplexes Complex[] @relation("UpdatedByUser")
+  
+  // Relacionamento com Block
+  createdBlocks Block[] @relation("CreatedByUser")
+  updatedBlocks Block[] @relation("UpdatedByUser")
+
+  // Relacionamento com Apartment
+  createdApartments Apartment[] @relation("CreatedByUser")
+  updatedApartments Apartment[] @relation("UpdatedByUser")
+
+  // Relacionamento com Meter
+  createdMeters Meter[] @relation("CreatedByUser")
+  updatedMeters Meter[] @relation("UpdatedByUser")
+
+  // Relacionamento com Readings
+  createdReadings Reading[] @relation("CreatedByUser")
+  updatedReadings Reading[] @relation("UpdatedByUser")
+
+  // Relacionamento com TypeMeter
+  createdTypeMeters TypeMeter[] @relation("CreatedByUser")
+  updatedTypeMeters TypeMeter[] @relation("UpdatedByUser")
+
+  // Relacionamento com Permission
+  createdPermissions Permission[] @relation("CreatedByUser")
+  updatedPermissions Permission[] @relation("UpdatedByUser")
+
+  // Relacionamento com Roles
+  createdRoles Role[] @relation("CreatedByUser")
+  updatedRoles Role[] @relation("UpdatedByUser")
+
+  // Relacionamento com RoleAssignment
+  createdRoleAssignments RoleAssignment[] @relation("CreatedByUser")
+  updatedRoleAssignments RoleAssignment[] @relation("UpdatedByUser")
+
+  Roles RoleAssignment[]
+
+  // Relacionamento com IotDevice
+  createdIotDevices IotDevice[] @relation("CreatedByUser")
+  updatedIotDevices IotDevice[] @relation("UpdatedByUser")
+
+  // Relacionamento com ApartmentConsumptionReport
+  createdApartmentConsumptionReports ApartmentConsumptionReport[] @relation("CreatedByUser")
+  updatedApartmentConsumptionReports ApartmentConsumptionReport[] @relation("UpdatedByUser")
+
+  // Relacionamento com DealershipReading
+  createdDealershipReadings DealershipReading[] @relation("CreatedByUser")
+  updatedDealershipReadings DealershipReading[] @relation("UpdatedByUser")
+
+  // Relacionamento com Dealership
+  createdDealerships Dealership[] @relation("CreatedByUser")
+  updatedDealerships Dealership[] @relation("UpdatedByUser")
+
+  // Relacionamento com Company
+  createdCompanies Company[] @relation("CreatedByUser")
+  updatedCompanies Company[] @relation("UpdatedByUser")
+
+  // Relacionamento com MeterDeviceLink
+  createdMeterDeviceLinks MeterDeviceLink[] @relation("CreatedByUser")
+  updatedMeterDeviceLinks MeterDeviceLink[] @relation("UpdatedByUser")
+
+  // Relacionamento com Reservoir
+  createdReservoirs Reservoir[] @relation("ReservoirCreatedByUser")
+  updatedReservoirs Reservoir[] @relation("ReservoirUpdatedByUser")
+
+  // Relacionamento com ReservoirReading
+  createdReservoirReadings ReservoirReading[] @relation("ReservoirReadingCreatedByUser")
+  updatedReservoirReadings ReservoirReading[] @relation("ReservoirReadingUpdatedByUser")
+
+  // Relacionamento com ScheduledTask
+  assignedTasks ScheduledTask[] @relation("AssignedTasks")
+  createdTasks ScheduledTask[] @relation("CreatedTasks")
+  updatedTasks ScheduledTask[] @relation("UpdatedTasks")
+
+  // EXTENSÃO RRULE: Relacionamentos com agendas recorrentes
+  createdRecurringSchedules RecurringSchedule[] @relation("RecurringScheduleCreator")
+  updatedRecurringSchedules RecurringSchedule[] @relation("RecurringScheduleUpdater")
+  createdScheduleOverrides ScheduleOverride[] @relation("ScheduleOverrideCreator")
+
+  preferences Json? // Novo campo para armazenar preferências do usuário
+
+  // Índices
+  @@index([deletedAt])
+  @@index([resetToken])
+  @@index([createdAt])
+  @@index([name])
+  @@index([email, deletedAt]) // Índice composto para otimização de queries
+}
+
+model Session {
+  id                        String    @id @map("_id") @default(uuid())
+
+  token                     String    @unique
+
+
+  userId                    String
+  user                      User      @relation(fields: [userId], references: [id])
+
+  createdAt                 DateTime  @default(now()) @db.Timestamp
+  // updatedAt                 DateTime  @updatedAt @db.Timestamp
+  // deletedAt                 DateTime? @db.Timestamp
+
+  expiresAt                 DateTime
+  deletedAt                 DateTime? @db.Timestamp
+  
+  // Mapeamento
+  @@map("Sessions")
+
+  // Índices
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([deletedAt])
+}
+
+// Contextos são utilizados para aplicar permissões
+enum ContextType {
+  apartment
+  block
+  complex
+  company
+  system
+}
+
+enum PermissionableEntity {
+  company
+  complex
+  block
+  apartment
+
+  user
+
+  role
+  roleAssignment
+  permission
+  // context
+
+  typeMeter
+  meter
+  iotDevice
+
+  reading
+  meterDeviceLink
+
+  dealershipReading
+  // dealershipReadingGas
+  apartmentConsumptionReport
+  dealership
+  
+  reservoir
+  reservoirReading
+  
+  scheduledTask
+  
+  // EXTENSÃO RRULE: Novas entidades para agendas recorrentes
+  recurringSchedule
+  scheduleOverride
+
+  // Features (not entities)
+  monitoringDashboard
+  generateFilipeta
+}
+
+enum PermissionAction {
+  create
+  read
+  update
+  delete
+  do
+}
+
+model RoleAssignment {
+  id                        String    @id @map("_id") @default(uuid())
+
+  userId                    String
+  User                      User      @relation(fields: [userId], references: [id])
+  
+  roleId                    String    // ID do papel de 'Síndico', 'Leiturista', 'Autoleitura', etc
+  Role                      Role      @relation(fields: [roleId], references: [id])
+
+  contextId                 String    // ID do apartamento, bloco, complexo, etc (em caso do contexto "system", o id é "system")
+  contextType               ContextType
+  @@unique([userId, contextId, contextType, roleId, deletedAt], name: "unique_user_role_assignment")
+
+  // complex                   Complex? @relation(fields: [contextId], references: [id])
+  // block                     Block?   @relation(fields: [contextId], references: [id])
+  // apartment                 Apartment? @relation(fields: [contextId], references: [id])
+  // company                   Company? @relation(fields: [contextId], references: [id])
+
+  from                      DateTime?  @db.Timestamp
+  to                        DateTime? @db.Timestamp
+
+  createdAt                 DateTime  @default(now()) @db.Timestamp
+  updatedAt                 DateTime  @updatedAt @db.Timestamp
+  deletedAt                 DateTime? @db.Timestamp
+
+  createdByUserId           String?
+  createdByUser             User?     @relation("CreatedByUser", fields: [createdByUserId], references: [id]) // Relacionamento com User (Criador)
+  updatedByUserId           String?
+  updatedByUser             User?     @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
+
+  // Mapeamento
+  @@map("RoleAssignment")
+
+  // Índices
+  @@index([userId])
+  @@index([roleId])
+  @@index([contextId, contextType])
+  @@index([deletedAt])
+}
+
+model Role {
+  id                        String    @id @map("_id") @default(uuid())
+  name                      String    @unique
+  description               String?
+
+  createdAt                 DateTime  @default(now()) @db.Timestamp
+  updatedAt                 DateTime  @updatedAt @db.Timestamp
+  deletedAt                 DateTime? @db.Timestamp
+
+  permissions               Permission[]
+
+  RoleAssignments           RoleAssignment[]
+
+  createdByUserId           String?
+  createdByUser             User?     @relation("CreatedByUser", fields: [createdByUserId], references: [id]) // Relacionamento com User (Criador)
+  updatedByUserId           String?
+  updatedByUser             User?     @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
+
+  // Mapeamento
+  @@map("Roles")
+
+  // Índices
+  @@index([deletedAt])
+}
+
+model Permission {
+  id                String    @id @map("_id") @default(uuid())
+
+  action            PermissionAction   // 'create', 'read', 'update', 'delete'
+  entity            PermissionableEntity
+
+  @@unique([roleId, action, entity], name: "unique_permission_entity_action_role")
+
+  description       String?
+
+  roleId            String
+  role              Role      @relation(fields: [roleId], references: [id])
+
+  createdByUserId   String?
+  createdByUser     User?     @relation("CreatedByUser", fields: [createdByUserId], references: [id])
+  updatedByUserId   String?
+  updatedByUser     User?     @relation("UpdatedByUser", fields: [updatedByUserId], references: [id])
+
+  createdAt         DateTime  @default(now()) @db.Timestamp
+  updatedAt         DateTime  @updatedAt @db.Timestamp
+  deletedAt         DateTime? @db.Timestamp
+
+  // Mapeamento
+  @@map("Permissions")
+
+  // Índices
+  @@index([roleId])
+  @@index([entity])
+  @@index([action])
+  @@index([deletedAt])
+}
+
+// LUGARES (Entidades de Contexto)
+model Company {
+  id                        String    @id @map("_id") @default(uuid())
+  name                      String
+  socialName                String
+  documentCompany           String
+  documentCompanySecondary  String
+  email                     String
+  telephone                 String
+  cell                      String
+  zipcode                   String
+  street                    String
+  number                    String
+  complement                String
+  neighborhood              String
+  state                     String
+  city                      String
+  photo                     String
+  facebook                  String
+  instagram                 String
+  twitter                   String
+
+  createdByUserId           String?
+  createdByUser             User?     @relation("CreatedByUser", fields: [createdByUserId], references: [id]) // Relacionamento com User (Criador)
+  updatedByUserId           String?
+  updatedByUser             User?     @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
+
+  deletedAt                 DateTime? @db.Timestamp
+  createdAt                 DateTime  @default(now()) @db.Timestamp
+  updatedAt                 DateTime  @updatedAt @db.Timestamp
+
+  // Relacionamento com Complex
+  complexes Complex[]
+
+  // Relacionamento com RoleAssignment
+  // RoleAssignments RoleAssignment[]
+
+  // Mapeamento
+  @@map("Companies")
+
+  // Índices
+  @@index([deletedAt])
+  @@index([email])
+  @@index([documentCompany])
+  @@index([socialName])
+  // TODO: Adicionar índices compostos para otimização:
+  // @@index([deletedAt, companyId]) // Para queries mais eficientes
+  // @@index([deletedAt, socialName]) // Para busca com texto
+  // @@index([companyId, deletedAt, socialName]) // Índice composto completo
+}
+
+model Complex {
+  id                        String        @id @map("_id") @default(uuid())
+  socialName                String
+  counter                   Int?          @default(0)
+  aliasName                 String?
+  documentCompany           String?
+  documentCompanySecondary  String?
+  email                     String?
+  telephone                 String?
+  cell                      String?
+  zipcode                   String?
+  street                    String?
+  number                    String?
+  complement                String?
+  neighborhood              String?
+  state                     String?
+  city                      String?
+  photo                     String?       
+  facebook                  String?
+  instagram                 String?
+  twitter                   String?
+
+  createdByUserId           String?
+  createdByUser             User?         @relation("CreatedByUser", fields: [createdByUserId], references: [id]) // Relacionamento com User (Criador)
+  updatedByUserId           String?
+  updatedByUser             User?         @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
+  
+  apportionment             String        @default("Simples")
+  status                    String        @default("Ativo")
+
+  deletedAt                 DateTime?     @db.Timestamp
+  createdAt                 DateTime      @default(now()) @db.Timestamp
+  updatedAt                 DateTime      @updatedAt @db.Timestamp
+
+  // Relacionamento com Block
+  blocks Block[]
+
+  // Relacionamento com Company
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  // Relacionamento com Meter (não usado no MariaDB/origem)
+  // meters Meter[]
+
+  // Relacionamento com DealershipReading
+  DealershipReadings DealershipReading[]
+
+  // Relacionamento com DealershipReadingGas
+  // DealershipReadingGass DealershipReadingGas[]
+
+  // Relacionamento com RoleAssignment
+  // RoleAssignments RoleAssignment[]
+
+  // Relacionamento com Reservoir
+  reservoirs Reservoir[]
+
+  // Mapeamento
+  @@map("Complexes")
+  @@unique([socialName, deletedAt], name: "unique_socialName_not_deleted")
+  @@unique([aliasName, deletedAt], name: "unique_aliasName_not_deleted")
+
+  // Índices
+  @@index([companyId])
+  @@index([deletedAt])
+  @@index([status])
+  @@index([socialName])
+  
+  // ÍNDICES COMPOSTOS PARA OTIMIZAÇÃO DE PERFORMANCE
+  // @@index([deletedAt, socialName])   // Para queries com empresa (PRIORIDADE ALTA)
+  @@index([deletedAt, companyId, socialName])   // Para queries com empresa (PRIORIDADE ALTA)
+  // @@index([deletedAt, companyId, socialName])   // Para queries com empresa (PRIORIDADE ALTA)
+  // @@index([deletedAt, companyId, socialName])   // Para queries com empresa (PRIORIDADE ALTA)
+  // @@index([deletedAt, socialName])          // Para busca com texto
+  // @@index([deletedAt, status])              // Para filtros de status
+  // @@index([deletedAt, companyId, socialName]) // Índice completo para queries complexas
+}
+
+model Block {
+  id                        String      @id @map("_id") @default(uuid())
+  counter                   Int?        @default(0)
+  name                      String
+  
+  status                    String      @default("Ativo")
+  
+  complexId                 String
+  complex                   Complex     @relation(fields: [complexId], references: [id]) // Relacionamento com Complex
+  
+  // Campo desnormalizado para otimização de queries
+  companyId                 String?     // ID da empresa (desnormalizado)
+  
+  @@unique([name, complexId, deletedAt])
+  
+  deletedAt                 DateTime?   @db.Timestamp
+  createdAt                 DateTime?   @default(now()) @db.Timestamp
+  updatedAt                 DateTime?   @db.Timestamp
+
+  createdByUserId           String?
+  updatedByUserId           String?
+  createdByUser             User?        @relation("CreatedByUser", fields: [createdByUserId], references: [id]) // Relacionamento com User (Criador)
+  updatedByUser             User?        @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
+
+  // Relacionamento com Apartment
+  apartments Apartment[]
+
+  // Relacionamento com RoleAssignment
+  // RoleAssignments RoleAssignment[]
+
+  // Mapeamento
+  @@map("Blocks")
+
+  // Índices
+  @@index([complexId])
+  @@index([companyId])
+  @@index([deletedAt])
+  @@index([status])
+  @@index([name])
+  
+  // ÍNDICES COMPOSTOS PARA OTIMIZAÇÃO
+  @@index([complexId, deletedAt])          // Para queries por complexo
+  @@index([companyId, deletedAt])          // Para queries por empresa (desnormalizado)
+  @@index([deletedAt, complexId])          // Para queries por complexo
+  @@index([deletedAt, companyId])          // Para queries por empresa (desnormalizado)
+  @@index([deletedAt, name])               // Para busca por nome
+  @@index([complexId, deletedAt, name])    // Índice completo
+  @@index([companyId, deletedAt, name])    // Índice completo por empresa
+}
+
+model Apartment {
+  id                        String      @id @map("_id") @default(uuid())
+  counter                   Int?        @default(0)
+  name                      String
+  status                    String      @default("Ativo")
+  
+  blockId                   String
+  block                     Block       @relation(fields: [blockId], references: [id]) // Relacionamento com Block
+  
+  // Campos desnormalizados para otimização de queries
+  complexId                 String?     // ID do complexo (desnormalizado)
+  companyId                 String?     // ID da empresa (desnormalizado)
+  
+  @@unique([name, blockId, deletedAt])
+  
+  createdByUserId           String?
+  createdByUser             User?        @relation("CreatedByUser", fields: [createdByUserId], references: [id]) // Relacionamento com User (Criador)
+  updatedByUserId           String?
+  updatedByUser             User?        @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
+  
+  deletedAt                 DateTime?   @db.Timestamp
+  createdAt                 DateTime?   @default(now()) @db.Timestamp
+  updatedAt                 DateTime?   @updatedAt @db.Timestamp
+  fraction                  Float       @default(0.00000000)
+
+  // Relacionamento com Meter
+  meters Meter[]
+
+  // Relacionamento com ApartmentConsumptionReport
+  ApartmentConsumptionReports ApartmentConsumptionReport[]
+
+  // Relacionamento com RoleAssignment
+  // RoleAssignments RoleAssignment[]
+
+  // Mapeamento
+  @@map("Apartments")
+
+  // Índices
+  @@index([blockId])
+  @@index([complexId])
+  @@index([companyId])
+  @@index([deletedAt])
+  @@index([status])
+  @@index([name])
+  
+  // ÍNDICES COMPOSTOS PARA OTIMIZAÇÃO
+  @@index([blockId, deletedAt])            // Para queries por bloco
+  @@index([complexId, deletedAt])          // Para queries por complexo (desnormalizado)
+  @@index([companyId, deletedAt])          // Para queries por empresa (desnormalizado)
+  @@index([deletedAt, blockId])            // Para queries por bloco
+  @@index([deletedAt, complexId])          // Para queries por complexo (desnormalizado)
+  @@index([deletedAt, companyId])          // Para queries por empresa (desnormalizado)
+  @@index([deletedAt, name])               // Para busca por nome
+  @@index([blockId, deletedAt, name])      // Índice completo
+  @@index([complexId, deletedAt, name])    // Índice completo por complexo
+  @@index([companyId, deletedAt, name])    // Índice completo por empresa
+  @@index([blockId, deletedAt, id])        // Índice completo para queries por bloco e id
+}
+
+// MEDIDORES
+model TypeMeter {
+  id                String      @id @map("_id") @default(uuid())
+  name              String
+  acronym           String
+
+  createdAt         DateTime    @default(now()) @db.Timestamp
+  updatedAt         DateTime    @updatedAt @db.Timestamp
+  deletedAt         DateTime?   @db.Timestamp
+
+  createdByUserId   String?
+  createdByUser     User?        @relation("CreatedByUser", fields: [createdByUserId], references: [id]) // Relacionamento com User (Criador)
+  updatedByUserId   String?
+  updatedByUser     User?        @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
+
+  // Relacionamento com Meter
+  meters Meter[]
+
+  // Mapeamento
+  @@map("TypeMeters")
+
+  // Índices
+  @@index([deletedAt])
+  @@index([name])
+  @@index([acronym])
+}
+
+model Meter {
+  id                        String      @id @map("_id") @default(uuid())
+
+  // Chassi
+  register                  String
+  status                    String      @default("Ativo")
+  
+  // Ensure meters with the same register are not active at the same time
+  @@unique([register, status], name: "unique_active_register")
+  
+  location                  String?
+  initialReading            Float       @default(0.0000000000000)
+  yearManufacture           Int?        @db.Int
+  main                      Boolean     @default(true)
+  rotation                  String      @default("Crescente") // "Crescente" ou "Decrescente"
+
+  apartmentId               String
+  apartment                 Apartment   @relation(fields: [apartmentId], references: [id]) // Relacionamento com Apartment
+
+  // Campos desnormalizados para otimização de queries
+  blockId                   String?     // ID do bloco (desnormalizado)
+  complexId                 String?     // ID do complexo (desnormalizado)
+  companyId                 String?     // ID da empresa (desnormalizado)
+
+  typeMeterId               String
+  typeMeter                 TypeMeter   @relation(fields: [typeMeterId], references: [id]) // Relacionamento com TypeMeter
+
+  // [ATENÇÃO] Complex e device id não são usados no MariaDB/origem
+  // complexId                 String?
+  // complex                   Complex?    @relation(fields: [complexId], references: [id]) // Relacionamento com Complex
+
+  // deviceId                  String?
+  // device                    IotDevice?  @relation(fields: [deviceId], references: [id]) // Relacionamento com IotDevice
+
+  createdByUserId           String?
+  createdByUser             User?       @relation("CreatedByUser", fields: [createdByUserId], references: [id]) // Relacionamento com User (Criador)
+  updatedByUserId           String?
+  updatedByUser             User?       @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
+
+  deletedAt                 DateTime?   @db.Timestamp
+  createdAt                 DateTime?   @default(now()) @db.Timestamp
+  updatedAt                 DateTime?   @updatedAt @db.Timestamp
+
+  // Relacionamento com Readings
+  Readings Reading[]
+
+  // Relacionamento com MeterDeviceLink
+  meterDeviceLinks MeterDeviceLink[] @relation("MeterToDeviceLinks")
+
+  // Mapeamento
+  @@map("Meters")
+
+  @@index([apartmentId])
+  @@index([blockId])
+  @@index([complexId])
+  @@index([companyId])
+  @@index([typeMeterId])
+  @@index([register])
+  @@index([status])
+  
+  // ÍNDICES COMPOSTOS PARA OTIMIZAÇÃO
+  @@index([apartmentId, deletedAt]) // Índice composto para otimização de queries
+  @@index([blockId, deletedAt])     // Para queries por bloco (desnormalizado)
+  @@index([complexId, deletedAt])   // Para queries por complexo (desnormalizado)
+  @@index([companyId, deletedAt])   // Para queries por empresa (desnormalizado)
+  @@index([deletedAt, apartmentId]) // Índice composto para otimização de queries
+  @@index([deletedAt, blockId])     // Para queries por bloco (desnormalizado)
+  @@index([deletedAt, complexId])   // Para queries por complexo (desnormalizado)
+  @@index([deletedAt, companyId])   // Para queries por empresa (desnormalizado)
+  @@index([register, deletedAt])    // Para busca por registro
+  @@index([status, deletedAt])      // Para filtros de status
+}
+
+model MeterDeviceLink {
+  id        String   @id @map("_id") @default(uuid())
+
+  meterId   String
+  meter     Meter     @relation("MeterToDeviceLinks", fields: [meterId], references: [id])
+
+  deviceId  String
+  device    IotDevice @relation("DeviceToMeterLinks", fields: [deviceId], references: [deviceId])
+
+  startDate DateTime
+  endDate   DateTime?
+
+  createdAt DateTime  @default(now()) @db.Timestamp
+  updatedAt DateTime? @updatedAt @db.Timestamp
+  deletedAt DateTime? @db.Timestamp
+
+  createdByUserId String?
+  createdByUser   User? @relation("CreatedByUser", fields: [createdByUserId], references: [id]) // Relacionamento com User (Criador)
+  updatedByUserId String?
+  updatedByUser   User? @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
+
+  @@index([meterId])
+  @@index([deviceId])
+  @@index([startDate])
+  @@index([endDate])
+  
+  // 🔥 ÍNDICES CRÍTICOS PARA PERFORMANCE - MeterDeviceLink
+  @@index([deviceId, deletedAt]) // Para busca de links por device
+  @@index([deviceId, deletedAt, endDate]) // Para busca de links ativos por device
+  @@index([deletedAt, endDate]) // Para filtro de links ativos
+  
+  @@map("MeterDeviceLinks")
+}
+
+model IotDevice {
+  id                  String        @id @map("_id") @default(uuid())
+  deviceId            String        @unique
+
+  remoteId            String        // ID do hidrômetro para o cliente que enviou a leitura (útil apenas para eles, e em caso de alguma comunicação entre este sistema e o que enviou a leitura)
+
+  lastReading         Float?
+
+  name                String?
+  nomeInformado       String?
+
+  devicePulseFactor   Float?
+
+  readAtDate          String?       // Data da leitura em AAAA-MM-DD HH:mm:ss
+  
+  lastSeen            Int?          // Data da leitura em "timestamp" (milisegundos)
+  lastSeenDate        String?       // Data da leitura em AAAA-MM-DD HH:mm:ss
+
+  createdAt           DateTime      @default(now()) @db.Timestamp
+  updatedAt           DateTime?     @updatedAt @db.Timestamp
+  deletedAt           DateTime?     @db.Timestamp
+
+  createdByUserId     String?
+  createdByUser       User?         @relation("CreatedByUser", fields: [createdByUserId], references: [id]) // Relacionamento com User (Criador)
+  updatedByUserId     String?
+  updatedByUser       User?         @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
+
+  // Relacionamento com Meter
+  meterDeviceLinks MeterDeviceLink[] @relation("DeviceToMeterLinks")
+
+  // Relacionamento com Reading
+  Readings         Reading[]
+
+  // Mapeamento
+  @@map("IotDevices")
+
+  // Índices
+  @@index([remoteId])
+  @@index([lastSeen])
+  @@index([deletedAt])
+  
+  // 🔥 ÍNDICES CRÍTICOS PARA PERFORMANCE - IotDevice  
+  @@index([deletedAt, deviceId]) // Para filtros principais
+  @@index([deletedAt, lastSeen]) // Para ordenação eficiente
+  @@index([deviceId, deletedAt]) // Para lookup eficiente
+}
+
+
+// SÓ EXISTIRÃO LEITURAS (READINGS) .
+// O TIPO DE LEITURA (MANUAL OU IOT) SERÁ DEFINIDO PELA PROPRIEDADE "isManualReading" DO MODELO READING.
+// LEITURAS
+model Reading {
+  id                  String      @id @map("_id") @default(uuid())
+  registerName       String?      // Nome do medidor (antes, geralmente o nome do chassi, mas não era confiável para esse fim. Agora, é padronizado para ser o chassi do medidor referente em "meterId")
+  monthRef          String?
+  yearRef           String?
+
+  reading           Float?       //@db.Double(23, 13) // Valor da leitura em string (no banco antigo só valia para manual, agora é para todos)
+
+  isPreReading         Boolean?     @default(false) // Indica se a leitura é pré-leitura (ou seja, se é uma leitura que ainda não foi contabilizada)
+  isManualReading      Boolean?     @default(false) // Indica se a leitura é manual (ou seja, se foi feita manualmente e não via IOT)
+  
+  meterId           String?
+  meter             Meter?           @relation(fields: [meterId], references: [id]) // Relacionamento com Meter
+
+  // Campos desnormalizados para otimização de consultas por contexto
+  apartmentId       String?         // ID do apartamento (desnormalizado do meter)
+  blockId           String?         // ID do bloco (desnormalizado do meter)
+  complexId         String?         // ID do complexo (desnormalizado do meter)
+  companyId         String?         // ID da empresa (desnormalizado do meter)
+
+  readAt              DateTime      // Data da leitura em "timestamp" (milisegundos) (no banco antigo só valia para IOT, agora é para todos)
+  readAtDate          String        // Data da leitura em AAAA-MM-DD HH:mm:ss (não inclui horário) (no banco antigo só valia para IOT, agora é para todos)
+
+  nextReadingDate        String?       // Data da próxima leitura em AAAA-MM-DD (não inclui horário) (substitui o readingDateNext)
+
+
+  // ### INÍCIO - CAMPOS DE LEITURA VIA IOT (A ÚLTIMA ENVIADA ATÉ O MOMENTO DO REGISTRO DA LEITURA)
+  rawOffset           String?
+  deviceOffset        String?
+  devicePulseFactor   String?
+  //TODO: Remover lastReading
+      lastReading         String?   // LEGADO - Valor da leitura em string (não é mais usado, pois vem no campo "lastReading" do IOT mas traduzimos para o capmoo "reading")
+  name                String?      // Geralmente, o nome do chassi, mas não é confiável para esse fim
+
+  // readAt              Int           // Data da leitura em "timestamp" (milisegundos)
+  // readAtDate          String        // Data da leitura em AAAA-MM-DD HH:mm:ss
+  
+  
+  lastSeen            Int?          // Data da última leitura em "timestamp" (milisegundos)
+  lastSeenDate        String?       // Data da última leitura em AAAA-MM-DD HH:mm:ss
+  
+  serverTime          Int?          // Data do servidor em "timestamp" (milisegundos)
+
+  topic               String?        // Tópico do MQTT relativo ao condominio (Ex. "message/condominio-1")
+  alerts              String?       // Basicamente um array de strings em JSON (Ex. ["REVERSE_FLOW"])
+
+  remoteId            String?      // ID do Chassi para o cliente que enviou a leitura (útil apenas para eles, e em caso de alguma comunicação entre este sistema e o que enviou a leitura)
+
+  deviceName         String?      // Nome do dispositivo para o cliente que enviou a leitura (mais útil para eles, mas também pode ser usado aqui, porém sem ser um campo crítico)
+  iotDeviceId         String?     // id do dispositivo IOT conforme no sistema de agora. Prefira sempre usar o campo "deviceId" e não este.
+  deviceId         String?     // Campo "device_id" do sistema que enviou a leitura, e relacionado com o campo "deviceId" do modelo IotDevice
+  device              IotDevice?  @relation(fields: [deviceId], references: [deviceId])
+
+  // ### FIM - CAMPOS DE LEITURA VIA IOT
+
+
+  // ### INÍCIO - CAMPOS DE LEITURA MANUAL
+  
+  // TODO: Remover esses campos quando não forem mais necessários
+      readingDate       String?      // LEGADO - Data da leitura em AAAA-MM-DD (não inclui horário)
+      readingDateNext   String?      // LEGADO -Data da próxima leitura em AAAA-MM-DD (não inclui horário)
+  
+  // Campos de leitura com imagem
+  cover             String?     //Seria o nome do arquivo
+  coverBase64       Bytes?      //@db.MediumBlob
+  urlCover          String?     //@db.LongText
+
+  // Campos de usuario que criou e atualizou a leitura
+  createdByUserId   String?
+  createdByUser     User?           @relation("CreatedByUser", fields: [createdByUserId], references: [id]) // Relacionamento com User (Criador)
+  updatedByUserId   String?
+  updatedByUser     User?           @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
+  
+  editor            String? // LEGADO - Editor da leitura (abandonado e substituído por createdByUserId e updatedByUserId)
+  // ### FIM - CAMPOS DE LEITURA MANUAL
+
+  // Relacionamento com ScheduledTask (quando a leitura foi feita a partir de uma tarefa agendada)
+  scheduledTaskId   String?
+  scheduledTask     ScheduledTask?  @relation("ScheduledTaskReadings", fields: [scheduledTaskId], references: [id])
+
+  // Relacionamento com ApartmentConsumptionReport (quando esta é a última leitura utilizada no relatório)
+  apartmentConsumptionReports ApartmentConsumptionReport[]
+
+  deletedAt         DateTime?       @db.Timestamp
+  createdAt         DateTime?       @default(now()) @db.Timestamp
+  updatedAt         DateTime?       @updatedAt @db.Timestamp
+
+  // Mapeamento
+  @@map("Readings")
+
+  // Índices
+  @@index([meterId])
+  @@index([readAt])
+  @@index([yearRef, monthRef])
+  @@index([isPreReading])
+  @@index([isManualReading])
+  @@index([deletedAt])
+  @@index([meterId, readAt])
+  @@index([iotDeviceId])
+  @@index([readAt, meterId, deletedAt])
+  
+  // 🔥 ÍNDICES CRÍTICOS PARA PERFORMANCE - Adicionados para otimização
+  @@index([deviceId]) // Para busca por deviceId (CRÍTICO AUSENTE)
+  @@index([deviceId, deletedAt]) // Para contagens por device
+  @@index([deviceId, deletedAt, meterId]) // Para contagens específicas de readings desvinculadas
+  @@index([deviceId, readAt]) // Para ordenação por device
+  @@index([deletedAt, deviceId, readAt]) // Para ordenação por device
+  @@index([deletedAt, readAt])
+  @@index([deletedAt, readAt, deviceId])
+  @@index([deletedAt, isManualReading, createdAt(sort: Desc)])
+  @@index([deletedAt, complexId, isManualReading, createdAt(sort: Desc)])
+  @@index([deletedAt, blockId, isManualReading, createdAt(sort: Desc)])
+  @@index([deletedAt, apartmentId, isManualReading, createdAt(sort: Desc)])
+  @@index([deletedAt, meterId, isManualReading, createdAt(sort: Desc)])
+  
+  // Índices otimizados para consultas por contexto desnormalizado
+  @@index([apartmentId, readAt, deletedAt])
+  @@index([blockId, readAt, deletedAt])
+  @@index([complexId, readAt, deletedAt])
+  @@index([companyId, readAt, deletedAt])
+  @@index([apartmentId, deletedAt])
+  @@index([blockId, deletedAt])
+  @@index([complexId, deletedAt])
+  @@index([companyId, deletedAt])
+  @@index([deletedAt, meterId, readAtDate])
+  @@index([meterId, readAtDate, deletedAt])
+  @@index([nextReadingDate])
+  @@index([nextReadingDate, deletedAt])
+}
+
+// RELATÓRIOS E CONCESSIONÁRIAS
+model ApartmentConsumptionReport {
+  id                  String      @id @map("_id") @default(uuid())
+  
+  // Referências de mês e ano
+  monthRef            String
+  yearRef             String
+  
+  // Valores de consumo (leituras)
+  consumption         Float         // "consumed" no banco antigo, geralmente equivale valor de LEITURA 
+  totalConsumption    Float?        // "total_consumed" no banco antigo, e se trata de "Consumo Total da Unidade em m³" (leitura atual - leitura anterior)
+  
+  // Valores de custo
+  consumptionCost     Float         // "consumed_cost" no banco antigo, e se trata do valor a ser pago pelo consumo (mas ainda não é o valor final)
+  sewageCost          Float         // Valor de Esgoto
+  partial             Float         // "Rateio Proporcional" - usado como peso para rateio de consumo
+  totalUnit           Float         // Valor final a ser pago pelo consumo (inclui sewageCost, partial e outros custos)
+
+  // Referências de leituras
+  readings            String?        // LEGADO - Não usar: Um array de ids de leituras (collection Readings) utilizadas para gerar o relatório, em JSON
+  lastReadingId         String?        // ID da última leitura utilizada para gerar o relatório
+  lastReading           Reading?      @relation(fields: [lastReadingId], references: [id]) // Relacionamento com Reading
+
+  // Concessionária
+  dealershipReadingId String?       // ID da leitura da concessionária (conta total do condomínio)
+  DealershipReading   DealershipReading? @relation(fields: [dealershipReadingId], references: [id]) // Relacionamento com DealershipReading
+
+  // Tipo do utilitário (denormalizado para performance e unicidade por mês)
+  utilityType         DealershipType?
+
+  // Apartamento
+  apartmentId         String        //"apartment_id" no banco antigo - ID do apartamento
+  apartment           Apartment     @relation(fields: [apartmentId], references: [id]) // Relacionamento com Apartment
+
+  // Campos desnormalizados para otimização de consultas por contexto
+  blockId             String?       // ID do bloco (desnormalizado do apartment)
+  complexId           String?       // ID do complexo (desnormalizado do apartment)
+  companyId           String?       // ID da empresa (desnormalizado do apartment)
+
+  // Kite Car (Carro Pipa)
+  kiteCarConsumption  Float?        // "kite_car_consumed" no banco antigo, e se trata de "Consumo Carro Pipa em m³"
+  kiteCarCost         Float?        // Custo Carro Pipa
+
+  // Editor (legado)
+  // editor              String?       // "editor" no banco antigo (será abandonado e substituído por createdByUserId e updatedByUserId)
+
+  // Valores de Gás (se aplicável)
+  consumptionGasValue Float?        // "consumption_gas_value" no banco antigo - Consumo de Gás em m³
+  totalGasValue       Float?        // "total_gas_value" no banco antigo - Valor Total do Gás em Reais
+  coeficiente         Float?        // "coeficiente" no banco antigo - Não usar (dealershipreading já usa)
+  metodoCalculo       String?       // "metodocalculo" no banco antigo - Não usar (dealershipreading já usa)
+
+  // Registros de Interações
+  createdByUserId     String?
+  createdByUser       User?         @relation("CreatedByUser", fields: [createdByUserId], references: [id]) // Relacionamento com User (Criador)
+  updatedByUserId     String?
+  updatedByUser       User?         @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
+
+  deletedAt           DateTime?     @db.Timestamp
+  createdAt           DateTime?     @default(now()) @db.Timestamp
+  updatedAt           DateTime?     @updatedAt @db.Timestamp
+
+  // Unicidade por mês/ano/apartamento/tipo de utilitário
+  @@unique([yearRef, monthRef, apartmentId, utilityType], name: "unique_year_month_apartment_type")
+  
+  // Mapeamento
+  @@map("ApartmentConsumptionReports")
+
+  // Índices básicos
+  @@index([apartmentId])
+  @@index([dealershipReadingId])
+  @@index([yearRef, monthRef])
+  @@index([lastReadingId])
+  @@index([deletedAt])
+  @@index([createdAt])
+
+  // Índice auxiliar por utilityType para filtros rápidos
+  @@index([utilityType])
+  
+  // Índices compostos para otimização de consultas por contexto, unicamente
+  @@index([lastReadingId, deletedAt])
+  @@index([apartmentId, deletedAt])
+  @@index([blockId, deletedAt])
+  @@index([complexId, deletedAt])
+  @@index([companyId, deletedAt])
+  
+  // Índices compostos para consultas por contexto e data de criação
+  @@index([apartmentId, createdAt, deletedAt])
+  @@index([blockId, createdAt, deletedAt])
+  @@index([complexId, createdAt, deletedAt])
+  @@index([companyId, createdAt, deletedAt])
+  
+  // Índices para consultas por mês/ano com contexto
+  @@index([apartmentId, yearRef, monthRef, deletedAt])
+  @@index([blockId, yearRef, monthRef, deletedAt])
+  @@index([complexId, yearRef, monthRef, deletedAt])
+  @@index([companyId, yearRef, monthRef, deletedAt])
+
+  // Índices por mês/ano/tipo para agrupamentos por utilitário
+  @@index([apartmentId, yearRef, monthRef, utilityType])
+}
+
+enum DealershipType {
+  water
+  gas
+}
+
+model DealershipReading {
+  id                          String      @id @map("_id") @default(uuid())
+
+  // Dealership details
+  type                       DealershipType @default(water)  // Tipo de concessionária (água ou gás)
+  
+  // Reading dates
+  readingDate                 String                         // Data da leitura em AAAA-MM-DD (não inclui horário)
+  readingDateNext             String                         // Data da próxima leitura em AAAA-MM-DD (não inclui horário)
+
+  // Consumption details
+  totalDays                   Int          @default(0)        // Total de Dias
+  dealershipConsumption       Float        @default(0.000)    // Consumo da Concessionária em m3
+  monthlyConsumption          Float        @default(0.000)    // Consumo Unidades em m3
+  billedConsumption           Float        @default(0.000)    // Consumo Faturado em m3
+  previousMonthlyConsumption  Float        @default(0.000)    // Não usar
+  previousBilledConsumption   Float        @default(0.000)    // Não usar
+  diffConsumption             Float        @default(0.000)    // Não usar
+  kiteCarConsumption          Float        @default(0.000)    // m³ recebidos
+  kiteCarConsumedUnits        Float        @default(0.000)    // Consumo Carro Pipa das Unidades em m³
+  average                     Float        @default(0.000)
+
+  // Tax details
+  dealershipConsumptionTax1   Float?       @default(0.000)   // Não usar
+  dealershipConsumptionTax2   Float?       @default(0.000)   // Não usar
+  dealershipConsumptionTax3   Float?       @default(0.000)   // Não usar
+  dealershipConsumptionTax4   Float?       @default(0.000)   // Não usar
+  dealershipConsumptionTax5   Float?       @default(0.000)   // Não usar
+  dealershipConsumptionTax6   Float?       @default(0.000)   // Não usar
+  consumptionTax1             Float?       @default(0.000)   // Não usar
+  consumptionTax2             Float?       @default(0.000)   // Não usar
+  consumptionTax3             Float?       @default(0.000)   // Não usar
+  consumptionTax4             Float?       @default(0.000)   // Não usar
+  consumptionTax5             Float?       @default(0.000)   // Não usar
+  consumptionTax6             Float?       @default(0.000)   // Não usar
+
+  // Cost details
+  dealershipCostTax1          Float?       @default(0.000)   // Não usar
+  dealershipCostTax2          Float?       @default(0.000)   // Não usar
+  dealershipCostTax3          Float?       @default(0.000)   // Não usar
+  dealershipCostTax4          Float?       @default(0.000)   // Não usar
+  dealershipCostTax5          Float?       @default(0.000)   // Não usar
+  dealershipCostTax6          Float?       @default(0.000)   // Não usar
+  dealershipCost              Float        @default(0.00)    // Custo da Concessionária em Reais
+  consumptionValue            Float        @default(0.000)   // Valor do Consumo
+  sewageValue                 Float        @default(0.000)   // Valor do Esgoto
+  totalValue                  Float        @default(0.000)   // Conta Total
+  diffCost                    Float        @default(0.000)   // É usado para "Área Comum" em reais
+  kiteCarTax                  Float        @default(0.000)   // Valor do m³
+  kiteCarTotal                Float        @default(0.000)   // Valor total do Carro Pipa
+  valuePerKiteCar             Float        @default(0.000)   // Valor por Caminhão
+  kiteCarCostUnits            Float        @default(0.000)   // Valor Carro Pipa das Unidades
+
+  // Calculation details
+  consumptionCalculation      String       @default("Consumo Real")              // Manter padrão (não usar o campo na criação nem edição)
+  typeMinimumValue            String       @default("Pré Estabelecido")          // Manter padrão (não usar o campo na criação nem edição)
+  minimumValue                Float        @default(0.000)                       // Manter padrão (não usar o campo na criação nem edição)
+  fareType                    String       @default("Metro Cúbico Médio")        // Manter padrão (não usar o campo na criação nem edição)
+  commonArea                  String       @default("Sem Rateio")                // Manter padrão (não usar o campo na criação nem edição)
+  sewageCalc                  String?      @default("Igual ao consumo de água")  // Manter padrão (não usar o campo na criação nem edição)
+  coeficiente                 String?      //Coeficiente
+  metodoCalculo               String?      //Método de Calculo Mensal
+
+  // Units inside tax details
+  unitsInsideTax1             Int           @default(0)       // Não usar
+  unitsInsideTax2             Int           @default(0)       // Não usar
+  unitsInsideTax3             Int?                            // Não usar
+  unitsInsideTax4             Int?                            // Não usar
+  unitsInsideTax5             Int?                            // Não usar
+  unitsInsideTax6             Int?                            // Não usar
+
+  // Kite car details
+  kiteCar                     Boolean       @default(false) // Carro Pipa (Sim ou Não)
+  kiteCarQtd                  Int           @default(0)     // Qtd Caminhões
+
+  // Consumption ranges
+  consumptionRanges           Int          @default(2)     // Não usar
+
+  dealershipId                String        // ID da concessionária 
+  dealership                  Dealership    @relation(fields: [dealershipId], references: [id])
+  complexId                   String        // ID do codomínio
+  complex                     Complex       @relation(fields: [complexId], references: [id])
+  monthRef                    String        // Mês de Referência
+  yearRef                     String?       // Ano de Referência
+  companyId                   String?       // ID da empresa (desnormalizado)
+
+  createdByUserId             String?
+  createdByUser               User?         @relation("CreatedByUser", fields: [createdByUserId], references: [id])
+  updatedByUserId             String?
+  updatedByUser               User?         @relation("UpdatedByUser", fields: [updatedByUserId], references: [id])
+  
+  deletedAt                   DateTime?     @db.Timestamp
+  createdAt                   DateTime?     @default(now()) @db.Timestamp
+  updatedAt                   DateTime?     @updatedAt @db.Timestamp
+
+  // Mapeamento
+  @@map("DealershipReadings")
+
+  // Relacionamento com ApartmentConsumptionReport
+  ApartmentConsumptionReports ApartmentConsumptionReport[]
+
+  // Índices básicos
+  @@index([complexId, deletedAt])
+  @@index([companyId, deletedAt])
+  @@index([dealershipId, deletedAt])
+  @@index([yearRef, monthRef, deletedAt])
+  @@index([readingDate, deletedAt])
+  @@index([type, deletedAt])
+  @@index([deletedAt])
+  
+  // Índices otimizados para consultas com filtros de data range
+  @@index([readingDate, complexId, deletedAt])
+  @@index([readingDate, dealershipId, deletedAt])
+  
+  // Índices compostos para consultas complexas (JOIN com ApartmentConsumptionReport)
+  @@index([complexId, readingDate, deletedAt])
+  @@index([dealershipId, readingDate, deletedAt])
+  @@index([type, readingDate, deletedAt])
+}
+
+model Dealership {
+  id                          String  @id @map("_id") @default(uuid())
+  name                        String
+  service                     String
+  editor                      String
+
+  createdByUserId             String?
+  createdByUser               User?       @relation("CreatedByUser", fields: [createdByUserId], references: [id])
+  updatedByUserId             String?
+  updatedByUser               User?       @relation("UpdatedByUser", fields: [updatedByUserId], references: [id])
+  
+  deletedAt                   DateTime?   @db.Timestamp
+  createdAt                   DateTime?   @default(now()) @db.Timestamp
+  updatedAt                   DateTime?   @updatedAt @db.Timestamp
+  
+  // Relacionamento com DealershipReading
+  DealershipReadings DealershipReading[]
+  
+  // Relacionamento com DealershipReadingGas (readingsssss, no plural)
+  // DealershipReadingsGas DealershipReadingGas[]
+  
+  // Mapeamento
+  @@map("Dealerships")
+
+  // Índices
+  @@index([name])
+  @@index([service])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// SISTEMA DE MEDIÇÃO DE NÍVEL DE RESERVATÓRIOS
+// =====================================================
+
+// Enum para tipos de reservatório
+enum ReservoirType {
+  WATER_TANK      // Caixa d'água
+  CISTERN         // Cisterna
+  POOL            // Piscina
+  FOUNTAIN        // Chafariz
+  EMERGENCY_TANK  // Reserva de emergência
+  TREATMENT_TANK  // Tanque de tratamento
+}
+
+// Model para Reservatórios
+model Reservoir {
+  id                    String       @id @map("_id") @default(uuid())
+  name                  String       // "Reservatório Superior"
+  telegramChannel       String       // "LOG Acqua X Brasil"
+  type                  ReservoirType @default(WATER_TANK)
+  
+  // Vínculo com condomínio (opcional inicialmente)
+  complexId             String?
+  complex               Complex?     @relation(fields: [complexId], references: [id])
+  
+  // Campos desnormalizados para performance (seguindo padrão do sistema)
+  companyId             String?
+  
+  // Configurações específicas
+  capacity              Float?       // Capacidade total em m³
+  minLevel              Float?       // Nível mínimo de alerta
+  maxLevel              Float?       // Nível máximo
+  
+  // Metadados
+  description           String?
+  location              String?      // Localização física
+  installationDate      DateTime?
+  
+  // Sistema de auditoria (seguindo padrão)
+  createdAt             DateTime     @default(now()) @db.Timestamp
+  updatedAt             DateTime     @updatedAt @db.Timestamp
+  deletedAt             DateTime?    @db.Timestamp
+  
+  createdByUserId       String?
+  createdByUser         User?        @relation("ReservoirCreatedByUser", fields: [createdByUserId], references: [id])
+  updatedByUserId       String?
+  updatedByUser         User?        @relation("ReservoirUpdatedByUser", fields: [updatedByUserId], references: [id])
+  
+  // Relacionamentos
+  readings              ReservoirReading[]
+  
+  // Índices para performance
+  @@unique([name, telegramChannel, deletedAt], name: "unique_reservoir_channel")
+  @@index([complexId])
+  @@index([telegramChannel])
+  @@index([type])
+  @@index([deletedAt])
+  @@index([complexId, deletedAt, name]) // Índice composto
+  
+  @@map("Reservoirs")
+}
+
+// Model para Leituras dos Reservatórios
+model ReservoirReading {
+  id                    String       @id @map("_id") @default(uuid())
+  
+  // Vínculo com reservatório
+  reservoirId           String
+  reservoir             Reservoir    @relation(fields: [reservoirId], references: [id])
+  
+  // Dados da leitura
+  level                 Float        // Nível em metros
+  rawLevel              Float?       // Nível bruto do sensor
+  distance              Float?       // Distância medida pelo sensor
+  
+  // Dados ambientais
+  temperature           Float?       // Temperatura
+  temperatureSecondary  Float?       // Segunda leitura de temperatura
+  
+  // Dados do dispositivo
+  batteryVoltage        Float?       // Tensão da bateria
+  batteryVoltageSecondary Float?     // Segunda leitura de bateria
+  
+  // Dados de conectividade
+  signalQuality         Float?       // Qualidade do sinal (SNR)
+  signalStrength        Float?       // Força do sinal (RSSI)
+  gatewaySignalQuality  Float?       // SNR do gateway
+  gatewaySignalStrength Float?       // RSSI do gateway
+  
+  // Velocidades e outros dados técnicos
+  speed1                Float?
+  speed2                Float?
+  
+  // Dados temporais
+  readingDate           DateTime     // Data/hora da leitura
+  receivedAt            DateTime     @default(now()) @db.Timestamp // Data/hora de recebimento
+  
+  // Dados do telegram (para auditoria)
+  telegramMessageId     String?      // ID da mensagem do Telegram
+  telegramChannelName   String?      // Nome do canal
+  telegramDeviceName    String?      // Nome do dispositivo na mensagem
+  
+  // Processamento
+  isProcessed           Boolean      @default(false)
+  processingErrors      String?      // Erros durante processamento
+  
+  // Sistema de auditoria
+  createdAt             DateTime     @default(now()) @db.Timestamp
+  updatedAt             DateTime     @updatedAt @db.Timestamp
+  deletedAt             DateTime?    @db.Timestamp
+  
+  createdByUserId       String?
+  createdByUser         User?        @relation("ReservoirReadingCreatedByUser", fields: [createdByUserId], references: [id])
+  updatedByUserId       String?
+  updatedByUser         User?        @relation("ReservoirReadingUpdatedByUser", fields: [updatedByUserId], references: [id])
+  
+  // Índices para performance
+  @@index([reservoirId])
+  @@index([readingDate])
+  @@index([receivedAt])
+  @@index([isProcessed])
+  @@index([deletedAt])
+  @@index([reservoirId, readingDate]) // Para consultas temporais por reservatório
+  @@index([readingDate, deletedAt])   // Para consultas temporais globais
+  
+  @@map("ReservoirReadings")
+}
+
+// ### AGENDA E TAREFAS AGENDADAS ###
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskType {
+  METER_READING
+  MAINTENANCE
+  INSPECTION
+  OTHER
+}
+
+enum OverrideType {
+  CANCEL      // Cancela a ocorrência
+  RESCHEDULE  // Move para outra data/hora
+  MODIFY      // Altera detalhes mas mantém data
+}
+
+model ScheduledTask {
+  id                        String    @id @map("_id") @default(uuid())
+  
+  // Informações básicas
+  title                     String
+  description               String?
+  status                    TaskStatus @default(PENDING)
+  priority                  TaskPriority @default(HIGH)
+  
+  // Agendamento
+  scheduledDate             DateTime
+  completedAt               DateTime?
+  
+  // Contexto da tarefa
+  taskType                  TaskType
+  contextId                 String    // ID do apartamento, medidor, etc.
+  contextType               ContextType
+  
+  // Dados específicos da leitura (se aplicável)
+  meterId                   String?
+  apartmentId               String?
+  
+  // Campos desnormalizados para permissões e filtros
+  companyId                 String?   // ID da empresa (desnormalizado)
+  companyName               String?   // Nome da empresa (desnormalizado)
+  complexId                 String?   // ID do complexo (desnormalizado)
+  complexName               String?   // Nome do complexo (desnormalizado)
+  complexSocialName         String?   // Nome social do complexo (desnormalizado)
+  blockId                   String?   // ID do bloco (desnormalizado)
+  blockName                 String?   // Nome do bloco (desnormalizado)
+  apartmentName             String?   // Nome do apartamento (desnormalizado)
+  meterRegister             String?   // Registro do medidor (desnormalizado)
+  
+  // Relacionamentos
+  assignedToUserId          String?
+  assignedToUser            User?     @relation("AssignedTasks", fields: [assignedToUserId], references: [id])
+  
+  // Auditoria
+  createdAt                 DateTime  @default(now()) @db.Timestamp
+  updatedAt                 DateTime  @updatedAt @db.Timestamp
+  deletedAt                 DateTime? @db.Timestamp
+  
+  createdByUserId           String?
+  createdByUser             User?     @relation("CreatedTasks", fields: [createdByUserId], references: [id])
+  updatedByUserId           String?
+  updatedByUser             User?     @relation("UpdatedTasks", fields: [updatedByUserId], references: [id])
+  
+  // Relacionamento com leituras executadas a partir desta tarefa
+  readings                  Reading[] @relation("ScheduledTaskReadings")
+  
+  // EXTENSÃO RRULE: Campos para suporte a tarefas recorrentes
+  recurringScheduleId       String?   // Se veio de RRULE
+  originalRRuleDate         DateTime? // Data original do RRULE (antes de overrides)
+  isFromRecurring           Boolean   @default(false) // Flag para identificar origem
+  
+  // Relacionamento com agenda recorrente
+  recurringSchedule         RecurringSchedule? @relation("RecurringScheduleTasks", fields: [recurringScheduleId], references: [id])
+  
+  @@map("ScheduledTasks")
+  @@index([assignedToUserId])
+  @@index([scheduledDate])
+  @@index([status])
+  @@index([contextId, contextType])
+  @@index([companyId])
+  @@index([complexId])
+  @@index([taskType])
+  @@index([deletedAt])
+  @@index([recurringScheduleId]) // Novo índice para RRULE
+  @@index([isFromRecurring])     // Novo índice para RRULE
+}
+
+// NOVOS MODELOS RRULE
+
+model RecurringSchedule {
+  id            String @id @map("_id") @default(uuid())
+  title         String
+  description   String?
+  taskType      TaskType
+  priority      TaskPriority @default(HIGH)
+  
+  // Dados desnormalizados para performance e permissões
+  companyId     String   // ID da empresa
+  companyName   String   // Nome da empresa
+  complexId     String   // ID do complexo
+  complexName   String   // Nome do complexo
+  complexSocialName String? // Nome social do complexo
+  blockId       String?  // ID do bloco (opcional)
+  blockName     String?  // Nome do bloco (opcional)
+  apartmentId   String?  // ID do apartamento (opcional)
+  apartmentName String?  // Nome do apartamento (opcional)
+  meterId       String?  // ID do medidor (opcional)
+  meterRegister String?  // Registro do medidor (opcional)
+  
+  // RRULE - Configuração de recorrência
+  rrule         String     // Ex: "FREQ=MONTHLY;BYMONTHDAY=15"
+  startDate     DateTime   // Data base para cálculo das ocorrências
+  endDate       DateTime?  // Data final opcional (UNTIL do RRULE)
+  timeOfDay     String     // Horário fixo (ex: "09:00")
+  
+  // Controle
+  isActive      Boolean @default(true)
+  
+  // Auditoria
+  createdAt     DateTime @default(now()) @db.Timestamp
+  updatedAt     DateTime @updatedAt @db.Timestamp
+  deletedAt     DateTime? @db.Timestamp
+  
+  createdByUserId String
+  updatedByUserId String?
+  
+  // Relacionamentos
+  createdByUser   User @relation("RecurringScheduleCreator", fields: [createdByUserId], references: [id])
+  updatedByUser   User? @relation("RecurringScheduleUpdater", fields: [updatedByUserId], references: [id])
+  
+  // Tarefas geradas a partir desta agenda recorrente
+  scheduledTasks  ScheduledTask[] @relation("RecurringScheduleTasks")
+  
+  // Exceções e alterações para datas específicas
+  overrides       ScheduleOverride[] @relation("RecurringScheduleOverrides")
+  
+  @@map("RecurringSchedules")
+  @@index([companyId])
+  @@index([complexId])
+  @@index([blockId])
+  @@index([apartmentId])
+  @@index([meterId])
+  @@index([isActive])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([taskType])
+  @@index([deletedAt])
+}
+
+model ScheduleOverride {
+  id                  String @id @map("_id") @default(uuid())
+  recurringScheduleId String // Referência à agenda recorrente
+  
+  // Data específica que está sendo modificada
+  originalDate        DateTime  // Data original que seria gerada pelo RRULE
+  
+  // Tipo de modificação
+  overrideType        OverrideType
+  
+  // Campos para RESCHEDULE
+  newDate             DateTime?  // Nova data (se for reagendamento)
+  newTime             String?    // Novo horário (ex: "14:00")
+  
+  // Campos para MODIFY
+  newTitle            String?    // Novo título
+  newDescription      String?    // Nova descrição
+  newPriority         TaskPriority? // Nova prioridade
+  
+  // Motivo da alteração
+  reason              String?
+  
+  // Auditoria
+  createdAt           DateTime @default(now()) @db.Timestamp
+  createdByUserId     String
+  
+  // Relacionamentos
+  recurringSchedule   RecurringSchedule @relation("RecurringScheduleOverrides", fields: [recurringScheduleId], references: [id])
+  createdByUser       User @relation("ScheduleOverrideCreator", fields: [createdByUserId], references: [id])
+  
+  @@map("ScheduleOverrides")
+  @@index([recurringScheduleId])
+  @@index([originalDate])
+  @@index([overrideType])
+  @@index([createdAt])
+}

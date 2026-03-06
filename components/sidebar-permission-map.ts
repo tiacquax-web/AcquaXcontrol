@@ -1,0 +1,21 @@
+// Mapeamento de entidade da sidebar para PermissionableEntity
+export const sidebarPermissionMap: Record<string, string> = {
+  '/dashboard': 'system',
+  '/apartment-report': 'apartmentConsumptionReport',
+  '/dealership-readings': 'dealershipReading',
+  '/readings': 'reading',
+  '/monitoring': 'monitoringDashboard',
+  '/reservoir-monitoring': 'reservoirReading',
+  '/reservoirs': 'reservoir',
+  '/calendar': 'system',
+  '/blog/post-1': 'system',
+  '/solutions': 'system',
+  '/companies': 'company',
+  '/complexes': 'complex',
+  '/blocks': 'block',
+  '/apartments': 'apartment',
+  '/meters': 'meter',
+  '/devices': 'iotDevice',
+  '/users': 'user',
+  '/roles': 'role',
+};

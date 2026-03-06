@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "br.com.acquaxcontrol.www.twa",
+      "sha256_cert_fingerprints": [
+        "EA:4C:FF:F5:B5:00:3E:2F:E4:CA:97:B2:AF:3F:35:E5:41:DE:4E:AF:E7:E2:F4:8D:BD:C6:78:11:3C:B9:79:24"
+      ]
+    }
+  }
+]
