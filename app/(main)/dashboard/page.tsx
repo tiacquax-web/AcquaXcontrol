@@ -3,7 +3,7 @@
 import {
   Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2,
   AlertTriangle, Ban, Receipt, CalendarCheck2, Building, DoorClosed,
-  BarChart3,
+  GaugeCircle,
 } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -24,15 +24,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useUserContext } from "@/hooks/useUserContext";
 import { useMeterReport, MeterReportItem } from "@/hooks/useMeterReport";
 import { useDealershipReadings } from "@/hooks/useDealershipReadings";
-import { format, subMonths } from "date-fns";
+import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ComplexesList from '@/components/ComplexesList';
-import { Apartment, Block, Complex } from '@prisma/client';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-} from 'recharts';
+import { Apartment, Block, Complex, Meter } from '@prisma/client';
+import { DateRangeSelector } from '@/components/date-range-selector';
+import ReadingsGraph from '@/components/ReadingsGraph';
+import { useReadings } from '@/hooks/useReadings';
+import { useMeter } from '@/hooks/useMeters';
+import { useToast } from '@/hooks/use-toast';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -135,143 +137,99 @@ function MonthSelect({ value, onChange }: { value: string; onChange: (v: string)
   );
 }
 
-// ─── MONTH_NAMES ─────────────────────────────────────────────────────────────
-const MONTH_NAMES_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-// ─── ConsumoAnualGraph ────────────────────────────────────────────────────────
-// Busca consumo mensal (m³) via meter-report para o ano selecionado e plota
-// um gráfico de barras. Apenas meses com dados aparecem no gráfico.
-function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
-  const currentYear = new Date().getFullYear();
-  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
-  const [selectedYear, setSelectedYear] = useState(String(currentYear));
-
-  // Fetch all 12 months in parallel for the selected year
-  const [monthlyData, setMonthlyData] = useState<{ month: string; consumo: number; label: string }[]>([]);
-  const [loading, setLoading] = useState(false);
+// ─── MedidorGraphs (inline – mirrors Leituras page) ──────────────────────────
+function MedidorGraphs({ apartment, dateRange }: { apartment: Apartment; dateRange: { from: Date; to: Date } }) {
+  const { readings, loading } = useReadings({
+    apartmentId: apartment.id,
+    withMeter: true,
+    take: 500,
+    fromDate: dateRange.from,
+    toDate: dateRange.to,
+  });
+  const { meters: aptoMeters, loading: loadingMeters } = useMeter({ apartmentId: apartment.id });
+  const { toast } = useToast();
 
   useEffect(() => {
-    setLoading(true);
-    const base = process.env.NEXT_PUBLIC_API_URL;
-    Promise.all(
-      Array.from({ length: 12 }, (_, i) => {
-        const month = String(i + 1).padStart(2, '0');
-        return fetch(`${base}/meter-report?month=${month}&year=${selectedYear}&apartment_id=${apartmentId}`, { credentials: 'include' })
-          .then(r => r.ok ? r.json() : { list: [] })
-          .then(d => {
-            const list: MeterReportItem[] = d.list ?? [];
-            // Sum consumption of all reports for this apartment in this month
-            const totalConsumo = list.reduce((sum, r) => sum + (r.consumption ?? 0), 0);
-            return { monthIndex: i, totalConsumo };
-          })
-          .catch(() => ({ monthIndex: i, totalConsumo: 0 }));
-      })
-    ).then(results => {
-      const data = results
-        .filter(r => r.totalConsumo > 0) // Only months with consumption
-        .map(r => ({
-          month: String(r.monthIndex + 1).padStart(2, '0'),
-          consumo: parseFloat(r.totalConsumo.toFixed(3)),
-          label: MONTH_NAMES_SHORT[r.monthIndex],
-        }));
-      setMonthlyData(data);
-      setLoading(false);
-    });
-  }, [apartmentId, selectedYear]);
+    const t = setTimeout(() => {
+      toast({
+        title: '😉 Clique na leitura para ver detalhes',
+        description: 'Você pode clicar em qualquer leitura para ver mais informações.',
+        duration: 5000,
+      });
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
-  const totalAnual = monthlyData.reduce((s, d) => s + d.consumo, 0);
-  const maxConsumo = monthlyData.length > 0 ? Math.max(...monthlyData.map(d => d.consumo)) : 0;
+  const metersWithReadings = readings.reduce((acc, r) => {
+    if (r.meter?.id && !acc.some(m => m.id === r.meter!.id)) acc.push(r.meter as Meter);
+    return acc;
+  }, [] as Meter[]);
 
-  // Custom tooltip
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-background border rounded-lg p-3 shadow-lg text-xs">
-          <p className="font-semibold mb-1">{label} / {selectedYear}</p>
-          <p className="text-teal-600 font-bold">{payload[0].value.toFixed(3)} m³</p>
-        </div>
-      );
-    }
-    return null;
-  };
+  const metersWithoutReadings = (aptoMeters ?? []).filter(
+    m => !metersWithReadings.some(mwr => mwr.id === m.id)
+  );
+
+  if (loading || loadingMeters) return <Skeleton className="h-40 w-full" />;
+
+  if (!metersWithReadings.length && !metersWithoutReadings.length)
+    return <div className="text-center text-muted-foreground py-8">Nenhum medidor encontrado para este apartamento.</div>;
 
   return (
-    <Card className="w-full">
-      <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 flex-wrap">
-        <CardTitle className="text-base flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-teal-600" />
-          Consumo Mensal (m³)
-        </CardTitle>
-        <div className="flex items-center gap-2">
-          <Select value={selectedYear} onValueChange={setSelectedYear}>
-            <SelectTrigger className="w-28 h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {yearOptions.map(y => (
-                <SelectItem key={y} value={String(y)} className="text-xs">{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="flex items-center justify-center h-48 gap-2 text-muted-foreground">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-sm">Carregando consumo de {selectedYear}...</span>
-          </div>
-        ) : monthlyData.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-            <Droplets className="w-10 h-10 mb-2 opacity-30" />
-            <p className="text-sm font-medium">Sem dados de consumo</p>
-            <p className="text-xs mt-1">para o ano {selectedYear}</p>
-          </div>
-        ) : (
-          <>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={monthlyData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis
-                  tick={{ fontSize: 10 }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={v => `${v}m³`}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="consumo" radius={[4, 4, 0, 0]} maxBarSize={48}>
-                  {monthlyData.map((entry) => (
-                    <Cell
-                      key={entry.month}
-                      fill={entry.consumo === maxConsumo ? 'hsl(var(--chart-1))' : 'hsl(var(--chart-2))'}
-                      fillOpacity={0.85}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="flex items-center justify-between text-xs text-muted-foreground mt-2 pt-2 border-t">
-              <span>{monthlyData.length} {monthlyData.length === 1 ? 'mês' : 'meses'} com consumo</span>
-              <span className="font-semibold text-foreground">Total: {totalAnual.toFixed(3)} m³</span>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {metersWithReadings.map(meter => {
+        const thisMeterReadings = readings.filter(r => r.meter?.id === meter.id);
+        return (
+          <ReadingsGraph
+            key={meter.id}
+            readings={thisMeterReadings}
+            register={meter.register}
+            meterId={meter.id}
+            detailsModalAvailable
+          />
+        );
+      })}
+      {metersWithoutReadings.map(meter => (
+        <Card key={meter.id}>
+          <CardHeader><CardTitle className="text-sm">{meter.register}</CardTitle></CardHeader>
+          <CardContent>
+            <p className="text-center text-muted-foreground py-4 text-sm">
+              Nenhuma leitura encontrada para este medidor no período selecionado.
+            </p>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   );
 }
+
+
 
 // ─── MoradorDashboard ─────────────────────────────────────────────────────────
 function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) {
   const { context, loading: ctxLoading } = useUserContext();
   const apartments = context?.apartments ?? [];
 
+  // ── Navigation filters (mirrors Leituras page) ──
   const [filters, setFilters] = useState<{
     complex: Complex | undefined;
     block: Block | undefined;
     apartment: Apartment | undefined;
   }>({ complex: undefined, block: undefined, apartment: undefined });
+
+  // Date range for readings (default: last 3 months)
+  const defaultFrom = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    return startOfMonth(d);
+  }, []);
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
+    from: defaultFrom,
+    to: endOfMonth(new Date()),
+  });
+
+  function handleDateChange({ from, to }: { from: Date; to: Date }) {
+    setDateRange({ from: startOfMonth(from), to: endOfMonth(to) });
+  }
 
   // Single apartment auto-apply
   const singleApartment = useMemo(() => {
@@ -285,9 +243,10 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
       const complex = block?.complex as any;
       setFilters({ complex: complex || undefined, block: block || undefined, apartment: singleApartment as any });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [singleApartment]);
 
-  // ── Filipeta preview state ──
+  // ── Filipeta preview state (last 3 months) ──
   const [filipetasByMonth, setFilipetasByMonth] = useState<Record<string, MeterReportItem[]>>({});
   const [loadingFilipetas, setLoadingFilipetas] = useState(false);
 
@@ -317,15 +276,15 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
 
   return (
     <>
-      {/* ── Consumo Anual section ── */}
+      {/* ── Leituras section (mirrors Leituras page) ── */}
       <section className="w-full space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-semibold">Consumo da Unidade</h2>
+            <GaugeCircle className="w-5 h-5 text-blue-600" />
+            <h2 className="text-lg font-semibold">Leituras do Medidor</h2>
           </div>
           <Button variant="outline" size="sm" onClick={() => router.push('/readings')}>
-            Ver leituras detalhadas <ChevronRight className="w-4 h-4 ml-1" />
+            Ver página completa <ChevronRight className="w-4 h-4 ml-1" />
           </Button>
         </div>
 
@@ -335,6 +294,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
             <Button
               variant="link"
               className="flex items-center px-1 mx-0 py-1"
+              disabled={!!singleApartment}
               onClick={() => setFilters({ complex: undefined, block: undefined, apartment: undefined })}
             >
               <Building2 className="mr-1 h-4 w-4" />
@@ -350,10 +310,13 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
                 <Button
                   variant="link"
                   className="flex items-center px-1 mx-0 py-1"
+                  disabled={!!singleApartment}
                   onClick={() => setFilters(prev => ({ ...prev, block: undefined, apartment: undefined }))}
                 >
                   <Building className="mr-1 h-4 w-4" />
-                  {filters.block ? (filters.block.name.length > 12 ? `${filters.block.name.slice(0, 12)}...` : filters.block.name) : 'Blocos'}
+                  {filters.block
+                    ? (filters.block.name.length > 12 ? `${filters.block.name.slice(0, 12)}...` : filters.block.name)
+                    : 'Blocos'}
                 </Button>
               </>
             )}
@@ -363,15 +326,23 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
                 <Button
                   variant="link"
                   className="flex items-center px-1 mx-0 py-1"
+                  disabled={!!singleApartment}
                   onClick={() => setFilters(prev => ({ ...prev, apartment: undefined }))}
                 >
                   <DoorClosed className="mr-1 h-4 w-4" />
-                  {filters.apartment ? (filters.apartment.name.length > 12 ? `${filters.apartment.name.slice(0, 12)}...` : filters.apartment.name) : 'Apartamentos'}
+                  {filters.apartment
+                    ? (filters.apartment.name.length > 12 ? `${filters.apartment.name.slice(0, 12)}...` : filters.apartment.name)
+                    : 'Apartamentos'}
                 </Button>
               </>
             )}
           </div>
         )}
+
+        {/* Date range selector */}
+        <div>
+          <DateRangeSelector onDateRangeChange={handleDateChange} />
+        </div>
 
         {/* Complex list — only when no complex selected and multiple options */}
         {!filters.complex?.id && !singleApartment && (
@@ -426,14 +397,14 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
           return null;
         })()}
 
-        {/* Annual consumption chart when apartment is selected */}
+        {/* Meter graphs when apartment is selected */}
         {filters.apartment?.id && (
-          <ConsumoAnualGraph apartmentId={filters.apartment.id} />
+          <MedidorGraphs apartment={filters.apartment as Apartment} dateRange={dateRange} />
         )}
 
-        {/* Empty state when no complex selected and user has multiple */}
+        {/* Empty state: no complex selected + multiple options */}
         {!filters.complex?.id && !singleApartment && apartments.length > 1 && (
-          <p className="text-xs text-muted-foreground mt-1">Selecione um condomínio para ver o consumo.</p>
+          <p className="text-xs text-muted-foreground mt-1">Selecione um condomínio para ver as leituras.</p>
         )}
       </section>
 
