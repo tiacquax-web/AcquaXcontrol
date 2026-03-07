@@ -114,21 +114,21 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
 
       {/* Main content: photo + info */}
       <div className="flex gap-0 flex-1">
-        {/* Photo */}
-        <div className="w-32 shrink-0 border-r bg-gray-50 flex items-center justify-center p-2">
+        {/* Photo — wider so the image is legible */}
+        <div className="w-44 shrink-0 border-r bg-gray-50 flex items-center justify-center p-2">
           {lastReading?.urlCover ? (
             <div className="relative w-full aspect-square overflow-hidden rounded-md">
               <Image
                 src={sanitizeImageUrl(lastReading.urlCover)}
                 alt="Foto do medidor"
                 fill
-                sizes="128px"
+                sizes="176px"
                 className="object-contain"
               />
             </div>
           ) : (
             <div className="w-full aspect-square rounded-md bg-gray-200 border border-gray-300 flex items-center justify-center">
-              <Droplets className="w-8 h-8 text-gray-400" />
+              <Droplets className="w-10 h-10 text-gray-400" />
             </div>
           )}
         </div>
