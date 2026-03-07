@@ -230,12 +230,36 @@ export async function getUserByValidSession(token: string) {
 }
 
 export async function validateUserSession(req: NextRequest):Promise<{ userId: string | null; error: string | null; status: number }> {
-  // 1. Tenta autenticar via cookie de sessão (browser)
+  // 1. Cookie de sessão (browser)
   const sessionCookie = req.cookies.get('session')?.value;
   if (sessionCookie) {
     const validSession = await isSessionValid(sessionCookie);
     if (validSession) {
       return { userId: validSession.userId, error: null, status: 200 };
+    }
+  }
+
+  // 2. Bearer token JWT (chamadas Axios com Authorization: Bearer)
+  const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const jwtToken = authHeader.substring(7);
+    try {
+      const { jwtVerify } = await import('jose');
+      const JWT_SECRET = process.env.JWT_SECRET || 'acquax-super-secret-jwt-key-2024';
+      const secret = new TextEncoder().encode(JWT_SECRET);
+      const { payload } = await jwtVerify(jwtToken, secret);
+      const userId = payload.userId as string;
+      if (userId) {
+        return { userId, error: null, status: 200 };
+      }
+    } catch {
+      // Token inválido ou expirado
+    }
+  }
+
+  return { userId: null, error: 'Unauthorized', status: 401 };
+}
+
     }
   }
 
