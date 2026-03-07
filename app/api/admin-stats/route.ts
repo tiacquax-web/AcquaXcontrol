@@ -78,7 +78,6 @@ export async function GET(req: NextRequest): Promise<Response> {
         userId: true,
         contextType: true,
         contextId: true,
-        role: { select: { name: true } },
       },
     });
 
@@ -241,7 +240,8 @@ export async function GET(req: NextRequest): Promise<Response> {
       complexes: complexesWithDates,
     });
   } catch (e: any) {
-    console.error('[admin-stats]', e);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error('[admin-stats] ERROR:', e?.message ?? e);
+    console.error('[admin-stats] STACK:', e?.stack);
+    return NextResponse.json({ error: 'Internal Server Error', detail: e?.message }, { status: 500 });
   }
 }
