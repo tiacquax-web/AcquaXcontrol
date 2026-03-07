@@ -17,14 +17,12 @@ import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import EnhancedCarousel from "@/components/services-carousel"
 import ComplexesCombobox from "@/components/ComboboxComplex"
 import BlocksCombobox from "@/components/ComboboxBlock"
 import BlocksList from "@/components/BlocksList"
 import ComplexesList from "@/components/ComplexesList"
 import ApartmentsAndReportsList from "@/components/apartments-and-reports-list"
 import { DateRangeSelector } from "@/components/date-range-selector"
-import { itemsList as ServicesList } from "@/store/demo"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useUserContext } from "@/hooks/useUserContext"
 
@@ -340,11 +338,6 @@ export default function ReadingsPage() {
           )}
       </section>
 
-      <Separator className="my-8" />
-
-      <section className="container mx-auto px-4 md:px-6">
-        <EnhancedCarousel items={ServicesList} alignItems="center" />
-      </section>
     </div>
   )
 }
