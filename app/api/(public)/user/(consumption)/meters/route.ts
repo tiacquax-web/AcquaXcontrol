@@ -5,6 +5,9 @@ import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ContextType, Meter } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
 
+// Aumenta o timeout para 60s (Vercel Hobby permite até 60s)
+export const maxDuration = 60;
+
 interface ValidationResult {
     errors: Array<{ row: number; message: string }>;
     toCreate: Array<{ rowIndex: number; data: any }>;
@@ -55,10 +58,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
     //         blocks = blocks.concat(foundBlocks)
     //     }
     // }
-    console.warn('================ buscando blocos =================')
-    console.log(Object.values(allBlocosPorCondominio).map(set => Array.from(set)).flat())
 
-    console.time('------------------------- buscando blocks')
     const foundBlocks = await prisma.block.findMany({
         where: {
             name: { in: Object.values(allBlocosPorCondominio).map(set => Array.from(set)).flat(), mode: 'insensitive' },
@@ -67,19 +67,14 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
         },
         select: { id: true, name: true, complexId: true }
     });
-    console.timeEnd('------------------------- buscando blocks')
 
-    console.warn('================ blocos encontrados =================')
-    console.log(foundBlocks);
     blocks = foundBlocks;
 
     // Busca todos os typeMeters necessários
-    console.time('------------------------- buscando typeMeters')
     const typeMeterList = await prisma.typeMeter.findMany({
         where: { name: { in: allTypeMeters, mode: 'insensitive' }, deletedAt: null },
         select: { id: true, name: true }
     });
-    console.timeEnd('------------------------- buscando typeMeters')
     
     // Buscando todos os apartments necessários
     let apartments: { id: string, name: string, blockId: string }[] = [];
@@ -88,7 +83,6 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
     const apartmentNamesByBlockId = new Map<string, Set<string>>();
 
     // Agora vamos agrupar por blockId real (não por chave textual)
-    console.time('------------------------- FOR: agrupar por blockId real')
     for (const [idx, row] of reqBody.entries()) {
         const rowCondominio = row.condominio !== undefined && row.condominio !== null ? String(row.condominio) : '';
         const rowBloco = row.bloco !== undefined && row.bloco !== null ? String(row.bloco) : '';
@@ -108,14 +102,10 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
             }
         }
     }
-    console.timeEnd('------------------------- FOR: agrupar por blockId real')
 
     // Agora busca os apartamentos por blockId
-    console.warn('================ buscando apartamentos por blockId =================')
-    console.time('------------------------- FOR: buscando apartments por blockId')
     for (const [blockId, apartmentNames] of apartmentNamesByBlockId.entries()) {
         if (apartmentNames.size > 0) {
-            console.warn('Searching apartments in blockId:', blockId, 'apartmentNames:', Array.from(apartmentNames));
             const foundApartments = await prisma.apartment.findMany({
                 where: {
                     name: { in: Array.from(apartmentNames), mode: 'insensitive' },
@@ -124,13 +114,10 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
                 },
                 select: { id: true, name: true, blockId: true }
             });
-            console.warn('Found apartments:', foundApartments);
             apartments = apartments.concat(foundApartments);
         }
     }
-    console.timeEnd('------------------------- FOR: buscando apartments por blockId')
 
-    console.warn('blocks', blocks)
 
     // Verificação de registers (chassi) duplicados no próprio lote
     const registersMap = new Map<string, number>();
@@ -253,7 +240,6 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
     }
 
     // Busca todos os medidores existentes em lote - GLOBAL por register (otimizado)
-    console.time('------------------------- buscando medidores existentes');
     const allRegistersUpper = [...new Set(validMeterData.map(item => item.register))]; // Já estão em uppercase
     const existingMeters = await prisma.meter.findMany({
         where: {
@@ -262,13 +248,11 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
         },
         select: { id: true, register: true, apartmentId: true, status: true, location: true, initialReading: true, yearManufacture: true, main: true, rotation: true }
     });
-    console.timeEnd('------------------------- buscando medidores existentes');
 
     // Criar Map para busca O(1) otimizada - usando uppercase para chave
     const existingMetersMap = new Map(existingMeters.map(meter => [meter.register, meter]));
 
     // Segunda passagem: determina se criar, atualizar ou pular (otimizado com Map)
-    console.time('------------------------- FOR: determinar criar, atualizar ou pular');
     for (const item of validMeterData) {
         const existing = existingMetersMap.get(item.register); // Busca usando uppercase
 
@@ -312,7 +296,6 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
             });
         }
     }
-    console.timeEnd('------------------------- FOR: determinar criar, atualizar ou pular');
     
     // Se há erros de registros duplicados, retorna
     if (errors.length > 0) {
@@ -331,14 +314,11 @@ async function executeMetersBatch(
     const created: any[] = [];
     const updated: any[] = [];
 
-    console.log('^^ toCreate', toCreate);
-    console.log('^^ toUpdate', toUpdate);
 
     // Executa criações em lote
     if (toCreate.length > 0) {
         try {
             const bulkData = toCreate.map(item => cleanEntityBody(item.data));
-            console.warn('^^ bulkData', JSON.stringify(bulkData, null, 2));
             const { entity, error: creationError, status } = await bulkCreateEntity(userId, 'meter', bulkData);
             
             if (creationError || status !== 201) {
@@ -479,12 +459,6 @@ export async function GET(req: NextRequest): Promise<Response> {
             }
         }
 
-        console.log('where', null)
-        console.log('contextType', contextType)
-        console.log('contextId', contextId)
-        console.log('skip', skip)
-        console.log('take', take)
-        console.log('include', include)
 
         // get meters
         const {entity, totalCount, error, status} = await getEntityListData(userId, 'meter', contextType, contextId, search, undefined, take, include, skip, orderBy, orderDirection)
@@ -529,9 +503,7 @@ export async function POST(req: NextRequest): Promise<Response> {
             }
 
             // Etapa 1: Validação completa de todos os dados
-            console.time('------------------------- validando batch de medidores');
             const validationResult = await validateMetersBatch(reqBody.rows);
-            console.timeEnd('------------------------- validando batch de medidores');
             
             if (validationResult.errors.length > 0) {
                 return NextResponse.json({ 
@@ -541,13 +513,11 @@ export async function POST(req: NextRequest): Promise<Response> {
             }
 
             // Etapa 2: Execução das operações (criar/atualizar)
-            console.time('------------------------- executando batch de medidores');
             const executionResult = await executeMetersBatch(
                 userId, 
                 validationResult.toCreate, 
                 validationResult.toUpdate
             );
-            console.timeEnd('------------------------- executando batch de medidores');
 
             if (executionResult.errors.length > 0) {
                 return NextResponse.json({ 
@@ -566,9 +536,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         }
 
         // Single create logic
-        console.log("######### Request body ANTES da limpeza:", reqBody);
         const body = cleanEntityBody(reqBody); // Clean the body to remove unwanted fields
-        console.log("######### Request body DEPOIS da limpeza:", body);
         if (!body) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
         if (Object.keys(body).length === 0) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
 
