@@ -1,11 +1,10 @@
 'use client';
 
-import EnhancedCarousel from "@/components/services-carousel";
+
 import { DatePickerComponent } from "@/components/date-picker";
 import {
-  Gavel, Hammer, Layers, Paintbrush, Shield, ShieldCheck, Wrench, Plus,
   Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2,
-  AlertTriangle, Ban, Receipt, CalendarCheck2,
+  AlertTriangle, Ban, Receipt, CalendarCheck2, Plus,
 } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -33,43 +32,7 @@ import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// ─── static lists ────────────────────────────────────────────────────────────
-const itemsList = [
-  { footer: "Garantidora", content: <Shield className="mt-5" /> },
-  { footer: "Pintura", content: <Paintbrush className="mt-5" /> },
-  { footer: "Advogado", content: <Gavel className="mt-5" /> },
-  { footer: "Seguros", content: <ShieldCheck className="mt-5" /> },
-  { footer: "Gesso e Drywall", content: <Layers className="mt-5" /> },
-  { footer: "Construção Civil", content: <Hammer className="mt-5" /> },
-  { footer: <p className="text-center text-sm">Manutenção de Ar&nbsp;Condicionado</p>, content: <Wrench className="mt-5" /> },
-];
 
-const bannersList = [
-  {
-    footer: <p className="text-center pt-2 w-full">Veja o que está acontecendo em Vila Velha neste momento</p>,
-    content: (
-      <Link href="/blog/post-1" className="relative block w-full h-full">
-        <Image src="/news/vila-velha-4k-2.jpeg" sizes="100vw" className="object-cover object-center transition-transform hover:scale-105" fill priority alt="Banner 1" quality={100} unoptimized />
-      </Link>
-    ),
-  },
-  {
-    footer: <p className="text-center pt-2 w-full">Corpo de Bombeiros lança nota técnica sobre segurança em edificações</p>,
-    content: (
-      <Link href="/blog/post-1" className="relative block w-full h-full">
-        <Image src="/news/banner4.jpg" sizes="100vw" className="object-cover object-center transition-transform hover:scale-105" fill quality={100} alt="Banner 4" />
-      </Link>
-    ),
-  },
-  {
-    footer: <p className="text-center pt-2 w-full">Conheça as novas regras para a instalação de gás em condomínios</p>,
-    content: (
-      <Link href="/blog/post-1" className="relative block w-full h-full">
-        <Image src="/news/banner5.jpg" sizes="100vw" className="object-cover transition-transform hover:scale-105" fill quality={85} alt="Banner 5" />
-      </Link>
-    ),
-  },
-];
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const defaultFromDate = new Date(new Date().setDate(new Date().getDate() - 30));
@@ -723,15 +686,7 @@ export default function Dashboard() {
         </Dialog>
       </div>
 
-      {/* Banners + services */}
-      <div className="space-y-6 container mx-auto md:px-6">
-        <section className="w-full">
-          <EnhancedCarousel footerPosition="over-translucid" slidesToShow={1} horizontalOffset={200} items={bannersList} alignItems="baseline" justifyContent="center" extraCardContentClasses="p-0" />
-        </section>
-        <section className="w-full">
-          <EnhancedCarousel aspectRatio="aspect-[3/1]" items={itemsList} alignItems="center" />
-        </section>
-      </div>
+
     </div>
   );
 }
