@@ -3,8 +3,7 @@
 import {
   Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2,
   AlertTriangle, Ban, Receipt, CalendarCheck2, DoorClosed,
-  GaugeCircle, Users, BarChart3, Home, CheckCircle2, Clock,
-  ArrowRight, Activity, LogIn, Star, TrendingDown,
+  GaugeCircle, Users, BarChart3, Home, Star,
 } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -722,479 +721,93 @@ function SindicoDashboard() {
   );
 }
 
-// ─── AdminStats hook ──────────────────────────────────────────────────────────
-function useAdminStats() {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const base = process.env.NEXT_PUBLIC_API_URL;
-      const res = await fetch(`${base}/admin-stats`, {
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        console.error('[useAdminStats] API error:', res.status, errData);
-        setError(`Erro ${res.status}`);
-        setData(null);
-      } else {
-        const d = await res.json();
-        setData(d);
-      }
-    } catch (e: any) {
-      console.error('[useAdminStats] Fetch error:', e);
-      setError(e.message || 'Erro de conexão');
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { data, loading, error, refetch };
-}
-
-// ─── ComplexDetailPanel ───────────────────────────────────────────────────────
-function ComplexDetailPanel({ complex, onBack }: { complex: any; onBack: () => void }) {
-  const [statsMonthVal, setStatsMonthVal] = useState(allMonthOptions[0].value);
-  const statsMonthOpt = allMonthOptions.find(o => o.value === statsMonthVal)!;
-
-  const { data: statsData, loading: loadingStats } = useMeterReport({
-    month: statsMonthOpt.month,
-    year: statsMonthOpt.year,
-    complexId: complex.id,
-    enabled: !!complex.id,
-  });
-
-  const highConsumptionUnits = useMemo(() =>
-    statsData?.list.filter(r => (r.consumption ?? 0) > 15) ?? [], [statsData]);
-  const zeroConsumptionUnits = useMemo(() =>
-    statsData?.list.filter(r => (r.consumption ?? 0) === 0) ?? [], [statsData]);
-  const totalConsumption = useMemo(() =>
-    statsData?.list.reduce((s, r) => s + (r.consumption ?? 0), 0) ?? null, [statsData]);
-  const totalValue = useMemo(() =>
-    statsData?.list.reduce((s, r) => s + (r.totalUnit ?? 0), 0) ?? null, [statsData]);
+// ─── ProgramadorDashboard ────────────────────────────────────────────────────
+// Exclusivo para usuários com isSystem = true (programador/admin do sistema)
+// Exibe apenas atalhos rápidos para as principais operações administrativas
+function AdminKPIDashboard() {
+  const shortcuts = [
+    {
+      href: '/users',
+      icon: Users,
+      label: 'Usuários',
+      description: 'Cadastrar / gerenciar usuários',
+      color: 'bg-purple-50 border-purple-200 hover:bg-purple-100',
+      iconColor: 'text-purple-600',
+    },
+    {
+      href: '/complexes',
+      icon: Building2,
+      label: 'Condomínios',
+      description: 'Cadastrar / gerenciar condomínios',
+      color: 'bg-blue-50 border-blue-200 hover:bg-blue-100',
+      iconColor: 'text-blue-600',
+    },
+    {
+      href: '/blocks',
+      icon: Home,
+      label: 'Blocos',
+      description: 'Cadastrar / gerenciar blocos',
+      color: 'bg-sky-50 border-sky-200 hover:bg-sky-100',
+      iconColor: 'text-sky-600',
+    },
+    {
+      href: '/apartments',
+      icon: DoorClosed,
+      label: 'Apartamentos',
+      description: 'Cadastrar / gerenciar unidades',
+      color: 'bg-teal-50 border-teal-200 hover:bg-teal-100',
+      iconColor: 'text-teal-600',
+    },
+    {
+      href: '/meters',
+      icon: GaugeCircle,
+      label: 'Medidores',
+      description: 'Cadastrar / gerenciar medidores',
+      color: 'bg-orange-50 border-orange-200 hover:bg-orange-100',
+      iconColor: 'text-orange-600',
+    },
+    {
+      href: '/readings/create',
+      icon: Droplets,
+      label: 'Subir Leitura',
+      description: 'Registrar nova leitura de medidor',
+      color: 'bg-cyan-50 border-cyan-200 hover:bg-cyan-100',
+      iconColor: 'text-cyan-600',
+    },
+    {
+      href: '/dealership-readings/new',
+      icon: Receipt,
+      label: 'Cadastrar Conta',
+      description: 'Lançar conta da concessionária',
+      color: 'bg-green-50 border-green-200 hover:bg-green-100',
+      iconColor: 'text-green-600',
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Button variant="outline" size="sm" onClick={onBack}>← Voltar ao panorama</Button>
-        <div className="flex items-center gap-2">
-          <Building2 className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold">{complex.socialName || complex.aliasName}</h2>
-        </div>
-        {complex.lastReadingLabel && (
-          <Badge variant="secondary" className="text-xs">Última leitura: {complex.lastReadingLabel}</Badge>
-        )}
+      <div className="flex items-center gap-2">
+        <Star className="w-5 h-5 text-blue-600" />
+        <h2 className="text-lg font-semibold text-foreground">Acesso Rápido</h2>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card><CardContent className="p-4 text-center">
-          <Home className="w-5 h-5 text-blue-400 mx-auto mb-1" />
-          <p className="text-2xl font-bold">{complex.totalApartments ?? '—'}</p>
-          <p className="text-xs text-muted-foreground">Apartamentos</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4 text-center">
-          <Activity className="w-5 h-5 text-teal-400 mx-auto mb-1" />
-          <p className="text-2xl font-bold">{complex.totalMeters ?? '—'}</p>
-          <p className="text-xs text-muted-foreground">Medidores</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4 text-center">
-          {complex.lastReadingDate
-            ? <CheckCircle2 className="w-5 h-5 text-green-500 mx-auto mb-1" />
-            : <Clock className="w-5 h-5 text-orange-400 mx-auto mb-1" />}
-          <p className="text-sm font-bold">{complex.lastReadingLabel ?? 'Sem leitura'}</p>
-          <p className="text-xs text-muted-foreground">Última filipeta</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4 text-center">
-          <TrendingUp className="w-5 h-5 text-purple-400 mx-auto mb-1" />
-          <p className="text-2xl font-bold">{totalConsumption !== null ? `${totalConsumption.toFixed(1)}` : '—'}</p>
-          <p className="text-xs text-muted-foreground">m³ ({statsMonthOpt.labelShort})</p>
-        </CardContent></Card>
-      </div>
-
-      <Card>
-        <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 flex-wrap">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-teal-500" />Resumo de Consumo
-          </CardTitle>
-          <MonthSelect value={statsMonthVal} onChange={setStatsMonthVal} />
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {loadingStats ? (
-            <div className="space-y-3">
-              <Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-32 w-full" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+        {shortcuts.map(({ href, icon: Icon, label, description, color, iconColor }) => (
+          <Link key={href} href={href}>
+            <div
+              className={`flex flex-col items-center justify-center gap-3 rounded-2xl border p-5 text-center cursor-pointer transition-all active:scale-95 ${color}`}
+            >
+              <div className={`w-12 h-12 rounded-full bg-white/70 flex items-center justify-center shadow-sm`}>
+                <Icon className={`w-6 h-6 ${iconColor}`} />
+              </div>
+              <div>
+                <p className="font-semibold text-sm text-foreground leading-tight">{label}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight hidden sm:block">{description}</p>
+              </div>
             </div>
-          ) : statsData && statsData.list.length > 0 ? (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl border p-3 text-center">
-                  <p className="text-[10px] text-muted-foreground mb-1 flex items-center justify-center gap-1">
-                    <Droplets className="w-3 h-3 text-blue-400" />Consumo Total
-                  </p>
-                  <p className="text-xl font-bold text-teal-600">{totalConsumption?.toFixed(2)} <span className="text-xs font-normal">m³</span></p>
-                </div>
-                <div className="rounded-xl border p-3 text-center">
-                  <p className="text-[10px] text-muted-foreground mb-1">Total Arrecadado</p>
-                  <p className="text-lg font-bold text-blue-600">{formatCurrency(totalValue)}</p>
-                </div>
-              </div>
-              <div className="rounded-xl border border-orange-200 bg-orange-50 dark:bg-orange-950/20 p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0" />
-                  <p className="text-xs font-semibold text-orange-700 dark:text-orange-400">
-                    Consumo &gt; 15 m³ — {highConsumptionUnits.length} unidade{highConsumptionUnits.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-                {highConsumptionUnits.length > 0 ? (
-                  <div className="space-y-1 max-h-28 overflow-y-auto">
-                    {highConsumptionUnits.map(r => (
-                      <div key={r.id} className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Bl.{r.apartment?.block?.name} · Apto {r.apartment?.name}</span>
-                        <span className="font-semibold text-orange-600">{r.consumption?.toFixed(2)} m³</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : <p className="text-xs text-muted-foreground">Nenhuma unidade acima de 15 m³</p>}
-              </div>
-              <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Ban className="w-4 h-4 text-red-500 shrink-0" />
-                  <p className="text-xs font-semibold text-red-700 dark:text-red-400">
-                    Sem consumo — {zeroConsumptionUnits.length} unidade{zeroConsumptionUnits.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-                {zeroConsumptionUnits.length > 0 ? (
-                  <div className="space-y-1 max-h-28 overflow-y-auto">
-                    {zeroConsumptionUnits.map(r => (
-                      <div key={r.id} className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Bl.{r.apartment?.block?.name} · Apto {r.apartment?.name}</span>
-                        <span className="font-semibold text-red-600">0.000 m³</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : <p className="text-xs text-muted-foreground">Todas as unidades tiveram consumo</p>}
-              </div>
-              <div className="rounded-xl border overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted text-muted-foreground">
-                    <tr>
-                      <th className="text-left px-3 py-2">Unidade</th>
-                      <th className="text-right px-3 py-2">m³</th>
-                      <th className="text-right px-3 py-2">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {statsData.list.slice(0, 8).map(r => (
-                      <tr key={r.id} className="hover:bg-muted/40">
-                        <td className="px-3 py-1.5">Bl.{r.apartment?.block?.name} · {r.apartment?.name}</td>
-                        <td className="px-3 py-1.5 text-right text-teal-600 font-medium">{r.consumption?.toFixed(3) ?? '—'}</td>
-                        <td className="px-3 py-1.5 text-right font-medium">{formatCurrency(r.totalUnit)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {statsData.list.length > 8 && (
-                <Link href="/meter-report" className="text-xs text-blue-500 flex items-center gap-1 hover:underline">
-                  Ver todas as {statsData.totalCount} unidades <ChevronRight className="w-3 h-3" />
-                </Link>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground py-4 text-center">Sem dados para {statsMonthOpt.labelShort}</p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ─── AdminKPIDashboard ────────────────────────────────────────────────────────
-// Exclusivo para usuários com isSystem = true (programador/admin)
-function AdminKPIDashboard() {
-  const { data: stats, loading: loadingStats, error: statsError } = useAdminStats();
-  const [selectedComplex, setSelectedComplex] = useState<any>(null);
-
-  if (loadingStats) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1,2].map(i => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
-        </div>
-        <Skeleton className="h-64 w-full rounded-xl" />
-        <Skeleton className="h-48 w-full rounded-xl" />
+          </Link>
+        ))}
       </div>
-    );
-  }
-
-  if (statsError && !stats) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
-        <AlertTriangle className="w-8 h-8 text-orange-400" />
-        <p className="text-sm">Erro ao carregar dados: {statsError}</p>
-        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>Tentar novamente</Button>
-      </div>
-    );
-  }
-
-  if (selectedComplex) {
-    return <ComplexDetailPanel complex={selectedComplex} onBack={() => setSelectedComplex(null)} />;
-  }
-
-  return (
-    <div className="space-y-8">
-      <section className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Activity className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold">Panorama Geral</h2>
-        </div>
-
-        {/* KPI cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { icon: <Building2 className="w-6 h-6 text-blue-500 mb-1" />, value: stats?.totals?.complexes, label: 'Condomínios', color: 'text-blue-600' },
-            { icon: <Home className="w-6 h-6 text-teal-500 mb-1" />, value: stats?.totals?.apartments, label: 'Apartamentos', color: 'text-teal-600' },
-            { icon: <Users className="w-6 h-6 text-purple-500 mb-1" />, value: stats?.totals?.users, label: 'Usuários', color: 'text-purple-600' },
-            { icon: <GaugeCircle className="w-6 h-6 text-orange-500 mb-1" />, value: stats?.totals?.meters, label: 'Medidores', color: 'text-orange-600' },
-          ].map(item => (
-            <Card key={item.label}>
-              <CardContent className="p-4 flex flex-col items-center justify-center text-center gap-1">
-                {item.icon}
-                <p className={`text-3xl font-extrabold ${item.color}`}>{item.value ?? '—'}</p>
-                <p className="text-xs text-muted-foreground font-medium">{item.label}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Users by type */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Users className="w-4 h-4 text-purple-500" />Usuários por Perfil
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { label: 'Moradores', value: stats?.usersByType?.moradores, color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
-                { label: 'Síndicos', value: stats?.usersByType?.sindicos, color: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300' },
-                { label: 'Administradoras', value: stats?.usersByType?.administradoras, color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' },
-                { label: 'Programadores', value: stats?.usersByType?.programadores, color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
-              ].map(item => (
-                <div key={item.label} className={`rounded-xl p-3 text-center ${item.color}`}>
-                  <p className="text-2xl font-bold">{item.value ?? 0}</p>
-                  <p className="text-xs font-medium mt-1">{item.label}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Today logins */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <LogIn className="w-4 h-4 text-green-500" />Logins de Hoje
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { label: 'Moradores', value: stats?.todayLogins?.moradores, icon: '🏠' },
-                { label: 'Síndicos', value: stats?.todayLogins?.sindicos, icon: '🔑' },
-                { label: 'Administradoras', value: stats?.todayLogins?.administradoras, icon: '🏢' },
-                { label: 'Programadores', value: stats?.todayLogins?.programadores, icon: '💻' },
-              ].map(item => (
-                <div key={item.label} className="rounded-xl border p-3 text-center">
-                  <p className="text-xl mb-0.5">{item.icon}</p>
-                  <p className="text-2xl font-bold">{item.value ?? 0}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{item.label}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Logins 7 days chart */}
-        {stats?.loginsByDay && stats.loginsByDay.length > 0 && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-blue-500" />Logins — últimos 7 dias
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={stats.loginsByDay} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                  <Tooltip contentStyle={{ fontSize: 11 }} />
-                  <Legend wrapperStyle={{ fontSize: 10 }} />
-                  <Bar dataKey="moradores" name="Moradores" stackId="a" fill="#3b82f6" />
-                  <Bar dataKey="sindicos" name="Síndicos" stackId="a" fill="#14b8a6" />
-                  <Bar dataKey="administradoras" name="Administradoras" stackId="a" fill="#a855f7" />
-                  <Bar dataKey="programadores" name="Programadores" stackId="a" fill="#f97316" radius={[4,4,0,0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Most/least updated */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card className="border-green-200 dark:border-green-800">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2 text-green-700 dark:text-green-400">
-                <CheckCircle2 className="w-4 h-4" />Condomínio mais atualizado
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {stats?.mostUpdated ? (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold">{stats.mostUpdated.socialName}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Última filipeta: <span className="font-medium text-green-600">{stats.mostUpdated.lastReadingLabel ?? '—'}</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">{stats.mostUpdated.totalApartments} aptos · {stats.mostUpdated.totalMeters} medidores</p>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedComplex(stats.mostUpdated)}>
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </div>
-              ) : <p className="text-sm text-muted-foreground">Sem dados disponíveis</p>}
-            </CardContent>
-          </Card>
-
-          <Card className="border-orange-200 dark:border-orange-800">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2 text-orange-600 dark:text-orange-400">
-                <Clock className="w-4 h-4" />Condomínio menos atualizado
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {stats?.leastUpdated ? (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold">{stats.leastUpdated.socialName}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Última filipeta: <span className="font-medium text-orange-600">{stats.leastUpdated.lastReadingLabel ?? 'Sem leitura'}</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">{stats.leastUpdated.totalApartments} aptos · {stats.leastUpdated.totalMeters} medidores</p>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedComplex(stats.leastUpdated)}>
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </div>
-              ) : <p className="text-sm text-muted-foreground">Sem dados disponíveis</p>}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Most/least accessed */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card className="border-blue-200 dark:border-blue-800">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2 text-blue-700 dark:text-blue-400">
-                <Star className="w-4 h-4" />Condomínio mais acessado (30 dias)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {stats?.mostAccessed ? (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold">{stats.mostAccessed.socialName}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      <span className="font-medium text-blue-600">{stats.mostAccessed.accessCount ?? 0} usuário{(stats.mostAccessed.accessCount ?? 0) !== 1 ? 's' : ''}</span> nos últimos 30 dias
-                    </p>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedComplex(stats.mostAccessed)}>
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </div>
-              ) : <p className="text-sm text-muted-foreground">Sem acessos registrados</p>}
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-200 dark:border-gray-700">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                <TrendingDown className="w-4 h-4" />Condomínio menos acessado (30 dias)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {stats?.leastAccessed ? (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold">{stats.leastAccessed.socialName}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      <span className="font-medium text-gray-600">{stats.leastAccessed.accessCount ?? 0} usuário{(stats.leastAccessed.accessCount ?? 0) !== 1 ? 's' : ''}</span> nos últimos 30 dias
-                    </p>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedComplex(stats.leastAccessed)}>
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </div>
-              ) : <p className="text-sm text-muted-foreground">Sem dados disponíveis</p>}
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
-      <Separator />
-
-      {/* Lista de condomínios */}
-      <section className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Building2 className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold">Selecionar Condomínio</h2>
-          <span className="text-xs text-muted-foreground ml-1">(clique para ver detalhes)</span>
-        </div>
-        {stats?.complexes && stats.complexes.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {stats.complexes.map((cx: any) => (
-              <Card key={cx.id} className="cursor-pointer hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all"
-                onClick={() => setSelectedComplex(cx)}>
-                <CardContent className="p-4 space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Building2 className="w-4 h-4 text-blue-500 shrink-0" />
-                      <p className="font-semibold text-sm truncate">{cx.socialName || cx.aliasName}</p>
-                    </div>
-                    {cx.lastReadingLabel
-                      ? <Badge variant="secondary" className="text-[10px] shrink-0">{cx.lastReadingLabel}</Badge>
-                      : <Badge variant="outline" className="text-[10px] shrink-0 text-orange-500 border-orange-300">Sem leitura</Badge>}
-                  </div>
-                  <div className="flex gap-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1"><Home className="w-3 h-3" />{cx.totalApartments} aptos</span>
-                    <span className="flex items-center gap-1"><GaugeCircle className="w-3 h-3" />{cx.totalMeters} medidores</span>
-                  </div>
-                  <div className="text-xs text-blue-500 flex items-center gap-1 mt-1">
-                    Ver detalhes <ArrowRight className="w-3 h-3" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-12 text-muted-foreground">
-            <Building2 className="w-12 h-12 mb-3 opacity-30 mx-auto" />
-            <p className="text-sm font-medium">Nenhum condomínio cadastrado</p>
-          </div>
-        )}
-      </section>
     </div>
   );
 }
