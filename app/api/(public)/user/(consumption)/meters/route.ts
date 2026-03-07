@@ -388,10 +388,6 @@ async function executeMetersBatch(
         }
     }
 
-            });
-        }
-    }
-
     return { errors, created, updated };
 }
 
