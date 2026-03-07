@@ -529,11 +529,18 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     where: cleanWhere({
                         AND: [
                             {
+                                OR: [
+                                    { deletedAt: null },
+                                    { deletedAt: { isSet: false } },
+                                ],
+                            },
+                            {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
                             },
                             extraWhere,
                         ]
                     }),
+                    orderBy: { name: 'asc' },
                     take: take < 200 ? take : 200,
                 });
                 return { entity: dealerships, error: null, status: 200 };

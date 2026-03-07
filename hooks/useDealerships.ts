@@ -32,7 +32,7 @@ export const useDealerships = ({ search }: useDealershipsProps) => {
             setLoading(true);
             setError(null);
             try {
-                const data = await getDealerships({ take: 15, search: debouncedSearch });
+                const data = await getDealerships({ take: 50, search: debouncedSearch });
                 setDealerships(data);
                 setError(null);
             } catch (error: any) {
