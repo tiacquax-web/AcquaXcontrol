@@ -230,12 +230,26 @@ export async function getUserByValidSession(token: string) {
 }
 
 export async function validateUserSession(req: NextRequest):Promise<{ userId: string | null; error: string | null; status: number }> {
-  // 1. Cookie de sessão (browser)
+  // 1. Cookie de sessão (browser) — tenta primeiro no banco, depois verifica JWT diretamente
   const sessionCookie = req.cookies.get('session')?.value;
   if (sessionCookie) {
     const validSession = await isSessionValid(sessionCookie);
     if (validSession) {
       return { userId: validSession.userId, error: null, status: 200 };
+    }
+    // Sessão não está no banco (expirou ou foi limpa), mas o JWT pode ainda ser válido
+    // Verifica o JWT diretamente do cookie
+    try {
+      const { jwtVerify } = await import('jose');
+      const JWT_SECRET_VAL = process.env.JWT_SECRET || 'acquax-super-secret-jwt-key-2024';
+      const secret = new TextEncoder().encode(JWT_SECRET_VAL);
+      const { payload } = await jwtVerify(sessionCookie, secret);
+      const userId = payload.userId as string;
+      if (userId) {
+        return { userId, error: null, status: 200 };
+      }
+    } catch (_jwtErr) {
+      // JWT inválido ou expirado — continua para outros métodos
     }
   }
 

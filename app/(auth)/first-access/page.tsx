@@ -31,7 +31,11 @@ export default function FirstAccess() {
   }, [user, router]);
 
   useEffect(() => {
-    if (error) setFormError(error);
+    // Não exibe erros do GET /me como bloqueantes — o usuário já está autenticado
+    // pelo middleware (JWT válido), só pode não ter sessão no banco
+    if (error && error !== 'Request failed with status code 401') {
+      setFormError(error);
+    }
   }, [error]);
 
   useEffect(() => {
@@ -77,6 +81,7 @@ export default function FirstAccess() {
     }
   };
 
+  // Mostra carregando apenas brevemente; se falhar (sem sessão no banco), exibe o form mesmo assim
   if (loading) {
     return <div className="flex items-center justify-center min-h-screen">Carregando...</div>;
   }
