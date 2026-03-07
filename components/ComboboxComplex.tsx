@@ -21,29 +21,40 @@ interface SelectComplexProps {
   getAvailableForEntity?: PermissionableEntity
   modal?: boolean
   withCompany?: boolean
+  /** Quando true, oculta o seletor se o usuário só tem acesso a 1 condomínio (auto-seleciona) */
+  autoSelectSingle?: boolean
 }
 
 const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
-  ({ getAvailableForEntity, setSelectedComplex, complex, required, name, disabled, modal = false, withCompany = false, companyId }, ref) => {
+  ({ getAvailableForEntity, setSelectedComplex, complex, required, name, disabled, modal = false, withCompany = false, companyId, autoSelectSingle = true }, ref) => {
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState("")
     const { complexes, loading, error } = useComplexes({ 
       nameQuery: search, 
       companyId,
       getAvailableForEntity,
-      enabled: !disabled, // Só habilita a busca se não estiver desabilitado
+      enabled: !disabled,
       withCompany
     })
     const [selectedId, setSelectedId] = useState<string | undefined>(complex?.id)
+    const [autoSelected, setAutoSelected] = useState(false)
 
     useEffect(() => {
-      // Update selectedId when complex prop changes
       if (complex) {
         setSelectedId(complex.id)
       } else {
         setSelectedId(undefined)
       }
     }, [complex])
+
+    // Auto-seleciona quando só há 1 condomínio disponível
+    useEffect(() => {
+      if (autoSelectSingle && !loading && complexes.length === 1 && !selectedId && !autoSelected) {
+        setSelectedId(complexes[0].id)
+        setSelectedComplex(complexes[0])
+        setAutoSelected(true)
+      }
+    }, [complexes, loading, autoSelectSingle, selectedId, autoSelected, setSelectedComplex])
 
     const handleSelect = (value: string) => {
       if (value === selectedId) {
@@ -73,6 +84,11 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
 
     if (error) {
       return <div className="text-red-500">Erro para carregar condomínios: {error.toString()}</div>
+    }
+
+    // Oculta o seletor se só há 1 condomínio (já auto-selecionado)
+    if (autoSelectSingle && !loading && complexes.length === 1) {
+      return null
     }
 
     return (

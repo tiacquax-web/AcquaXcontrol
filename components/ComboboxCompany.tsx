@@ -19,19 +19,19 @@ interface SelectCompanyProps {
   disabled?: boolean
   getAvailableForEntity?: PermissionableEntity
   modal?: boolean
+  /** Quando true, oculta o seletor se o usuário só tem acesso a 1 empresa (auto-seleciona) */
+  autoSelectSingle?: boolean
 }
 
 const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
-  ({ setSelectedCompany, company, required, name, disabled, getAvailableForEntity, modal = false }, ref) => {
+  ({ setSelectedCompany, company, required, name, disabled, getAvailableForEntity, modal = false, autoSelectSingle = true }, ref) => {
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState("")
     const { companies, loading, error } = useCompanies({ nameQuery: search, getAvailableForEntity })
     const [selectedId, setSelectedId] = useState<string | undefined>(company?.id)
-
-    console.warn("SelectCompany", company)
+    const [autoSelected, setAutoSelected] = useState(false)
 
     useEffect(() => {
-      // Update selectedId when company prop changes
       if (company) {
         setSelectedId(company.id)
       } else {
@@ -39,16 +39,24 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
       }
     }, [company])
 
+    // Auto-seleciona quando só há 1 empresa disponível
+    useEffect(() => {
+      if (autoSelectSingle && !loading && companies.length === 1 && !selectedId && !autoSelected) {
+        setSelectedId(companies[0].id)
+        setSelectedCompany(companies[0])
+        setAutoSelected(true)
+      }
+    }, [companies, loading, autoSelectSingle, selectedId, autoSelected, setSelectedCompany])
+
     const handleSelect = (value: string) => {
       if (value === selectedId) {
-        // Deselect if clicking the same item
         setSelectedId(undefined)
         setSelectedCompany(undefined)
       } else {
-        const selectedCompany = companies.find((c) => c.id === value)
-        if (selectedCompany) {
+        const selected = companies.find((c) => c.id === value)
+        if (selected) {
           setSelectedId(value)
-          setSelectedCompany(selectedCompany)
+          setSelectedCompany(selected)
         }
       }
       setOpen(false)
@@ -60,13 +68,17 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
       setSelectedCompany(undefined)
     }
 
-    // Find the selected company name for display
     const selectedCompanyName = selectedId
       ? companies.find((c) => c.id === selectedId)?.name || company?.name || "Empresa selecionada"
       : ""
 
     if (error) {
       return <div className="text-red-500">Erro para carregar companhias: {error.toString()}</div>
+    }
+
+    // Oculta o seletor se só há 1 empresa (já auto-selecionada)
+    if (autoSelectSingle && !loading && companies.length === 1) {
+      return null
     }
 
     return (
@@ -143,4 +155,3 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
 SelectCompany.displayName = "SelectCompany"
 
 export default SelectCompany
-

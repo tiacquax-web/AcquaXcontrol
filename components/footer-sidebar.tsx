@@ -11,17 +11,15 @@ export function FooterSidebar() {
     const {user, error, loading} = useCurrentUser();
 
     function signOut() {
-        console.log("Signing out...");
+        // Apaga o cookie de sessão no client e redireciona para /login
+        // (não depende da API que pode falhar com MongoDB deletedAt bug)
+        document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        // Tenta limpar no servidor também (best-effort)
         fetch("/api/auth/logout", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            }
-        }).then(() => {
-            window.location.href = "/";
-        }).catch((error) => {
-            console.error("Error during sign out:", error);
-        });
+            headers: { "Content-Type": "application/json" }
+        }).catch(() => {/* ignora erros */});
+        window.location.href = "/login";
     }
     return (
         <SidebarFooter>

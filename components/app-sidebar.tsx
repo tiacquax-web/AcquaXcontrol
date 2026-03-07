@@ -69,67 +69,64 @@ const items = [
     title: "Administradoras",
     url: "/companies",
     icon: HousePlus,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,   // só para quem pode criar
   },
   {
     title: "Condomínios",
     url: "/complexes",
     icon: Building2,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "Blocos",
     url: "/blocks",
     icon: Building,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "Apartamentos",
     url: "/apartments",
     icon: DoorClosed,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "Medidores",
     url: "/meters",
     icon: GaugeCircle,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "IOTs",
     url: "/devices",
     icon: Radio,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "Reservatórios",
     url: "/reservoirs",
     icon: Droplets,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
-  // {
-  //   title: "Moradores",
-  //   url: "/residents",
-  //   icon: SquareUserIcon,
-  //   group: 'Cadastros'
-  // },
-  // {
-  //   title: "Síndicos",
-  //   url: "/syndics",
-  //   icon: BriefcaseBusiness,
-  //   group: 'Cadastros'
-  // },
   {
     title: "Usuários",
     url: "/users",
     icon: UsersRound,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "Papéis",
     url: "/roles",
     icon: ShieldCheck,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   }
 ]
 
@@ -137,16 +134,17 @@ export function AppSidebar() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { permissions, loading } = usePermissionsContext();
 
-  // Função para checar permissão de leitura
-  function hasAnyPermission(url: string) {
-    console.log('Checking permissions for URL:', url);
-    if (url === '/dashboard' || url === '/solutions') return true; // Dashboard e Serviços sempre disponíveis
-    if (!permissions || !permissions) return false;
+  // Função para checar permissão (leitura ou criação conforme requiresCreate)
+  function hasAnyPermission(url: string, requiresCreate?: boolean) {
+    if (url === '/dashboard' || url === '/solutions') return true;
+    if (!permissions) return false;
     const entity = sidebarPermissionMap[url];
-    if (!entity) return true; // Se não mapeado, mostra
-    return permissions.some(
-      (p: any) => p.entity === entity
-    );
+    if (!entity) return true;
+    if (requiresCreate) {
+      // Itens de Cadastro: exige permissão de criar (admin/programador)
+      return permissions.some((p: any) => p.entity === entity && p.action === 'create');
+    }
+    return permissions.some((p: any) => p.entity === entity);
   }
 
   const groups = items.reduce<string[]>((acc, item) => {
@@ -158,7 +156,7 @@ export function AppSidebar() {
 
   // Filtra grupos que possuem pelo menos um item visível
   const visibleGroups = groups.filter((group) =>
-    items.some((item) => item.group === group && hasAnyPermission(item.url))
+    items.some((item) => item.group === group && hasAnyPermission(item.url, (item as any).requiresCreate))
   );
 
   return (
@@ -200,7 +198,7 @@ export function AppSidebar() {
                       {group}
                       <div className="border-t-2 border-gray-200 ml-3 w-full"></div>
                     </SidebarGroupLabel>
-                    {items.filter((item) => item.group === group && hasAnyPermission(item.url)).map((item) => (
+                    {items.filter((item) => item.group === group && hasAnyPermission(item.url, (item as any).requiresCreate)).map((item) => (
                       <SidebarMenuItem key={item.title}>
                         <SidebarMenuButton asChild tooltip={item.title}>
                           <a href={item.url}>
