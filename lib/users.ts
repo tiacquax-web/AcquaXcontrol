@@ -230,13 +230,34 @@ export async function getUserByValidSession(token: string) {
 }
 
 export async function validateUserSession(req: NextRequest):Promise<{ userId: string | null; error: string | null; status: number }> {
-  // validate user session
-  const session = req.cookies.get('session')?.value
-  const validSession = session ? await isSessionValid(session) : false
+  // 1. Tenta autenticar via cookie de sessão (browser)
+  const sessionCookie = req.cookies.get('session')?.value;
+  if (sessionCookie) {
+    const validSession = await isSessionValid(sessionCookie);
+    if (validSession) {
+      return { userId: validSession.userId, error: null, status: 200 };
+    }
+  }
 
-  if (!validSession) return { userId: null, error: 'Unauthorized', status: 401 }
+  // 2. Tenta autenticar via Bearer token JWT (Axios/API calls)
+  const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const jwtToken = authHeader.substring(7);
+    try {
+      const { jwtVerify } = await import('jose');
+      const JWT_SECRET = process.env.JWT_SECRET || 'acquax-super-secret-jwt-key-2024';
+      const secret = new TextEncoder().encode(JWT_SECRET);
+      const { payload } = await jwtVerify(jwtToken, secret);
+      const userId = payload.userId as string;
+      if (userId) {
+        return { userId, error: null, status: 200 };
+      }
+    } catch {
+      // JWT inválido ou expirado
+    }
+  }
 
-  return { userId: validSession.userId, error: null, status: 200 }
+  return { userId: null, error: 'Unauthorized', status: 401 };
 }
 
 interface BulkUserData {
