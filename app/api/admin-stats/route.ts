@@ -13,30 +13,31 @@ export async function GET(req: NextRequest): Promise<Response> {
     }
 
     // ─── Contagens gerais ─────────────────────────────────────────────────────
+    // Nota: no MongoDB/Prisma, deletedAt: null cobre tanto null quanto campo ausente
     const [
       totalComplexes,
       totalApartments,
       totalUsers,
       totalMeters,
     ] = await Promise.all([
-      prisma.complex.count({ where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } }),
-      prisma.apartment.count({ where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } }),
-      prisma.user.count({ where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } }),
-      prisma.meter.count({ where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } }),
+      prisma.complex.count({ where: { deletedAt: null } }),
+      prisma.apartment.count({ where: { deletedAt: null } }),
+      prisma.user.count({ where: { deletedAt: null } }),
+      prisma.meter.count({ where: { deletedAt: null } }),
     ]);
 
     // ─── Condomínios com última leitura ───────────────────────────────────────
     const complexes = await prisma.complex.findMany({
-      where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+      where: { deletedAt: null },
       select: {
         id: true,
         socialName: true,
         aliasName: true,
         blocks: {
-          where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+          where: { deletedAt: null },
           select: {
             apartments: {
-              where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+              where: { deletedAt: null },
               select: {
                 id: true,
                 _count: { select: { meters: true } },
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     // Get last reading date per complex via apartmentConsumptionReport
     const latestReports = await prisma.apartmentConsumptionReport.findMany({
-      where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+      where: { deletedAt: null },
       select: {
         complexId: true,
         yearRef: true,
@@ -72,7 +73,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     // ─── Role assignments by context type for user-type counts ───────────────
     const roleAssignments = await prisma.roleAssignment.findMany({
-      where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+      where: { deletedAt: null },
       select: {
         userId: true,
         contextType: true,
@@ -166,62 +167,41 @@ export async function GET(req: NextRequest): Promise<Response> {
     withDates.sort((a, b) => (b.lastReadingDate!.getTime() - a.lastReadingDate!.getTime()));
 
     const mostUpdated = withDates[0] ?? null;
-    const leastUpdated = withDates.length > 1 ? withDates[withDates.length - 1] : (withoutDates[0] ?? null);
+    const leastUpdated = withDates.length > 1
+      ? withDates[withDates.length - 1]
+      : (withoutDates[0] ?? null);
 
-    // ─── Condomínio que mais/menos acessa (por sessões dos moradores vinculados) ──
-    // Build map: complexId → set of userIds that accessed today
-    const complexAccessToday: Record<string, Set<string>> = {};
+    // ─── Condomínio que mais/menos acessa (por sessões dos moradores) ──────────
     const complexAccessTotal: Record<string, Set<string>> = {};
 
-    // Get apartment → complexId mapping for users in sessions
-    if (todayUserIds.length > 0) {
-      const aptUserRoles = roleAssignments.filter(
-        r => r.contextType === 'apartment' && todayUserIds.includes(r.userId)
-      );
-      const aptIds = [...new Set(aptUserRoles.map(r => r.contextId))];
-
-      if (aptIds.length > 0) {
-        const apts = await prisma.apartment.findMany({
-          where: { id: { in: aptIds } },
-          select: { id: true, complexId: true },
-        });
-        const aptToComplex: Record<string, string> = {};
-        apts.forEach(a => { if (a.complexId) aptToComplex[a.id] = a.complexId; });
-
-        for (const ra of aptUserRoles) {
-          const cxId = aptToComplex[ra.contextId];
-          if (!cxId) continue;
-          if (!complexAccessToday[cxId]) complexAccessToday[cxId] = new Set();
-          complexAccessToday[cxId].add(ra.userId);
-        }
-      }
-    }
-
-    // For total access (all sessions last 30 days)
+    // Total access (all sessions last 30 days)
     const thirtyDaysAgo = startOfDay(subDays(today, 29));
     const monthlySessions = await prisma.session.findMany({
       where: { createdAt: { gte: thirtyDaysAgo, lte: todayEnd } },
       select: { userId: true },
     });
     const monthlyUserIds = [...new Set(monthlySessions.map(s => s.userId))];
-    const monthlyAptRoles = roleAssignments.filter(
-      r => r.contextType === 'apartment' && monthlyUserIds.includes(r.userId)
-    );
-    const monthlyAptIds = [...new Set(monthlyAptRoles.map(r => r.contextId))];
 
-    if (monthlyAptIds.length > 0) {
-      const monthlyApts = await prisma.apartment.findMany({
-        where: { id: { in: monthlyAptIds } },
-        select: { id: true, complexId: true },
-      });
-      const aptToComplex2: Record<string, string> = {};
-      monthlyApts.forEach(a => { if (a.complexId) aptToComplex2[a.id] = a.complexId; });
+    if (monthlyUserIds.length > 0) {
+      const monthlyAptRoles = roleAssignments.filter(
+        r => r.contextType === 'apartment' && monthlyUserIds.includes(r.userId)
+      );
+      const monthlyAptIds = [...new Set(monthlyAptRoles.map(r => r.contextId))];
 
-      for (const ra of monthlyAptRoles) {
-        const cxId = aptToComplex2[ra.contextId];
-        if (!cxId) continue;
-        if (!complexAccessTotal[cxId]) complexAccessTotal[cxId] = new Set();
-        complexAccessTotal[cxId].add(ra.userId);
+      if (monthlyAptIds.length > 0) {
+        const monthlyApts = await prisma.apartment.findMany({
+          where: { id: { in: monthlyAptIds } },
+          select: { id: true, complexId: true },
+        });
+        const aptToComplex: Record<string, string> = {};
+        monthlyApts.forEach(a => { if (a.complexId) aptToComplex[a.id] = a.complexId; });
+
+        for (const ra of monthlyAptRoles) {
+          const cxId = aptToComplex[ra.contextId];
+          if (!cxId) continue;
+          if (!complexAccessTotal[cxId]) complexAccessTotal[cxId] = new Set();
+          complexAccessTotal[cxId].add(ra.userId);
+        }
       }
     }
 
@@ -231,8 +211,10 @@ export async function GET(req: NextRequest): Promise<Response> {
       accessCount: complexAccessTotal[cx.id]?.size ?? 0,
     }));
     accessCounts.sort((a, b) => b.accessCount - a.accessCount);
-    const mostAccessed = accessCounts[0]?.accessCount > 0 ? accessCounts[0] : null;
-    const leastAccessed = accessCounts.length > 1 && accessCounts[accessCounts.length - 1].accessCount >= 0
+    const mostAccessed = accessCounts.length > 0 && accessCounts[0].accessCount > 0
+      ? accessCounts[0]
+      : null;
+    const leastAccessed = accessCounts.length > 1
       ? accessCounts[accessCounts.length - 1]
       : null;
 
