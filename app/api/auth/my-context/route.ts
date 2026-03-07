@@ -16,16 +16,25 @@ export async function GET(req: NextRequest): Promise<Response> {
     if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
     try {
-        // Busca todos os role assignments do usuário
+        // Busca todos os role assignments do usuário (incluindo nome do papel)
         const assignments = await prisma.roleAssignment.findMany({
             where: {
                 userId,
                 OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
             },
-            select: { contextId: true, contextType: true },
+            select: {
+                contextId: true,
+                contextType: true,
+                Role: { select: { name: true } },
+            },
         });
 
         const isSystem = assignments.some(a => a.contextType === 'system');
+        // Nomes dos papéis com contextType=system ex: ['Administrador'] ou ['Programador']
+        const systemRoles = assignments
+            .filter(a => a.contextType === 'system')
+            .map(a => a.Role?.name)
+            .filter(Boolean) as string[];
         const apartmentIds = assignments.filter(a => a.contextType === 'apartment').map(a => a.contextId).filter(Boolean) as string[];
         const blockIds = assignments.filter(a => a.contextType === 'block').map(a => a.contextId).filter(Boolean) as string[];
         const complexIds = assignments.filter(a => a.contextType === 'complex').map(a => a.contextId).filter(Boolean) as string[];
@@ -74,6 +83,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         return NextResponse.json({
             isSystem,
+            systemRoles,
             apartments,
             blocks,
             complexes,

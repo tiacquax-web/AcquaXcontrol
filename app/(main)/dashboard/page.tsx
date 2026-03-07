@@ -4,6 +4,7 @@ import {
   Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2,
   AlertTriangle, Ban, Receipt, CalendarCheck2, DoorClosed,
   GaugeCircle, Users, BarChart3, Home, Star,
+  Activity, ArrowRight, LogIn, TrendingDown, CheckCircle2, Clock,
 } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -721,10 +722,381 @@ function SindicoDashboard() {
   );
 }
 
-// ─── ProgramadorDashboard ────────────────────────────────────────────────────
-// Exclusivo para usuários com isSystem = true (programador/admin do sistema)
-// Exibe apenas atalhos rápidos para as principais operações administrativas
+// ─── AdminStats hook ──────────────────────────────────────────────────────────
+function useAdminStats() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL;
+      const res = await fetch(`${base}/admin-stats`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error('[useAdminStats] API error:', res.status, errData);
+        setError(`Erro ${res.status}`);
+        setData(null);
+      } else {
+        const d = await res.json();
+        setData(d);
+      }
+    } catch (e: any) {
+      console.error('[useAdminStats] Fetch error:', e);
+      setError(e.message || 'Erro de conexão');
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { data, loading, error, refetch };
+}
+
+// ─── ComplexDetailPanel ───────────────────────────────────────────────────────
+function ComplexDetailPanel({ complex, onBack }: { complex: any; onBack: () => void }) {
+  const [statsMonthVal, setStatsMonthVal] = useState(allMonthOptions[0].value);
+  const statsMonthOpt = allMonthOptions.find(o => o.value === statsMonthVal)!;
+
+  const { data: statsData, loading: statsLoading } = useMeterReport({
+    month: statsMonthOpt.month,
+    year: statsMonthOpt.year,
+    complexId: complex.id,
+    enabled: true,
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
+        </button>
+        <h2 className="text-lg font-semibold">{complex.socialName || complex.aliasName}</h2>
+      </div>
+
+      {/* Stats cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4 flex flex-col items-center text-center gap-1">
+            <Home className="w-5 h-5 text-teal-500 mb-1" />
+            <p className="text-2xl font-extrabold text-teal-600">{complex.totalApartments ?? '—'}</p>
+            <p className="text-xs text-muted-foreground">Apartamentos</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex flex-col items-center text-center gap-1">
+            <GaugeCircle className="w-5 h-5 text-orange-500 mb-1" />
+            <p className="text-2xl font-extrabold text-orange-600">{complex.totalMeters ?? '—'}</p>
+            <p className="text-xs text-muted-foreground">Medidores</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex flex-col items-center text-center gap-1">
+            <CalendarCheck2 className="w-5 h-5 text-blue-500 mb-1" />
+            <p className="text-lg font-extrabold text-blue-600">{complex.lastReadingLabel ?? 'Sem leitura'}</p>
+            <p className="text-xs text-muted-foreground">Última leitura</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Month selector + consumption table */}
+      <Card>
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm">Consumo — {statsMonthOpt.labelShort}</CardTitle>
+          <MonthSelect value={statsMonthVal} onChange={setStatsMonthVal} />
+        </CardHeader>
+        <CardContent>
+          {statsLoading ? (
+            <Skeleton className="h-32 w-full" />
+          ) : statsData && statsData.list.length > 0 ? (
+            <div className="space-y-1 max-h-64 overflow-y-auto">
+              {statsData.list.slice(0, 20).map((r: any) => (
+                <div key={r.id} className="flex justify-between items-center text-xs py-1 border-b last:border-0">
+                  <span className="text-muted-foreground">{r.apartment?.block?.name} / {r.apartment?.name}</span>
+                  <div className="flex gap-4">
+                    {r.consumption > 15 && <span className="text-orange-500 font-medium flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{r.consumption?.toFixed(1)} m³</span>}
+                    {r.consumption === 0 && <span className="text-red-500 font-medium flex items-center gap-1"><Ban className="w-3 h-3" />Zero</span>}
+                    {r.consumption > 0 && r.consumption <= 15 && <span className="text-teal-600 font-semibold">{r.consumption?.toFixed(1)} m³</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : statsData && statsData.list.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">Sem dados para {statsMonthOpt.labelShort}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground py-4 text-center">Selecione uma unidade para ver as filipetas.</p>
+          )}
+          {statsData && statsData.totalCount > 0 && (
+            <div className="mt-2 pt-2 border-t flex justify-between items-center text-xs text-muted-foreground">
+              <span>{statsData.totalCount} unidade{statsData.totalCount !== 1 ? 's' : ''}</span>
+              <Link href="/meter-report" className="text-blue-500 flex items-center gap-1">
+                Ver detalhes <ChevronRight className="w-3 h-3" />
+              </Link>
+            </div>
+          )}
+          {statsData && statsData.list.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">Sem dados de filipeta para {statsMonthOpt.labelShort}</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── AdminKPIDashboard ────────────────────────────────────────────────────────
+// Exclusivo para o papel "Administrador" (isSystem=true, role=Administrador)
+// Exibe panorama geral com KPIs, logins, condomínios mais/menos atualizados
 function AdminKPIDashboard() {
+  const { data: stats, loading: loadingStats, error: statsError, refetch } = useAdminStats();
+  const [selectedComplex, setSelectedComplex] = useState<any>(null);
+
+  if (loadingStats) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1,2].map(i => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
+        </div>
+        <Skeleton className="h-64 w-full rounded-xl" />
+        <Skeleton className="h-48 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  if (statsError && !stats) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+        <AlertTriangle className="w-8 h-8 text-orange-400" />
+        <p className="text-sm">Erro ao carregar dados: {statsError}</p>
+        <Button variant="outline" size="sm" onClick={refetch}>Tentar novamente</Button>
+      </div>
+    );
+  }
+
+  if (selectedComplex) {
+    return <ComplexDetailPanel complex={selectedComplex} onBack={() => setSelectedComplex(null)} />;
+  }
+
+  const COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b'];
+
+  return (
+    <div className="space-y-8">
+      <section className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Activity className="w-5 h-5 text-blue-600" />
+          <h2 className="text-lg font-semibold">Panorama Geral</h2>
+        </div>
+
+        {/* KPI cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { icon: <Building2 className="w-6 h-6 text-blue-500 mb-1" />, value: stats?.totals?.complexes, label: 'Condomínios', color: 'text-blue-600' },
+            { icon: <Home className="w-6 h-6 text-teal-500 mb-1" />, value: stats?.totals?.apartments, label: 'Apartamentos', color: 'text-teal-600' },
+            { icon: <Users className="w-6 h-6 text-purple-500 mb-1" />, value: stats?.totals?.users, label: 'Usuários', color: 'text-purple-600' },
+            { icon: <GaugeCircle className="w-6 h-6 text-orange-500 mb-1" />, value: stats?.totals?.meters, label: 'Medidores', color: 'text-orange-600' },
+          ].map(item => (
+            <Card key={item.label}>
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center gap-1">
+                {item.icon}
+                <p className={`text-3xl font-extrabold ${item.color}`}>{item.value ?? '—'}</p>
+                <p className="text-xs text-muted-foreground font-medium">{item.label}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Users by type + today logins */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Users className="w-4 h-4 text-purple-500" /> Usuários por Perfil
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {[
+                { label: 'Moradores',     value: stats?.usersByType?.moradores,     color: 'bg-blue-500' },
+                { label: 'Síndicos',      value: stats?.usersByType?.sindicos,      color: 'bg-teal-500' },
+                { label: 'Administradoras', value: stats?.usersByType?.administradoras, color: 'bg-purple-500' },
+                { label: 'Programadores', value: stats?.usersByType?.programadores, color: 'bg-orange-500' },
+              ].map(row => (
+                <div key={row.label} className="flex items-center gap-2 text-xs">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${row.color}`} />
+                  <span className="flex-1 text-muted-foreground">{row.label}</span>
+                  <span className="font-semibold">{row.value ?? 0}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <LogIn className="w-4 h-4 text-green-500" /> Logins Hoje
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {[
+                { label: 'Moradores',     value: stats?.todayLogins?.moradores,     color: 'bg-blue-500' },
+                { label: 'Síndicos',      value: stats?.todayLogins?.sindicos,      color: 'bg-teal-500' },
+                { label: 'Administradoras', value: stats?.todayLogins?.administradoras, color: 'bg-purple-500' },
+                { label: 'Programadores', value: stats?.todayLogins?.programadores, color: 'bg-orange-500' },
+              ].map(row => (
+                <div key={row.label} className="flex items-center gap-2 text-xs">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${row.color}`} />
+                  <span className="flex-1 text-muted-foreground">{row.label}</span>
+                  <span className="font-semibold">{row.value ?? 0}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* 7-day login chart */}
+        {stats?.loginsByDay && stats.loginsByDay.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-blue-500" /> Logins — Últimos 7 dias
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={stats.loginsByDay} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: 10 }} />
+                  <Bar dataKey="moradores" name="Moradores" stackId="a" fill="#3b82f6" />
+                  <Bar dataKey="sindicos" name="Síndicos" stackId="a" fill="#10b981" />
+                  <Bar dataKey="administradoras" name="Administ." stackId="a" fill="#8b5cf6" />
+                  <Bar dataKey="programadores" name="Programadores" stackId="a" fill="#f59e0b" radius={[2,2,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Most/Least updated */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {stats?.mostUpdated && (
+            <Card className="border-green-200 bg-green-50/50">
+              <CardContent className="p-4 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Mais atualizado</p>
+                  <p className="font-semibold text-sm">{stats.mostUpdated.socialName || stats.mostUpdated.aliasName}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Última filipeta: <span className="font-medium text-green-600">{stats.mostUpdated.lastReadingLabel ?? '—'}</span>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {stats?.leastUpdated && (
+            <Card className="border-orange-200 bg-orange-50/50">
+              <CardContent className="p-4 flex items-start gap-3">
+                <Clock className="w-5 h-5 text-orange-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Menos atualizado</p>
+                  <p className="font-semibold text-sm">{stats.leastUpdated.socialName || stats.leastUpdated.aliasName}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Última filipeta: <span className="font-medium text-orange-600">{stats.leastUpdated.lastReadingLabel ?? 'Sem leitura'}</span>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {stats?.mostAccessed && (
+            <Card className="border-blue-200 bg-blue-50/50">
+              <CardContent className="p-4 flex items-start gap-3">
+                <TrendingUp className="w-5 h-5 text-blue-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Mais acessado (30 dias)</p>
+                  <p className="font-semibold text-sm">{stats.mostAccessed.socialName || stats.mostAccessed.aliasName}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    <span className="font-medium text-blue-600">{stats.mostAccessed.accessCount} usuário{stats.mostAccessed.accessCount !== 1 ? 's' : ''}</span> únicos
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {stats?.leastAccessed && (
+            <Card className="border-gray-200 bg-gray-50/50">
+              <CardContent className="p-4 flex items-start gap-3">
+                <TrendingDown className="w-5 h-5 text-gray-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Menos acessado (30 dias)</p>
+                  <p className="font-semibold text-sm">{stats.leastAccessed.socialName || stats.leastAccessed.aliasName}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    <span className="font-medium text-gray-600">{stats.leastAccessed.accessCount} usuário{stats.leastAccessed.accessCount !== 1 ? 's' : ''}</span> únicos
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </section>
+
+      {/* Complexes list */}
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Building2 className="w-5 h-5 text-blue-600" />
+          <h2 className="text-lg font-semibold">Condomínios</h2>
+        </div>
+        {stats?.complexes && stats.complexes.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {stats.complexes.map((cx: any) => (
+              <Card
+                key={cx.id}
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => setSelectedComplex(cx)}
+              >
+                <CardContent className="p-4 flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm truncate">{cx.socialName || cx.aliasName}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {cx.totalApartments} apto{cx.totalApartments !== 1 ? 's' : ''} · {cx.totalMeters} medidor{cx.totalMeters !== 1 ? 'es' : ''}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Última leitura: <span className={cx.lastReadingLabel ? 'text-green-600 font-medium' : 'text-orange-500'}>{cx.lastReadingLabel ?? 'Sem leitura'}</span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 text-blue-500 shrink-0 text-xs">
+                    Ver detalhes <ArrowRight className="w-3 h-3" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12 text-muted-foreground">
+            <Building2 className="w-12 h-12 mb-3 opacity-30 mx-auto" />
+            <p className="text-sm font-medium">Nenhum condomínio cadastrado</p>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+// ─── ProgramadorDashboard ────────────────────────────────────────────────────
+// Exclusivo para o papel "Programador" (isSystem=true, role=Programador)
+// Exibe atalhos rápidos para as principais operações administrativas
+function ProgramadorDashboard() {
   const shortcuts = [
     {
       href: '/users',
@@ -845,10 +1217,13 @@ export default function Dashboard() {
   };
 
   // ── Role detection ──────────────────────────────────────────────────────────
-  // isSystem  → Programador / Administrador do sistema  → AdminKPIDashboard
-  // complexes → Síndico / Administradora de empresa     → SindicoDashboard
-  // apartments only → Morador                            → MoradorDashboard
-  const isSystem  = context?.isSystem ?? false;
+  // Programador (isSystem + role='Programador') → ProgramadorDashboard (atalhos)
+  // Administrador (isSystem + role='Administrador') → AdminKPIDashboard (panorama KPI)
+  // Síndico / Administradora de empresa          → SindicoDashboard
+  // Morador (só apartments)                       → MoradorDashboard
+  const isSystem      = context?.isSystem ?? false;
+  const isProgramador = isSystem && (context?.systemRoles ?? []).includes('Programador');
+  const isAdministrador = isSystem && (context?.systemRoles ?? []).includes('Administrador');
   const isMorador = useMemo(() => {
     if (!context) return false;
     return !context.isSystem
@@ -866,8 +1241,10 @@ export default function Dashboard() {
         </div>
       );
     }
-    if (isSystem)   return <AdminKPIDashboard />;
-    if (isMorador)  return <MoradorDashboard router={router} />;
+    if (isProgramador)    return <ProgramadorDashboard />;
+    if (isAdministrador)  return <AdminKPIDashboard />;
+    if (isSystem)         return <AdminKPIDashboard />;  // fallback: outros roles system → panorama
+    if (isMorador)        return <MoradorDashboard router={router} />;
     return <SindicoDashboard />;   // síndico ou administradora
   };
 
