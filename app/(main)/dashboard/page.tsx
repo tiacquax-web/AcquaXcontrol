@@ -4,7 +4,8 @@ import EnhancedCarousel from "@/components/services-carousel";
 import { DatePickerComponent } from "@/components/date-picker";
 import {
   Gavel, Hammer, Layers, Paintbrush, Shield, ShieldCheck, Wrench, Plus,
-  Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2
+  Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2,
+  AlertTriangle, Ban, Receipt, CalendarCheck2,
 } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -26,13 +27,13 @@ import { useUpdateUserPreferences } from '@/hooks/useUserPreferences';
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserContext } from "@/hooks/useUserContext";
 import { useMeterReport, MeterReportItem } from "@/hooks/useMeterReport";
-import MeterReportCard from "@/components/MeterReportCard";
+import { useDealershipReadings } from "@/hooks/useDealershipReadings";
 import { format, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// ─── static data ────────────────────────────────────────────────────────────
+// ─── static lists ────────────────────────────────────────────────────────────
 const itemsList = [
   { footer: "Garantidora", content: <Shield className="mt-5" /> },
   { footer: "Pintura", content: <Paintbrush className="mt-5" /> },
@@ -68,41 +69,34 @@ const bannersList = [
       </Link>
     ),
   },
-  {
-    footer: <p className="text-center pt-2 w-full">Aprenda a economizar água e energia em seu condomínio</p>,
-    content: (
-      <Link href="/blog/post-1" className="relative block w-full h-full">
-        <Image src="/news/banner6.jpg" sizes="100vw" className="object-cover transition-transform hover:scale-105" fill quality={85} alt="Banner 6" />
-      </Link>
-    ),
-  },
 ];
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ─── helpers ─────────────────────────────────────────────────────────────────
 const defaultFromDate = new Date(new Date().setDate(new Date().getDate() - 30));
 const currentDay = new Date();
 
-function last3Months() {
-  return [0, 1, 2].map(i => {
+function buildMonthOptions(count = 24) {
+  return Array.from({ length: count }, (_, i) => {
     const d = subMonths(new Date(), i);
     return {
+      value: `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`,
+      label: format(d, 'MMMM / yyyy', { locale: ptBR }),
       month: String(d.getMonth() + 1).padStart(2, '0'),
       year: String(d.getFullYear()),
-      label: format(d, 'MMM/yyyy', { locale: ptBR }),
+      labelShort: format(d, 'MMM/yyyy', { locale: ptBR }),
     };
   });
 }
+const allMonthOptions = buildMonthOptions();
 
-// ─── small sub-components ───────────────────────────────────────────────────
+const formatCurrency = (v: number | null | undefined) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0);
 
-/** Mini filipeta preview card used in dashboard previews */
+// ─── FilipetaMiniCard ─────────────────────────────────────────────────────────
 function FilipetaMiniCard({ report }: { report: MeterReportItem }) {
   const apt = report.apartment;
   const cx = apt?.block?.complex as any;
   const block = apt?.block as any;
-  const formatCurrency = (v: number | null | undefined) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0);
-
   const monthLabel = report.monthRef
     ? format(new Date(Number(report.yearRef), Number(report.monthRef) - 1), 'MMM/yyyy', { locale: ptBR })
     : `${report.monthRef}/${report.yearRef}`;
@@ -110,25 +104,22 @@ function FilipetaMiniCard({ report }: { report: MeterReportItem }) {
   return (
     <Link href="/meter-report">
       <div className="border rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer bg-background">
-        {/* header */}
         <div className="bg-blue-600 text-white px-3 py-1.5 flex items-center justify-between">
           <span className="text-xs font-semibold truncate">{cx?.socialName || 'Condomínio'}</span>
           <Badge variant="secondary" className="text-[10px] bg-white/20 text-white border-0 shrink-0">{monthLabel}</Badge>
         </div>
-        {/* unit */}
         <div className="px-3 py-1 border-b text-xs text-muted-foreground flex gap-3">
           <span>Bl. {block?.name}</span>
           <span>Apto {apt?.name}</span>
         </div>
-        {/* photo + values */}
         <div className="flex gap-0">
           {report.lastReading?.urlCover ? (
             <div className="relative w-20 h-20 shrink-0 border-r">
               <Image src={report.lastReading.urlCover} alt="medidor" fill className="object-cover" sizes="80px" />
             </div>
           ) : (
-            <div className="w-20 h-20 shrink-0 border-r bg-gray-100 flex items-center justify-center">
-              <Droplets className="w-6 h-6 text-gray-400" />
+            <div className="w-20 h-20 shrink-0 border-r bg-muted flex items-center justify-center">
+              <Droplets className="w-6 h-6 text-muted-foreground" />
             </div>
           )}
           <div className="flex-1 grid grid-cols-2 divide-x divide-y text-xs">
@@ -151,7 +142,6 @@ function FilipetaMiniCard({ report }: { report: MeterReportItem }) {
   );
 }
 
-/** Loading skeleton for mini cards */
 function FilipetaMiniSkeleton() {
   return (
     <div className="border rounded-xl overflow-hidden">
@@ -168,38 +158,43 @@ function FilipetaMiniSkeleton() {
   );
 }
 
-// ─── Morador dashboard section ───────────────────────────────────────────────
-function MoradorDashboard({
-  dateRange, setDateRange, preferredMeters, loadingPreferences,
-  addDialogOpen, setAddDialogOpen, handleRemovePreference, router,
-}: any) {
+// ─── MonthSelect ──────────────────────────────────────────────────────────────
+function MonthSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="w-48 h-8 text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {allMonthOptions.map(o => (
+          <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+// ─── MoradorDashboard ─────────────────────────────────────────────────────────
+function MoradorDashboard({ dateRange, setDateRange, preferredMeters, loadingPreferences, setAddDialogOpen, handleRemovePreference, router }: any) {
   const { context, loading: ctxLoading } = useUserContext();
-  const months = useMemo(() => last3Months(), []);
-
-  // For moradores: gather apartment IDs and complexes
   const apartments = context?.apartments ?? [];
-  const uniqueComplexIds = useMemo(() => (
-    [...new Set(apartments.map(a => a.block?.complex?.id).filter(Boolean))]
-  ), [apartments]) as string[];
 
-  // Fetch last 3 months of filipetas for each complex the morador belongs to
+  // Last 3 months filipetas
   const [filipetasByMonth, setFilipetasByMonth] = useState<Record<string, MeterReportItem[]>>({});
   const [loadingFilipetas, setLoadingFilipetas] = useState(false);
 
+  const last3 = useMemo(() => Array.from({ length: 3 }, (_, i) => {
+    const d = subMonths(new Date(), i);
+    return { month: String(d.getMonth() + 1).padStart(2, '0'), year: String(d.getFullYear()), label: format(d, 'MMM/yyyy', { locale: ptBR }) };
+  }), []);
+
   useEffect(() => {
     if (ctxLoading || apartments.length === 0) return;
-    // We'll fetch month by month for the first complex (simplest case)
-    // Full logic handles multiple complexes too
-    const apartmentIds = apartments.map(a => a.id);
     setLoadingFilipetas(true);
-
-    // Fetch last 3 months in parallel using the API directly
-    const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
+    const base = process.env.NEXT_PUBLIC_API_URL;
     Promise.all(
-      months.map(m =>
-        fetch(`${NEXT_PUBLIC_API_URL}/meter-report?month=${m.month}&year=${m.year}`, {
-          credentials: 'include',
-        })
+      last3.map(m =>
+        fetch(`${base}/meter-report?month=${m.month}&year=${m.year}`, { credentials: 'include' })
           .then(r => r.json())
           .then(d => ({ key: `${m.month}-${m.year}`, list: (d.list ?? []) as MeterReportItem[] }))
           .catch(() => ({ key: `${m.month}-${m.year}`, list: [] as MeterReportItem[] }))
@@ -214,44 +209,35 @@ function MoradorDashboard({
 
   return (
     <>
-      {/* ── Graph section ── */}
-      <section className="w-full">
-        <div className="flex justify-center gap-3 md:justify-start md:gap-2 md:w-full items-center mb-4">
-          <DatePickerComponent
-            isRangeable
-            quickSelectDays={[7, 15, 30, 90]}
-            dateRange={dateRange}
-            setDateRange={setDateRange}
-          />
-          <Button variant="default" onClick={() => router.push('/readings')}>Ver mais</Button>
+      {/* Graph section */}
+      <section className="w-full space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-blue-600" />
+            <h2 className="text-lg font-semibold">Leituras do Medidor</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <DatePickerComponent isRangeable quickSelectDays={[7, 15, 30, 90]} dateRange={dateRange} setDateRange={setDateRange} />
+            <Button variant="default" size="sm" onClick={() => router.push('/readings')}>Ver mais</Button>
+          </div>
         </div>
+
         <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
           {loadingPreferences ? (
             [1, 2].map(i => (
               <Card key={i} className="h-[320px]">
                 <CardContent className="p-6 space-y-3">
-                  <Skeleton className="h-6 w-1/2" />
-                  <Skeleton className="h-[200px] w-full" />
-                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-6 w-1/2" /><Skeleton className="h-[200px] w-full" /><Skeleton className="h-4 w-3/4" />
                 </CardContent>
               </Card>
             ))
           ) : (
             preferredMeters.map((meterId: string) => (
-              <ReadingsGraph
-                key={meterId}
-                meterId={meterId}
-                dateRange={dateRange}
-                detailsModalAvailable
-                onRemove={handleRemovePreference}
-              />
+              <ReadingsGraph key={meterId} meterId={meterId} dateRange={dateRange} detailsModalAvailable onRemove={handleRemovePreference} />
             ))
           )}
           {!loadingPreferences && (
-            <Card
-              className="flex items-center justify-center min-h-[180px] cursor-pointer border-dashed border-2 border-primary hover:bg-accent/40 transition-colors"
-              onClick={() => setAddDialogOpen(true)}
-            >
+            <Card className="flex items-center justify-center min-h-[180px] cursor-pointer border-dashed border-2 border-primary hover:bg-accent/40 transition-colors" onClick={() => setAddDialogOpen(true)}>
               <CardContent className="flex flex-col items-center justify-center w-full h-full p-8">
                 <Plus className="w-10 h-10 text-primary" />
                 <span className="mt-2 text-primary font-medium">Adicionar Medidor</span>
@@ -261,37 +247,32 @@ function MoradorDashboard({
         </div>
       </section>
 
-      {/* ── Filipeta preview section ── */}
-      <section className="w-full">
-        <div className="flex items-center justify-between mb-4">
+      {/* Filipeta preview */}
+      <section className="w-full space-y-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-semibold">Filipetas dos últimos 3 meses</h2>
+            <h2 className="text-lg font-semibold">Filipetas — últimos 3 meses</h2>
           </div>
           <Button variant="outline" size="sm" asChild>
-            <Link href="/meter-report" className="flex items-center gap-1">
-              Ver todas <ChevronRight className="w-4 h-4" />
-            </Link>
+            <Link href="/meter-report" className="flex items-center gap-1">Ver todas <ChevronRight className="w-4 h-4" /></Link>
           </Button>
         </div>
-
         {loadingFilipetas ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {[1, 2, 3].map(i => <FilipetaMiniSkeleton key={i} />)}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {months.map(m => {
-              const key = `${m.month}-${m.year}`;
-              const items = filipetasByMonth[key] ?? [];
-              if (items.length === 0) {
+            {last3.map(m => {
+              const items = filipetasByMonth[`${m.month}-${m.year}`] ?? [];
+              if (items.length === 0)
                 return (
-                  <div key={key} className="border rounded-xl p-4 flex flex-col items-center justify-center text-muted-foreground text-sm min-h-[120px]">
+                  <div key={m.label} className="border rounded-xl p-4 flex flex-col items-center justify-center text-muted-foreground text-sm min-h-[120px]">
                     <span className="font-medium capitalize mb-1">{m.label}</span>
                     <span className="text-xs">Sem dados</span>
                   </div>
                 );
-              }
               return items.map(r => <FilipetaMiniCard key={r.id} report={r} />);
             })}
           </div>
@@ -301,76 +282,93 @@ function MoradorDashboard({
   );
 }
 
-// ─── Admin/Síndico dashboard section ────────────────────────────────────────
-function AdminDashboard({
-  dateRange, setDateRange, preferredMeters, loadingPreferences,
-  addDialogOpen, setAddDialogOpen, handleRemovePreference, router,
-}: any) {
+// ─── AdminDashboard ───────────────────────────────────────────────────────────
+function AdminDashboard({ dateRange, setDateRange, preferredMeters, loadingPreferences, setAddDialogOpen, handleRemovePreference, router }: any) {
   const { context, loading: ctxLoading } = useUserContext();
-  const months = useMemo(() => last3Months(), []);
 
-  // All complexes accessible to this admin
+  // All complexes
   const complexes = useMemo(() => {
     if (!context) return [];
-    // Union from directly assigned complexes + via apartments
     const map = new Map<string, any>();
     context.complexes.forEach(c => map.set(c.id, c));
-    context.apartments.forEach(a => {
-      const cx = a.block?.complex;
-      if (cx && !map.has(cx.id)) map.set(cx.id, cx);
-    });
+    context.apartments.forEach(a => { const cx = a.block?.complex; if (cx && !map.has(cx.id)) map.set(cx.id, cx); });
     return Array.from(map.values());
   }, [context]);
 
   const [selectedComplexIdx, setSelectedComplexIdx] = useState(0);
   const selectedComplex = complexes[selectedComplexIdx] ?? null;
 
-  // Latest month filipetas for selected complex
-  const latestMonth = months[0];
-  const {
-    data: filipetaData,
-    loading: loadingFilipetas,
-  } = useMeterReport({
-    month: latestMonth.month,
-    year: latestMonth.year,
+  // Month selectors (filipeta + bill can be different months)
+  const [filipetaMonthVal, setFilipetaMonthVal] = useState(allMonthOptions[0].value);
+  const [statsMonthVal, setStatsMonthVal] = useState(allMonthOptions[0].value);
+  const [billMonthVal, setBillMonthVal] = useState(allMonthOptions[0].value);
+
+  const filipetaMonthOpt = allMonthOptions.find(o => o.value === filipetaMonthVal)!;
+  const statsMonthOpt = allMonthOptions.find(o => o.value === statsMonthVal)!;
+  const billMonthOpt = allMonthOptions.find(o => o.value === billMonthVal)!;
+
+  // Filipeta data for preview panel
+  const { data: filipetaData, loading: loadingFilipetas } = useMeterReport({
+    month: filipetaMonthOpt.month,
+    year: filipetaMonthOpt.year,
     complexId: selectedComplex?.id,
     enabled: !!selectedComplex?.id,
   });
 
-  // Total consumption summary for latest month
-  const totalConsumption = useMemo(() => {
-    if (!filipetaData?.list) return null;
-    return filipetaData.list.reduce((sum, r) => sum + (r.consumption ?? 0), 0);
-  }, [filipetaData]);
+  // Stats data (consumption > 15m³ and zero consumption)
+  const { data: statsData, loading: loadingStats } = useMeterReport({
+    month: statsMonthOpt.month,
+    year: statsMonthOpt.year,
+    complexId: selectedComplex?.id,
+    enabled: !!selectedComplex?.id,
+  });
 
-  const totalValue = useMemo(() => {
-    if (!filipetaData?.list) return null;
-    return filipetaData.list.reduce((sum, r) => sum + (r.totalUnit ?? 0), 0);
-  }, [filipetaData]);
+  // Dealership readings for the bill panel
+  const { dealershipReadings, loading: loadingBill } = useDealershipReadings({
+    complexId: selectedComplex?.id ?? undefined,
+    withDealership: true,
+    withComplex: true,
+    take: 50,
+  });
 
-  const formatCurrency = (v: number | null | undefined) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0);
+  // Filter bill for selected month
+  const billReading = useMemo(() => {
+    if (!dealershipReadings?.length) return null;
+    return dealershipReadings.find(
+      dr => String(dr.monthRef).padStart(2, '0') === billMonthOpt.month && String(dr.yearRef) === billMonthOpt.year
+    ) ?? null;
+  }, [dealershipReadings, billMonthOpt]);
+
+  // Stats computed
+  const highConsumptionUnits = useMemo(() =>
+    statsData?.list.filter(r => (r.consumption ?? 0) > 15) ?? [], [statsData]);
+  const zeroConsumptionUnits = useMemo(() =>
+    statsData?.list.filter(r => (r.consumption ?? 0) === 0) ?? [], [statsData]);
+
+  const totalConsumption = useMemo(() =>
+    filipetaData?.list.reduce((s, r) => s + (r.consumption ?? 0), 0) ?? null, [filipetaData]);
+  const totalValue = useMemo(() =>
+    filipetaData?.list.reduce((s, r) => s + (r.totalUnit ?? 0), 0) ?? null, [filipetaData]);
+
+  const parseDateStr = (v?: string | null) => {
+    if (!v) return null;
+    const d = new Date(v.includes('T') ? v : `${v}T00:00:00`);
+    return isNaN(d.getTime()) ? null : d;
+  };
 
   return (
     <>
-      {/* ── Condomínios summary ── */}
+      {/* ── Condomínio selector ── */}
       {!ctxLoading && complexes.length > 0 && (
-        <section className="w-full">
-          <div className="flex items-center gap-2 mb-4">
+        <section className="w-full space-y-3">
+          <div className="flex items-center gap-2">
             <Building2 className="w-5 h-5 text-blue-600" />
             <h2 className="text-lg font-semibold">Meus Condomínios</h2>
           </div>
           <div className="flex gap-2 flex-wrap">
             {complexes.map((cx, idx) => (
-              <Button
-                key={cx.id}
-                variant={selectedComplexIdx === idx ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedComplexIdx(idx)}
-                className="flex items-center gap-1.5"
-              >
-                <Building2 className="w-3.5 h-3.5" />
-                {cx.socialName || cx.aliasName}
+              <Button key={cx.id} variant={selectedComplexIdx === idx ? 'default' : 'outline'} size="sm" onClick={() => setSelectedComplexIdx(idx)} className="flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5" />{cx.socialName || cx.aliasName}
               </Button>
             ))}
           </div>
@@ -378,43 +376,33 @@ function AdminDashboard({
       )}
 
       {/* ── Graph section ── */}
-      <section className="w-full">
-        <div className="flex justify-center gap-3 md:justify-start md:gap-2 md:w-full items-center mb-4">
-          <DatePickerComponent
-            isRangeable
-            quickSelectDays={[7, 15, 30, 90]}
-            dateRange={dateRange}
-            setDateRange={setDateRange}
-          />
-          <Button variant="default" onClick={() => router.push('/readings')}>Ver mais</Button>
+      <section className="w-full space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-blue-600" />
+            <h2 className="text-lg font-semibold">Leituras dos Medidores</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <DatePickerComponent isRangeable quickSelectDays={[7, 15, 30, 90]} dateRange={dateRange} setDateRange={setDateRange} />
+            <Button variant="default" size="sm" onClick={() => router.push('/readings')}>Ver mais</Button>
+          </div>
         </div>
         <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
           {loadingPreferences ? (
             [1, 2].map(i => (
               <Card key={i} className="h-[320px]">
                 <CardContent className="p-6 space-y-3">
-                  <Skeleton className="h-6 w-1/2" />
-                  <Skeleton className="h-[200px] w-full" />
-                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-6 w-1/2" /><Skeleton className="h-[200px] w-full" /><Skeleton className="h-4 w-3/4" />
                 </CardContent>
               </Card>
             ))
           ) : (
             preferredMeters.map((meterId: string) => (
-              <ReadingsGraph
-                key={meterId}
-                meterId={meterId}
-                dateRange={dateRange}
-                detailsModalAvailable
-                onRemove={handleRemovePreference}
-              />
+              <ReadingsGraph key={meterId} meterId={meterId} dateRange={dateRange} detailsModalAvailable onRemove={handleRemovePreference} />
             ))
           )}
           {!loadingPreferences && (
-            <Card
-              className="flex items-center justify-center min-h-[180px] cursor-pointer border-dashed border-2 border-primary hover:bg-accent/40 transition-colors"
-              onClick={() => setAddDialogOpen(true)}
-            >
+            <Card className="flex items-center justify-center min-h-[180px] cursor-pointer border-dashed border-2 border-primary hover:bg-accent/40 transition-colors" onClick={() => setAddDialogOpen(true)}>
               <CardContent className="flex flex-col items-center justify-center w-full h-full p-8">
                 <Plus className="w-10 h-10 text-primary" />
                 <span className="mt-2 text-primary font-medium">Adicionar Medidor</span>
@@ -424,119 +412,222 @@ function AdminDashboard({
         </div>
       </section>
 
-      {/* ── Bottom two panels: filipeta preview + consumption summary ── */}
+      {/* ── Three bottom panels ── */}
       {selectedComplex && (
-        <section className="w-full">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-blue-600" />
-              <span className="font-semibold">{selectedComplex.socialName || selectedComplex.aliasName}</span>
-              <Badge variant="outline" className="text-xs capitalize">{latestMonth.label}</Badge>
-            </div>
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/meter-report" className="flex items-center gap-1">
-                Ver filipetas <ChevronRight className="w-4 h-4" />
-              </Link>
-            </Button>
+        <section className="w-full space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Building2 className="w-4 h-4 text-blue-600" />
+            <span className="font-semibold">{selectedComplex.socialName || selectedComplex.aliasName}</span>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left: filipeta preview (first 4 units) */}
-            <Card>
-              <CardHeader className="pb-2">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+            {/* ── Panel 1: Filipeta preview ── */}
+            <Card className="flex flex-col">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <FileText className="w-4 h-4 text-blue-500" />
-                  Preview Filipetas — {latestMonth.label}
+                  Filipetas
                 </CardTitle>
+                <MonthSelect value={filipetaMonthVal} onChange={setFilipetaMonthVal} />
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex-1 overflow-y-auto max-h-[520px] space-y-3 pr-1">
                 {loadingFilipetas ? (
-                  <div className="space-y-3">
-                    {[1, 2].map(i => <FilipetaMiniSkeleton key={i} />)}
-                  </div>
+                  [1, 2].map(i => <FilipetaMiniSkeleton key={i} />)
                 ) : filipetaData && filipetaData.list.length > 0 ? (
-                  <div className="space-y-3">
-                    {filipetaData.list.slice(0, 4).map(r => (
-                      <FilipetaMiniCard key={r.id} report={r} />
-                    ))}
-                    {filipetaData.list.length > 4 && (
+                  <>
+                    {filipetaData.list.slice(0, 5).map(r => <FilipetaMiniCard key={r.id} report={r} />)}
+                    {filipetaData.list.length > 5 && (
                       <Link href="/meter-report" className="text-xs text-blue-500 flex items-center gap-1 hover:underline">
-                        +{filipetaData.list.length - 4} unidades <ChevronRight className="w-3 h-3" />
+                        +{filipetaData.list.length - 5} unidades <ChevronRight className="w-3 h-3" />
                       </Link>
                     )}
-                  </div>
+                  </>
                 ) : (
-                  <p className="text-sm text-muted-foreground py-4 text-center">Sem dados para {latestMonth.label}</p>
+                  <p className="text-sm text-muted-foreground py-4 text-center">Sem dados para {filipetaMonthOpt.labelShort}</p>
                 )}
               </CardContent>
             </Card>
 
-            {/* Right: consumption summary */}
-            <Card>
-              <CardHeader className="pb-2">
+            {/* ── Panel 2: Consumption stats ── */}
+            <Card className="flex flex-col">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-teal-500" />
-                  Resumo de Consumo — {latestMonth.label}
+                  Resumo de Consumo
                 </CardTitle>
+                <MonthSelect value={statsMonthVal} onChange={setStatsMonthVal} />
               </CardHeader>
-              <CardContent>
-                {loadingFilipetas ? (
+              <CardContent className="space-y-4">
+                {loadingStats ? (
                   <div className="space-y-3">
-                    <Skeleton className="h-20 w-full" />
-                    <Skeleton className="h-20 w-full" />
+                    <Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-32 w-full" />
                   </div>
-                ) : filipetaData && filipetaData.list.length > 0 ? (
-                  <div className="space-y-4">
-                    {/* Totals */}
+                ) : statsData && statsData.list.length > 0 ? (
+                  <>
+                    {/* Totals row */}
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-xl border p-4 text-center">
-                        <p className="text-xs text-muted-foreground mb-1 flex items-center justify-center gap-1">
+                      <div className="rounded-xl border p-3 text-center">
+                        <p className="text-[10px] text-muted-foreground mb-1 flex items-center justify-center gap-1">
                           <Droplets className="w-3 h-3 text-blue-400" /> Consumo Total
                         </p>
-                        <p className="text-2xl font-bold text-teal-600">
-                          {totalConsumption?.toFixed(2)} <span className="text-sm font-normal">m³</span>
-                        </p>
+                        <p className="text-xl font-bold text-teal-600">{totalConsumption?.toFixed(2)} <span className="text-xs font-normal">m³</span></p>
                       </div>
-                      <div className="rounded-xl border p-4 text-center">
-                        <p className="text-xs text-muted-foreground mb-1">Total a Pagar</p>
-                        <p className="text-xl font-bold text-blue-600">{formatCurrency(totalValue)}</p>
+                      <div className="rounded-xl border p-3 text-center">
+                        <p className="text-[10px] text-muted-foreground mb-1">Total a Pagar</p>
+                        <p className="text-lg font-bold text-blue-600">{formatCurrency(totalValue)}</p>
                       </div>
                     </div>
-                    {/* Per-unit table (top 8) */}
+
+                    {/* High consumption alert */}
+                    <div className="rounded-xl border border-orange-200 bg-orange-50 dark:bg-orange-950/20 p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0" />
+                        <p className="text-xs font-semibold text-orange-700 dark:text-orange-400">
+                          Consumo &gt; 15 m³ — {highConsumptionUnits.length} unidade{highConsumptionUnits.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      {highConsumptionUnits.length > 0 ? (
+                        <div className="space-y-1 max-h-28 overflow-y-auto">
+                          {highConsumptionUnits.map(r => (
+                            <div key={r.id} className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Bl.{r.apartment?.block?.name} · Apto {r.apartment?.name}</span>
+                              <span className="font-semibold text-orange-600">{r.consumption?.toFixed(2)} m³</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Nenhuma unidade acima de 15 m³</p>
+                      )}
+                    </div>
+
+                    {/* Zero consumption alert */}
+                    <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Ban className="w-4 h-4 text-red-500 shrink-0" />
+                        <p className="text-xs font-semibold text-red-700 dark:text-red-400">
+                          Sem consumo — {zeroConsumptionUnits.length} unidade{zeroConsumptionUnits.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      {zeroConsumptionUnits.length > 0 ? (
+                        <div className="space-y-1 max-h-28 overflow-y-auto">
+                          {zeroConsumptionUnits.map(r => (
+                            <div key={r.id} className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Bl.{r.apartment?.block?.name} · Apto {r.apartment?.name}</span>
+                              <span className="font-semibold text-red-600">0.000 m³</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Todas as unidades tiveram consumo</p>
+                      )}
+                    </div>
+
+                    {/* Per-unit mini table */}
                     <div className="rounded-xl border overflow-hidden">
                       <table className="w-full text-xs">
                         <thead className="bg-muted text-muted-foreground">
                           <tr>
                             <th className="text-left px-3 py-2">Unidade</th>
-                            <th className="text-right px-3 py-2">Consumo m³</th>
+                            <th className="text-right px-3 py-2">m³</th>
                             <th className="text-right px-3 py-2">Total</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y">
-                          {filipetaData.list.slice(0, 8).map(r => (
+                          {statsData.list.slice(0, 6).map(r => (
                             <tr key={r.id} className="hover:bg-muted/40">
-                              <td className="px-3 py-1.5">
-                                Bl.{r.apartment?.block?.name} · {r.apartment?.name}
-                              </td>
-                              <td className="px-3 py-1.5 text-right text-teal-600 font-medium">
-                                {r.consumption?.toFixed(3) ?? '—'}
-                              </td>
-                              <td className="px-3 py-1.5 text-right font-medium">
-                                {formatCurrency(r.totalUnit)}
-                              </td>
+                              <td className="px-3 py-1.5">Bl.{r.apartment?.block?.name} · {r.apartment?.name}</td>
+                              <td className="px-3 py-1.5 text-right text-teal-600 font-medium">{r.consumption?.toFixed(3) ?? '—'}</td>
+                              <td className="px-3 py-1.5 text-right font-medium">{formatCurrency(r.totalUnit)}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-                    {filipetaData.list.length > 8 && (
+                    {statsData.list.length > 6 && (
                       <Link href="/meter-report" className="text-xs text-blue-500 flex items-center gap-1 hover:underline">
-                        Ver todas as {filipetaData.totalCount} unidades <ChevronRight className="w-3 h-3" />
+                        Ver todas as {statsData.totalCount} unidades <ChevronRight className="w-3 h-3" />
                       </Link>
                     )}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground py-4 text-center">Sem dados para {statsMonthOpt.labelShort}</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ── Panel 3: Bill summary (dealership reading) ── */}
+            <Card className="flex flex-col">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-purple-500" />
+                  Conta da Concessionária
+                </CardTitle>
+                <MonthSelect value={billMonthVal} onChange={setBillMonthVal} />
+              </CardHeader>
+              <CardContent>
+                {loadingBill ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-8 w-full" />
+                  </div>
+                ) : billReading ? (
+                  <div className="space-y-4">
+                    {/* Total bill value */}
+                    <div className="rounded-xl border border-purple-200 bg-purple-50 dark:bg-purple-950/20 p-4 text-center">
+                      <p className="text-xs text-muted-foreground mb-1">Valor Total da Conta</p>
+                      <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                        {formatCurrency((billReading as any).totalValue)}
+                      </p>
+                    </div>
+
+                    {/* Reading date */}
+                    <div className="rounded-xl border p-3 flex items-center gap-3">
+                      <CalendarCheck2 className="w-5 h-5 text-blue-500 shrink-0" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Data de Leitura</p>
+                        <p className="font-semibold text-sm">
+                          {(billReading as any).readingDate
+                            ? format(new Date((billReading as any).readingDate.includes('T') ? (billReading as any).readingDate : `${(billReading as any).readingDate}T00:00:00`), 'dd/MM/yyyy')
+                            : '—'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Next reading date */}
+                    {(billReading as any).nextReadingDate && (
+                      <div className="rounded-xl border p-3 flex items-center gap-3">
+                        <CalendarCheck2 className="w-5 h-5 text-teal-500 shrink-0" />
+                        <div>
+                          <p className="text-xs text-muted-foreground">Próxima Leitura</p>
+                          <p className="font-semibold text-sm">
+                            {format(new Date((billReading as any).nextReadingDate.includes('T') ? (billReading as any).nextReadingDate : `${(billReading as any).nextReadingDate}T00:00:00`), 'dd/MM/yyyy')}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Extra info */}
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-xl border p-3 text-center">
+                        <p className="text-muted-foreground mb-1">Consumo Total</p>
+                        <p className="font-bold text-teal-600">{(billReading as any).dealershipConsumption ?? (billReading as any).monthlyConsumption ?? '—'} m³</p>
+                      </div>
+                      <div className="rounded-xl border p-3 text-center">
+                        <p className="text-muted-foreground mb-1">Concessionária</p>
+                        <p className="font-semibold truncate">{(billReading as any).dealership?.name ?? '—'}</p>
+                      </div>
+                    </div>
+
+                    <Button variant="outline" size="sm" className="w-full text-xs" asChild>
+                      <Link href="/dealership-readings">Ver detalhes completos</Link>
+                    </Button>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground py-4 text-center">Sem dados para {latestMonth.label}</p>
+                  <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                    <Receipt className="w-10 h-10 mb-2 opacity-30" />
+                    <p className="text-sm font-medium">Sem conta registrada</p>
+                    <p className="text-xs mt-1">para {billMonthOpt.labelShort}</p>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -547,7 +638,7 @@ function AdminDashboard({
   );
 }
 
-// ─── Main Dashboard ──────────────────────────────────────────────────────────
+// ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: defaultFromDate, to: currentDay });
   const router = useRouter();
@@ -566,11 +657,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!addDialogOpen) {
-      setSelectedComplex(undefined);
-      setSelectedBlock(undefined);
-      setSelectedApartment(undefined);
-      setSelectedMeter(undefined);
-      setError(null);
+      setSelectedComplex(undefined); setSelectedBlock(undefined);
+      setSelectedApartment(undefined); setSelectedMeter(undefined); setError(null);
     }
   }, [addDialogOpen]);
 
@@ -584,30 +672,25 @@ export default function Dashboard() {
     } catch (e: any) { setError(e.message || 'Erro ao salvar preferência.'); }
   };
 
-  const handleRemovePreference = async (meterIdToRemove: string) => {
+  const handleRemovePreference = async (id: string) => {
     try {
-      const newMeters = (preferences?.meters || []).filter(id => id !== meterIdToRemove);
+      const newMeters = (preferences?.meters || []).filter(m => m !== id);
       await updatePreferences(newMeters);
       await refetchPreferences();
     } catch (e: any) { console.error(e); }
   };
 
-  // Detect user type
   const isMorador = useMemo(() => {
     if (!context) return false;
     return !context.isSystem && context.companyIds.length === 0 && context.complexes.length === 0 && context.blocks.length === 0 && context.apartments.length > 0;
   }, [context]);
 
-  const sharedProps = {
-    dateRange, setDateRange, preferredMeters, loadingPreferences,
-    addDialogOpen, setAddDialogOpen, handleRemovePreference, router,
-  };
+  const sharedProps = { dateRange, setDateRange, preferredMeters, loadingPreferences, setAddDialogOpen, handleRemovePreference, router };
 
   return (
     <div className="space-y-8 w-full">
       <div className="space-y-8 container mx-auto md:px-6">
 
-        {/* Loading skeleton while detecting user type */}
         {ctxLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -618,7 +701,7 @@ export default function Dashboard() {
           <AdminDashboard {...sharedProps} />
         )}
 
-        {/* Add meter dialog — shared */}
+        {/* Shared add-meter dialog */}
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -626,22 +709,10 @@ export default function Dashboard() {
               <DialogDescription>Selecione o contexto e o medidor que deseja visualizar no dashboard.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <div>
-                <Label>Condomínio</Label>
-                <SelectComplex getAvailableForEntity="reading" setSelectedComplex={setSelectedComplex} complex={selectedComplex} modal required />
-              </div>
-              <div>
-                <Label>Bloco</Label>
-                <SelectBlock getAvailableForEntity="reading" setSelectedBlock={setSelectedBlock} block={selectedBlock} complexId={selectedComplex?.id} modal required />
-              </div>
-              <div>
-                <Label>Apartamento</Label>
-                <SelectApartment getAvailableForEntity="reading" setSelectedApartment={setSelectedApartment} apartment={selectedApartment} blockId={selectedBlock?.id} complexId={selectedComplex?.id} modal required />
-              </div>
-              <div>
-                <Label>Medidor</Label>
-                <SelectMeter setSelectedMeter={setSelectedMeter} meter={selectedMeter} apartmentId={selectedApartment?.id} modal required />
-              </div>
+              <div><Label>Condomínio</Label><SelectComplex getAvailableForEntity="reading" setSelectedComplex={setSelectedComplex} complex={selectedComplex} modal required /></div>
+              <div><Label>Bloco</Label><SelectBlock getAvailableForEntity="reading" setSelectedBlock={setSelectedBlock} block={selectedBlock} complexId={selectedComplex?.id} modal required /></div>
+              <div><Label>Apartamento</Label><SelectApartment getAvailableForEntity="reading" setSelectedApartment={setSelectedApartment} apartment={selectedApartment} blockId={selectedBlock?.id} complexId={selectedComplex?.id} modal required /></div>
+              <div><Label>Medidor</Label><SelectMeter setSelectedMeter={setSelectedMeter} meter={selectedMeter} apartmentId={selectedApartment?.id} modal required /></div>
               {error && <div className="text-red-500 text-sm mt-2">{error}</div>}
             </div>
             <DialogFooter>
@@ -652,17 +723,13 @@ export default function Dashboard() {
         </Dialog>
       </div>
 
-      {/* Bottom banners + services — always shown */}
+      {/* Banners + services */}
       <div className="space-y-6 container mx-auto md:px-6">
-        <section className="data-services-group w-full">
-          <div className="w-full">
-            <EnhancedCarousel footerPosition="over-translucid" slidesToShow={1} horizontalOffset={200} items={bannersList} alignItems="baseline" justifyContent="center" extraCardContentClasses="p-0" />
-          </div>
+        <section className="w-full">
+          <EnhancedCarousel footerPosition="over-translucid" slidesToShow={1} horizontalOffset={200} items={bannersList} alignItems="baseline" justifyContent="center" extraCardContentClasses="p-0" />
         </section>
-        <section className="data-services-group w-full">
-          <div className="w-full">
-            <EnhancedCarousel aspectRatio="aspect-[3/1]" items={itemsList} alignItems="center" />
-          </div>
+        <section className="w-full">
+          <EnhancedCarousel aspectRatio="aspect-[3/1]" items={itemsList} alignItems="center" />
         </section>
       </div>
     </div>
