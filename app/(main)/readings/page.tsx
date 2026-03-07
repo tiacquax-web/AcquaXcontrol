@@ -12,6 +12,7 @@ import SelectBlock from '@/components/ComboboxBlock';
 import SelectApartment from '@/components/ComboboxApartment';
 import SelectMeter from '@/components/ComboboxMeter';
 import { Apartment, Block, Company, Complex, Meter } from '@prisma/client';
+import { useUserContext } from '@/hooks/useUserContext';
 import { motion } from "framer-motion"
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext, PaginationEllipsis } from '@/components/ui/pagination';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -48,6 +49,14 @@ export default function ReadingsPage() {
     return (permissions as UserPermission[]).some((p) => p.action === 'create' && p.entity === 'reading');
   }
 
+  // Contexto do usuário (moradores têm contexto de apartamentos específicos)
+  const { context: userContext, loading: loadingContext } = useUserContext();
+
+  // Determina se o usuário é morador (não tem permissão de sistema e tem apartamentos vinculados)
+  const isMorador = !loadingContext && userContext !== null && !userContext.isSystem && userContext.apartments.length > 0;
+  // Único apartamento vinculado (morador com 1 unidade)
+  const singleApartment = isMorador && userContext.apartments.length === 1 ? userContext.apartments[0] : null;
+
   const [viewType, setViewType] = useState<'Cards' | 'List'>("Cards")
   const [complexSearchText, setComplexSearchText] = useState("")
   const [filters, setFilters] = useState<{
@@ -71,6 +80,21 @@ export default function ReadingsPage() {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+
+  // Auto-aplica filtros para morador com 1 apartamento
+  useEffect(() => {
+    if (singleApartment && !filters.apartment) {
+      const block = singleApartment.block as any;
+      const complex = block?.complex as any;
+      setFilters((prev) => ({
+        ...prev,
+        complex: complex || undefined,
+        block: block || undefined,
+        apartment: singleApartment as any,
+      }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [singleApartment]);
 
   const maxRangeStart = new Date();
   maxRangeStart.setMonth(maxRangeStart.getMonth() - 3);
@@ -205,10 +229,15 @@ export default function ReadingsPage() {
               Ver Tabela Completa
             </Button>
             <div className="flex items-center space-x-1">
+              {/* Morador com 1 apt não pode navegar de volta para condomínios */}
               <Button
                 variant="link"
                 className="flex items-center px-1 mx-0 py-1"
-                onClick={() => setFilters((prev) => ({ ...prev, complex: undefined, block: undefined, apartment: undefined, meter: undefined }))}
+                disabled={!!singleApartment}
+                onClick={() => {
+                  if (singleApartment) return;
+                  setFilters((prev) => ({ ...prev, complex: undefined, block: undefined, apartment: undefined, meter: undefined }))
+                }}
               >
                 <Building2 />{' '}
                 <span>
@@ -225,7 +254,11 @@ export default function ReadingsPage() {
                   <Button
                     variant="link"
                     className="flex items-center px-1 mx-0 py-1"
-                    onClick={() => setFilters((prev) => ({ ...prev, block: undefined, apartment: undefined, meter: undefined }))}
+                    disabled={!!singleApartment}
+                    onClick={() => {
+                      if (singleApartment) return;
+                      setFilters((prev) => ({ ...prev, block: undefined, apartment: undefined, meter: undefined }))
+                    }}
                   >
                     <Building />{' '}
                     <span>
@@ -244,7 +277,11 @@ export default function ReadingsPage() {
                   <Button
                     variant="link"
                     className="flex items-center px-1 mx-0 py-1"
-                    onClick={() => setFilters((prev) => ({ ...prev, apartment: undefined, meter: undefined }))}
+                    disabled={!!singleApartment}
+                    onClick={() => {
+                      if (singleApartment) return;
+                      setFilters((prev) => ({ ...prev, apartment: undefined, meter: undefined }))
+                    }}
                   >
                     <DoorClosed />{' '}
                     <span>
@@ -416,30 +453,92 @@ export default function ReadingsPage() {
        
         {viewType == "Cards" && !filters.complex?.id && (
           <>
-            <div className="mb-4">
-              <div className="relative max-w-sm">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="Pesquisar condomínios..."
-                  className="pl-10"
-                  value={complexSearchText}
-                  onChange={(e) => setComplexSearchText(e.target.value)}
-                />
+            {/* Morador: não mostra busca se já tem contexto restrito */}
+            {!isMorador && (
+              <div className="mb-4">
+                <div className="relative max-w-sm">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Pesquisar condomínios..."
+                    className="pl-10"
+                    value={complexSearchText}
+                    onChange={(e) => setComplexSearchText(e.target.value)}
+                  />
+                </div>
               </div>
-            </div>
+            )}
             <ComplexesList 
               viewType="Cards" 
               getAvailableForEntity='reading' 
-              setSelectedComplex={handleSelectedComplex} 
-              nameQuery={complexSearchText}
+              setSelectedComplex={(complex) => {
+                if (isMorador && complex) {
+                  // Verifica se o morador tem apenas 1 apartamento neste condomínio
+                  const aptsInComplex = userContext!.apartments.filter(
+                    (a) => (a.block as any)?.complex?.id === complex.id
+                  );
+                  if (aptsInComplex.length === 1) {
+                    const apt = aptsInComplex[0];
+                    setFilters((prev) => ({
+                      ...prev,
+                      complex,
+                      block: apt.block as any,
+                      apartment: apt as any,
+                      meter: undefined,
+                    }));
+                    return;
+                  }
+                }
+                handleSelectedComplex(complex);
+              }} 
+              nameQuery={!isMorador ? complexSearchText : ''}
             />
           </>
         )}
-        {viewType == "Cards" && filters.complex?.id && !filters.block?.id && (
+        {/* Morador com múltiplos apts no condomínio: mostrar lista dos seus apts */}
+        {viewType == "Cards" && filters.complex?.id && !filters.apartment?.id && isMorador && (
+          (() => {
+            const aptsInComplex = userContext!.apartments.filter(
+              (a) => (a.block as any)?.complex?.id === filters.complex?.id
+            );
+            if (aptsInComplex.length > 1) {
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {aptsInComplex.map((apt) => (
+                    <Card
+                      key={apt.id}
+                      className="cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => {
+                        setFilters((prev) => ({
+                          ...prev,
+                          block: apt.block as any,
+                          apartment: apt as any,
+                          meter: undefined,
+                        }));
+                      }}
+                    >
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <DoorClosed className="h-5 w-5" />
+                          Apto {apt.name}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground">Bloco {(apt.block as any)?.name}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              );
+            }
+            return null;
+          })()
+        )}
+        {/* Usuário normal: seleção de bloco e apartamento */}
+        {viewType == "Cards" && filters.complex?.id && !filters.block?.id && !isMorador && (
           <BlocksList viewType="Cards" complexId={filters.complex.id} setSelectedBlock={handleSelectedBlock} />
         )}
-        {viewType == "Cards" && filters.complex?.id && filters.block?.id && !filters.apartment?.id && (
+        {viewType == "Cards" && filters.complex?.id && filters.block?.id && !filters.apartment?.id && !isMorador && (
           <ApartmentsList viewType="Cards" blockId={filters.block.id} setSelectedApartment={handleSelectedApartment} />
         )}
         {/* Visualização Cards ou Lista */}
