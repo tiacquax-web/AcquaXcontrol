@@ -79,122 +79,140 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
   const emissionDate = format(new Date(), "dd/MM/yyyy 'às' HH:mm");
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
-      {/* Header */}
-      <div className="bg-blue-600 text-white px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Building2 className="w-4 h-4" />
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col w-full">
+
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div className="bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Building2 className="w-4 h-4 shrink-0" />
           <span className="font-semibold text-sm truncate">{complexName}</span>
         </div>
-        <Badge variant="secondary" className="text-xs bg-white/20 text-white border-white/30 shrink-0">
+        <Badge variant="secondary" className="text-xs bg-white/20 text-white border-white/30 shrink-0 whitespace-nowrap">
           {monthYearLabel}
         </Badge>
       </div>
 
-      {/* Unit info */}
-      <div className="px-4 py-2 border-b bg-gray-50 flex items-center justify-between">
-        <div className="flex items-center gap-3 text-sm text-gray-700">
-          <div className="flex items-center gap-1">
-            <Building2 className="w-3.5 h-3.5 text-gray-400" />
-            <span>Bloco {blockName}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <DoorClosed className="w-3.5 h-3.5 text-gray-400" />
-            <span>
-              {apartmentName && (apartmentName.toLowerCase().includes('casa') || apartmentName.toLowerCase().includes('apto'))
-                ? apartmentName
-                : `Apto ${apartmentName}`}
-            </span>
-          </div>
+      {/* ── Unit info ──────────────────────────────────────────────────────── */}
+      <div className="px-4 py-2 border-b bg-gray-50 flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-1 text-sm text-gray-700">
+          <Building2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+          <span>Bloco {blockName}</span>
+        </div>
+        <div className="flex items-center gap-1 text-sm text-gray-700">
+          <DoorClosed className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+          <span>
+            {apartmentName && (apartmentName.toLowerCase().includes('casa') || apartmentName.toLowerCase().includes('apto'))
+              ? apartmentName
+              : `Apto ${apartmentName}`}
+          </span>
         </div>
         {showAddress && addressLine && (
-          <p className="text-xs text-gray-400 hidden sm:block truncate max-w-[180px]">{addressLine}</p>
+          <p className="text-xs text-gray-400 hidden sm:block truncate">{addressLine}</p>
         )}
       </div>
 
-      {/* Main content: photo + info */}
-      <div className="flex gap-0 flex-1">
-        {/* Photo — fills full height of the content area */}
-        <div className="w-44 shrink-0 border-r bg-gray-50 flex items-stretch p-2">
+      {/* ── Main content ───────────────────────────────────────────────────── */}
+      {/* Mobile: foto em cima, dados embaixo. Desktop (sm+): lado a lado */}
+      <div className="flex flex-col sm:flex-row flex-1">
+
+        {/* Photo */}
+        <div className="sm:w-44 sm:shrink-0 sm:border-r border-b sm:border-b-0 bg-gray-50 flex items-stretch p-2">
           {lastReading?.urlCover ? (
-            <div className="relative w-full min-h-[176px] overflow-hidden rounded-md">
+            <div className="relative w-full min-h-[180px] sm:min-h-[176px] overflow-hidden rounded-md">
               <Image
                 src={sanitizeImageUrl(lastReading.urlCover)}
                 alt="Foto do medidor"
                 fill
-                sizes="176px"
+                sizes="(max-width: 640px) 100vw, 176px"
                 className="object-cover"
               />
             </div>
           ) : (
-            <div className="w-full min-h-[176px] rounded-md bg-gray-200 border border-gray-300 flex items-center justify-center">
+            <div className="w-full min-h-[140px] sm:min-h-[176px] rounded-md bg-gray-200 border border-gray-300 flex items-center justify-center">
               <Droplets className="w-10 h-10 text-gray-400" />
             </div>
           )}
         </div>
 
-        {/* Data */}
+        {/* Data grid */}
         <div className="flex-1 flex flex-col divide-y divide-gray-100">
-          {/* Readings */}
-          <div className="grid grid-cols-3 text-center text-xs divide-x divide-gray-100">
-            <div className="px-2 py-2">
-              <p className="text-gray-400 font-medium mb-0.5">Leitura Ant.</p>
-              <p className="font-bold text-gray-800">{prevReport1?.lastReading?.reading?.toFixed(3) ?? '—'} m³</p>
+
+          {/* Leitura Ant. / Atual / Consumo */}
+          <div className="grid grid-cols-3 text-center divide-x divide-gray-100">
+            <div className="px-2 py-3">
+              <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">Leitura Ant.</p>
+              <p className="font-bold text-gray-800 text-sm leading-tight">
+                {prevReport1?.lastReading?.reading?.toFixed(3) ?? '—'}
+              </p>
+              <p className="text-gray-400 text-[10px]">m³</p>
             </div>
-            <div className="px-2 py-2">
-              <p className="text-gray-400 font-medium mb-0.5">Leitura Atual</p>
-              <p className="font-bold text-blue-700">{lastReading?.reading?.toFixed(3) ?? '—'} m³</p>
+            <div className="px-2 py-3">
+              <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">Leitura Atual</p>
+              <p className="font-bold text-blue-700 text-sm leading-tight">
+                {lastReading?.reading?.toFixed(3) ?? '—'}
+              </p>
+              <p className="text-blue-400 text-[10px]">m³</p>
             </div>
-            <div className="px-2 py-2">
-              <p className="text-gray-400 font-medium mb-0.5">Consumo</p>
-              <p className="font-bold text-teal-700">{report.consumption?.toFixed(3) ?? '—'} m³</p>
+            <div className="px-2 py-3">
+              <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">Consumo</p>
+              <p className="font-bold text-teal-700 text-sm leading-tight">
+                {report.consumption?.toFixed(3) ?? '—'}
+              </p>
+              <p className="text-teal-400 text-[10px]">m³</p>
             </div>
           </div>
 
-          {/* Period + Next reading */}
-          <div className="grid grid-cols-2 text-xs divide-x divide-gray-100">
-            <div className="px-3 py-2">
-              <p className="text-gray-400 font-medium mb-1 flex items-center gap-1">
-                <Calendar className="w-3 h-3" /> Período de Consumo
+          {/* Período de Consumo / Próxima Leitura */}
+          <div className="grid grid-cols-2 divide-x divide-gray-100">
+            <div className="px-3 py-2.5">
+              <p className="text-gray-400 text-[11px] font-medium mb-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3 shrink-0" />
+                Período de Consumo
               </p>
-              <p className="text-gray-700">
-                {periodStartFormatted} <span className="text-gray-400">→</span> {periodEndFormatted}
+              <p className="text-gray-700 text-xs">
+                {periodStartFormatted}
+              </p>
+              <p className="text-gray-400 text-[10px]">→</p>
+              <p className="text-gray-700 text-xs">
+                {periodEndFormatted}
               </p>
             </div>
-            <div className="px-3 py-2">
-              <p className="text-gray-400 font-medium mb-1 flex items-center gap-1">
-                <Calendar className="w-3 h-3" /> Próxima Leitura
+            <div className="px-3 py-2.5">
+              <p className="text-gray-400 text-[11px] font-medium mb-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3 shrink-0" />
+                Próxima Leitura
               </p>
-              <p className="text-gray-700">{nextReadingDateFormatted}</p>
+              <p className="text-gray-700 text-xs">{nextReadingDateFormatted}</p>
             </div>
           </div>
 
-          {/* Values */}
-          <div className="grid grid-cols-3 text-center text-xs divide-x divide-gray-100">
-            <div className="px-2 py-2">
-              <p className="text-gray-400 font-medium mb-0.5">Área Comum</p>
-              <p className="font-semibold text-gray-700">{formatCurrency(report.partial)}</p>
+          {/* Área Comum / Água+Esgoto / Total a Pagar */}
+          <div className="grid grid-cols-3 text-center divide-x divide-gray-100">
+            <div className="px-2 py-2.5">
+              <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">Área Comum</p>
+              <p className="font-semibold text-gray-700 text-xs">{formatCurrency(report.partial)}</p>
             </div>
-            <div className="px-2 py-2">
-              <p className="text-gray-400 font-medium mb-0.5">Água/Esgoto</p>
-              <p className="font-semibold text-gray-700">
+            <div className="px-2 py-2.5">
+              <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">Água/Esgoto</p>
+              <p className="font-semibold text-gray-700 text-xs">
                 {report.totalUnit != null && report.partial != null
                   ? formatCurrency(report.totalUnit - report.partial)
                   : '—'}
               </p>
             </div>
-            <div className="px-2 py-2 bg-blue-50">
-              <p className="text-blue-500 font-medium mb-0.5">Total a Pagar</p>
-              <p className="font-bold text-blue-700">{formatCurrency(report.totalUnit)}</p>
+            <div className="px-2 py-2.5 bg-blue-50">
+              <p className="text-blue-500 text-[11px] font-medium mb-1 leading-tight">Total a Pagar</p>
+              <p className="font-bold text-blue-700 text-xs">{formatCurrency(report.totalUnit)}</p>
             </div>
           </div>
+
         </div>
       </div>
 
-      {/* History */}
-      <div className="border-t bg-gray-50 px-4 py-2">
-        <p className="text-xs font-semibold text-gray-500 mb-1.5">Histórico de Consumo</p>
-        <div className="grid grid-cols-3 gap-2 text-xs text-center">
+      {/* ── History ────────────────────────────────────────────────────────── */}
+      <div className="border-t bg-gray-50 px-4 py-3">
+        <p className="text-xs font-semibold text-gray-500 mb-2">Histórico de Consumo</p>
+        <div className="grid grid-cols-3 gap-2 text-center">
           {[prevReport2, prevReport1, report].map((r, i) => {
             const isCurrentMonth = i === 2;
             const mRef = r ? String(r.monthRef).padStart(2, '0') : null;
@@ -203,12 +221,12 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
             return (
               <div
                 key={i}
-                className={`rounded-lg border px-2 py-1.5 ${isCurrentMonth ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}
+                className={`rounded-lg border px-2 py-2 ${isCurrentMonth ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}
               >
-                <p className={`font-medium mb-0.5 ${isCurrentMonth ? 'text-blue-600' : 'text-gray-500'}`}>
+                <p className={`text-[11px] font-medium mb-0.5 ${isCurrentMonth ? 'text-blue-600' : 'text-gray-500'}`}>
                   {mRef && yRef ? `${mRef}/${yRef}` : '—'}
                 </p>
-                <p className={`font-bold ${isCurrentMonth ? 'text-blue-700' : 'text-gray-700'}`}>
+                <p className={`font-bold text-sm ${isCurrentMonth ? 'text-blue-700' : 'text-gray-700'}`}>
                   {cons != null ? `${cons.toFixed(3)} m³` : '—'}
                 </p>
               </div>
@@ -217,10 +235,10 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
         </div>
       </div>
 
-      {/* Footer */}
+      {/* ── Footer ─────────────────────────────────────────────────────────── */}
       <div className="border-t px-4 py-1.5 text-xs text-gray-400 flex justify-between items-center">
         <span>Emitido em {emissionDate}</span>
-        <span className="text-blue-500">AcquaX</span>
+        <span className="text-blue-500 font-medium">AcquaX</span>
       </div>
     </div>
   );
