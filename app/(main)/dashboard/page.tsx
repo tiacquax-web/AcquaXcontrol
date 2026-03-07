@@ -364,18 +364,10 @@ function AdminDashboard({ dateRange, setDateRange, preferredMeters, loadingPrefe
               <ReadingsGraph key={meterId} meterId={meterId} dateRange={dateRange} detailsModalAvailable onRemove={handleRemovePreference} />
             ))
           )}
-          {!loadingPreferences && (
-            <Card className="flex items-center justify-center min-h-[180px] cursor-pointer border-dashed border-2 border-primary hover:bg-accent/40 transition-colors" onClick={() => setAddDialogOpen(true)}>
-              <CardContent className="flex flex-col items-center justify-center w-full h-full p-8">
-                <Plus className="w-10 h-10 text-primary" />
-                <span className="mt-2 text-primary font-medium">Adicionar Medidor</span>
-              </CardContent>
-            </Card>
-          )}
         </div>
       </section>
 
-      {/* ── Three bottom panels ── */}
+      {/* ── Three bottom panels ── */}}
       {selectedComplex && (
         <section className="w-full space-y-4">
           <div className="flex items-center gap-2 mb-1">
@@ -437,7 +429,7 @@ function AdminDashboard({ dateRange, setDateRange, preferredMeters, loadingPrefe
                         <p className="text-xl font-bold text-teal-600">{totalConsumption?.toFixed(2)} <span className="text-xs font-normal">m³</span></p>
                       </div>
                       <div className="rounded-xl border p-3 text-center">
-                        <p className="text-[10px] text-muted-foreground mb-1">Total a Pagar</p>
+                        <p className="text-[10px] text-muted-foreground mb-1">Total Arrecadado</p>
                         <p className="text-lg font-bold text-blue-600">{formatCurrency(totalValue)}</p>
                       </div>
                     </div>

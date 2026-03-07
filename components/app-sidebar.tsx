@@ -65,12 +65,7 @@ const items = [
     icon: Newspaper,
     group: 'Geral'
   },
-  {
-    title: "Serviços",
-    url: "/solutions",
-    icon: HardHat,
-    group: 'Geral'
-  },
+
   {
     title: "Administradoras",
     url: "/companies",
