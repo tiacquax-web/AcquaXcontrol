@@ -5,11 +5,15 @@ import { jwtVerify } from 'jose';
 const JWT_SECRET = process.env.JWT_SECRET || 'acquax-super-secret-jwt-key-2024';
 
 export async function middleware(req: NextRequest) {
-  const token = req.cookies.get('session')?.value;
+  const pathname = req.nextUrl.pathname;
 
-  // Rotas públicas que não requerem autenticação
+  // Deixa todas as rotas de API passarem — autenticação é feita em cada rota individualmente
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
+  // Rotas estáticas e públicas
   const publicPaths = [
-    '/api/auth',
     '/_next',
     '/favicon.ico',
     '/recover',
@@ -23,15 +27,17 @@ export async function middleware(req: NextRequest) {
     '/screenshots',
   ];
 
-  if (publicPaths.some((path) => req.nextUrl.pathname.startsWith(path))) {
+  if (publicPaths.some((path) => pathname.startsWith(path))) {
     return NextResponse.next();
   }
 
-  // Rotas de autenticação
-  const authPaths = ['/login', '/signup'];
-  const isAuthPath = authPaths.some((path) => req.nextUrl.pathname.startsWith(path));
-  const isFirstAccessPath = req.nextUrl.pathname.startsWith('/first-access');
-  const isRootPath = req.nextUrl.pathname === '/';
+  // Rotas de autenticação (login/signup/first-access)
+  const authPaths = ['/login', '/signup', '/first-access'];
+  const isAuthPath = authPaths.some((path) => pathname.startsWith(path));
+  const isRootPath = pathname === '/';
+
+  // Pega token do cookie session
+  const token = req.cookies.get('session')?.value;
 
   if (!token) {
     if (isAuthPath) return NextResponse.next();
@@ -39,9 +45,15 @@ export async function middleware(req: NextRequest) {
   }
 
   try {
-    // Verifica o JWT diretamente (sem fetch externo)
+    // Verifica JWT diretamente
     const secret = new TextEncoder().encode(JWT_SECRET);
-    await jwtVerify(token, secret);
+    const { payload } = await jwtVerify(token, secret);
+
+    // Verifica se precisa atualizar credenciais
+    const mustUpdate = (payload as any).mustUpdateCredentials;
+    if (mustUpdate && !pathname.startsWith('/first-access')) {
+      return NextResponse.redirect(new URL('/first-access', req.url));
+    }
 
     // Token válido — redireciona autenticado fora de auth pages
     if (isAuthPath || isRootPath) {
@@ -56,3 +68,12 @@ export async function middleware(req: NextRequest) {
     return redirectResponse;
   }
 }
+
+export const config = {
+  matcher: [
+    /*
+     * Match all request paths except static files
+     */
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+  ],
+};

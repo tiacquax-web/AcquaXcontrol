@@ -361,19 +361,34 @@ async function executeMetersBatch(
         }
     }
 
-    // Executa atualizações (mantém individual pois precisa do ID específico)
-    for (const item of toUpdate) {
+    // Executa atualizações em lote usando Promise.all para paralelizar
+    if (toUpdate.length > 0) {
         try {
-            const updateData = cleanEntityBody(item.data);
-            
-            const { entity, error: updateError } = await updateEntityData(userId, 'meter', item.existingId, updateData);
-            if (updateError || !entity) {
-                errors.push({ row: item.rowIndex + 2, message: updateError || 'Erro ao atualizar medidor.' });
-            } else {
-                updated.push(entity);
-            }
+            const updatePromises = toUpdate.map(item => {
+                const updateData = cleanEntityBody({ ...item.data });
+                // Remove campos imutáveis
+                delete updateData.register;
+                delete updateData.apartmentId;
+                delete updateData.blockId;
+                delete updateData.complexId;
+                delete updateData.companyId;
+                // Adiciona updatedByUserId e updatedAt
+                updateData.updatedByUserId = userId;
+                updateData.updatedAt = new Date();
+
+                return prisma.meter.update({
+                    where: { id: item.existingId },
+                    data: updateData,
+                });
+            });
+
+            const results = await Promise.all(updatePromises);
+            results.forEach(entity => updated.push(entity));
         } catch (err: any) {
-            errors.push({ row: item.rowIndex + 2, message: err?.message || 'Erro inesperado ao atualizar.' });
+            console.error('Erro ao atualizar medidores em lote:', err);
+            toUpdate.forEach(item => {
+                errors.push({ row: item.rowIndex + 2, message: err?.message || 'Erro inesperado ao atualizar medidor.' });
+            });
         }
     }
 
