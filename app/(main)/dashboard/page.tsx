@@ -83,36 +83,44 @@ function FilipetaMiniCard({ report }: { report: MeterReportItem }) {
   return (
     <Link href="/meter-report">
       <div className="border rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer bg-background">
-        <div className="bg-blue-600 text-white px-3 py-1.5 flex items-center justify-between">
+        {/* Header */}
+        <div className="bg-blue-600 text-white px-3 py-1.5 flex items-center justify-between gap-2">
           <span className="text-xs font-semibold truncate">{cx?.socialName || 'Condomínio'}</span>
-          <Badge variant="secondary" className="text-[10px] bg-white/20 text-white border-0 shrink-0">{monthLabel}</Badge>
+          <Badge variant="secondary" className="text-[10px] bg-white/20 text-white border-0 shrink-0 whitespace-nowrap">{monthLabel}</Badge>
         </div>
-        <div className="px-3 py-1 border-b text-xs text-muted-foreground flex gap-3">
+        {/* Unit */}
+        <div className="px-3 py-1.5 border-b text-xs text-muted-foreground flex gap-3 flex-wrap">
           <span>Bl. {block?.name}</span>
           <span>Apto {apt?.name}</span>
         </div>
+        {/* Content */}
         <div className="flex gap-0">
+          {/* Photo */}
           {report.lastReading?.urlCover ? (
-            <div className="relative w-20 h-20 shrink-0 border-r">
-              <Image src={report.lastReading.urlCover} alt="medidor" fill className="object-cover" sizes="80px" />
+            <div className="relative w-24 h-24 shrink-0 border-r">
+              <Image src={report.lastReading.urlCover} alt="medidor" fill className="object-cover" sizes="96px" />
             </div>
           ) : (
-            <div className="w-20 h-20 shrink-0 border-r bg-muted flex items-center justify-center">
+            <div className="w-24 h-24 shrink-0 border-r bg-muted flex items-center justify-center">
               <Droplets className="w-6 h-6 text-muted-foreground" />
             </div>
           )}
-          <div className="flex-1 grid grid-cols-2 divide-x divide-y text-xs">
-            <div className="px-2 py-1.5 text-center">
-              <p className="text-muted-foreground">Consumo</p>
-              <p className="font-bold text-teal-600">{report.consumption?.toFixed(2) ?? '—'} m³</p>
+          {/* Info */}
+          <div className="flex-1 flex flex-col divide-y text-xs min-w-0">
+            <div className="grid grid-cols-2 divide-x flex-1">
+              <div className="px-2 py-2 text-center flex flex-col justify-center">
+                <p className="text-muted-foreground text-[10px] mb-0.5">Consumo</p>
+                <p className="font-bold text-teal-600 leading-tight">{report.consumption?.toFixed(2) ?? '—'}</p>
+                <p className="text-muted-foreground text-[10px]">m³</p>
+              </div>
+              <div className="px-2 py-2 text-center flex flex-col justify-center">
+                <p className="text-muted-foreground text-[10px] mb-0.5">Total</p>
+                <p className="font-bold text-blue-600 leading-tight text-[11px]">{formatCurrency(report.totalUnit)}</p>
+              </div>
             </div>
             <div className="px-2 py-1.5 text-center">
-              <p className="text-muted-foreground">Total</p>
-              <p className="font-bold text-blue-600">{formatCurrency(report.totalUnit)}</p>
-            </div>
-            <div className="px-2 py-1.5 text-center col-span-2">
               <p className="text-muted-foreground text-[10px]">Leitura Atual</p>
-              <p className="font-semibold">{report.lastReading?.reading?.toFixed(3) ?? '—'} m³</p>
+              <p className="font-semibold text-[11px]">{report.lastReading?.reading?.toFixed(3) ?? '—'} m³</p>
             </div>
           </div>
         </div>
