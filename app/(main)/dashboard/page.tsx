@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ComplexesList from '@/components/ComplexesList';
 import { Apartment, Block, Complex, Meter } from '@prisma/client';
+import { useComplexes } from '@/hooks/useComplexes';
 import { DateRangeSelector } from '@/components/date-range-selector';
 import ReadingsGraph from '@/components/ReadingsGraph';
 import { useReadings } from '@/hooks/useReadings';
@@ -447,14 +448,25 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
 function AdminDashboard({ setAddDialogOpen }: any) {
   const { context, loading: ctxLoading } = useUserContext();
 
-  // All complexes
+  // For system users (admin/programador), context.complexes is empty → use API
+  const isSystem = context?.isSystem ?? false;
+  const { complexes: apiComplexes, loading: loadingApiComplexes } = useComplexes({
+    take: 100,
+    skip: 0,
+    enabled: isSystem && !ctxLoading,
+  });
+
+  // All complexes — from context (síndico) or API (admin/programador)
   const complexes = useMemo(() => {
     if (!context) return [];
+    if (isSystem) return apiComplexes as any[];
     const map = new Map<string, any>();
     context.complexes.forEach(c => map.set(c.id, c));
     context.apartments.forEach(a => { const cx = a.block?.complex; if (cx && !map.has(cx.id)) map.set(cx.id, cx); });
     return Array.from(map.values());
-  }, [context]);
+  }, [context, isSystem, apiComplexes]);
+
+  const loading = ctxLoading || (isSystem && loadingApiComplexes);
 
   const [selectedComplexIdx, setSelectedComplexIdx] = useState(0);
   const selectedComplex = complexes[selectedComplexIdx] ?? null;
@@ -513,8 +525,20 @@ function AdminDashboard({ setAddDialogOpen }: any) {
 
   return (
     <>
+      {/* ── Loading state ── */}
+      {loading && (
+        <section className="w-full space-y-3">
+          <Skeleton className="h-6 w-48" />
+          <div className="flex gap-2 flex-wrap">
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-8 w-28" />
+          </div>
+        </section>
+      )}
+
       {/* ── Condomínio selector ── */}
-      {!ctxLoading && complexes.length > 0 && (
+      {!loading && complexes.length > 0 && (
         <section className="w-full space-y-3">
           <div className="flex items-center gap-2">
             <Building2 className="w-5 h-5 text-blue-600" />
@@ -527,6 +551,15 @@ function AdminDashboard({ setAddDialogOpen }: any) {
               </Button>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* ── Empty state: no complexes found ── */}
+      {!loading && complexes.length === 0 && (
+        <section className="w-full py-12 flex flex-col items-center text-muted-foreground">
+          <Building2 className="w-12 h-12 mb-3 opacity-30" />
+          <p className="text-sm font-medium">Nenhum condomínio encontrado</p>
+          <p className="text-xs mt-1">Cadastre um condomínio para começar.</p>
         </section>
       )}
 

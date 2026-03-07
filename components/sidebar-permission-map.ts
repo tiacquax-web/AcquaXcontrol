@@ -8,8 +8,6 @@ export const sidebarPermissionMap: Record<string, string> = {
   '/monitoring': 'monitoringDashboard',
   '/reservoir-monitoring': 'reservoirReading',
   '/reservoirs': 'reservoir',
-  '/calendar': 'system',
-  '/blog/post-1': 'system',
   '/companies': 'company',
   '/complexes': 'complex',
   '/blocks': 'block',
