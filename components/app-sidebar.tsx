@@ -5,7 +5,7 @@ import { useMediaQuery } from "@/hooks/use-media-query"
 import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
 import { Skeleton } from "@/components/ui/skeleton"
 
-import { Calendar, BarChart4, Newspaper, HardHat, CircleGauge, Building2, Building, DoorClosed, BookUser, Gauge, Users, ShieldCheck, HousePlus, Receipt, ReceiptText, NotepadText, BarChart2, ChartBarIncreasing, LayoutDashboard, GaugeCircle, Power, Radio, SquareUserIcon, Briefcase, BriefcaseBusiness, UsersRound, Droplets } from "lucide-react"
+import { Calendar, BarChart4, Newspaper, HardHat, CircleGauge, Building2, Building, DoorClosed, BookUser, Gauge, Users, ShieldCheck, HousePlus, Receipt, ReceiptText, NotepadText, BarChart2, ChartBarIncreasing, LayoutDashboard, GaugeCircle, Power, Radio, SquareUserIcon, Briefcase, BriefcaseBusiness, UsersRound, Droplets, FileText } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
 
@@ -33,6 +33,12 @@ const items = [
     title: "Leituras",
     url: "/readings",
     icon: CircleGauge,
+    group: 'Geral'
+  },
+  {
+    title: "Filipeta Medição",
+    url: "/meter-report",
+    icon: FileText,
     group: 'Geral'
   },
   {

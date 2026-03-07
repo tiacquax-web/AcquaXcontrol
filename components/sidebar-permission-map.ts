@@ -4,6 +4,7 @@ export const sidebarPermissionMap: Record<string, string> = {
   '/apartment-report': 'apartmentConsumptionReport',
   '/dealership-readings': 'dealershipReading',
   '/readings': 'reading',
+  '/meter-report': 'apartmentConsumptionReport',
   '/monitoring': 'monitoringDashboard',
   '/reservoir-monitoring': 'reservoirReading',
   '/reservoirs': 'reservoir',
