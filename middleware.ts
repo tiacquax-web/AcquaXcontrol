@@ -43,7 +43,7 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL('/dashboard', req.url));
     }
     return NextResponse.next();
-  } catch {
+  } catch (_e) {
     const res = NextResponse.redirect(new URL('/login', req.url));
     res.cookies.set('session', '', { path: '/', maxAge: 0 });
     return res;
