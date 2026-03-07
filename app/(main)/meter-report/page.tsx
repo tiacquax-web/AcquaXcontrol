@@ -125,8 +125,8 @@ export default function MeterReportPage() {
           <FileText className="w-5 h-5 text-blue-600" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Filipeta Medição</h1>
-          <p className="text-sm text-gray-500">Resumo de leitura, consumo e valores por unidade</p>
+          <h1 className="text-xl font-bold text-foreground">Filipeta Medição</h1>
+          <p className="text-sm text-muted-foreground">Resumo de leitura, consumo e valores por unidade</p>
         </div>
       </div>
 
