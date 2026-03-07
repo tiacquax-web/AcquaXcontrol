@@ -40,6 +40,7 @@ export interface ComplexWithContext {
 
 export interface UserContext {
   isSystem: boolean;
+  systemRoles: string[];   // ex: ['Administrador'] ou ['Programador']
   apartments: ApartmentWithContext[];
   blocks: BlockWithContext[];
   complexes: ComplexWithContext[];
