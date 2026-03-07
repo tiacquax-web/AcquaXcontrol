@@ -276,7 +276,7 @@ export async function validateUserSession(req: NextRequest):Promise<{ userId: st
       if (userId) {
         return { userId, error: null, status: 200 };
       }
-    } catch {
+    } catch (_e) {
       // JWT inválido ou expirado
     }
   }
