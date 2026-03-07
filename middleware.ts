@@ -36,12 +36,20 @@ export async function middleware(req: NextRequest) {
     const secret = new TextEncoder().encode(JWT_SECRET);
     const { payload } = await jwtVerify(token, secret);
     const mustUpdate = (payload as any).mustUpdateCredentials;
-    if (mustUpdate && !pathname.startsWith('/first-access')) {
+
+    // Usuário precisa trocar senha: só pode acessar /first-access
+    if (mustUpdate) {
+      if (pathname.startsWith('/first-access')) {
+        return NextResponse.next(); // deixa passar normalmente
+      }
       return NextResponse.redirect(new URL('/first-access', req.url));
     }
+
+    // Usuário autenticado tentando acessar página de auth ou raiz: manda pro dashboard
     if (isAuthPath || isRootPath) {
       return NextResponse.redirect(new URL('/dashboard', req.url));
     }
+
     return NextResponse.next();
   } catch (_e) {
     const res = NextResponse.redirect(new URL('/login', req.url));
