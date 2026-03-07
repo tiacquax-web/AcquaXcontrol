@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 function getQueryParams(req: NextRequest) {
     // query params - default
     const search = req.nextUrl.searchParams.get('search') || '';
-    const take = parseInt(req.nextUrl.searchParams.get('take') || '10');
+    const take = parseInt(req.nextUrl.searchParams.get('take') || '50');
     const skip = parseInt(req.nextUrl.searchParams.get('skip') || '0');
     const orderBy = req.nextUrl.searchParams.get('orderBy') || 'createdAt';
     const orderDirection = req.nextUrl.searchParams.get('orderDirection') || 'desc';
