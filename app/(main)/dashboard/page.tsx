@@ -12,7 +12,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { clearCachedPermissions } from '@/lib/permissions-cache';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
-import ReadingsGraph from '@/components/ReadingsGraph';
+import ReadingsGraph, { viewOptions, intervals, consumptionChartConfig } from '@/components/ReadingsGraph';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -180,6 +180,9 @@ function MedidorGraphs({ apartment, dateRange }: { apartment: Apartment; dateRan
           readings={readings.filter(r => r.meter?.id === meter.id)}
           register={meter.register}
           meterId={meter.id}
+          view={viewOptions.simple}
+          interval={intervals.reading}
+          chartConfigOverride={consumptionChartConfig}
           detailsModalAvailable
         />
       ))}
