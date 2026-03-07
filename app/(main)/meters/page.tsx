@@ -511,7 +511,9 @@ export default function MetersPage() {
           open={isImportDialogOpen}
           onOpenChange={setIsImportDialogOpen}
           onImportComplete={() => {
-            refetch();
+            // Só faz refetch se há um contexto selecionado (empresa, condomínio, bloco ou apartamento)
+            const hasContext = filters.company?.id || filters.complex?.id || filters.block?.id || filters.apartment?.id;
+            if (hasContext) refetch();
             setIsImportDialogOpen(false);
           }}
         />
