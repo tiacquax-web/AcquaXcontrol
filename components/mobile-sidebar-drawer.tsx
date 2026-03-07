@@ -1,20 +1,22 @@
 import * as React from "react"
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarTrigger } from "@/components/ui/sidebar"
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader } from "@/components/ui/sidebar"
 import { FooterSidebar } from "./footer-sidebar"
 import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
 import { sidebarPermissionMap } from './sidebar-permission-map';
 import { items as sidebarItems, type ItemType } from "./app-sidebar"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Menu } from "lucide-react"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 
 export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
-  const { permissions, loading } = usePermissionsContext();
+  const { permissions } = usePermissionsContext();
 
-  function hasAnyPermission(url: string) {
-    if (url === '/dashboard' || url === '/solutions') return true;
+  function hasAnyPermission(url: string, requiresCreate?: boolean) {
+    if (url === '/dashboard') return true;
     if (!permissions) return false;
     const entity = sidebarPermissionMap[url];
-    if (!entity) return true;
+    if (!entity) return permissions.length > 0;
+    if (requiresCreate) {
+      return permissions.some((p: any) => p.entity === entity && p.action === 'create');
+    }
     return permissions.some((p: any) => p.entity === entity);
   }
 
@@ -22,8 +24,13 @@ export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onO
     if (!acc.includes(item.group)) acc.push(item.group);
     return acc;
   }, []);
+
   const visibleGroups = groups.filter((group: string) =>
-    sidebarItems.some((item: ItemType) => item.group === group && hasAnyPermission(item.url))
+    sidebarItems.some(
+      (item: ItemType) =>
+        item.group === group &&
+        hasAnyPermission(item.url, (item as any).requiresCreate)
+    )
   );
 
   return (
@@ -39,20 +46,26 @@ export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onO
                 <SidebarMenu>
                   {visibleGroups.map((group: string) => (
                     <div key={group}>
-                      <SidebarGroupLabel key={group}>
+                      <SidebarGroupLabel>
                         {group}
-                        <div className="border-t-2 border-gray-200 ml-3 w-full"></div>
+                        <div className="border-t-2 border-gray-200 ml-3 w-full" />
                       </SidebarGroupLabel>
-                      {sidebarItems.filter((item: ItemType) => item.group === group && hasAnyPermission(item.url)).map((item: ItemType) => (
-                        <SidebarMenuItem key={item.title}>
-                          <SidebarMenuButton asChild tooltip={item.title}>
-                            <a href={item.url}>
-                              <item.icon />
-                              <span>{item.title}</span>
-                            </a>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ))}
+                      {sidebarItems
+                        .filter(
+                          (item: ItemType) =>
+                            item.group === group &&
+                            hasAnyPermission(item.url, (item as any).requiresCreate)
+                        )
+                        .map((item: ItemType) => (
+                          <SidebarMenuItem key={item.title}>
+                            <SidebarMenuButton asChild tooltip={item.title}>
+                              <a href={item.url}>
+                                <item.icon />
+                                <span>{item.title}</span>
+                              </a>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        ))}
                     </div>
                   ))}
                 </SidebarMenu>

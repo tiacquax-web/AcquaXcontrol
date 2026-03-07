@@ -1,9 +1,7 @@
 "use client"
 import ReadingsGraph, { type DateRange } from "@/components/ReadingsGraph"
-import EnhancedCarousel from "@/components/services-carousel"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useApartmentsReports } from "@/hooks/useApartmentReport"
-import { itemsList } from "@/store/demo"
 import { Loader2 } from "lucide-react"
 import { useParams } from "next/navigation"
 import { ApartmentReportForm } from "@/components/apartment-report/apartment-report-form"
@@ -78,12 +76,6 @@ export default function ApartmentReportPage() {
             ))}
           </CardContent>
         </Card>
-      </section>
-
-      <section className="w-full">
-        <div className="w-full">
-          <EnhancedCarousel items={itemsList} alignItems="center" />
-        </div>
       </section>
     </div>
   )

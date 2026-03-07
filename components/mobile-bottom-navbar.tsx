@@ -1,39 +1,31 @@
 import * as React from "react"
-import { HomeIcon as House, BarChartIcon as ChartBarStackedIcon, Home, Inbox, Search, Calendar, Handshake, MessageSquareIcon, MessageSquareDot, BarChart4, CircleGauge, Newspaper, HardHat, LayoutDashboard, ChartBarIncreasing, ReceiptText, Menu, Droplets } from 'lucide-react'
+import { LayoutDashboard, ChartBarIncreasing, ReceiptText, CircleGauge, Droplets, Menu, FileText } from 'lucide-react'
 import { MobileSidebarDrawer } from "./mobile-sidebar-drawer"
 import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
 import { sidebarPermissionMap } from "./sidebar-permission-map"
 import { Skeleton } from "@/components/ui/skeleton"
 
-// TODO: Create modal sidebar and add three dots icon to open it.
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
-  { label: "Relatórios", href: "/apartment-report", icon: ChartBarIncreasing, group: 'Geral' },
-  { label: "Contas", href: "/dealership-readings", icon: ReceiptText, group: 'Geral' },
-  { icon: CircleGauge, label: "Leituras", href: "/readings", },
-  { icon: Newspaper, label: "Novidades", href: "/blog/post-1" },
-  { icon: HardHat, label: "Serviços", href: "/solutions", },
-]
-
 export function MobileBottomNavbar() {
   const [drawerOpen, setDrawerOpen] = React.useState(false)
   const { permissions, loading } = usePermissionsContext();
-  // Função igual ao sidebar
+
   function hasAnyPermission(url: string) {
-    if (url === '/dashboard' || url === '/solutions') return true;
+    if (url === '/dashboard') return true;
     if (!permissions) return false;
     const entity = sidebarPermissionMap[url];
-    if (!entity) return true;
+    if (!entity) return permissions.length > 0;
     return permissions.some((p: any) => p.entity === entity);
   }
-  // Itens principais
+
+  // 4 itens principais no bottom bar + botão "Mais"
   const mainNavItems = [
-    { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
-    { icon: ChartBarIncreasing, label: "Relatórios", href: "/apartment-report" },
+    { icon: LayoutDashboard, label: "Início", href: "/dashboard" },
     { icon: CircleGauge, label: "Leituras", href: "/readings" },
-    { icon: Droplets, label: "Reservatórios", href: "/reservoir-monitoring" },
-    { icon: HardHat, label: "Serviços", href: "/solutions" },
+    { icon: FileText, label: "Filipeta", href: "/meter-report" },
+    { icon: ReceiptText, label: "Contas", href: "/dealership-readings" },
+    { icon: Droplets, label: "Nível", href: "/reservoir-monitoring" },
   ].filter((item) => hasAnyPermission(item.href));
+
   return (
     <>
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border">
@@ -48,7 +40,7 @@ export function MobileBottomNavbar() {
               </li>
             ))
           ) : (
-            mainNavItems.slice(0, 5).map((item) => (
+            mainNavItems.slice(0, 4).map((item) => (
               <li key={item.label}>
                 <a
                   href={item.href}
