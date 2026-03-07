@@ -420,19 +420,38 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
 function useAdminStats() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const refetch = useCallback(() => {
+  const refetch = useCallback(async () => {
     setLoading(true);
-    const base = process.env.NEXT_PUBLIC_API_URL;
-    fetch(`${base}/admin-stats`, { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => { setData(null); setLoading(false); });
+    setError(null);
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL;
+      const res = await fetch(`${base}/admin-stats`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error('[useAdminStats] API error:', res.status, errData);
+        setError(`Erro ${res.status}`);
+        setData(null);
+      } else {
+        const d = await res.json();
+        setData(d);
+      }
+    } catch (e: any) {
+      console.error('[useAdminStats] Fetch error:', e);
+      setError(e.message || 'Erro de conexão');
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { refetch(); }, [refetch]);
 
-  return { data, loading, refetch };
+  return { data, loading, error, refetch };
 }
 
 // ─── ComplexDetailPanel ───────────────────────────────────────────────────────
@@ -612,7 +631,7 @@ function ComplexDetailPanel({ complex, onBack }: { complex: any; onBack: () => v
 
 // ─── AdminDashboard ───────────────────────────────────────────────────────────
 function AdminDashboard() {
-  const { data: stats, loading: loadingStats } = useAdminStats();
+  const { data: stats, loading: loadingStats, error: statsError } = useAdminStats();
   const [selectedComplex, setSelectedComplex] = useState<any>(null);
 
   if (loadingStats) {
@@ -626,6 +645,17 @@ function AdminDashboard() {
         </div>
         <Skeleton className="h-64 w-full rounded-xl" />
         <Skeleton className="h-48 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  // If a complex is selected, show its detail view
+  if (statsError && !stats) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+        <AlertTriangle className="w-8 h-8 text-orange-400" />
+        <p className="text-sm">Erro ao carregar dados: {statsError}</p>
+        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>Tentar novamente</Button>
       </div>
     );
   }
