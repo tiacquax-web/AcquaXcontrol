@@ -1,9 +1,9 @@
 'use client';
 
-import { DateRangeSelector } from "@/components/date-range-selector";
 import {
   Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2,
   AlertTriangle, Ban, Receipt, CalendarCheck2, Building, DoorClosed,
+  BarChart3,
 } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { clearCachedPermissions } from '@/lib/permissions-cache';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
-import ReadingsGraph, { viewOptions, intervals, consumptionChartConfig } from '@/components/ReadingsGraph';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -25,16 +24,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useUserContext } from "@/hooks/useUserContext";
 import { useMeterReport, MeterReportItem } from "@/hooks/useMeterReport";
 import { useDealershipReadings } from "@/hooks/useDealershipReadings";
-import { useReadings } from '@/hooks/useReadings';
-import { useMeter } from '@/hooks/useMeters';
 import { format, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ComplexesList from '@/components/ComplexesList';
-
-import { Apartment, Block, Complex, Meter } from '@prisma/client';
-import { useToast } from '@/hooks/use-toast';
+import { Apartment, Block, Complex } from '@prisma/client';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+} from 'recharts';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -137,66 +135,130 @@ function MonthSelect({ value, onChange }: { value: string; onChange: (v: string)
   );
 }
 
-// ─── MedidorGraphs (inline, same as Leituras page) ───────────────────────────
-function MedidorGraphs({ apartment, dateRange }: { apartment: Apartment; dateRange: { from: Date; to: Date } }) {
-  const { readings, loading } = useReadings({
-    apartmentId: apartment.id,
-    withMeter: true,
-    take: 500,
-    fromDate: dateRange.from,
-    toDate: dateRange.to,
-  });
-  const { meters: aptoMeters, loading: loadingMeters } = useMeter({ apartmentId: apartment.id });
+// ─── MONTH_NAMES ─────────────────────────────────────────────────────────────
+const MONTH_NAMES_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-  const { toast } = useToast();
+// ─── ConsumoAnualGraph ────────────────────────────────────────────────────────
+// Busca consumo mensal (m³) via meter-report para o ano selecionado e plota
+// um gráfico de barras. Apenas meses com dados aparecem no gráfico.
+function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
+  const [selectedYear, setSelectedYear] = useState(String(currentYear));
+
+  // Fetch all 12 months in parallel for the selected year
+  const [monthlyData, setMonthlyData] = useState<{ month: string; consumo: number; label: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
-    const t = setTimeout(() => {
-      toast({
-        title: "😉 Clique na leitura para ver detalhes",
-        description: "Você pode clicar em qualquer leitura para ver mais informações.",
-        duration: 5000,
-      });
-    }, 3000);
-    return () => clearTimeout(t);
-  }, [toast]);
+    setLoading(true);
+    const base = process.env.NEXT_PUBLIC_API_URL;
+    Promise.all(
+      Array.from({ length: 12 }, (_, i) => {
+        const month = String(i + 1).padStart(2, '0');
+        return fetch(`${base}/meter-report?month=${month}&year=${selectedYear}&apartment_id=${apartmentId}`, { credentials: 'include' })
+          .then(r => r.ok ? r.json() : { list: [] })
+          .then(d => {
+            const list: MeterReportItem[] = d.list ?? [];
+            // Sum consumption of all reports for this apartment in this month
+            const totalConsumo = list.reduce((sum, r) => sum + (r.consumption ?? 0), 0);
+            return { monthIndex: i, totalConsumo };
+          })
+          .catch(() => ({ monthIndex: i, totalConsumo: 0 }));
+      })
+    ).then(results => {
+      const data = results
+        .filter(r => r.totalConsumo > 0) // Only months with consumption
+        .map(r => ({
+          month: String(r.monthIndex + 1).padStart(2, '0'),
+          consumo: parseFloat(r.totalConsumo.toFixed(3)),
+          label: MONTH_NAMES_SHORT[r.monthIndex],
+        }));
+      setMonthlyData(data);
+      setLoading(false);
+    });
+  }, [apartmentId, selectedYear]);
 
-  const metersWithReadings = readings.reduce((acc, r) => {
-    if (r.meter?.id && !acc.some(m => m.id === r.meter!.id)) acc.push(r.meter as Meter);
-    return acc;
-  }, [] as Meter[]);
+  const totalAnual = monthlyData.reduce((s, d) => s + d.consumo, 0);
+  const maxConsumo = monthlyData.length > 0 ? Math.max(...monthlyData.map(d => d.consumo)) : 0;
 
-  const metersWithoutReadings = (aptoMeters ?? []).filter(m => !metersWithReadings.some(mwr => mwr.id === m.id));
-
-  if (loading || loadingMeters) return <Skeleton className="h-40 w-full" />;
-
-  if (!metersWithReadings.length && !metersWithoutReadings.length)
-    return <div className="text-center text-muted-foreground py-8">Nenhum medidor encontrado para este apartamento.</div>;
+  // Custom tooltip
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-background border rounded-lg p-3 shadow-lg text-xs">
+          <p className="font-semibold mb-1">{label} / {selectedYear}</p>
+          <p className="text-teal-600 font-bold">{payload[0].value.toFixed(3)} m³</p>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {metersWithReadings.map(meter => (
-        <ReadingsGraph
-          key={meter.id}
-          readings={readings.filter(r => r.meter?.id === meter.id)}
-          register={meter.register}
-          meterId={meter.id}
-          view={viewOptions.simple}
-          interval={intervals.reading}
-          chartConfigOverride={consumptionChartConfig}
-          detailsModalAvailable
-        />
-      ))}
-      {metersWithoutReadings.map(meter => (
-        <Card key={meter.id}>
-          <CardHeader><CardTitle>{meter.register}</CardTitle></CardHeader>
-          <CardContent>
-            <div className="text-center text-muted-foreground py-8">
-              Nenhuma leitura encontrada para este medidor no período selecionado.
+    <Card className="w-full">
+      <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 flex-wrap">
+        <CardTitle className="text-base flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-teal-600" />
+          Consumo Mensal (m³)
+        </CardTitle>
+        <div className="flex items-center gap-2">
+          <Select value={selectedYear} onValueChange={setSelectedYear}>
+            <SelectTrigger className="w-28 h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {yearOptions.map(y => (
+                <SelectItem key={y} value={String(y)} className="text-xs">{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex items-center justify-center h-48 gap-2 text-muted-foreground">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="text-sm">Carregando consumo de {selectedYear}...</span>
+          </div>
+        ) : monthlyData.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+            <Droplets className="w-10 h-10 mb-2 opacity-30" />
+            <p className="text-sm font-medium">Sem dados de consumo</p>
+            <p className="text-xs mt-1">para o ano {selectedYear}</p>
+          </div>
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={monthlyData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis
+                  tick={{ fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={v => `${v}m³`}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="consumo" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                  {monthlyData.map((entry) => (
+                    <Cell
+                      key={entry.month}
+                      fill={entry.consumo === maxConsumo ? 'hsl(var(--chart-1))' : 'hsl(var(--chart-2))'}
+                      fillOpacity={0.85}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="flex items-center justify-between text-xs text-muted-foreground mt-2 pt-2 border-t">
+              <span>{monthlyData.length} {monthlyData.length === 1 ? 'mês' : 'meses'} com consumo</span>
+              <span className="font-semibold text-foreground">Total: {totalAnual.toFixed(3)} m³</span>
             </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -204,18 +266,6 @@ function MedidorGraphs({ apartment, dateRange }: { apartment: Apartment; dateRan
 function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) {
   const { context, loading: ctxLoading } = useUserContext();
   const apartments = context?.apartments ?? [];
-
-  // ── Readings section state (mirrors Leituras page) ──
-  const maxRangeStart = useMemo(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 3);
-    return d;
-  }, []);
-
-  const [readingDateRange, setReadingDateRange] = useState<{ from: Date; to: Date }>({
-    from: maxRangeStart,
-    to: new Date(),
-  });
 
   const [filters, setFilters] = useState<{
     complex: Complex | undefined;
@@ -236,12 +286,6 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
       setFilters({ complex: complex || undefined, block: block || undefined, apartment: singleApartment as any });
     }
   }, [singleApartment]);
-
-  function handleDateChange({ from, to }: { from: Date; to: Date }) {
-    const startOfMonth = new Date(from.getFullYear(), from.getMonth(), 1);
-    const endOfMonth = new Date(to.getFullYear(), to.getMonth() + 1, 0);
-    setReadingDateRange({ from: startOfMonth, to: endOfMonth });
-  }
 
   // ── Filipeta preview state ──
   const [filipetasByMonth, setFilipetasByMonth] = useState<Record<string, MeterReportItem[]>>({});
@@ -271,83 +315,66 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
     });
   }, [ctxLoading, apartments.length]);
 
-  const isMorador = true; // This component is only rendered for moradores
-
   return (
     <>
-      {/* ── Leituras section (mirrors Leituras page) ── */}
+      {/* ── Consumo Anual section ── */}
       <section className="w-full space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-semibold">Leituras do Medidor</h2>
+            <h2 className="text-lg font-semibold">Consumo da Unidade</h2>
           </div>
           <Button variant="outline" size="sm" onClick={() => router.push('/readings')}>
-            Ver página completa <ChevronRight className="w-4 h-4 ml-1" />
+            Ver leituras detalhadas <ChevronRight className="w-4 h-4 ml-1" />
           </Button>
         </div>
 
-        {/* Breadcrumb navigation */}
-        <div className="flex items-center space-x-1 flex-wrap text-sm">
-          <Button
-            variant="link"
-            className="flex items-center px-1 mx-0 py-1"
-            disabled={!!singleApartment}
-            onClick={() => {
-              if (singleApartment) return;
-              setFilters({ complex: undefined, block: undefined, apartment: undefined });
-            }}
-          >
-            <Building2 className="mr-1 h-4 w-4" />
-            {filters.complex?.socialName
-              ? filters.complex.socialName.length > 14
-                ? `${filters.complex.socialName.slice(0, 14)}...`
-                : filters.complex.socialName
-              : 'Condomínios'}
-          </Button>
-          {filters.complex?.id && (
-            <>
-              <ChevronRight className="text-muted-foreground w-4 h-4" />
-              <Button
-                variant="link"
-                className="flex items-center px-1 mx-0 py-1"
-                disabled={!!singleApartment}
-                onClick={() => {
-                  if (singleApartment) return;
-                  setFilters(prev => ({ ...prev, block: undefined, apartment: undefined }));
-                }}
-              >
-                <Building className="mr-1 h-4 w-4" />
-                {filters.block ? (filters.block.name.length > 12 ? `${filters.block.name.slice(0, 12)}...` : filters.block.name) : 'Blocos'}
-              </Button>
-            </>
-          )}
-          {filters.block?.id && (
-            <>
-              <ChevronRight className="text-muted-foreground w-4 h-4" />
-              <Button
-                variant="link"
-                className="flex items-center px-1 mx-0 py-1"
-                disabled={!!singleApartment}
-                onClick={() => {
-                  if (singleApartment) return;
-                  setFilters(prev => ({ ...prev, apartment: undefined }));
-                }}
-              >
-                <DoorClosed className="mr-1 h-4 w-4" />
-                {filters.apartment ? (filters.apartment.name.length > 12 ? `${filters.apartment.name.slice(0, 12)}...` : filters.apartment.name) : 'Apartamentos'}
-              </Button>
-            </>
-          )}
-        </div>
+        {/* Breadcrumb navigation — only for moradores with multiple complexes/apts */}
+        {!singleApartment && (
+          <div className="flex items-center space-x-1 flex-wrap text-sm">
+            <Button
+              variant="link"
+              className="flex items-center px-1 mx-0 py-1"
+              onClick={() => setFilters({ complex: undefined, block: undefined, apartment: undefined })}
+            >
+              <Building2 className="mr-1 h-4 w-4" />
+              {filters.complex?.socialName
+                ? filters.complex.socialName.length > 14
+                  ? `${filters.complex.socialName.slice(0, 14)}...`
+                  : filters.complex.socialName
+                : 'Condomínios'}
+            </Button>
+            {filters.complex?.id && (
+              <>
+                <ChevronRight className="text-muted-foreground w-4 h-4" />
+                <Button
+                  variant="link"
+                  className="flex items-center px-1 mx-0 py-1"
+                  onClick={() => setFilters(prev => ({ ...prev, block: undefined, apartment: undefined }))}
+                >
+                  <Building className="mr-1 h-4 w-4" />
+                  {filters.block ? (filters.block.name.length > 12 ? `${filters.block.name.slice(0, 12)}...` : filters.block.name) : 'Blocos'}
+                </Button>
+              </>
+            )}
+            {filters.block?.id && (
+              <>
+                <ChevronRight className="text-muted-foreground w-4 h-4" />
+                <Button
+                  variant="link"
+                  className="flex items-center px-1 mx-0 py-1"
+                  onClick={() => setFilters(prev => ({ ...prev, apartment: undefined }))}
+                >
+                  <DoorClosed className="mr-1 h-4 w-4" />
+                  {filters.apartment ? (filters.apartment.name.length > 12 ? `${filters.apartment.name.slice(0, 12)}...` : filters.apartment.name) : 'Apartamentos'}
+                </Button>
+              </>
+            )}
+          </div>
+        )}
 
-        {/* Date range selector */}
-        <div>
-          <DateRangeSelector onDateRangeChange={handleDateChange} />
-        </div>
-
-        {/* Complex list */}
-        {!filters.complex?.id && (
+        {/* Complex list — only when no complex selected and multiple options */}
+        {!filters.complex?.id && !singleApartment && (
           <ComplexesList
             viewType="Cards"
             getAvailableForEntity="reading"
@@ -359,11 +386,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
                 );
                 if (aptsInComplex.length === 1) {
                   const apt = aptsInComplex[0];
-                  setFilters({
-                    complex,
-                    block: apt.block as any,
-                    apartment: apt as any,
-                  });
+                  setFilters({ complex, block: apt.block as any, apartment: apt as any });
                   return;
                 }
               }
@@ -403,14 +426,14 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
           return null;
         })()}
 
-        {/* Graphs when apartment selected */}
+        {/* Annual consumption chart when apartment is selected */}
         {filters.apartment?.id && (
-          <MedidorGraphs apartment={filters.apartment} dateRange={readingDateRange} />
+          <ConsumoAnualGraph apartmentId={filters.apartment.id} />
         )}
 
-        {/* Empty state */}
-        {!filters.complex?.id && (
-          <p className="text-xs text-muted-foreground mt-1">Selecione um condomínio para ver as leituras.</p>
+        {/* Empty state when no complex selected and user has multiple */}
+        {!filters.complex?.id && !singleApartment && apartments.length > 1 && (
+          <p className="text-xs text-muted-foreground mt-1">Selecione um condomínio para ver o consumo.</p>
         )}
       </section>
 
