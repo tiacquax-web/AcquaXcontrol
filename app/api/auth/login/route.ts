@@ -39,8 +39,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    // Criar o token JWT
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '1h' });
+    // Criar o token JWT — incluir mustUpdateCredentials para o middleware enforçar /first-access
+    const token = jwt.sign(
+      { userId: user.id, mustUpdateCredentials: user.mustUpdateCredentials ?? false },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
 
     // Criar uma nova sessão no banco de dados
     const session = await prisma.session.create({

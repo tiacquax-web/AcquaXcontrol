@@ -11,6 +11,7 @@ import { ApartmentConsumptionReport } from "@prisma/client";
 interface useApartmentReportsProps {
     complexId?: string;
     blockId?: string;
+    apartmentId?: string;
     search?: string;
     take?: number;
     skip?: number;
@@ -29,7 +30,7 @@ interface useApartmentReportsProps {
     utilityType?: 'water' | 'gas';
 }
 
-export const useApartmentsReports = ({ id, fromDate, toDate, withReadingDate, withTotalDays, withMeters, dealershipReadingId, withApartment, complexId, blockId, search, take = 10, skip = 0, activeSearch = true, withMetersCount, orderBy = 'apartment.name', orderByDirection = 'asc', utilityType }: useApartmentReportsProps) => {
+export const useApartmentsReports = ({ id, fromDate, toDate, withReadingDate, withTotalDays, withMeters, dealershipReadingId, withApartment, complexId, blockId, apartmentId, search, take = 10, skip = 0, activeSearch = true, withMetersCount, orderBy = 'apartment.name', orderByDirection = 'asc', utilityType }: useApartmentReportsProps) => {
     const [apartmentReports, setApartmentReports] = useState<ApartmentWithConsumptionReport[]>([]);
     const [totalCount, setTotalCount] = useState<number>(0);
     const [loading, setLoading] = useState(true);
@@ -48,7 +49,7 @@ export const useApartmentsReports = ({ id, fromDate, toDate, withReadingDate, wi
         const fetchApartmentReports = async () => {
             setLoading(true);
             setError(null);            try {
-                const data = await getApartmentReports({ id, fromDate, toDate, withReadingDate, withTotalDays, withMeters, dealershipReadingId, withMetersCount, withApartment, complexId, blockId, search: debouncedSearch, take, skip, orderBy, orderByDirection, utilityType });
+                const data = await getApartmentReports({ id, fromDate, toDate, withReadingDate, withTotalDays, withMeters, dealershipReadingId, withMetersCount, withApartment, complexId, blockId, apartmentId, search: debouncedSearch, take, skip, orderBy, orderByDirection, utilityType });
                 setTotalCount(data.totalCount);
                 setApartmentReports(data.list);
                 setError(null);
