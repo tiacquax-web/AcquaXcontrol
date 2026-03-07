@@ -362,33 +362,33 @@ async function executeMetersBatch(
         }
     }
 
-    // Executa atualizações em lote usando Promise.all para paralelizar
+    // Executa atualizações em lote com Promise.all (paralelo, ~7s para 120 registros)
     if (toUpdate.length > 0) {
         try {
             const updatePromises = toUpdate.map(item => {
                 const updateData = cleanEntityBody({ ...item.data });
-                // Remove campos imutáveis
                 delete updateData.register;
                 delete updateData.apartmentId;
                 delete updateData.blockId;
                 delete updateData.complexId;
                 delete updateData.companyId;
-                // Adiciona updatedByUserId e updatedAt
                 updateData.updatedByUserId = userId;
                 updateData.updatedAt = new Date();
-
                 return prisma.meter.update({
                     where: { id: item.existingId },
                     data: updateData,
                 });
             });
-
             const results = await Promise.all(updatePromises);
             results.forEach(entity => updated.push(entity));
         } catch (err: any) {
             console.error('Erro ao atualizar medidores em lote:', err);
             toUpdate.forEach(item => {
-                errors.push({ row: item.rowIndex + 2, message: err?.message || 'Erro inesperado ao atualizar medidor.' });
+                errors.push({ row: item.rowIndex + 2, message: err?.message || 'Erro inesperado ao atualizar.' });
+            });
+        }
+    }
+
             });
         }
     }
