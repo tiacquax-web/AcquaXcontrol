@@ -2,7 +2,7 @@
 
 import {
   Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2,
-  AlertTriangle, Ban, Receipt, CalendarCheck2, Building, DoorClosed,
+  AlertTriangle, Ban, Receipt, CalendarCheck2, DoorClosed,
   GaugeCircle, Users, BarChart3, Home, CheckCircle2, Clock,
   ArrowRight, Activity, LogIn, Star, TrendingDown,
 } from "lucide-react";
@@ -24,6 +24,8 @@ import { useUpdateUserPreferences } from '@/hooks/useUserPreferences';
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserContext } from "@/hooks/useUserContext";
 import { useMeterReport, MeterReportItem } from "@/hooks/useMeterReport";
+import { useDealershipReadings } from '@/hooks/useDealershipReadings';
+import { useComplexes } from '@/hooks/useComplexes';
 import { format, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
@@ -136,8 +138,6 @@ function FilipetaMiniSkeleton() {
 }
 
 // ─── ConsumoAnualGraph ────────────────────────────────────────────────────────
-// Mostra consumo mensal em m³ para o ano selecionado.
-// Apenas meses com dados aparecem; seletor de ano auto-seleciona o corrente.
 function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
@@ -145,10 +145,9 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
   const [loading, setLoading] = useState(false);
   const [totalAnual, setTotalAnual] = useState<number | null>(null);
 
-  // Available years: current and up to 3 previous
-  const yearOptions = useMemo(() => {
-    return Array.from({ length: 4 }, (_, i) => String(currentYear - i));
-  }, [currentYear]);
+  const yearOptions = useMemo(() =>
+    Array.from({ length: 4 }, (_, i) => String(currentYear - i)),
+  [currentYear]);
 
   useEffect(() => {
     if (!apartmentId) return;
@@ -157,7 +156,6 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
     setTotalAnual(null);
 
     const base = process.env.NEXT_PUBLIC_API_URL;
-    // Only fetch months up to current month for the current year
     const now = new Date();
     const maxMonth = Number(selectedYear) === currentYear ? now.getMonth() + 1 : 12;
     const months = Array.from({ length: maxMonth }, (_, i) => String(i + 1).padStart(2, '0'));
@@ -170,14 +168,12 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
           .then(r => r.ok ? r.json() : { list: [] })
           .then(d => {
             const list: MeterReportItem[] = d.list ?? [];
-            // Sum consumption of all reports for this apartment in this month
             const total = list.reduce((s, r) => s + (r.consumption ?? 0), 0);
             return { month, consumption: total };
           })
           .catch(() => ({ month, consumption: 0 }))
       )
     ).then(results => {
-      // Only include months that have data (consumption > 0)
       const withData = results.filter(r => r.consumption > 0);
       const data = withData.map(r => ({
         month: MONTH_NAMES_SHORT[Number(r.month) - 1],
@@ -201,18 +197,16 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
           <BarChart3 className="w-5 h-5 text-blue-600" />
           <CardTitle className="text-base font-semibold">Consumo Anual — m³ por mês</CardTitle>
         </div>
-        <div className="flex items-center gap-2">
-          <Select value={selectedYear} onValueChange={setSelectedYear}>
-            <SelectTrigger className="w-24 h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {yearOptions.map(y => (
-                <SelectItem key={y} value={y} className="text-xs">{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <Select value={selectedYear} onValueChange={setSelectedYear}>
+          <SelectTrigger className="w-24 h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {yearOptions.map(y => (
+              <SelectItem key={y} value={y} className="text-xs">{y}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -261,7 +255,7 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
                   {peakMonth.month} — maior consumo ({peakMonth.consumption.toFixed(3)} m³)
                 </span>
               )}
-              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-cyan-400"/>Baixo consumo</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-cyan-400"/>Baixo</span>
               <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-blue-500"/>Normal</span>
             </div>
           </>
@@ -276,17 +270,15 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
   const { context, loading: ctxLoading } = useUserContext();
   const apartments = context?.apartments ?? [];
 
-  // Single apartment (most common case)
   const singleApartment = useMemo(() => {
     if (!context || apartments.length !== 1) return null;
     return apartments[0];
   }, [context, apartments]);
 
-  // Selected apartment when multiple
   const [selectedAptId, setSelectedAptId] = useState<string | null>(null);
   const activeAptId = singleApartment?.id ?? selectedAptId;
 
-  // ── Filipeta preview state (last 3 months) ──
+  // Filipeta preview (last 3 months)
   const [filipetasByMonth, setFilipetasByMonth] = useState<Record<string, MeterReportItem[]>>({});
   const [loadingFilipetas, setLoadingFilipetas] = useState(false);
 
@@ -328,7 +320,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
 
   return (
     <div className="space-y-8">
-      {/* ── Gráfico de consumo anual ── */}
+      {/* ── Consumo Anual ── */}
       <section className="w-full space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
@@ -340,7 +332,6 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
           </Button>
         </div>
 
-        {/* Multiple apartments selector */}
         {!singleApartment && apartments.length > 1 && (
           <div className="flex gap-2 flex-wrap">
             {apartments.map(apt => {
@@ -362,14 +353,12 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
           </div>
         )}
 
-        {/* No apartment */}
         {apartments.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">
             Nenhum apartamento vinculado à sua conta.
           </div>
         )}
 
-        {/* Graph */}
         {activeAptId ? (
           <ConsumoAnualGraph apartmentId={activeAptId} />
         ) : (
@@ -413,6 +402,315 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
         )}
       </section>
     </div>
+  );
+}
+
+// ─── SindicoDashboard ─────────────────────────────────────────────────────────
+// Dashboard para Síndico e Administradora — exibe condomínios vinculados com
+// 3 painéis: Filipetas, Resumo de Consumo, Conta da Concessionária
+function SindicoDashboard() {
+  const { context, loading: ctxLoading } = useUserContext();
+
+  const complexes = useMemo(() => {
+    if (!context) return [];
+    const map = new Map<string, any>();
+    context.complexes.forEach(c => map.set(c.id, c));
+    context.apartments.forEach(a => {
+      const cx = (a.block as any)?.complex;
+      if (cx && !map.has(cx.id)) map.set(cx.id, cx);
+    });
+    return Array.from(map.values());
+  }, [context]);
+
+  const [selectedComplexIdx, setSelectedComplexIdx] = useState(0);
+  const selectedComplex = complexes[selectedComplexIdx] ?? null;
+
+  const [filipetaMonthVal, setFilipetaMonthVal] = useState(allMonthOptions[0].value);
+  const [statsMonthVal, setStatsMonthVal]   = useState(allMonthOptions[0].value);
+  const [billMonthVal, setBillMonthVal]     = useState(allMonthOptions[0].value);
+
+  const filipetaMonthOpt = allMonthOptions.find(o => o.value === filipetaMonthVal)!;
+  const statsMonthOpt    = allMonthOptions.find(o => o.value === statsMonthVal)!;
+  const billMonthOpt     = allMonthOptions.find(o => o.value === billMonthVal)!;
+
+  const { data: filipetaData, loading: loadingFilipetas } = useMeterReport({
+    month: filipetaMonthOpt.month,
+    year:  filipetaMonthOpt.year,
+    complexId: selectedComplex?.id,
+    enabled: !!selectedComplex?.id,
+  });
+
+  const { data: statsData, loading: loadingStats } = useMeterReport({
+    month: statsMonthOpt.month,
+    year:  statsMonthOpt.year,
+    complexId: selectedComplex?.id,
+    enabled: !!selectedComplex?.id,
+  });
+
+  const { dealershipReadings, loading: loadingBill } = useDealershipReadings({
+    complexId: selectedComplex?.id ?? undefined,
+    withDealership: true,
+    withComplex: true,
+    take: 50,
+  });
+
+  const billReading = useMemo(() => {
+    if (!dealershipReadings?.length) return null;
+    return dealershipReadings.find(
+      dr => String(dr.monthRef).padStart(2, '0') === billMonthOpt.month && String(dr.yearRef) === billMonthOpt.year
+    ) ?? null;
+  }, [dealershipReadings, billMonthOpt]);
+
+  const highConsumptionUnits = useMemo(() =>
+    statsData?.list.filter(r => (r.consumption ?? 0) > 15) ?? [], [statsData]);
+  const zeroConsumptionUnits = useMemo(() =>
+    statsData?.list.filter(r => (r.consumption ?? 0) === 0) ?? [], [statsData]);
+  const totalConsumption = useMemo(() =>
+    filipetaData?.list.reduce((s, r) => s + (r.consumption ?? 0), 0) ?? null, [filipetaData]);
+  const totalValue = useMemo(() =>
+    filipetaData?.list.reduce((s, r) => s + (r.totalUnit ?? 0), 0) ?? null, [filipetaData]);
+
+  if (ctxLoading) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-6 w-48" />
+        <div className="flex gap-2 flex-wrap">
+          {[1,2,3].map(i => <Skeleton key={i} className="h-8 w-32" />)}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* ── Condomínio selector ── */}
+      {complexes.length > 0 ? (
+        <section className="w-full space-y-3">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-blue-600" />
+            <h2 className="text-lg font-semibold">Meus Condomínios</h2>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {complexes.map((cx, idx) => (
+              <Button key={cx.id} variant={selectedComplexIdx === idx ? 'default' : 'outline'} size="sm"
+                onClick={() => setSelectedComplexIdx(idx)} className="flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5" />{cx.socialName || cx.aliasName}
+              </Button>
+            ))}
+          </div>
+        </section>
+      ) : (
+        <section className="w-full py-12 flex flex-col items-center text-muted-foreground">
+          <Building2 className="w-12 h-12 mb-3 opacity-30" />
+          <p className="text-sm font-medium">Nenhum condomínio encontrado</p>
+          <p className="text-xs mt-1">Sem condomínios vinculados à sua conta.</p>
+        </section>
+      )}
+
+      {/* ── Three panels ── */}
+      {selectedComplex && (
+        <section className="w-full space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Building2 className="w-4 h-4 text-blue-600" />
+            <span className="font-semibold">{selectedComplex.socialName || selectedComplex.aliasName}</span>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+            {/* Panel 1: Filipeta preview */}
+            <Card className="flex flex-col">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-500" />
+                  Filipetas
+                </CardTitle>
+                <MonthSelect value={filipetaMonthVal} onChange={setFilipetaMonthVal} />
+              </CardHeader>
+              <CardContent className="flex-1 overflow-y-auto max-h-[520px] space-y-3 pr-1">
+                {loadingFilipetas ? (
+                  [1,2].map(i => <FilipetaMiniSkeleton key={i} />)
+                ) : filipetaData && filipetaData.list.length > 0 ? (
+                  <>
+                    {filipetaData.list.slice(0, 5).map(r => <FilipetaMiniCard key={r.id} report={r} />)}
+                    {filipetaData.list.length > 5 && (
+                      <Link href="/meter-report" className="text-xs text-blue-500 flex items-center gap-1 hover:underline">
+                        +{filipetaData.list.length - 5} unidades <ChevronRight className="w-3 h-3" />
+                      </Link>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground py-4 text-center">Sem dados para {filipetaMonthOpt.labelShort}</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Panel 2: Consumption stats */}
+            <Card className="flex flex-col">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-teal-500" />
+                  Resumo de Consumo
+                </CardTitle>
+                <MonthSelect value={statsMonthVal} onChange={setStatsMonthVal} />
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {loadingStats ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-32 w-full" />
+                  </div>
+                ) : statsData && statsData.list.length > 0 ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-xl border p-3 text-center">
+                        <p className="text-[10px] text-muted-foreground mb-1 flex items-center justify-center gap-1">
+                          <Droplets className="w-3 h-3 text-blue-400" /> Consumo Total
+                        </p>
+                        <p className="text-xl font-bold text-teal-600">{totalConsumption?.toFixed(2)} <span className="text-xs font-normal">m³</span></p>
+                      </div>
+                      <div className="rounded-xl border p-3 text-center">
+                        <p className="text-[10px] text-muted-foreground mb-1">Total Arrecadado</p>
+                        <p className="text-lg font-bold text-blue-600">{formatCurrency(totalValue)}</p>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-orange-200 bg-orange-50 dark:bg-orange-950/20 p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0" />
+                        <p className="text-xs font-semibold text-orange-700 dark:text-orange-400">
+                          Consumo &gt; 15 m³ — {highConsumptionUnits.length} unidade{highConsumptionUnits.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      {highConsumptionUnits.length > 0 ? (
+                        <div className="space-y-1 max-h-28 overflow-y-auto">
+                          {highConsumptionUnits.map(r => (
+                            <div key={r.id} className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Bl.{r.apartment?.block?.name} · Apto {r.apartment?.name}</span>
+                              <span className="font-semibold text-orange-600">{r.consumption?.toFixed(2)} m³</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <p className="text-xs text-muted-foreground">Nenhuma unidade acima de 15 m³</p>}
+                    </div>
+                    <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Ban className="w-4 h-4 text-red-500 shrink-0" />
+                        <p className="text-xs font-semibold text-red-700 dark:text-red-400">
+                          Sem consumo — {zeroConsumptionUnits.length} unidade{zeroConsumptionUnits.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      {zeroConsumptionUnits.length > 0 ? (
+                        <div className="space-y-1 max-h-28 overflow-y-auto">
+                          {zeroConsumptionUnits.map(r => (
+                            <div key={r.id} className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Bl.{r.apartment?.block?.name} · Apto {r.apartment?.name}</span>
+                              <span className="font-semibold text-red-600">0.000 m³</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <p className="text-xs text-muted-foreground">Todas as unidades tiveram consumo</p>}
+                    </div>
+                    <div className="rounded-xl border overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted text-muted-foreground">
+                          <tr>
+                            <th className="text-left px-3 py-2">Unidade</th>
+                            <th className="text-right px-3 py-2">m³</th>
+                            <th className="text-right px-3 py-2">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {statsData.list.slice(0, 6).map(r => (
+                            <tr key={r.id} className="hover:bg-muted/40">
+                              <td className="px-3 py-1.5">Bl.{r.apartment?.block?.name} · {r.apartment?.name}</td>
+                              <td className="px-3 py-1.5 text-right text-teal-600 font-medium">{r.consumption?.toFixed(3) ?? '—'}</td>
+                              <td className="px-3 py-1.5 text-right font-medium">{formatCurrency(r.totalUnit)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {statsData.list.length > 6 && (
+                      <Link href="/meter-report" className="text-xs text-blue-500 flex items-center gap-1 hover:underline">
+                        Ver todas as {statsData.totalCount} unidades <ChevronRight className="w-3 h-3" />
+                      </Link>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground py-4 text-center">Sem dados para {statsMonthOpt.labelShort}</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Panel 3: Bill summary */}
+            <Card className="flex flex-col">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-purple-500" />
+                  Conta da Concessionária
+                </CardTitle>
+                <MonthSelect value={billMonthVal} onChange={setBillMonthVal} />
+              </CardHeader>
+              <CardContent>
+                {loadingBill ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-8 w-full" />
+                  </div>
+                ) : billReading ? (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-purple-200 bg-purple-50 dark:bg-purple-950/20 p-4 text-center">
+                      <p className="text-xs text-muted-foreground mb-1">Valor Total da Conta</p>
+                      <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                        {formatCurrency((billReading as any).totalValue)}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border p-3 flex items-center gap-3">
+                      <CalendarCheck2 className="w-5 h-5 text-blue-500 shrink-0" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Data de Leitura</p>
+                        <p className="font-semibold text-sm">
+                          {(billReading as any).readingDate
+                            ? format(new Date((billReading as any).readingDate.includes('T') ? (billReading as any).readingDate : `${(billReading as any).readingDate}T00:00:00`), 'dd/MM/yyyy')
+                            : '—'}
+                        </p>
+                      </div>
+                    </div>
+                    {(billReading as any).nextReadingDate && (
+                      <div className="rounded-xl border p-3 flex items-center gap-3">
+                        <CalendarCheck2 className="w-5 h-5 text-teal-500 shrink-0" />
+                        <div>
+                          <p className="text-xs text-muted-foreground">Próxima Leitura</p>
+                          <p className="font-semibold text-sm">
+                            {format(new Date((billReading as any).nextReadingDate.includes('T') ? (billReading as any).nextReadingDate : `${(billReading as any).nextReadingDate}T00:00:00`), 'dd/MM/yyyy')}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-xl border p-3 text-center">
+                        <p className="text-muted-foreground mb-1">Consumo Total</p>
+                        <p className="font-bold text-teal-600">{(billReading as any).dealershipConsumption ?? (billReading as any).monthlyConsumption ?? '—'} m³</p>
+                      </div>
+                      <div className="rounded-xl border p-3 text-center">
+                        <p className="text-muted-foreground mb-1">Concessionária</p>
+                        <p className="font-semibold truncate">{(billReading as any).dealership?.name ?? '—'}</p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" className="w-full text-xs" asChild>
+                      <Link href="/dealership-readings">Ver detalhes completos</Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                    <Receipt className="w-10 h-10 mb-2 opacity-30" />
+                    <p className="text-sm font-medium">Sem conta registrada</p>
+                    <p className="text-xs mt-1">para {billMonthOpt.labelShort}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      )}
+    </>
   );
 }
 
@@ -477,64 +775,46 @@ function ComplexDetailPanel({ complex, onBack }: { complex: any; onBack: () => v
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Button variant="outline" size="sm" onClick={onBack}>
-          ← Voltar ao panorama
-        </Button>
+        <Button variant="outline" size="sm" onClick={onBack}>← Voltar ao panorama</Button>
         <div className="flex items-center gap-2">
           <Building2 className="w-5 h-5 text-blue-600" />
           <h2 className="text-lg font-semibold">{complex.socialName || complex.aliasName}</h2>
         </div>
         {complex.lastReadingLabel && (
-          <Badge variant="secondary" className="text-xs">
-            Última leitura: {complex.lastReadingLabel}
-          </Badge>
+          <Badge variant="secondary" className="text-xs">Última leitura: {complex.lastReadingLabel}</Badge>
         )}
       </div>
 
-      {/* Info cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <Home className="w-5 h-5 text-blue-400 mx-auto mb-1" />
-            <p className="text-2xl font-bold">{complex.totalApartments ?? '—'}</p>
-            <p className="text-xs text-muted-foreground">Apartamentos</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <Activity className="w-5 h-5 text-teal-400 mx-auto mb-1" />
-            <p className="text-2xl font-bold">{complex.totalMeters ?? '—'}</p>
-            <p className="text-xs text-muted-foreground">Medidores</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            {complex.lastReadingDate ? (
-              <CheckCircle2 className="w-5 h-5 text-green-500 mx-auto mb-1" />
-            ) : (
-              <Clock className="w-5 h-5 text-orange-400 mx-auto mb-1" />
-            )}
-            <p className="text-sm font-bold">{complex.lastReadingLabel ?? 'Sem leitura'}</p>
-            <p className="text-xs text-muted-foreground">Última filipeta</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <TrendingUp className="w-5 h-5 text-purple-400 mx-auto mb-1" />
-            <p className="text-2xl font-bold">{totalConsumption !== null ? `${totalConsumption.toFixed(1)}` : '—'}</p>
-            <p className="text-xs text-muted-foreground">m³ ({statsMonthOpt.labelShort})</p>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="p-4 text-center">
+          <Home className="w-5 h-5 text-blue-400 mx-auto mb-1" />
+          <p className="text-2xl font-bold">{complex.totalApartments ?? '—'}</p>
+          <p className="text-xs text-muted-foreground">Apartamentos</p>
+        </CardContent></Card>
+        <Card><CardContent className="p-4 text-center">
+          <Activity className="w-5 h-5 text-teal-400 mx-auto mb-1" />
+          <p className="text-2xl font-bold">{complex.totalMeters ?? '—'}</p>
+          <p className="text-xs text-muted-foreground">Medidores</p>
+        </CardContent></Card>
+        <Card><CardContent className="p-4 text-center">
+          {complex.lastReadingDate
+            ? <CheckCircle2 className="w-5 h-5 text-green-500 mx-auto mb-1" />
+            : <Clock className="w-5 h-5 text-orange-400 mx-auto mb-1" />}
+          <p className="text-sm font-bold">{complex.lastReadingLabel ?? 'Sem leitura'}</p>
+          <p className="text-xs text-muted-foreground">Última filipeta</p>
+        </CardContent></Card>
+        <Card><CardContent className="p-4 text-center">
+          <TrendingUp className="w-5 h-5 text-purple-400 mx-auto mb-1" />
+          <p className="text-2xl font-bold">{totalConsumption !== null ? `${totalConsumption.toFixed(1)}` : '—'}</p>
+          <p className="text-xs text-muted-foreground">m³ ({statsMonthOpt.labelShort})</p>
+        </CardContent></Card>
       </div>
 
-      {/* Consumption stats for selected month */}
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-sm flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-teal-500" />
-            Resumo de Consumo
+            <TrendingUp className="w-4 h-4 text-teal-500" />Resumo de Consumo
           </CardTitle>
           <MonthSelect value={statsMonthVal} onChange={setStatsMonthVal} />
         </CardHeader>
@@ -548,7 +828,7 @@ function ComplexDetailPanel({ complex, onBack }: { complex: any; onBack: () => v
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl border p-3 text-center">
                   <p className="text-[10px] text-muted-foreground mb-1 flex items-center justify-center gap-1">
-                    <Droplets className="w-3 h-3 text-blue-400" /> Consumo Total
+                    <Droplets className="w-3 h-3 text-blue-400" />Consumo Total
                   </p>
                   <p className="text-xl font-bold text-teal-600">{totalConsumption?.toFixed(2)} <span className="text-xs font-normal">m³</span></p>
                 </div>
@@ -593,7 +873,6 @@ function ComplexDetailPanel({ complex, onBack }: { complex: any; onBack: () => v
                   </div>
                 ) : <p className="text-xs text-muted-foreground">Todas as unidades tiveram consumo</p>}
               </div>
-              {/* Per-unit table */}
               <div className="rounded-xl border overflow-hidden">
                 <table className="w-full text-xs">
                   <thead className="bg-muted text-muted-foreground">
@@ -621,7 +900,7 @@ function ComplexDetailPanel({ complex, onBack }: { complex: any; onBack: () => v
               )}
             </>
           ) : (
-            <p className="text-sm text-muted-foreground py-4 text-center">Sem dados de filipeta para {statsMonthOpt.labelShort}</p>
+            <p className="text-sm text-muted-foreground py-4 text-center">Sem dados para {statsMonthOpt.labelShort}</p>
           )}
         </CardContent>
       </Card>
@@ -629,8 +908,9 @@ function ComplexDetailPanel({ complex, onBack }: { complex: any; onBack: () => v
   );
 }
 
-// ─── AdminDashboard ───────────────────────────────────────────────────────────
-function AdminDashboard() {
+// ─── AdminKPIDashboard ────────────────────────────────────────────────────────
+// Exclusivo para usuários com isSystem = true (programador/admin)
+function AdminKPIDashboard() {
   const { data: stats, loading: loadingStats, error: statsError } = useAdminStats();
   const [selectedComplex, setSelectedComplex] = useState<any>(null);
 
@@ -649,7 +929,6 @@ function AdminDashboard() {
     );
   }
 
-  // If a complex is selected, show its detail view
   if (statsError && !stats) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
@@ -660,14 +939,12 @@ function AdminDashboard() {
     );
   }
 
-  // If a complex is selected, show its detail view
   if (selectedComplex) {
     return <ComplexDetailPanel complex={selectedComplex} onBack={() => setSelectedComplex(null)} />;
   }
 
   return (
     <div className="space-y-8">
-      {/* ── Panorama geral ── */}
       <section className="space-y-4">
         <div className="flex items-center gap-2">
           <Activity className="w-5 h-5 text-blue-600" />
@@ -676,42 +953,27 @@ function AdminDashboard() {
 
         {/* KPI cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4 flex flex-col items-center justify-center text-center gap-1">
-              <Building2 className="w-6 h-6 text-blue-500 mb-1" />
-              <p className="text-3xl font-extrabold text-blue-600">{stats?.totals?.complexes ?? '—'}</p>
-              <p className="text-xs text-muted-foreground font-medium">Condomínios</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 flex flex-col items-center justify-center text-center gap-1">
-              <Home className="w-6 h-6 text-teal-500 mb-1" />
-              <p className="text-3xl font-extrabold text-teal-600">{stats?.totals?.apartments ?? '—'}</p>
-              <p className="text-xs text-muted-foreground font-medium">Apartamentos</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 flex flex-col items-center justify-center text-center gap-1">
-              <Users className="w-6 h-6 text-purple-500 mb-1" />
-              <p className="text-3xl font-extrabold text-purple-600">{stats?.totals?.users ?? '—'}</p>
-              <p className="text-xs text-muted-foreground font-medium">Usuários</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 flex flex-col items-center justify-center text-center gap-1">
-              <GaugeCircle className="w-6 h-6 text-orange-500 mb-1" />
-              <p className="text-3xl font-extrabold text-orange-600">{stats?.totals?.meters ?? '—'}</p>
-              <p className="text-xs text-muted-foreground font-medium">Medidores</p>
-            </CardContent>
-          </Card>
+          {[
+            { icon: <Building2 className="w-6 h-6 text-blue-500 mb-1" />, value: stats?.totals?.complexes, label: 'Condomínios', color: 'text-blue-600' },
+            { icon: <Home className="w-6 h-6 text-teal-500 mb-1" />, value: stats?.totals?.apartments, label: 'Apartamentos', color: 'text-teal-600' },
+            { icon: <Users className="w-6 h-6 text-purple-500 mb-1" />, value: stats?.totals?.users, label: 'Usuários', color: 'text-purple-600' },
+            { icon: <GaugeCircle className="w-6 h-6 text-orange-500 mb-1" />, value: stats?.totals?.meters, label: 'Medidores', color: 'text-orange-600' },
+          ].map(item => (
+            <Card key={item.label}>
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center gap-1">
+                {item.icon}
+                <p className={`text-3xl font-extrabold ${item.color}`}>{item.value ?? '—'}</p>
+                <p className="text-xs text-muted-foreground font-medium">{item.label}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
         {/* Users by type */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Users className="w-4 h-4 text-purple-500" />
-              Usuários por Perfil
+              <Users className="w-4 h-4 text-purple-500" />Usuários por Perfil
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -731,12 +993,11 @@ function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Today's logins */}
+        {/* Today logins */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <LogIn className="w-4 h-4 text-green-500" />
-              Logins de Hoje
+              <LogIn className="w-4 h-4 text-green-500" />Logins de Hoje
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -757,13 +1018,12 @@ function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Logins dos últimos 7 dias */}
+        {/* Logins 7 days chart */}
         {stats?.loginsByDay && stats.loginsByDay.length > 0 && (
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-blue-500" />
-                Logins — últimos 7 dias
+                <BarChart3 className="w-4 h-4 text-blue-500" />Logins — últimos 7 dias
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -774,9 +1034,9 @@ function AdminDashboard() {
                   <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
                   <Tooltip contentStyle={{ fontSize: 11 }} />
                   <Legend wrapperStyle={{ fontSize: 10 }} />
-                  <Bar dataKey="moradores" name="Moradores" stackId="a" fill="#3b82f6" radius={[0,0,0,0]} />
-                  <Bar dataKey="sindicos" name="Síndicos" stackId="a" fill="#14b8a6" radius={[0,0,0,0]} />
-                  <Bar dataKey="administradoras" name="Administradoras" stackId="a" fill="#a855f7" radius={[0,0,0,0]} />
+                  <Bar dataKey="moradores" name="Moradores" stackId="a" fill="#3b82f6" />
+                  <Bar dataKey="sindicos" name="Síndicos" stackId="a" fill="#14b8a6" />
+                  <Bar dataKey="administradoras" name="Administradoras" stackId="a" fill="#a855f7" />
                   <Bar dataKey="programadores" name="Programadores" stackId="a" fill="#f97316" radius={[4,4,0,0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -789,8 +1049,7 @@ function AdminDashboard() {
           <Card className="border-green-200 dark:border-green-800">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2 text-green-700 dark:text-green-400">
-                <CheckCircle2 className="w-4 h-4" />
-                Condomínio mais atualizado
+                <CheckCircle2 className="w-4 h-4" />Condomínio mais atualizado
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -814,8 +1073,7 @@ function AdminDashboard() {
           <Card className="border-orange-200 dark:border-orange-800">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2 text-orange-600 dark:text-orange-400">
-                <Clock className="w-4 h-4" />
-                Condomínio menos atualizado
+                <Clock className="w-4 h-4" />Condomínio menos atualizado
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -837,13 +1095,12 @@ function AdminDashboard() {
           </Card>
         </div>
 
-        {/* Most/least accessed condominiums */}
+        {/* Most/least accessed */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card className="border-blue-200 dark:border-blue-800">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2 text-blue-700 dark:text-blue-400">
-                <Star className="w-4 h-4" />
-                Condomínio mais acessado (30 dias)
+                <Star className="w-4 h-4" />Condomínio mais acessado (30 dias)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -852,9 +1109,8 @@ function AdminDashboard() {
                   <div>
                     <p className="font-semibold">{stats.mostAccessed.socialName}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      <span className="font-medium text-blue-600">{stats.mostAccessed.accessCount ?? 0} usuário{(stats.mostAccessed.accessCount ?? 0) !== 1 ? 's' : ''}</span> acessaram nos últimos 30 dias
+                      <span className="font-medium text-blue-600">{stats.mostAccessed.accessCount ?? 0} usuário{(stats.mostAccessed.accessCount ?? 0) !== 1 ? 's' : ''}</span> nos últimos 30 dias
                     </p>
-                    <p className="text-xs text-muted-foreground">{stats.mostAccessed.totalApartments} aptos</p>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => setSelectedComplex(stats.mostAccessed)}>
                     <ArrowRight className="w-4 h-4" />
@@ -867,8 +1123,7 @@ function AdminDashboard() {
           <Card className="border-gray-200 dark:border-gray-700">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                <TrendingDown className="w-4 h-4" />
-                Condomínio menos acessado (30 dias)
+                <TrendingDown className="w-4 h-4" />Condomínio menos acessado (30 dias)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -877,9 +1132,8 @@ function AdminDashboard() {
                   <div>
                     <p className="font-semibold">{stats.leastAccessed.socialName}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      <span className="font-medium text-gray-600 dark:text-gray-400">{stats.leastAccessed.accessCount ?? 0} usuário{(stats.leastAccessed.accessCount ?? 0) !== 1 ? 's' : ''}</span> acessaram nos últimos 30 dias
+                      <span className="font-medium text-gray-600">{stats.leastAccessed.accessCount ?? 0} usuário{(stats.leastAccessed.accessCount ?? 0) !== 1 ? 's' : ''}</span> nos últimos 30 dias
                     </p>
-                    <p className="text-xs text-muted-foreground">{stats.leastAccessed.totalApartments} aptos</p>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => setSelectedComplex(stats.leastAccessed)}>
                     <ArrowRight className="w-4 h-4" />
@@ -893,33 +1147,27 @@ function AdminDashboard() {
 
       <Separator />
 
-      {/* ── Lista de condomínios ── */}
+      {/* Lista de condomínios */}
       <section className="space-y-4">
         <div className="flex items-center gap-2">
           <Building2 className="w-5 h-5 text-blue-600" />
           <h2 className="text-lg font-semibold">Selecionar Condomínio</h2>
           <span className="text-xs text-muted-foreground ml-1">(clique para ver detalhes)</span>
         </div>
-
         {stats?.complexes && stats.complexes.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {stats.complexes.map((cx: any) => (
-              <Card
-                key={cx.id}
-                className="cursor-pointer hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all"
-                onClick={() => setSelectedComplex(cx)}
-              >
+              <Card key={cx.id} className="cursor-pointer hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all"
+                onClick={() => setSelectedComplex(cx)}>
                 <CardContent className="p-4 space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <Building2 className="w-4 h-4 text-blue-500 shrink-0" />
                       <p className="font-semibold text-sm truncate">{cx.socialName || cx.aliasName}</p>
                     </div>
-                    {cx.lastReadingLabel ? (
-                      <Badge variant="secondary" className="text-[10px] shrink-0">{cx.lastReadingLabel}</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-[10px] shrink-0 text-orange-500 border-orange-300">Sem leitura</Badge>
-                    )}
+                    {cx.lastReadingLabel
+                      ? <Badge variant="secondary" className="text-[10px] shrink-0">{cx.lastReadingLabel}</Badge>
+                      : <Badge variant="outline" className="text-[10px] shrink-0 text-orange-500 border-orange-300">Sem leitura</Badge>}
                   </div>
                   <div className="flex gap-3 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><Home className="w-3 h-3" />{cx.totalApartments} aptos</span>
@@ -975,24 +1223,37 @@ export default function Dashboard() {
     } catch (e: any) { setError(e.message || 'Erro ao salvar preferência.'); }
   };
 
+  // ── Role detection ──────────────────────────────────────────────────────────
+  // isSystem  → Programador / Administrador do sistema  → AdminKPIDashboard
+  // complexes → Síndico / Administradora de empresa     → SindicoDashboard
+  // apartments only → Morador                            → MoradorDashboard
+  const isSystem  = context?.isSystem ?? false;
   const isMorador = useMemo(() => {
     if (!context) return false;
-    return !context.isSystem && context.companyIds.length === 0 && context.complexes.length === 0 && context.blocks.length === 0 && context.apartments.length > 0;
+    return !context.isSystem
+      && context.companyIds.length === 0
+      && context.complexes.length === 0
+      && context.blocks.length === 0
+      && context.apartments.length > 0;
   }, [context]);
+
+  const renderDashboard = () => {
+    if (ctxLoading) {
+      return (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        </div>
+      );
+    }
+    if (isSystem)   return <AdminKPIDashboard />;
+    if (isMorador)  return <MoradorDashboard router={router} />;
+    return <SindicoDashboard />;   // síndico ou administradora
+  };
 
   return (
     <div className="space-y-8 w-full">
       <div className="space-y-8 container mx-auto md:px-6">
-
-        {ctxLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-          </div>
-        ) : isMorador ? (
-          <MoradorDashboard router={router} />
-        ) : (
-          <AdminDashboard />
-        )}
+        {renderDashboard()}
 
         {/* Shared add-meter dialog */}
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
