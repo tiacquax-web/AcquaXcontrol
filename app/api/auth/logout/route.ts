@@ -1,20 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { isSessionValid } from '@/lib/users';
 
 export async function POST(req: NextRequest) {
-    // validate user session
-    const session = req.cookies.get('session')?.value;
-    const validSession = session ? await isSessionValid(session) : false;
-    if (!validSession) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const userId = validSession.userId;
+    const token = req.cookies.get('session')?.value;
 
-    // delete session from database
-    await prisma.session.deleteMany({ where: { userId } });
+    // Mesmo sem sessão válida, apaga o cookie e retorna OK
+    // (não bloqueia o logout por falta de autenticação)
+    if (token) {
+        try {
+            // Tenta deletar a sessão do banco (best-effort)
+            await prisma.session.deleteMany({ where: { token } });
+        } catch (_e) {
+            // Ignora erros de banco — o cookie será apagado de qualquer forma
+        }
+    }
 
-    // delete session cookie
-    const response = NextResponse.redirect('/login', { status: 302 });
-    response.cookies.delete('session');
+    // Apaga o cookie com as mesmas opções usadas na criação
+    const response = NextResponse.json({ ok: true });
+    response.cookies.set('session', '', {
+        httpOnly: true,
+        maxAge: 0,
+        path: '/',
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        expires: new Date(0),
+    });
 
     return response;
 }

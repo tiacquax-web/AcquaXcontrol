@@ -11,15 +11,17 @@ export function FooterSidebar() {
     const {user, error, loading} = useCurrentUser();
 
     function signOut() {
-        // Apaga o cookie de sessão no client e redireciona para /login
-        // (não depende da API que pode falhar com MongoDB deletedAt bug)
-        document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-        // Tenta limpar no servidor também (best-effort)
+        // Chama a API que apaga o cookie HttpOnly no servidor
+        // e só redireciona após a confirmação
         fetch("/api/auth/logout", {
             method: "POST",
-            headers: { "Content-Type": "application/json" }
-        }).catch(() => {/* ignora erros */});
-        window.location.href = "/login";
+            headers: { "Content-Type": "application/json" },
+            credentials: "include", // garante que o cookie é enviado e recebido
+        })
+        .finally(() => {
+            // Redireciona para /login independente do resultado
+            window.location.href = "/login";
+        });
     }
     return (
         <SidebarFooter>
