@@ -25,15 +25,16 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
   const blockName = block ? (block.name || '') : 'referência pendente';
   const apartmentName = apartment ? (apartment.name || '') : 'referência pendente';
 
-  // Endereço do CONDOMÍNIO (complex), com fallback para empresa se vazio
-  const addressSource = (complex?.street) ? complex : company;
-  const companyStreetLine = addressSource
-    ? (addressSource.street
-        ? `${addressSource.street}${addressSource.number ? `, ${addressSource.number}` : ''}${addressSource.neighborhood ? `, ${addressSource.neighborhood}` : ''}`
-        : '')
+  // Endereço do CONDOMÍNIO (complex) — sem fallback para empresa
+  const complexStreet = complex?.street?.trim() || '';
+  const companyStreetLine = complexStreet
+    ? `${complexStreet}${complex.number ? `, ${complex.number}` : ''}${complex.neighborhood ? `, ${complex.neighborhood}` : ''}`
     : '';
-  const companyCityStateLine = addressSource
-    ? `${addressSource.city || ''}${(addressSource.city && addressSource.state) ? ' - ' : ''}${addressSource.state || ''}${addressSource.zipcode || addressSource.cep ? ` - CEP: ${addressSource.zipcode || addressSource.cep}` : ''}`
+  const complexCity = complex?.city?.trim() || '';
+  const complexState = complex?.state?.trim() || '';
+  const complexZip = complex?.zipcode?.trim() || '';
+  const companyCityStateLine = (complexCity || complexState || complexZip)
+    ? `${complexCity}${(complexCity && complexState) ? ' - ' : ''}${complexState}${complexZip ? ` - CEP: ${complexZip}` : ''}`
     : '';
   
   const prevReport1 = history?.[0];
