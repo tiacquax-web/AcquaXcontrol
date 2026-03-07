@@ -1,15 +1,13 @@
 'use client';
 
-
-import { DatePickerComponent } from "@/components/date-picker";
+import { DateRangeSelector } from "@/components/date-range-selector";
 import {
   Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2,
-  AlertTriangle, Ban, Receipt, CalendarCheck2, Plus,
+  AlertTriangle, Ban, Receipt, CalendarCheck2, Building, DoorClosed,
 } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { DateRange } from "react-day-picker";
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { clearCachedPermissions } from '@/lib/permissions-cache';
@@ -27,16 +25,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useUserContext } from "@/hooks/useUserContext";
 import { useMeterReport, MeterReportItem } from "@/hooks/useMeterReport";
 import { useDealershipReadings } from "@/hooks/useDealershipReadings";
+import { useReadings } from '@/hooks/useReadings';
+import { useMeter } from '@/hooks/useMeters';
 import { format, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import ComplexesList from '@/components/ComplexesList';
 
-
+import { Apartment, Block, Complex, Meter } from '@prisma/client';
+import { useToast } from '@/hooks/use-toast';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-const defaultFromDate = new Date(new Date().setDate(new Date().getDate() - 30));
-const currentDay = new Date();
 
 function buildMonthOptions(count = 24) {
   return Array.from({ length: count }, (_, i) => {
@@ -137,12 +137,110 @@ function MonthSelect({ value, onChange }: { value: string; onChange: (v: string)
   );
 }
 
+// ─── MedidorGraphs (inline, same as Leituras page) ───────────────────────────
+function MedidorGraphs({ apartment, dateRange }: { apartment: Apartment; dateRange: { from: Date; to: Date } }) {
+  const { readings, loading } = useReadings({
+    apartmentId: apartment.id,
+    withMeter: true,
+    take: 500,
+    fromDate: dateRange.from,
+    toDate: dateRange.to,
+  });
+  const { meters: aptoMeters, loading: loadingMeters } = useMeter({ apartmentId: apartment.id });
+
+  const { toast } = useToast();
+  useEffect(() => {
+    const t = setTimeout(() => {
+      toast({
+        title: "😉 Clique na leitura para ver detalhes",
+        description: "Você pode clicar em qualquer leitura para ver mais informações.",
+        duration: 5000,
+      });
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const metersWithReadings = readings.reduce((acc, r) => {
+    if (r.meter?.id && !acc.some(m => m.id === r.meter!.id)) acc.push(r.meter as Meter);
+    return acc;
+  }, [] as Meter[]);
+
+  const metersWithoutReadings = (aptoMeters ?? []).filter(m => !metersWithReadings.some(mwr => mwr.id === m.id));
+
+  if (loading || loadingMeters) return <Skeleton className="h-40 w-full" />;
+
+  if (!metersWithReadings.length && !metersWithoutReadings.length)
+    return <div className="text-center text-muted-foreground py-8">Nenhum medidor encontrado para este apartamento.</div>;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {metersWithReadings.map(meter => (
+        <ReadingsGraph
+          key={meter.id}
+          readings={readings.filter(r => r.meter?.id === meter.id)}
+          register={meter.register}
+          meterId={meter.id}
+          detailsModalAvailable
+        />
+      ))}
+      {metersWithoutReadings.map(meter => (
+        <Card key={meter.id}>
+          <CardHeader><CardTitle>{meter.register}</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-center text-muted-foreground py-8">
+              Nenhuma leitura encontrada para este medidor no período selecionado.
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 // ─── MoradorDashboard ─────────────────────────────────────────────────────────
-function MoradorDashboard({ dateRange, setDateRange, preferredMeters, loadingPreferences, setAddDialogOpen, handleRemovePreference, router }: any) {
+function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) {
   const { context, loading: ctxLoading } = useUserContext();
   const apartments = context?.apartments ?? [];
 
-  // Last 3 months filipetas
+  // ── Readings section state (mirrors Leituras page) ──
+  const maxRangeStart = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    return d;
+  }, []);
+
+  const [readingDateRange, setReadingDateRange] = useState<{ from: Date; to: Date }>({
+    from: maxRangeStart,
+    to: new Date(),
+  });
+
+  const [filters, setFilters] = useState<{
+    complex: Complex | undefined;
+    block: Block | undefined;
+    apartment: Apartment | undefined;
+  }>({ complex: undefined, block: undefined, apartment: undefined });
+
+  // Single apartment auto-apply
+  const singleApartment = useMemo(() => {
+    if (!context || apartments.length !== 1) return null;
+    return apartments[0];
+  }, [context, apartments]);
+
+  useEffect(() => {
+    if (singleApartment && !filters.apartment) {
+      const block = singleApartment.block as any;
+      const complex = block?.complex as any;
+      setFilters({ complex: complex || undefined, block: block || undefined, apartment: singleApartment as any });
+    }
+  }, [singleApartment]);
+
+  function handleDateChange({ from, to }: { from: Date; to: Date }) {
+    const startOfMonth = new Date(from.getFullYear(), from.getMonth(), 1);
+    const endOfMonth = new Date(to.getFullYear(), to.getMonth() + 1, 0);
+    setReadingDateRange({ from: startOfMonth, to: endOfMonth });
+  }
+
+  // ── Filipeta preview state ──
   const [filipetasByMonth, setFilipetasByMonth] = useState<Record<string, MeterReportItem[]>>({});
   const [loadingFilipetas, setLoadingFilipetas] = useState(false);
 
@@ -170,47 +268,150 @@ function MoradorDashboard({ dateRange, setDateRange, preferredMeters, loadingPre
     });
   }, [ctxLoading, apartments.length]);
 
+  const isMorador = true; // This component is only rendered for moradores
+
   return (
     <>
-      {/* Graph section */}
+      {/* ── Leituras section (mirrors Leituras page) ── */}
       <section className="w-full space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-blue-600" />
             <h2 className="text-lg font-semibold">Leituras do Medidor</h2>
           </div>
-          <div className="flex items-center gap-2">
-            <DatePickerComponent isRangeable quickSelectDays={[7, 15, 30, 90]} dateRange={dateRange} setDateRange={setDateRange} />
-            <Button variant="default" size="sm" onClick={() => router.push('/readings')}>Ver mais</Button>
-          </div>
+          <Button variant="outline" size="sm" onClick={() => router.push('/readings')}>
+            Ver página completa <ChevronRight className="w-4 h-4 ml-1" />
+          </Button>
         </div>
 
-        <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
-          {loadingPreferences ? (
-            [1, 2].map(i => (
-              <Card key={i} className="h-[320px]">
-                <CardContent className="p-6 space-y-3">
-                  <Skeleton className="h-6 w-1/2" /><Skeleton className="h-[200px] w-full" /><Skeleton className="h-4 w-3/4" />
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            preferredMeters.map((meterId: string) => (
-              <ReadingsGraph key={meterId} meterId={meterId} dateRange={dateRange} detailsModalAvailable onRemove={handleRemovePreference} />
-            ))
+        {/* Breadcrumb navigation */}
+        <div className="flex items-center space-x-1 flex-wrap text-sm">
+          <Button
+            variant="link"
+            className="flex items-center px-1 mx-0 py-1"
+            disabled={!!singleApartment}
+            onClick={() => {
+              if (singleApartment) return;
+              setFilters({ complex: undefined, block: undefined, apartment: undefined });
+            }}
+          >
+            <Building2 className="mr-1 h-4 w-4" />
+            {filters.complex?.socialName
+              ? filters.complex.socialName.length > 14
+                ? `${filters.complex.socialName.slice(0, 14)}...`
+                : filters.complex.socialName
+              : 'Condomínios'}
+          </Button>
+          {filters.complex?.id && (
+            <>
+              <ChevronRight className="text-muted-foreground w-4 h-4" />
+              <Button
+                variant="link"
+                className="flex items-center px-1 mx-0 py-1"
+                disabled={!!singleApartment}
+                onClick={() => {
+                  if (singleApartment) return;
+                  setFilters(prev => ({ ...prev, block: undefined, apartment: undefined }));
+                }}
+              >
+                <Building className="mr-1 h-4 w-4" />
+                {filters.block ? (filters.block.name.length > 12 ? `${filters.block.name.slice(0, 12)}...` : filters.block.name) : 'Blocos'}
+              </Button>
+            </>
           )}
-          {!loadingPreferences && (
-            <Card className="flex items-center justify-center min-h-[180px] cursor-pointer border-dashed border-2 border-primary hover:bg-accent/40 transition-colors" onClick={() => setAddDialogOpen(true)}>
-              <CardContent className="flex flex-col items-center justify-center w-full h-full p-8">
-                <Plus className="w-10 h-10 text-primary" />
-                <span className="mt-2 text-primary font-medium">Adicionar Medidor</span>
-              </CardContent>
-            </Card>
+          {filters.block?.id && (
+            <>
+              <ChevronRight className="text-muted-foreground w-4 h-4" />
+              <Button
+                variant="link"
+                className="flex items-center px-1 mx-0 py-1"
+                disabled={!!singleApartment}
+                onClick={() => {
+                  if (singleApartment) return;
+                  setFilters(prev => ({ ...prev, apartment: undefined }));
+                }}
+              >
+                <DoorClosed className="mr-1 h-4 w-4" />
+                {filters.apartment ? (filters.apartment.name.length > 12 ? `${filters.apartment.name.slice(0, 12)}...` : filters.apartment.name) : 'Apartamentos'}
+              </Button>
+            </>
           )}
         </div>
+
+        {/* Date range selector */}
+        <div>
+          <DateRangeSelector onDateRangeChange={handleDateChange} />
+        </div>
+
+        {/* Complex list */}
+        {!filters.complex?.id && (
+          <ComplexesList
+            viewType="Cards"
+            getAvailableForEntity="reading"
+            setSelectedComplex={(complex) => {
+              if (!complex) return;
+              if (context) {
+                const aptsInComplex = context.apartments.filter(
+                  (a) => (a.block as any)?.complex?.id === complex.id
+                );
+                if (aptsInComplex.length === 1) {
+                  const apt = aptsInComplex[0];
+                  setFilters({
+                    complex,
+                    block: apt.block as any,
+                    apartment: apt as any,
+                  });
+                  return;
+                }
+              }
+              setFilters({ complex, block: undefined, apartment: undefined });
+            }}
+            nameQuery=""
+          />
+        )}
+
+        {/* Multiple apartments in complex: list them */}
+        {filters.complex?.id && !filters.apartment?.id && context && (() => {
+          const aptsInComplex = context.apartments.filter(
+            (a) => (a.block as any)?.complex?.id === filters.complex?.id
+          );
+          if (aptsInComplex.length > 1) {
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {aptsInComplex.map((apt) => (
+                  <Card
+                    key={apt.id}
+                    className="cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => setFilters(prev => ({ ...prev, block: apt.block as any, apartment: apt as any }))}
+                  >
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <DoorClosed className="h-5 w-5" />Apto {apt.name}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground">Bloco {(apt.block as any)?.name}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            );
+          }
+          return null;
+        })()}
+
+        {/* Graphs when apartment selected */}
+        {filters.apartment?.id && (
+          <MedidorGraphs apartment={filters.apartment} dateRange={readingDateRange} />
+        )}
+
+        {/* Empty state */}
+        {!filters.complex?.id && (
+          <p className="text-xs text-muted-foreground mt-1">Selecione um condomínio para ver as leituras.</p>
+        )}
       </section>
 
-      {/* Filipeta preview */}
+      {/* ── Filipeta preview ── */}
       <section className="w-full space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -246,7 +447,7 @@ function MoradorDashboard({ dateRange, setDateRange, preferredMeters, loadingPre
 }
 
 // ─── AdminDashboard ───────────────────────────────────────────────────────────
-function AdminDashboard({ dateRange, setDateRange, preferredMeters, loadingPreferences, setAddDialogOpen, handleRemovePreference, router }: any) {
+function AdminDashboard({ setAddDialogOpen }: any) {
   const { context, loading: ctxLoading } = useUserContext();
 
   // All complexes
@@ -313,12 +514,6 @@ function AdminDashboard({ dateRange, setDateRange, preferredMeters, loadingPrefe
   const totalValue = useMemo(() =>
     filipetaData?.list.reduce((s, r) => s + (r.totalUnit ?? 0), 0) ?? null, [filipetaData]);
 
-  const parseDateStr = (v?: string | null) => {
-    if (!v) return null;
-    const d = new Date(v.includes('T') ? v : `${v}T00:00:00`);
-    return isNaN(d.getTime()) ? null : d;
-  };
-
   return (
     <>
       {/* ── Condomínio selector ── */}
@@ -338,36 +533,7 @@ function AdminDashboard({ dateRange, setDateRange, preferredMeters, loadingPrefe
         </section>
       )}
 
-      {/* ── Graph section ── */}
-      <section className="w-full space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-semibold">Leituras dos Medidores</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <DatePickerComponent isRangeable quickSelectDays={[7, 15, 30, 90]} dateRange={dateRange} setDateRange={setDateRange} />
-            <Button variant="default" size="sm" onClick={() => router.push('/readings')}>Ver mais</Button>
-          </div>
-        </div>
-        <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
-          {loadingPreferences ? (
-            [1, 2].map(i => (
-              <Card key={i} className="h-[320px]">
-                <CardContent className="p-6 space-y-3">
-                  <Skeleton className="h-6 w-1/2" /><Skeleton className="h-[200px] w-full" /><Skeleton className="h-4 w-3/4" />
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            preferredMeters.map((meterId: string) => (
-              <ReadingsGraph key={meterId} meterId={meterId} dateRange={dateRange} detailsModalAvailable onRemove={handleRemovePreference} />
-            ))
-          )}
-        </div>
-      </section>
-
-      {/* ── Three bottom panels ── */}}
+      {/* ── Three bottom panels ── */}
       {selectedComplex && (
         <section className="w-full space-y-4">
           <div className="flex items-center gap-2 mb-1">
@@ -595,10 +761,8 @@ function AdminDashboard({ dateRange, setDateRange, preferredMeters, loadingPrefe
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: defaultFromDate, to: currentDay });
   const router = useRouter();
-  const { preferences, loading: loadingPreferences, refetch: refetchPreferences } = useUserPreferences();
-  const preferredMeters = preferences?.meters || [];
+  const { preferences, refetch: refetchPreferences } = useUserPreferences();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [selectedComplex, setSelectedComplex] = useState<any>(undefined);
   const [selectedBlock, setSelectedBlock] = useState<any>(undefined);
@@ -627,20 +791,10 @@ export default function Dashboard() {
     } catch (e: any) { setError(e.message || 'Erro ao salvar preferência.'); }
   };
 
-  const handleRemovePreference = async (id: string) => {
-    try {
-      const newMeters = (preferences?.meters || []).filter(m => m !== id);
-      await updatePreferences(newMeters);
-      await refetchPreferences();
-    } catch (e: any) { console.error(e); }
-  };
-
   const isMorador = useMemo(() => {
     if (!context) return false;
     return !context.isSystem && context.companyIds.length === 0 && context.complexes.length === 0 && context.blocks.length === 0 && context.apartments.length > 0;
   }, [context]);
-
-  const sharedProps = { dateRange, setDateRange, preferredMeters, loadingPreferences, setAddDialogOpen, handleRemovePreference, router };
 
   return (
     <div className="space-y-8 w-full">
@@ -651,12 +805,14 @@ export default function Dashboard() {
             <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
           </div>
         ) : isMorador ? (
-          <MoradorDashboard {...sharedProps} />
+          <MoradorDashboard router={router} />
         ) : (
-          <AdminDashboard {...sharedProps} />
+          <AdminDashboard
+            setAddDialogOpen={setAddDialogOpen}
+          />
         )}
 
-        {/* Shared add-meter dialog */}
+        {/* Shared add-meter dialog (available for moradores via "Ver página completa" → /readings, but keeping dialog for direct access) */}
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -677,8 +833,6 @@ export default function Dashboard() {
           </DialogContent>
         </Dialog>
       </div>
-
-
     </div>
   );
 }
