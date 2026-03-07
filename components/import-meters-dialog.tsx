@@ -12,6 +12,7 @@ import { Progress } from "./ui/progress"
 import * as XLSX from "xlsx"
 import { useMeterMutations } from "@/hooks/useMeters"
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "./ui/table"
+import { getTypeMeters } from "@/services/typemetersService"
 
 interface ImportMetersDialogProps {
     open: boolean
@@ -41,8 +42,24 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
     const [errors, setErrors] = useState<ImportError[]>([])
     const [importRows, setImportRows] = useState<any[] | null>(null)
     const [invalidRows, setInvalidRows] = useState<InvalidRow[]>([])
+    const [availableTypes, setAvailableTypes] = useState<{ id: string; name: string; acronym: string }[]>([])
     const fileInputRef = useRef<HTMLInputElement>(null)
     const { createMetersFromSheet, loading: loadingMutation } = useMeterMutations()
+
+    // Fetch available meter types when dialog opens
+    useEffect(() => {
+        if (open) {
+            getTypeMeters({}).then((data: any) => {
+                if (Array.isArray(data)) {
+                    setAvailableTypes(data)
+                } else if (data?.list) {
+                    setAvailableTypes(data.list)
+                }
+            }).catch(() => {
+                setAvailableTypes([])
+            })
+        }
+    }, [open])
 
     // Função para verificar se duas linhas são exatamente iguais (exceto posição)
     const areRowsIdentical = (row1: any, row2: any): boolean => {
@@ -569,12 +586,19 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
                             <p>O arquivo deve conter as seguintes colunas:</p>
                             <ul className="list-disc pl-5">
                                 <li>chassi</li>
-                                <li>tipo</li>
+                                <li>
+                                    tipo
+                                    {availableTypes.length > 0 && (
+                                        <span className="ml-1 text-xs text-foreground font-medium">
+                                            — valores aceitos: {availableTypes.map(t => t.name).join(', ')}
+                                        </span>
+                                    )}
+                                </li>
                                 <li>condominio</li>
                                 <li>bloco</li>
                                 <li>apartamento</li>
                                 <li>localizacao (opcional)</li>
-                                <li>leitura_inicial</li>
+                                <li>leitura_inicial (opcional)</li>
                                 <li>ano_fabricacao (opcional)</li>
                                 <li>principal (Sim/Não)</li>
                                 <li>rotacao (Crescente/Decrescente)</li>
