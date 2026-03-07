@@ -44,9 +44,6 @@ export default function MeterReportPage() {
   // Search text for filtering by apartment/block (admin/sindico only)
   const [searchText, setSearchText] = useState('');
 
-  // Whether to fetch
-  const [fetchEnabled, setFetchEnabled] = useState(false);
-
   // Resident helpers
   const isMorador = useMemo(() => {
     if (!context) return false;
@@ -83,12 +80,6 @@ export default function MeterReportPage() {
     }
   }, [contextLoading, isMorador, userComplexes, selectedComplexId]);
 
-  // Auto-enable fetch when we have all required data
-  useEffect(() => {
-    if (!selectedMonthOption) return;
-    setFetchEnabled(!!selectedComplexId);
-  }, [selectedMonthOption, selectedComplexId]);
-
   // For moradores with single apt in complex, pass apartment_id directly
   const apartmentIdFilter = useMemo(() => {
     if (!isMorador) return undefined;
@@ -101,7 +92,7 @@ export default function MeterReportPage() {
     year: selectedMonthOption.year,
     complexId: selectedComplexId,
     apartmentId: apartmentIdFilter,
-    enabled: fetchEnabled,
+    enabled: !!selectedComplexId && !!selectedMonthOption?.month && !!selectedMonthOption?.year,
   });
 
   // Client-side filter by search text (block name or apartment name)
