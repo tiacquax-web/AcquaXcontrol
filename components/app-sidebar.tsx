@@ -9,7 +9,7 @@ import {
   CircleGauge, Building2, Building, DoorClosed,
   Gauge, ShieldCheck, HousePlus, ReceiptText,
   ChartBarIncreasing, LayoutDashboard, GaugeCircle,
-  Radio, UsersRound, Droplets, FileText, TrendingUp,
+  Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen,
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
@@ -66,6 +66,12 @@ const items = [
     title: "Medidores de Nível",
     url: "/reservoir-monitoring",
     icon: Droplets,
+    group: 'Geral',
+  },
+  {
+    title: "Guia de Uso",
+    url: "/guia",
+    icon: BookOpen,
     group: 'Geral',
   },
 
