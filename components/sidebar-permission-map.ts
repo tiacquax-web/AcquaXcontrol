@@ -17,4 +17,5 @@ export const sidebarPermissionMap: Record<string, string> = {
   '/devices': 'iotDevice',
   '/users': 'user',
   '/roles': 'role',
+  '/guia': 'system',
 };
