@@ -165,7 +165,7 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
         {/* ── Foto do medidor — TOPO no mobile, destaque total ────────────────── */}
         {/* A foto vem ANTES de tudo no mobile para aparecer sem scroll */}
         <div
-          className={`w-full relative bg-gray-900 ${photoUrl ? 'cursor-pointer group' : ''}`}
+          className={`w-full relative bg-black ${photoUrl ? 'cursor-pointer group' : ''}`}
           onClick={photoUrl ? () => setPhotoModalOpen(true) : undefined}
           role={photoUrl ? 'button' : undefined}
           aria-label={photoUrl ? 'Ampliar foto do medidor' : undefined}
@@ -173,19 +173,19 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
           {photoUrl ? (
             <>
               {/*
-                * Altura grande no mobile (260px) para mostrar o mostrador completo.
-                * object-position: center 65% foca ligeiramente abaixo do centro,
-                * onde o mostrador/numeração do medidor costuma estar.
-                * No desktop fica menor (176px) porque a foto é lateral.
+                * object-contain: mostra a foto INTEIRA sem cortar nada.
+                * Fundo preto disfarce as bordas quando a foto não preenche todo o espaço.
+                * Assim a numeração do mostrador fica sempre visível, independente de
+                * como o leiturista tirou a foto (landscape, portrait, zoom, etc).
+                * Altura 280px mobile / 200px desktop.
               */}
-              <div className="relative w-full h-[260px] sm:h-[176px] overflow-hidden">
+              <div className="relative w-full h-[280px] sm:h-[200px] overflow-hidden bg-black">
                 <Image
                   src={photoUrl}
                   alt="Foto do medidor"
                   fill
                   sizes="(max-width: 640px) 100vw, 176px"
-                  className="object-cover transition-transform duration-300 group-hover:scale-105"
-                  style={{ objectPosition: 'center 65%' }}
+                  className="object-contain transition-transform duration-300 group-hover:scale-105"
                   priority
                 />
 
