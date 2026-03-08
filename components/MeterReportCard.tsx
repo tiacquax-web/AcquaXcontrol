@@ -1,13 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { Droplets, Calendar, Building2, DoorClosed } from 'lucide-react';
+import { Droplets, Calendar, Building2, DoorClosed, ZoomIn, X } from 'lucide-react';
 
 interface MeterReportCardProps {
   report: MeterReportItem;
@@ -30,10 +30,57 @@ const parseDateYmd = (value?: string | null): Date | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+// ─── Modal de Foto Expandida ───────────────────────────────────────────────────
+// Permite ver a foto completa do medidor ao tocar/clicar nela
+interface PhotoModalProps {
+  url: string;
+  onClose: () => void;
+}
+
+const PhotoModal: React.FC<PhotoModalProps> = ({ url, onClose }) => {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+    >
+      {/* Botão fechar */}
+      <button
+        className="absolute top-4 right-4 z-10 bg-white/20 hover:bg-white/30 rounded-full p-2 text-white transition-colors"
+        onClick={onClose}
+        aria-label="Fechar foto"
+      >
+        <X className="w-6 h-6" />
+      </button>
+
+      {/* Instrução */}
+      <p className="absolute top-4 left-4 text-white/70 text-xs">
+        Toque para fechar
+      </p>
+
+      {/* Foto em tamanho completo */}
+      <div
+        className="relative w-full max-w-md max-h-[85vh] rounded-xl overflow-hidden shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Usamos <img> nativo para garantir que a foto inteira seja mostrada sem crop */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt="Foto completa do medidor"
+          className="w-full h-auto object-contain"
+          style={{ maxHeight: '85vh' }}
+        />
+      </div>
+    </div>
+  );
+};
+
+// ─── Componente principal ──────────────────────────────────────────────────────
 const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress = true }) => {
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
+
   const { apartment, lastReading, history, dealershipReading } = report;
   const complex = apartment?.block?.complex as any;
-  const company = complex?.company as any;
   const block = apartment?.block as any;
 
   const complexName = complex?.socialName || complex?.aliasName || 'Condomínio';
@@ -43,9 +90,6 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
   const hasAddress = complex?.street?.trim();
   const addressLine = hasAddress
     ? `${complex.street}${complex.number ? `, ${complex.number}` : ''}${complex.neighborhood ? ` - ${complex.neighborhood}` : ''}`
-    : '';
-  const cityLine = (complex?.city || complex?.state)
-    ? `${complex.city || ''}${complex.city && complex.state ? ' - ' : ''}${complex.state || ''}${complex.zipcode ? ` - CEP: ${complex.zipcode}` : ''}`
     : '';
 
   const prevReport1 = history?.[0];
@@ -57,7 +101,6 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
   const monthYearLabel = monthName
     ? `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} / ${report.yearRef}`
     : `${report.monthRef}/${report.yearRef}`;
-  const monthRefStr = String(report.monthRef).padStart(2, '0');
 
   const currentReadingDate = parseReadAtDate(lastReading?.readAtDate);
   const previousReadingDate = parseReadAtDate(prevReport1?.lastReading?.readAtDate);
@@ -78,64 +121,99 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
 
   const emissionDate = format(new Date(), "dd/MM/yyyy 'às' HH:mm");
 
+  const photoUrl = lastReading?.urlCover ? sanitizeImageUrl(lastReading.urlCover) : null;
+
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col w-full">
+    <>
+      {/* ── Modal de foto expandida ─────────────────────────────────────────── */}
+      {photoModalOpen && photoUrl && (
+        <PhotoModal url={photoUrl} onClose={() => setPhotoModalOpen(false)} />
+      )}
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <Building2 className="w-4 h-4 shrink-0" />
-          <span className="font-semibold text-sm truncate">{complexName}</span>
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col w-full">
+
+        {/* ── Header ──────────────────────────────────────────────────────────── */}
+        <div className="bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Building2 className="w-4 h-4 shrink-0" />
+            <span className="font-semibold text-sm truncate">{complexName}</span>
+          </div>
+          <Badge variant="secondary" className="text-xs bg-white/20 text-white border-white/30 shrink-0 whitespace-nowrap">
+            {monthYearLabel}
+          </Badge>
         </div>
-        <Badge variant="secondary" className="text-xs bg-white/20 text-white border-white/30 shrink-0 whitespace-nowrap">
-          {monthYearLabel}
-        </Badge>
-      </div>
 
-      {/* ── Unit info ──────────────────────────────────────────────────────── */}
-      <div className="px-4 py-2 border-b bg-gray-50 flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-1 text-sm text-gray-700">
-          <Building2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-          <span>Bloco {blockName}</span>
+        {/* ── Unit info ───────────────────────────────────────────────────────── */}
+        <div className="px-4 py-2 border-b bg-gray-50 flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-1 text-sm text-gray-700">
+            <Building2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <span>Bloco {blockName}</span>
+          </div>
+          <div className="flex items-center gap-1 text-sm text-gray-700">
+            <DoorClosed className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <span>
+              {apartmentName && (apartmentName.toLowerCase().includes('casa') || apartmentName.toLowerCase().includes('apto'))
+                ? apartmentName
+                : `Apto ${apartmentName}`}
+            </span>
+          </div>
+          {showAddress && addressLine && (
+            <p className="text-xs text-gray-400 hidden sm:block truncate">{addressLine}</p>
+          )}
         </div>
-        <div className="flex items-center gap-1 text-sm text-gray-700">
-          <DoorClosed className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-          <span>
-            {apartmentName && (apartmentName.toLowerCase().includes('casa') || apartmentName.toLowerCase().includes('apto'))
-              ? apartmentName
-              : `Apto ${apartmentName}`}
-          </span>
-        </div>
-        {showAddress && addressLine && (
-          <p className="text-xs text-gray-400 hidden sm:block truncate">{addressLine}</p>
-        )}
-      </div>
 
-      {/* ── Main content ───────────────────────────────────────────────────── */}
-      {/* Mobile: foto em cima, dados embaixo. Desktop (sm+): lado a lado */}
-      <div className="flex flex-col sm:flex-row flex-1">
+        {/* ── Foto do medidor — TOPO no mobile, destaque total ────────────────── */}
+        {/* A foto vem ANTES de tudo no mobile para aparecer sem scroll */}
+        <div
+          className={`w-full relative bg-gray-900 ${photoUrl ? 'cursor-pointer group' : ''}`}
+          onClick={photoUrl ? () => setPhotoModalOpen(true) : undefined}
+          role={photoUrl ? 'button' : undefined}
+          aria-label={photoUrl ? 'Ampliar foto do medidor' : undefined}
+        >
+          {photoUrl ? (
+            <>
+              {/*
+                * Altura grande no mobile (260px) para mostrar o mostrador completo.
+                * object-position: center 65% foca ligeiramente abaixo do centro,
+                * onde o mostrador/numeração do medidor costuma estar.
+                * No desktop fica menor (176px) porque a foto é lateral.
+              */}
+              <div className="relative w-full h-[260px] sm:h-[176px] overflow-hidden">
+                <Image
+                  src={photoUrl}
+                  alt="Foto do medidor"
+                  fill
+                  sizes="(max-width: 640px) 100vw, 176px"
+                  className="object-cover transition-transform duration-300 group-hover:scale-105"
+                  style={{ objectPosition: 'center 65%' }}
+                  priority
+                />
 
-        {/* Photo */}
-        <div className="sm:w-44 sm:shrink-0 sm:border-r border-b sm:border-b-0 bg-gray-50 flex items-stretch p-2">
-          {lastReading?.urlCover ? (
-            <div className="relative w-full min-h-[180px] sm:min-h-[176px] overflow-hidden rounded-md">
-              <Image
-                src={sanitizeImageUrl(lastReading.urlCover)}
-                alt="Foto do medidor"
-                fill
-                sizes="(max-width: 640px) 100vw, 176px"
-                className="object-cover"
-              />
-            </div>
+                {/* Overlay escuro suave no hover + ícone de zoom */}
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/50 rounded-full p-3">
+                    <ZoomIn className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+
+                {/* Badge "Toque para ampliar" — visível só no mobile */}
+                <div className="absolute bottom-2 right-2 sm:hidden bg-black/50 text-white text-[10px] rounded-full px-2 py-0.5 flex items-center gap-1">
+                  <ZoomIn className="w-3 h-3" />
+                  Ampliar
+                </div>
+              </div>
+            </>
           ) : (
-            <div className="w-full min-h-[140px] sm:min-h-[176px] rounded-md bg-gray-200 border border-gray-300 flex items-center justify-center">
-              <Droplets className="w-10 h-10 text-gray-400" />
+            /* Placeholder quando não tem foto */
+            <div className="w-full h-[140px] sm:h-[176px] bg-gray-100 border-b flex flex-col items-center justify-center gap-2">
+              <Droplets className="w-10 h-10 text-gray-300" />
+              <p className="text-gray-400 text-xs">Sem foto do medidor</p>
             </div>
           )}
         </div>
 
-        {/* Data grid */}
-        <div className="flex-1 flex flex-col divide-y divide-gray-100">
+        {/* ── Dados da leitura ────────────────────────────────────────────────── */}
+        <div className="flex flex-col divide-y divide-gray-100">
 
           {/* Leitura Ant. / Atual / Consumo */}
           <div className="grid grid-cols-3 text-center divide-x divide-gray-100">
@@ -169,13 +247,9 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
                 <Calendar className="w-3 h-3 shrink-0" />
                 Período de Consumo
               </p>
-              <p className="text-gray-700 text-xs">
-                {periodStartFormatted}
-              </p>
+              <p className="text-gray-700 text-xs">{periodStartFormatted}</p>
               <p className="text-gray-400 text-[10px]">→</p>
-              <p className="text-gray-700 text-xs">
-                {periodEndFormatted}
-              </p>
+              <p className="text-gray-700 text-xs">{periodEndFormatted}</p>
             </div>
             <div className="px-3 py-2.5">
               <p className="text-gray-400 text-[11px] font-medium mb-1 flex items-center gap-1">
@@ -207,40 +281,40 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
           </div>
 
         </div>
-      </div>
 
-      {/* ── History ────────────────────────────────────────────────────────── */}
-      <div className="border-t bg-gray-50 px-4 py-3">
-        <p className="text-xs font-semibold text-gray-500 mb-2">Histórico de Consumo</p>
-        <div className="grid grid-cols-3 gap-2 text-center">
-          {[prevReport2, prevReport1, report].map((r, i) => {
-            const isCurrentMonth = i === 2;
-            const mRef = r ? String(r.monthRef).padStart(2, '0') : null;
-            const yRef = r?.yearRef;
-            const cons = r?.consumption;
-            return (
-              <div
-                key={i}
-                className={`rounded-lg border px-2 py-2 ${isCurrentMonth ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}
-              >
-                <p className={`text-[11px] font-medium mb-0.5 ${isCurrentMonth ? 'text-blue-600' : 'text-gray-500'}`}>
-                  {mRef && yRef ? `${mRef}/${yRef}` : '—'}
-                </p>
-                <p className={`font-bold text-sm ${isCurrentMonth ? 'text-blue-700' : 'text-gray-700'}`}>
-                  {cons != null ? `${cons.toFixed(3)} m³` : '—'}
-                </p>
-              </div>
-            );
-          })}
+        {/* ── History ─────────────────────────────────────────────────────────── */}
+        <div className="border-t bg-gray-50 px-4 py-3">
+          <p className="text-xs font-semibold text-gray-500 mb-2">Histórico de Consumo</p>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            {[prevReport2, prevReport1, report].map((r, i) => {
+              const isCurrentMonth = i === 2;
+              const mRef = r ? String(r.monthRef).padStart(2, '0') : null;
+              const yRef = r?.yearRef;
+              const cons = r?.consumption;
+              return (
+                <div
+                  key={i}
+                  className={`rounded-lg border px-2 py-2 ${isCurrentMonth ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}
+                >
+                  <p className={`text-[11px] font-medium mb-0.5 ${isCurrentMonth ? 'text-blue-600' : 'text-gray-500'}`}>
+                    {mRef && yRef ? `${mRef}/${yRef}` : '—'}
+                  </p>
+                  <p className={`font-bold text-sm ${isCurrentMonth ? 'text-blue-700' : 'text-gray-700'}`}>
+                    {cons != null ? `${cons.toFixed(3)} m³` : '—'}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Footer ──────────────────────────────────────────────────────────── */}
+        <div className="border-t px-4 py-1.5 text-xs text-gray-400 flex justify-between items-center">
+          <span>Emitido em {emissionDate}</span>
+          <span className="text-blue-500 font-medium">AcquaX</span>
         </div>
       </div>
-
-      {/* ── Footer ─────────────────────────────────────────────────────────── */}
-      <div className="border-t px-4 py-1.5 text-xs text-gray-400 flex justify-between items-center">
-        <span>Emitido em {emissionDate}</span>
-        <span className="text-blue-500 font-medium">AcquaX</span>
-      </div>
-    </div>
+    </>
   );
 };
 
