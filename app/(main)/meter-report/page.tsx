@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Building2, FileText, Loader2, AlertCircle, Info, Search, X } from 'lucide-react';
+import { Building2, FileText, Loader2, AlertCircle, Info, Search, X, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -133,7 +133,7 @@ export default function MeterReportPage() {
       <Separator />
 
       {/* Filters row */}
-      <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
+      <div className="meter-report-filters flex flex-col sm:flex-row gap-3 flex-wrap items-end">
         {/* Month selector */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Mês de Referência</label>
@@ -276,9 +276,21 @@ export default function MeterReportPage() {
                     </>
                   )}
                 </p>
-                {searchText && filteredList.length === 0 && (
-                  <p className="text-sm text-muted-foreground italic">Nenhuma unidade corresponde à busca.</p>
-                )}
+                <div className="flex items-center gap-2">
+                  {searchText && filteredList.length === 0 && (
+                    <p className="text-sm text-muted-foreground italic">Nenhuma unidade corresponde à busca.</p>
+                  )}
+                  {/* Botão imprimir — oculto na impressão */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="meter-report-print-bar flex items-center gap-2"
+                    onClick={() => window.print()}
+                  >
+                    <Printer className="w-4 h-4" />
+                    Imprimir filipetas
+                  </Button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">

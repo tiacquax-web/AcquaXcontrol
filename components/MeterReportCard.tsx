@@ -7,7 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { Droplets, Calendar, Building2, DoorClosed, ZoomIn, X } from 'lucide-react';
+import { Droplets, Calendar, Building2, DoorClosed, ZoomIn, X, Printer } from 'lucide-react';
 
 interface MeterReportCardProps {
   report: MeterReportItem;
@@ -127,10 +127,12 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
     <>
       {/* ── Modal de foto expandida ─────────────────────────────────────────── */}
       {photoModalOpen && photoUrl && (
-        <PhotoModal url={photoUrl} onClose={() => setPhotoModalOpen(false)} />
+        <div className="meter-photo-modal">
+          <PhotoModal url={photoUrl} onClose={() => setPhotoModalOpen(false)} />
+        </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col w-full">
+      <div className="meter-report-card-print bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col w-full">
 
         {/* ── Header ──────────────────────────────────────────────────────────── */}
         <div className="bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-2">
@@ -165,7 +167,7 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
         {/* ── Foto do medidor — TOPO no mobile, destaque total ────────────────── */}
         {/* A foto vem ANTES de tudo no mobile para aparecer sem scroll */}
         <div
-          className={`w-full relative bg-black ${photoUrl ? 'cursor-pointer group' : ''}`}
+          className={`meter-report-photo-area w-full relative bg-black ${photoUrl ? 'cursor-pointer group' : ''}`}
           onClick={photoUrl ? () => setPhotoModalOpen(true) : undefined}
           role={photoUrl ? 'button' : undefined}
           aria-label={photoUrl ? 'Ampliar foto do medidor' : undefined}

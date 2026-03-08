@@ -216,6 +216,42 @@
     border: 1px solid black;
   }
 
+  /* ── Filipeta Medição (MeterReportCard) — impressão ── */
+  /* Oculta botões, header de filtros e navegação */
+  .meter-report-print-bar,
+  .meter-report-filters {
+    display: none !important;
+  }
+
+  /* Cada card ocupa uma página própria */
+  .meter-report-card-print {
+    page-break-after: always;
+    page-break-inside: avoid;
+    break-after: page;
+    break-inside: avoid;
+    border: 1px solid #333 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  .meter-report-card-print:last-child {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Foto do medidor: mostra inteira no print */
+  .meter-report-photo-area {
+    height: 220px !important;
+    background: #000 !important;
+  }
+
+  /* Modal de zoom: oculto no print */
+  .meter-photo-modal {
+    display: none !important;
+  }
+
   /* Last report should not have page break */
   .filipeta-grid-report:last-child {
     page-break-after: avoid;

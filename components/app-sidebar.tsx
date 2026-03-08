@@ -9,7 +9,7 @@ import {
   CircleGauge, Building2, Building, DoorClosed,
   Gauge, ShieldCheck, HousePlus, ReceiptText,
   ChartBarIncreasing, LayoutDashboard, GaugeCircle,
-  Radio, UsersRound, Droplets, FileText,
+  Radio, UsersRound, Droplets, FileText, TrendingUp,
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
@@ -48,6 +48,12 @@ const items = [
     title: "Filipeta Medição",
     url: "/meter-report",
     icon: FileText,
+    group: 'Geral',
+  },
+  {
+    title: "Levantamento",
+    url: "/levantamento",
+    icon: TrendingUp,
     group: 'Geral',
   },
   {
