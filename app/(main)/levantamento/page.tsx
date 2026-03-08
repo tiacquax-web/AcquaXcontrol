@@ -11,7 +11,7 @@ import {
 import {
   TrendingUp, TrendingDown, Minus, Building2, Calendar,
   Droplets, Loader2, AlertCircle, Info, Search, X,
-  Printer, ChevronDown, ChevronUp,
+  Printer, ChevronDown, ChevronUp, Camera, ZoomIn,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -66,9 +66,7 @@ interface MonthData {
   error: string | null;
 }
 
-// ─── Componente de foto do medidor ────────────────────────────────────────────
-// Na TELA: thumbnail clicável que abre modal em tela cheia
-// Na IMPRESSÃO: foto grande e estática (sem position:absolute, sem next/image)
+// ─── Componente de foto do medidor (thumbnail na tabela) ──────────────────────
 function MeterPhoto({ url, alt, monthLabel }: { url: string; alt?: string; monthLabel?: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -125,6 +123,132 @@ function MeterPhoto({ url, alt, monthLabel }: { url: string; alt?: string; month
         </div>
       )}
     </>
+  );
+}
+
+// ─── Card de foto do medidor para moradores ───────────────────────────────────
+// Exibe foto em tamanho grande com todos os dados abaixo
+function MeterPhotoCard({
+  photoUrl, label, currReading, prevReading, consumption, totalUnit, partial, waterSewage,
+}: {
+  photoUrl: string | null;
+  label: string;
+  currReading: number | null;
+  prevReading: number | null;
+  consumption: number | null;
+  totalUnit: number | null;
+  partial: number | null;
+  waterSewage: number | null;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="morador-meter-card bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col">
+      {/* Badge do mês */}
+      <div className="bg-teal-600 text-white text-center text-xs font-bold uppercase tracking-wider py-1.5 px-3">
+        {label}
+      </div>
+
+      {/* FOTO — grande, sem corte */}
+      <div className="relative bg-black flex items-center justify-center" style={{ minHeight: '220px' }}>
+        {photoUrl ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photoUrl}
+              alt={`Medidor ${label}`}
+              className="morador-meter-photo w-full object-contain"
+              style={{ maxHeight: '280px', minHeight: '220px' }}
+            />
+            <button
+              onClick={() => setOpen(true)}
+              className="morador-zoom-btn absolute bottom-2 right-2 bg-black/60 hover:bg-black/80 text-white rounded-full p-1.5 transition-all print:hidden"
+              title="Ampliar foto"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </button>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-2 py-10 text-gray-500">
+            <Camera className="w-10 h-10 opacity-30" />
+            <span className="text-xs text-gray-400">Sem foto neste mês</span>
+          </div>
+        )}
+      </div>
+
+      {/* Dados de leitura */}
+      <div className="p-3 flex flex-col gap-2 text-xs">
+        {/* Leituras */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-gray-50 rounded-lg p-2 text-center">
+            <div className="text-gray-400 text-[10px] uppercase tracking-wide mb-0.5">Leit. Anterior</div>
+            <div className="font-semibold text-gray-700">{fmt(prevReading)}</div>
+            <div className="text-[10px] text-gray-400">m³</div>
+          </div>
+          <div className="bg-blue-50 rounded-lg p-2 text-center">
+            <div className="text-blue-400 text-[10px] uppercase tracking-wide mb-0.5">Leit. Atual</div>
+            <div className="font-bold text-blue-700 text-base">{fmt(currReading)}</div>
+            <div className="text-[10px] text-blue-400">m³</div>
+          </div>
+        </div>
+
+        {/* Consumo */}
+        <div className="bg-teal-50 rounded-lg p-2 text-center">
+          <div className="text-teal-500 text-[10px] uppercase tracking-wide mb-0.5">Consumo do Período</div>
+          <div className="font-bold text-teal-700 text-lg">{fmt(consumption)} <span className="text-sm font-normal">m³</span></div>
+        </div>
+
+        {/* Valores */}
+        {(waterSewage != null || partial != null || totalUnit != null) && (
+          <div className="border-t border-gray-100 pt-2 flex flex-col gap-1">
+            {waterSewage != null && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Água/Esgoto</span>
+                <span className="font-medium text-gray-700">{fmtBRL(waterSewage)}</span>
+              </div>
+            )}
+            {partial != null && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Área Comum</span>
+                <span className="font-medium text-gray-700">{fmtBRL(partial)}</span>
+              </div>
+            )}
+            {totalUnit != null && (
+              <div className="flex justify-between border-t border-gray-100 pt-1 mt-0.5">
+                <span className="font-bold text-gray-700">Total a Pagar</span>
+                <span className="font-bold text-blue-700">{fmtBRL(totalUnit)}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Modal de zoom (apenas tela) */}
+      {open && photoUrl && (
+        <div
+          className="levantamento-photo-modal fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 print:hidden"
+          onClick={() => setOpen(false)}
+        >
+          <p className="absolute top-4 left-4 text-white/60 text-xs">Toque para fechar</p>
+          <button
+            className="absolute top-4 right-4 text-white bg-white/20 hover:bg-white/30 rounded-full p-2 transition-colors"
+            onClick={() => setOpen(false)}
+          >
+            <X className="w-5 h-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={photoUrl}
+            alt={`Medidor ${label}`}
+            className="max-w-full max-h-[85vh] rounded-xl object-contain shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          />
+          <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/80 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
+            {label}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -351,6 +475,13 @@ export default function LevantamentoPage() {
 
   const complexDisplayName = selectedComplexObj?.socialName || selectedComplexObj?.aliasName || '';
 
+  // ── Para morador: dados da sua unidade ──────────────────────────────────────
+  // Cada mês tem: foto, leituras, consumo, valores
+  const moradorRow = useMemo(() => {
+    if (!isMorador || aptRows.length === 0) return null;
+    return aptRows[0]; // morador sempre tem 1 unidade
+  }, [isMorador, aptRows]);
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6 print:p-2">
@@ -363,10 +494,12 @@ export default function LevantamentoPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold">Levantamento de Consumo</h1>
-            <p className="text-sm text-muted-foreground">Comparativo por período — consumo, leituras e valores</p>
+            <p className="text-sm text-muted-foreground">
+              {isMorador ? 'Histórico de leituras da sua unidade' : 'Comparativo por período — consumo, leituras e valores'}
+            </p>
           </div>
         </div>
-        {allLoaded && filteredRows.length > 0 && (
+        {allLoaded && (isMorador ? moradorRow : filteredRows.length > 0) && (
           <Button variant="outline" size="sm" className="print:hidden" onClick={() => window.print()}>
             <Printer className="w-4 h-4 mr-2" />
             Imprimir / Exportar
@@ -448,7 +581,7 @@ export default function LevantamentoPage() {
           </div>
         )}
 
-        {/* Busca */}
+        {/* Busca — só para não moradores */}
         {!isMorador && allLoaded && aptRows.length > 0 && (
           <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Buscar unidade</label>
@@ -492,7 +625,7 @@ export default function LevantamentoPage() {
         </div>
       )}
 
-      {/* Resultado */}
+      {/* Resultado vazio */}
       {allLoaded && aptRows.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground print:hidden">
           <Droplets className="w-12 h-12 mb-3 opacity-30" />
@@ -501,7 +634,93 @@ export default function LevantamentoPage() {
         </div>
       )}
 
-      {allLoaded && aptRows.length > 0 && (
+      {/* ═══════════════════════════════════════════════════════════════════════
+          VISTA DO MORADOR: fotos em destaque, uma por mês
+          ═══════════════════════════════════════════════════════════════════════ */}
+      {allLoaded && isMorador && moradorRow && (
+        <>
+          {/* Cabeçalho print */}
+          <div className="hidden print:block mb-4">
+            <h2 className="text-lg font-bold">{complexDisplayName}</h2>
+            <p className="text-sm text-gray-600">
+              Bl. {moradorRow.blockName} — Ap. {moradorRow.aptName} — {selectedMonths[0]?.labelFull} a {selectedMonths[selectedMonths.length - 1]?.labelFull}
+            </p>
+            <p className="text-xs text-gray-400">Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}</p>
+          </div>
+
+          {/* Identificação da unidade */}
+          <div className="flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 print:hidden">
+            <div className="bg-teal-600 rounded-lg p-2">
+              <Building2 className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="font-bold text-teal-800 text-sm">
+                {complexDisplayName} — Bl. {moradorRow.blockName} / Ap. {moradorRow.aptName}
+              </p>
+              <p className="text-xs text-teal-600">
+                {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'} · Média {moradorRow.avgConsumption.toFixed(2)} m³/mês
+              </p>
+            </div>
+          </div>
+
+          {/* ── Cards de foto por mês ────────────────────────────────── */}
+          <div>
+            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2 print:text-base">
+              <Camera className="w-4 h-4 text-teal-500 print:hidden" />
+              Fotos do Medidor por Mês
+            </h3>
+            {/* Grid: 1 col mobile, 2 col sm, 3 col md, 4 col lg */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 morador-cards-grid">
+              {moradorRow.months.map((m, mi) => (
+                <MeterPhotoCard
+                  key={mi}
+                  photoUrl={m.photoUrl}
+                  label={m.label}
+                  currReading={m.currReading}
+                  prevReading={m.prevReading}
+                  consumption={m.consumption}
+                  totalUnit={m.totalUnit}
+                  partial={m.partial}
+                  waterSewage={m.waterSewage}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* ── Gráfico de evolução da unidade ──────────────────────── */}
+          <div className="bg-white border rounded-xl p-4 print:border-gray-400">
+            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-teal-500" />
+              Evolução do Consumo — {complexDisplayName} Bl.{moradorRow.blockName} Ap.{moradorRow.aptName}
+            </h3>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={moradorRow.months.map(m => ({ label: m.label, consumo: m.consumption ?? 0 }))}
+                margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} unit=" m³" width={60} />
+                <Tooltip formatter={(val: any) => [`${val} m³`, 'Consumo']} labelStyle={{ fontWeight: 'bold' }} />
+                <ReferenceLine
+                  y={moradorRow.avgConsumption}
+                  stroke="#94a3b8" strokeDasharray="4 4"
+                  label={{ value: 'Média', position: 'right', fontSize: 10, fill: '#94a3b8' }}
+                />
+                <Line type="monotone" dataKey="consumo" stroke="#0d9488" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Footer print */}
+          <div className="hidden print:block text-xs text-gray-400 text-center mt-4">
+            AcquaX Control — Levantamento — {complexDisplayName} Bl.{moradorRow.blockName} Ap.{moradorRow.aptName} — Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}
+          </div>
+        </>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          VISTA DE ADMIN/SÍNDICO: tabela comparativa de todas as unidades
+          ═══════════════════════════════════════════════════════════════════════ */}
+      {allLoaded && !isMorador && aptRows.length > 0 && (
         <>
           {/* ── Cabeçalho do relatório (visível no print) ── */}
           <div className="hidden print:block mb-4">
