@@ -1,6 +1,7 @@
 // app/api/admin-stats/route.ts
 // Retorna estatísticas gerais para o dashboard do administrador
 import { NextRequest, NextResponse } from 'next/server';
+import { serverError } from '@/lib/safeError';
 import { validateUserSession } from '@/lib/users';
 import prisma from '@/lib/prisma';
 import { format, startOfDay, endOfDay, subDays } from 'date-fns';
@@ -240,8 +241,6 @@ export async function GET(req: NextRequest): Promise<Response> {
       complexes: complexesWithDates,
     });
   } catch (e: any) {
-    console.error('[admin-stats] ERROR:', e?.message ?? e);
-    console.error('[admin-stats] STACK:', e?.stack);
-    return NextResponse.json({ error: 'Internal Server Error', detail: e?.message }, { status: 500 });
+    return serverError('admin-stats', e);
   }
 }

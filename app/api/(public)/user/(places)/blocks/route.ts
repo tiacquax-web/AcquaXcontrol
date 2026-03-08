@@ -1,3 +1,4 @@
+import { serverError } from '@/lib/safeError';
 import prisma from '@/lib/prisma';
 import { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
 import { createEntity, deleteEntity, getAvailableBlocksForEntity, getEntityListData, updateEntityData, bulkCreateEntity } from "@/lib/userData"
@@ -161,7 +162,7 @@ export async function POST(req: NextRequest): Promise<Response> {
                 return NextResponse.json({ success: true, count: validBlocks.length, entity: entity || [] });
             } catch (e) {
                 console.error('Erro inesperado no bulkCreateEntity:', e);
-                return NextResponse.json({ error: 'Erro inesperado ao cadastrar blocos.', details: String(e) }, { status: 500 });
+                return serverError('blocks/bulk-create', e);
             }
         }
 
