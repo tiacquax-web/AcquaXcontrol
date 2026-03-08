@@ -62,47 +62,49 @@ export async function PUT(req: NextRequest): Promise<Response> {
     }
     
     // Update user data
+    const passwordBeingChanged = !!(data as any).password;
     const { user: updatedUser, error: updateError, status: updateStatus } = await updateCurrentUser((user as any).id, data, userId, req);
     if (updateError) return NextResponse.json({ error: updateError }, { status: updateStatus });
-    if (!updatedUser) return NextResponse.json({ error: 'Internal Server Error - Entity not updated' }, { status: 500 });
+    if (!updatedUser) return NextResponse.json({ error: 'Erro interno — entidade não atualizada.' }, { status: 500 });
 
     // Remove password from the response
     if ('password' in updatedUser) {
         delete (updatedUser as any).password;
     }
 
-    // Se o usuário tinha mustUpdateCredentials=true e agora é false (trocou senha),
-    // reemite o cookie de sessão com o JWT atualizado para o middleware não redirecionar mais.
+    // ── Rotação de Sessão ────────────────────────────────────────────────────
+    // Quando a senha é trocada (voluntária ou forçada via mustUpdateCredentials):
+    // 1. Invalida TODAS as sessões antigas do usuário no banco (session fixation + logout em outros dispositivos)
+    // 2. Emite um novo JWT e cria uma nova sessão
+    // 3. Define o cookie com o novo token
     const hadMustUpdate = (user as any).mustUpdateCredentials;
     const nowMustUpdate = (updatedUser as any).mustUpdateCredentials;
-    if (hadMustUpdate && !nowMustUpdate) {
+    const shouldRotateSession = passwordBeingChanged || (hadMustUpdate && !nowMustUpdate);
+
+    if (shouldRotateSession) {
         try {
+            // 1. Invalida todas as sessões antigas do usuário (segurança: evita session fixation)
+            await prisma.session.deleteMany({
+                where: { userId: (user as any).id },
+            }).catch(() => {/* best-effort */});
+
+            // 2. Emite novo JWT
             const newJwt = jwt.sign(
                 { userId: (user as any).id, mustUpdateCredentials: false },
                 JWT_SECRET,
                 { expiresIn: '1h' }
             );
 
-            // Tenta atualizar a sessão no banco (best-effort - pode não existir)
-            if (oldSessionToken) {
-                await prisma.session.updateMany({
-                    where: { token: oldSessionToken, userId: (user as any).id },
-                    data: {
-                        token: newJwt,
-                        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-                    },
-                }).catch(() => {
-                    // Se não encontrou sessão no banco, cria uma nova
-                    return prisma.session.create({
-                        data: {
-                            token: newJwt,
-                            userId: (user as any).id,
-                            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-                        }
-                    }).catch(() => {/* ignora erros de criação também */});
-                });
-            }
+            // 3. Cria nova sessão no banco
+            await prisma.session.create({
+                data: {
+                    token: newJwt,
+                    userId: (user as any).id,
+                    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+                }
+            }).catch(() => {/* se falhar, o cookie JWT ainda é válido */});
 
+            // 4. Retorna resposta com novo cookie
             const response = NextResponse.json({ user: updatedUser }, { status: updateStatus });
             response.cookies.set('session', newJwt, {
                 httpOnly: true,
@@ -113,7 +115,8 @@ export async function PUT(req: NextRequest): Promise<Response> {
             });
             return response;
         } catch (e) {
-            console.error('[me PUT] Erro ao reemitir sessão:', e);
+            console.error('[me PUT] Erro ao rotacionar sessão:', e);
+            // Não falha o request por isso — retorna sem rotação
         }
     }
     

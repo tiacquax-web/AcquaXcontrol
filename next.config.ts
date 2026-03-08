@@ -2,6 +2,30 @@ import type { NextConfig } from "next";
 
 const PRODUCTION_DOMAIN = 'acquaxcontrol.com.br';
 
+// ─── Content Security Policy ─────────────────────────────────────────────────
+// Bloqueia scripts/recursos de origens não autorizadas (mitiga XSS persistente)
+const cspDirectives = [
+  "default-src 'self'",
+  // Scripts: 'self' + inline necessário para Next.js hidratação + Vercel analytics
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live",
+  // Estilos: 'self' + inline (Tailwind / CSS-in-JS)
+  "style-src 'self' 'unsafe-inline'",
+  // Imagens: próprio domínio + CDN + data URIs + blobs (previews de foto)
+  `img-src 'self' data: blob: https://${PRODUCTION_DOMAIN} https://www.${PRODUCTION_DOMAIN} https://cdn.${PRODUCTION_DOMAIN}`,
+  // Fontes
+  `font-src 'self' data:`,
+  // Conexões API e WebSockets
+  `connect-src 'self' https://${PRODUCTION_DOMAIN} https://www.${PRODUCTION_DOMAIN} https://vitals.vercel-insights.com wss:`,
+  // Frames: nenhum (previne clickjacking — reforça X-Frame-Options)
+  "frame-ancestors 'none'",
+  // Objetos embutidos (Flash, etc.): nenhum
+  "object-src 'none'",
+  // Base URI: apenas 'self' (previne ataques de base tag)
+  "base-uri 'self'",
+  // Formulários: apenas 'self'
+  "form-action 'self'",
+].join('; ');
+
 const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
@@ -63,6 +87,16 @@ const nextConfig: NextConfig = {
             value: 'max-age=31536000; includeSubDomains',
           }] : []),
           { key: 'X-DNS-Prefetch-Control', value: 'on' },
+          // ── Content Security Policy ─────────────────────────────────────
+          // Aplicada apenas em produção para não quebrar hot-reload do dev
+          ...(process.env.NODE_ENV === 'production' ? [{
+            key: 'Content-Security-Policy',
+            value: cspDirectives,
+          }] : [{
+            // Em desenvolvimento: modo report-only (não bloqueia, só loga no console)
+            key: 'Content-Security-Policy-Report-Only',
+            value: cspDirectives,
+          }]),
         ],
       },
     ];

@@ -1,3 +1,4 @@
+import { serverError } from '@/lib/safeError';
 import { NextRequest, NextResponse } from 'next/server';
 import { isSessionValid } from '@/lib/users';
 import { DeviceManagementService } from '@/lib/services/device-management-service';
