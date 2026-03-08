@@ -11,7 +11,7 @@ import {
 import {
   TrendingUp, TrendingDown, Minus, Building2, Calendar,
   Droplets, Loader2, AlertCircle, Info, Search, X,
-  Printer, ChevronDown, ChevronUp, ImageIcon,
+  Printer, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -66,27 +66,50 @@ interface MonthData {
   error: string | null;
 }
 
-// ─── Componente de foto do medidor (modal inline) ─────────────────────────────
-function MeterPhoto({ url, alt }: { url: string; alt?: string }) {
+// ─── Componente de foto do medidor ────────────────────────────────────────────
+// Na TELA: thumbnail clicável que abre modal em tela cheia
+// Na IMPRESSÃO: foto grande e estática (sem position:absolute, sem next/image)
+function MeterPhoto({ url, alt, monthLabel }: { url: string; alt?: string; monthLabel?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button
-        className="relative w-16 h-16 rounded overflow-hidden bg-black border border-gray-200 shrink-0 hover:opacity-80 transition-opacity"
-        onClick={() => setOpen(true)}
-        title="Ver foto do medidor"
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={url} alt={alt ?? 'Medidor'} className="w-full h-full object-contain" />
-        <div className="absolute inset-0 flex items-end justify-end p-0.5">
-          <ImageIcon className="w-3 h-3 text-white/70" />
-        </div>
-      </button>
+      {/* ── TELA: thumbnail 80×80 clicável ── */}
+      <div className="levantamento-photo-screen flex flex-col items-center gap-1">
+        <button
+          className="relative w-20 h-20 rounded-lg overflow-hidden bg-black border border-gray-200 shrink-0 hover:opacity-80 hover:scale-105 transition-all shadow-sm"
+          onClick={() => setOpen(true)}
+          title="Ver foto completa"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url} alt={alt ?? 'Medidor'} className="w-full h-full object-contain" />
+          <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[9px] text-center py-0.5">
+            ampliar
+          </div>
+        </button>
+        {monthLabel && <span className="text-[9px] text-gray-400 whitespace-nowrap">{monthLabel}</span>}
+      </div>
+
+      {/* ── IMPRESSÃO: img nativo tamanho grande, sempre visível ── */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt={alt ?? 'Medidor'}
+        className="levantamento-photo-print"
+      />
+
+      {/* ── Modal tela cheia (oculto no print via CSS) ── */}
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          className="levantamento-photo-modal fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4"
           onClick={() => setOpen(false)}
         >
+          <p className="absolute top-4 left-4 text-white/60 text-xs">Toque para fechar</p>
+          <button
+            className="absolute top-4 right-4 text-white bg-white/20 hover:bg-white/30 rounded-full p-2 transition-colors"
+            onClick={() => setOpen(false)}
+          >
+            <X className="w-5 h-5" />
+          </button>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={url}
@@ -94,12 +117,11 @@ function MeterPhoto({ url, alt }: { url: string; alt?: string }) {
             className="max-w-full max-h-[85vh] rounded-xl object-contain shadow-2xl"
             onClick={e => e.stopPropagation()}
           />
-          <button
-            className="absolute top-4 right-4 text-white bg-white/20 rounded-full p-2"
-            onClick={() => setOpen(false)}
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {monthLabel && (
+            <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/80 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
+              {monthLabel}
+            </p>
+          )}
         </div>
       )}
     </>
@@ -645,12 +667,14 @@ export default function LevantamentoPage() {
                                   <tbody className="divide-y divide-gray-100">
                                     {/* Foto */}
                                     <tr>
-                                      <td className="pr-3 py-1.5 text-gray-500 whitespace-nowrap">Foto</td>
+                                      <td className="pr-3 py-2 text-gray-500 whitespace-nowrap align-top">Foto</td>
                                       {row.months.map((m, mi) => (
-                                        <td key={mi} className="px-3 py-1.5 text-center">
+                                        <td key={mi} className="px-3 py-2 text-center align-top">
                                           {m.photoUrl
-                                            ? <div className="flex justify-center"><MeterPhoto url={m.photoUrl} alt={`${m.label}`} /></div>
-                                            : <span className="text-gray-300">—</span>}
+                                            ? <div className="flex justify-center">
+                                                <MeterPhoto url={m.photoUrl} alt={`Medidor ${m.label}`} monthLabel={m.label} />
+                                              </div>
+                                            : <span className="text-gray-300 text-xs">—</span>}
                                         </td>
                                       ))}
                                     </tr>

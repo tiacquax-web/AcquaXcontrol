@@ -263,8 +263,34 @@
     background: #000 !important;
   }
 
-  /* Modal de zoom: oculto no print */
-  .meter-photo-modal {
+  /* ── Levantamento — fotos dos medidores na impressão ── */
+
+  /* Thumbnail da tela: oculto no print */
+  .levantamento-photo-screen {
+    display: none !important;
+  }
+
+  /* Modal da tela: oculto no print */
+  .levantamento-photo-modal {
+    display: none !important;
+  }
+
+  /* Foto nativa para print: visível, tamanho generoso */
+  .levantamento-photo-print {
+    display: block !important;
+    width: 100px !important;
+    height: 100px !important;
+    object-fit: contain !important;
+    background: #000 !important;
+    border: 1px solid #ccc !important;
+    border-radius: 4px !important;
+    margin: 0 auto !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Filtros e elementos interativos do levantamento: ocultos no print */
+  .print\:hidden {
     display: none !important;
   }
 
@@ -321,3 +347,9 @@
   }
 }
 
+/* ── Levantamento: fotos ocultas na TELA (só aparecem no @media print) ── */
+/* O <img class="levantamento-photo-print"> é o elemento estático para impressão */
+/* Na tela normal, usamos o thumbnail clicável (.levantamento-photo-screen) */
+.levantamento-photo-print {
+  display: none;
+}
