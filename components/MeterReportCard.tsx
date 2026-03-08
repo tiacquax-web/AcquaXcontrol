@@ -175,13 +175,14 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
           {photoUrl ? (
             <>
               {/*
-                * object-contain: mostra a foto INTEIRA sem cortar nada.
-                * Fundo preto disfarce as bordas quando a foto não preenche todo o espaço.
-                * Assim a numeração do mostrador fica sempre visível, independente de
-                * como o leiturista tirou a foto (landscape, portrait, zoom, etc).
-                * Altura 280px mobile / 200px desktop.
-              */}
-              <div className="relative w-full h-[280px] sm:h-[200px] overflow-hidden bg-black">
+               * TELA: next/image com fill (position:absolute) — ótima qualidade na tela.
+               * PRINT: next/image com fill NÃO é impresso pela maioria dos navegadores
+               *        porque usa position:absolute. Por isso existe o <img> abaixo com
+               *        classe "meter-photo-print" — invisível na tela, visível só no print.
+               */}
+
+              {/* ── Versão TELA (oculta no print via CSS) ── */}
+              <div className="meter-photo-screen relative w-full h-[280px] sm:h-[200px] overflow-hidden bg-black">
                 <Image
                   src={photoUrl}
                   alt="Foto do medidor"
@@ -190,20 +191,36 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
                   className="object-contain transition-transform duration-300 group-hover:scale-105"
                   priority
                 />
-
-                {/* Overlay escuro suave no hover + ícone de zoom */}
+                {/* Overlay hover + ícone de zoom */}
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/50 rounded-full p-3">
                     <ZoomIn className="w-6 h-6 text-white" />
                   </div>
                 </div>
-
-                {/* Badge "Toque para ampliar" — visível só no mobile */}
+                {/* Badge "Ampliar" — mobile only */}
                 <div className="absolute bottom-2 right-2 sm:hidden bg-black/50 text-white text-[10px] rounded-full px-2 py-0.5 flex items-center gap-1">
                   <ZoomIn className="w-3 h-3" />
                   Ampliar
                 </div>
               </div>
+
+              {/* ── Versão PRINT (oculta na tela, visível no print) ──
+               *  <img> nativo com position:static → impresso 100% por todos navegadores.
+               *  object-contain + fundo preto = mesma aparência da versão tela.
+               */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photoUrl}
+                alt="Foto do medidor"
+                className="meter-photo-print"
+                style={{
+                  display: 'none',          /* oculto na tela — CSS print vai fazer display:block */
+                  width: '100%',
+                  maxHeight: '220px',
+                  objectFit: 'contain',
+                  background: '#000',
+                }}
+              />
             </>
           ) : (
             /* Placeholder quando não tem foto */

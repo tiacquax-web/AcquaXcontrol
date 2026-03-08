@@ -241,9 +241,25 @@
     break-after: avoid;
   }
 
-  /* Foto do medidor: mostra inteira no print */
+  /* Foto versão tela (next/image fill com position:absolute): OCULTA no print */
+  .meter-photo-screen {
+    display: none !important;
+  }
+
+  /* Foto versão print (<img> nativo position:static): VISÍVEL no print */
+  .meter-photo-print {
+    display: block !important;
+    width: 100% !important;
+    max-height: 220px !important;
+    object-fit: contain !important;
+    background: #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Garante que a área da foto tenha altura automática no print */
   .meter-report-photo-area {
-    height: 220px !important;
+    height: auto !important;
     background: #000 !important;
   }
 
