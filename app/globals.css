@@ -353,3 +353,50 @@
 .levantamento-photo-print {
   display: none;
 }
+
+/* ── Morador: card de foto do medidor ── */
+/* Tela: foto visível como elemento de bloco normal */
+.morador-meter-photo {
+  display: block;
+  width: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+/* Tela: botão de zoom visível */
+.morador-zoom-btn {
+  display: flex;
+}
+
+/* Impressão: estilos para os cards de foto do morador */
+@media print {
+  /* Grid de cards: 2 por linha na impressão */
+  .morador-cards-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  /* Card do medidor morador: borda e sem sombra */
+  .morador-meter-card {
+    border: 1px solid #d1d5db !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Foto do medidor morador: tamanho generoso, sem corte */
+  .morador-meter-photo {
+    display: block !important;
+    width: 100% !important;
+    max-height: 260px !important;
+    min-height: 180px !important;
+    object-fit: contain !important;
+    background: #000 !important;
+  }
+
+  /* Ocultar botão de zoom no print */
+  .morador-zoom-btn {
+    display: none !important;
+  }
+}
