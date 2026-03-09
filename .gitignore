@@ -70,3 +70,7 @@ next-env.d.ts
 core
 core.*
 *.core
+*.tar.gz
+keep-alive.sh
+BACKUP_PROJETO_ACQUAX.md
+public/ACQUAX_FIELD_PLANO_PROJETO.md
