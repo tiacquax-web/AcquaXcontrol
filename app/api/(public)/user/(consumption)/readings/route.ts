@@ -34,13 +34,10 @@ function getQueryParams(req: NextRequest) {
 
 export async function GET(req: NextRequest): Promise<Response> {
     try {
-        // validate user session
-        const session = req.cookies.get('session')?.value
-        const validSession = session ? await isSessionValid(session) : false
-        if (!validSession) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-        // get userId from session
-        const userId = validSession.userId
+        // validate user session (aceita JWT mesmo sem sessão no banco)
+        const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
+        if (sessionError) return NextResponse.json({ error: sessionError }, { status: sessionStatus });
+        if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         // get query params
         const { withApartment, withBlock, withComplex, fromDate, toDate, withDevice, withMeter, isPreReading, readingId, meterId, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection } = getQueryParams(req)

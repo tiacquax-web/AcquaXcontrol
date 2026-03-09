@@ -34,13 +34,10 @@ function getQueryParams(req: NextRequest) {
 export async function GET(req: NextRequest): Promise<Response> {
     try {
         console.log("######### Requisição GET de Complexos recebida")
-        // valida sessão do usuário
-        const session = req.cookies.get('session')?.value
-        const validSession = session ? await isSessionValid(session) : false
-        if (!validSession) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-
-        // obtém userId da sessão
-        const userId = validSession.userId
+        // valida sessão do usuário (aceita JWT mesmo sem sessão no banco)
+        const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
+        if (sessionError) return NextResponse.json({ error: sessionError }, { status: sessionStatus });
+        if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         // obtém parâmetros de consulta
         const { withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection, socialNames } = getQueryParams(req)
