@@ -1,5 +1,5 @@
 import * as React from "react"
-import { LayoutDashboard, ChartBarIncreasing, ReceiptText, CircleGauge, Droplets, Menu, FileText } from 'lucide-react'
+import { LayoutDashboard, Route, ClipboardList, Camera, Menu } from 'lucide-react'
 import { MobileSidebarDrawer } from "./mobile-sidebar-drawer"
 import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
 import { sidebarPermissionMap } from "./sidebar-permission-map"
@@ -20,10 +20,9 @@ export function MobileBottomNavbar() {
   // 4 itens principais no bottom bar + botão "Mais"
   const mainNavItems = [
     { icon: LayoutDashboard, label: "Início", href: "/dashboard" },
-    { icon: CircleGauge, label: "Leituras", href: "/readings" },
-    { icon: FileText, label: "Filipeta", href: "/meter-report" },
-    { icon: ReceiptText, label: "Contas", href: "/dealership-readings" },
-    { icon: Droplets, label: "Nível", href: "/reservoir-monitoring" },
+    { icon: Route, label: "Rotas", href: "/reading-routes" },
+    { icon: ClipboardList, label: "Ordens", href: "/service-orders" },
+    { icon: Camera, label: "Fotos", href: "/photos" },
   ].filter((item) => hasAnyPermission(item.href));
 
   return (
