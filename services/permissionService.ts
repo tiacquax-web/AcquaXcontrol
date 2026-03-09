@@ -1,6 +1,5 @@
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface getPermissionsProps {
     searchQuery?: string;
@@ -23,7 +22,7 @@ export const getPermissions = async ({ searchQuery, roleId, action, entity, take
         if (skip) params.skip = skip;
         if (orderBy) params.orderBy = orderBy;
 
-        const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/permissions`, { params });
+        const response = await axiosClient.get(`user/permissions`, { params });
         return response.data;
     } catch (error) {
         console.error('Error fetching permissions:', error);
@@ -33,7 +32,7 @@ export const getPermissions = async ({ searchQuery, roleId, action, entity, take
 
 export const createPermission = async (permissionData: any) => {
     try {
-        const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/permissions`, permissionData);
+        const response = await axiosClient.post(`user/permissions`, permissionData);
         return response.data;
     } catch (error) {
         console.error('Error creating permission:', error);
@@ -43,7 +42,7 @@ export const createPermission = async (permissionData: any) => {
 
 export const updatePermission = async (permissionId: string, permissionData: any) => {
     try {
-        const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/permissions/${permissionId}`, permissionData);
+        const response = await axiosClient.put(`user/permissions/${permissionId}`, permissionData);
         return response.data;
     } catch (error) {
         console.error('Error updating permission:', error);
@@ -53,7 +52,7 @@ export const updatePermission = async (permissionId: string, permissionData: any
 
 export const deletePermission = async (permissionId: string) => {
     try {
-        const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/permissions/${permissionId}`);
+        const response = await axiosClient.delete(`user/permissions/${permissionId}`);
         return response.data;
     } catch (error) {
         console.error('Error deleting permission:', error);

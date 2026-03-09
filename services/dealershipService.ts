@@ -1,6 +1,5 @@
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface GetDealershipsProps {
     search?: string;
@@ -15,7 +14,7 @@ export const getDealerships = async ({ take, dealershipId, search }: GetDealersh
     if (search) params.search = search;
     if (take) params.take = take;
 
-    const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/dealerships`, { params });
+    const response = await axiosClient.get(`user/dealerships`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching dealerships:', error);
@@ -25,7 +24,7 @@ export const getDealerships = async ({ take, dealershipId, search }: GetDealersh
 
 export const createDealership = async (dealershipData: any) => {
   try {
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/dealerships`, dealershipData);
+    const response = await axiosClient.post(`user/dealerships`, dealershipData);
     return response.data;
   } catch (error) {
     console.error('Error creating dealership:', error);
@@ -35,7 +34,7 @@ export const createDealership = async (dealershipData: any) => {
 
 export const updateDealership = async (dealershipId: string, dealershipData: any) => {
   try {
-    const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/dealerships/${dealershipId}`, dealershipData);
+    const response = await axiosClient.put(`user/dealerships/${dealershipId}`, dealershipData);
     return response.data;
   } catch (error) {
     console.error('Error updating dealership:', error);
@@ -45,7 +44,7 @@ export const updateDealership = async (dealershipId: string, dealershipData: any
 
 export const deleteDealership = async (dealershipId: string) => {
   try {
-    const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/dealerships/${dealershipId}`);
+    const response = await axiosClient.delete(`user/dealerships/${dealershipId}`);
     return response.data;
   } catch (error) {
     console.error('Error deleting dealership:', error);

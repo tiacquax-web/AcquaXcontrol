@@ -1,7 +1,6 @@
 import { PermissionableEntity } from '@prisma/client';
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface getComplexesProps {
     nameQuery?: string;
@@ -38,7 +37,7 @@ export const getComplexes = async ({ id, getAvailableForEntity, complexId, compa
     if (take) params.take = take;
     if (skip) params.skip = skip;
 
-    const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/complexes`, { params });
+    const response = await axiosClient.get(`user/complexes`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching complexes:', error);
@@ -48,7 +47,7 @@ export const getComplexes = async ({ id, getAvailableForEntity, complexId, compa
 
 export const createComplex = async (complexData: any) => {
   try {
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/complexes`, complexData);
+    const response = await axiosClient.post(`user/complexes`, complexData);
     return response.data;
   } catch (error) {
     console.error('Error creating complex:', error);
@@ -58,7 +57,7 @@ export const createComplex = async (complexData: any) => {
 
 export const updateComplex = async (complexId: string, complexData: any) => {
   try {
-    const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/complexes/${complexId}`, complexData);
+    const response = await axiosClient.put(`user/complexes/${complexId}`, complexData);
     return response.data;
   } catch (error) {
     console.error('Error updating complex:', error);
@@ -68,7 +67,7 @@ export const updateComplex = async (complexId: string, complexData: any) => {
 
 export const deleteComplex = async (complexId: string) => {
   try {
-    const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/complexes/${complexId}`);
+    const response = await axiosClient.delete(`user/complexes/${complexId}`);
     return response.data;
   } catch (error) {
     console.error('Error deleting complex:', error);

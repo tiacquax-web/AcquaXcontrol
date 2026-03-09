@@ -1,7 +1,6 @@
 import { selectMeterProps } from '@/types/meter';
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface getMetersProps {
   blockId?: string;
@@ -27,7 +26,7 @@ export const oldgetMeters = async ({ blockId, search, meterId, take = 10, orderB
     if (mustHaveReadings) params.must_have_readings = mustHaveReadings;
     if (select) params.select = JSON.stringify(select);
 
-    const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/meters`, { params });
+    const response = await axiosClient.get(`user/meters`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching meters:', error);
@@ -70,7 +69,7 @@ export const getMeters = async ({ companyId, complexId, blockId, search, meterTy
     if (withComplex) params.with_complex = withComplex;
     if (withTypeMeter) params.with_type_meter = withTypeMeter;
 
-    const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/meters`, { params });
+    const response = await axiosClient.get(`user/meters`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching meters list:', error);
@@ -82,7 +81,7 @@ export const createMeter = async (meterData: any) => {
   try {
     meterData.initialReading = parseFloat(meterData.initialReading);
     meterData.yearManufacture = parseInt(meterData.yearManufacture);
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/meters`, meterData);
+    const response = await axiosClient.post(`user/meters`, meterData);
     return response.data;
   } catch (error) {
     console.error('Error creating meter:', error);
@@ -94,7 +93,7 @@ export const updateMeter = async (meterId: string, meterData: any) => {
   try {
     meterData.initialReading = parseFloat(meterData.initialReading);
     meterData.yearManufacture = parseInt(meterData.yearManufacture);
-    const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/meters/${meterId}`, meterData);
+    const response = await axiosClient.put(`user/meters/${meterId}`, meterData);
     return response.data;
   } catch (error) {
     console.error('Error updating meter:', error);
@@ -104,7 +103,7 @@ export const updateMeter = async (meterId: string, meterData: any) => {
 
 export const deleteMeter = async (meterId: string) => {
   try {
-    const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/meters/${meterId}`);
+    const response = await axiosClient.delete(`user/meters/${meterId}`);
     return response.data;
   } catch (error) {
     console.error('Error deleting meter:', error);
@@ -114,8 +113,8 @@ export const deleteMeter = async (meterId: string) => {
 
 export const createMetersFromSheet = async (rows: any[]) => {
   try {
-    const response = await axios.post(
-      `${NEXT_PUBLIC_API_URL}/user/meters`,
+    const response = await axiosClient.post(
+      `user/meters`,
       JSON.stringify({ rows }),
       { headers: { "Content-Type": "application/json" } }
     );

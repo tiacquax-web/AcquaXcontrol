@@ -1,6 +1,6 @@
-import axios from 'axios'
+import axiosClient from '@/services/axiosClient'
 
-const API_URL = '/api/monitoring'
+const API_URL = '/monitoring'
 
 export interface MonitoringReadingsRequest {
   meterIds: string[]
@@ -14,7 +14,7 @@ export interface MonitoringReadingsRequest {
 }
 
 export async function getMonitoringReadings(payload: MonitoringReadingsRequest) {
-  const { data } = await axios.post(`${API_URL}/readings`, payload)
+  const { data } = await axiosClient.post(`${API_URL}/readings`, payload)
   return data as MonitoringReadingsResponse
 }
 

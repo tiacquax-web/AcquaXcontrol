@@ -1,7 +1,6 @@
 import { PermissionableEntity } from '@prisma/client';
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface getBlocksProps {
   complexId?: string;
@@ -30,7 +29,7 @@ export const getBlocks = async ({ getAvailableForEntity, blockId, complexId, nam
     if (typeof take === 'number') params.take = take;
     if (typeof skip === 'number') params.skip = skip;
 
-    const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/blocks`, { params });
+    const response = await axiosClient.get(`user/blocks`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching blocks:', error);
@@ -40,7 +39,7 @@ export const getBlocks = async ({ getAvailableForEntity, blockId, complexId, nam
 
 export const createBlock = async (blockData: any) => {
   try {
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/blocks`, blockData);
+    const response = await axiosClient.post(`user/blocks`, blockData);
     return response.data;
   } catch (error) {
     console.error('Error creating complex:', error);
@@ -50,7 +49,7 @@ export const createBlock = async (blockData: any) => {
 
 export const updateBlock = async (blockId: string, blockData: any) => {
   try {
-    const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/blocks/${blockId}`, blockData);
+    const response = await axiosClient.put(`user/blocks/${blockId}`, blockData);
     return response.data;
   } catch (error) {
     console.error('Error updating complex:', error);
@@ -60,7 +59,7 @@ export const updateBlock = async (blockId: string, blockData: any) => {
 
 export const deleteBlock = async (blockId: string) => {
   try {
-    const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/blocks/${blockId}`);
+    const response = await axiosClient.delete(`user/blocks/${blockId}`);
     return response.data;
   } catch (error) {
     console.error('Error deleting complex:', error);
@@ -70,8 +69,8 @@ export const deleteBlock = async (blockId: string) => {
 
 export const createBlocksFromSheet = async (blocks: Array<{ name: string; complexId: string }>) => {
   try {
-    const response = await axios.post(
-      `${NEXT_PUBLIC_API_URL}/user/blocks`,
+    const response = await axiosClient.post(
+      `user/blocks`,
       JSON.stringify(blocks),
       { headers: { 'Content-Type': 'application/json' } }
     );

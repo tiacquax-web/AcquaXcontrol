@@ -1,6 +1,5 @@
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface getRoleAssignmentsProps {
     withUser?: boolean;
@@ -25,7 +24,7 @@ export const getRoleAssignments = async ({ withUser, withRole, withContext, sear
     if (userName) params.user_name = roleId;
     if (roleName) params.role_name = roleId;
 
-    const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/role-assignments`, { params });
+    const response = await axiosClient.get(`user/role-assignments`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching role assignments:', error);
@@ -35,7 +34,7 @@ export const getRoleAssignments = async ({ withUser, withRole, withContext, sear
 
 export const createRoleAssignment = async (roleAssignmentData: any) => {
   try {
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/role-assignments`, roleAssignmentData);
+    const response = await axiosClient.post(`user/role-assignments`, roleAssignmentData);
     return response.data;
   } catch (error) {
     console.error('Error creating user:', error);
@@ -45,7 +44,7 @@ export const createRoleAssignment = async (roleAssignmentData: any) => {
 
 export const updateRoleAssignment = async (userId: string, roleAssignmentData: any) => {
   try {
-    const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/role-assignments/${userId}`, roleAssignmentData);
+    const response = await axiosClient.put(`user/role-assignments/${userId}`, roleAssignmentData);
     return response.data;
   } catch (error) {
     console.error('Error updating user:', error);
@@ -55,7 +54,7 @@ export const updateRoleAssignment = async (userId: string, roleAssignmentData: a
 
 export const deleteRoleAssignment = async (roleAssignmentId: string) => {
   try {
-    const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/role-assignments/${roleAssignmentId}`);
+    const response = await axiosClient.delete(`user/role-assignments/${roleAssignmentId}`);
     return response.data;
   } catch (error) {
     console.error('Error deleting role assignment:', error);

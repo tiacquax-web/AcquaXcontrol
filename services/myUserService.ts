@@ -1,19 +1,13 @@
-import axios from 'axios';
-
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
+import axiosClient from '@/services/axiosClient';
 
 export async function fetchCurrentUser() {
-    const res = await axios.get(`${NEXT_PUBLIC_API_URL}/auth/me`, {
-        withCredentials: true,
-    });
+    const res = await axiosClient.get('/auth/me');
     return res.data.user;
 }
 
 export async function fetchUpdateCurrentUser(data: any) {
     try {
-        const res = await axios.put(`${NEXT_PUBLIC_API_URL}/auth/me`, data, {
-            withCredentials: true,
-        });
+        const res = await axiosClient.put('/auth/me', data);
         return res.data.user;
     } catch (error: any) {
         throw error;

@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
+
 
 export interface MeterReportItem {
   id: string;
@@ -89,8 +89,8 @@ export function useMeterReport({ month, year, complexId, apartmentId, enabled = 
     if (complexId) params.complex_id = complexId;
     if (apartmentId) params.apartment_id = apartmentId;
 
-    axios
-      .get<MeterReportData>(`${NEXT_PUBLIC_API_URL}/meter-report`, {
+    axiosClient
+      .get<MeterReportData>('meter-report', {
         params,
         withCredentials: true,
       })

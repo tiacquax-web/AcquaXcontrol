@@ -1,7 +1,6 @@
 import { ApartmentWithConsumptionReport } from "@/types/apartment";
-import axios from "axios";
+import axiosClient from "@/services/axiosClient";
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface getApartmentReportParams {
     complexId?: string;
@@ -48,7 +47,7 @@ export const getApartmentReports = async ({ id, withReadingDate, includeLastRead
         if (toDate) params.end_date = toDate.toISOString();
     if (utilityType) params.utility_type = utilityType;
 
-        const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/apartment-report`, { params });
+        const response = await axiosClient.get(`user/apartment-report`, { params });
         return response.data;
     } catch (error) {
         console.error("Error fetching residences with reports:", error);
@@ -59,7 +58,7 @@ export const getApartmentReports = async ({ id, withReadingDate, includeLastRead
 
 export const createApartmentReport = async (reportData: any) => {
     try {
-        const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/apartment-report`, reportData);
+        const response = await axiosClient.post(`user/apartment-report`, reportData);
         return response.data;
     } catch (error) {
         console.error('Error creating apartment report:', error);
@@ -69,7 +68,7 @@ export const createApartmentReport = async (reportData: any) => {
 
 export const updateApartmentReport = async (reportId: string, reportData: any) => {
     try {
-        const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/apartment-report/${reportId}`, reportData);
+        const response = await axiosClient.put(`user/apartment-report/${reportId}`, reportData);
         return response.data;
     } catch (error) {
         console.error('Error updating apartment report:', error);
@@ -79,7 +78,7 @@ export const updateApartmentReport = async (reportId: string, reportData: any) =
 
 export const deleteApartmentReport = async (reportId: string) => {
     try {
-        const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/apartment-report/${reportId}`);
+        const response = await axiosClient.delete(`user/apartment-report/${reportId}`);
         return response.data;
     } catch (error) {
         console.error('Error deleting apartment report:', error);
@@ -97,7 +96,7 @@ interface GenerateApartmentReportsParams {
 
 export const generateApartmentReports = async (params: GenerateApartmentReportsParams) => {
     try {
-        const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/apartment-report/generate`, params);
+        const response = await axiosClient.post(`user/apartment-report/generate`, params);
         return response.data;
     } catch (error) {
         console.error('Error generating apartment reports:', error);
@@ -113,7 +112,7 @@ interface CalculateApartmentReportParams {
 
 export const calculateApartmentReport = async (params: CalculateApartmentReportParams) => {
     try {
-        const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/apartment-report/calculate`, params);
+        const response = await axiosClient.post(`user/apartment-report/calculate`, params);
         return response.data;
     } catch (error) {
         console.error('Error calculating apartment report:', error);
@@ -154,7 +153,7 @@ export interface UnifiedItemPayload { report: UnifiedReportPayload; reading?: Un
 
 export const submitUnifiedApartmentReports = async (items: UnifiedItemPayload[]) => {
     try {
-        const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/apartment-report/unified`, { items });
+        const response = await axiosClient.post(`user/apartment-report/unified`, { items });
         return response.data;
     } catch (error) {
         console.error('Error in unified apartment report submission:', error);

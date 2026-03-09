@@ -1,7 +1,6 @@
 import { ContextType } from '@prisma/client';
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface getUsersProps {
     searchQuery?: string;
@@ -26,7 +25,7 @@ export const getUsers = async ({ userId, searchQuery, documentUser, roleName, co
     if (take) params.take = take;
     if (skip) params.skip = skip;
 
-    const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/users`, { params });
+    const response = await axiosClient.get(`user/users`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching users:', error);
@@ -36,7 +35,7 @@ export const getUsers = async ({ userId, searchQuery, documentUser, roleName, co
 
 export const createUser = async (userData: any) => {
   try {
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/users`, userData);
+    const response = await axiosClient.post(`user/users`, userData);
     return response.data;
   } catch (error) {
     console.error('Error creating user:', error);
@@ -46,7 +45,7 @@ export const createUser = async (userData: any) => {
 
 export const updateUser = async (userId: string, userData: any) => {
   try {
-    const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/users/${userId}`, userData);
+    const response = await axiosClient.put(`user/users/${userId}`, userData);
     return response.data;
   } catch (error) {
     console.error('Error updating user:', error);
@@ -56,7 +55,7 @@ export const updateUser = async (userId: string, userData: any) => {
 
 export const deleteUser = async (userId: string) => {
   try {
-    const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/users/${userId}`);
+    const response = await axiosClient.delete(`user/users/${userId}`);
     return response.data;
   } catch (error) {
     console.error('Error deleting user:', error);
@@ -78,7 +77,7 @@ export const createBulkUsersForComplex = async ({
   userEmailDomain: string;
 }) => {
   try {
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/users`, {
+    const response = await axiosClient.post(`user/users`, {
       createBulkUsersForComplex: true,
       complexId,
       userNamePrefix,
@@ -100,7 +99,7 @@ interface ExportUsersProps {
 
 export const exportUsers = async ({ search, userIds = [] }: ExportUsersProps) => {
   try {
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/users/export`, {
+    const response = await axiosClient.post(`user/users/export`, {
       search,
       userIds
     }, {

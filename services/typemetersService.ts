@@ -1,6 +1,5 @@
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface GetTypeMetersProps {
     nameQuery?: string;
@@ -15,7 +14,7 @@ export const getTypeMeters = async ({ typeMeterId, nameQuery, acronymQuery }: Ge
     if (nameQuery) params.search = nameQuery;
     if (acronymQuery) params.acronym = acronymQuery;
 
-    const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/type-meters`, { params });
+    const response = await axiosClient.get(`user/type-meters`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching type meters:', error);
@@ -25,7 +24,7 @@ export const getTypeMeters = async ({ typeMeterId, nameQuery, acronymQuery }: Ge
 
 export const createTypeMeter = async (typeMeterData: any) => {
   try {
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/type-meters`, typeMeterData);
+    const response = await axiosClient.post(`user/type-meters`, typeMeterData);
     return response.data;
   } catch (error) {
     console.error('Error creating type meter:', error);
@@ -35,7 +34,7 @@ export const createTypeMeter = async (typeMeterData: any) => {
 
 export const updateTypeMeter = async (typeMeterId: string, typeMeterData: any) => {
   try {
-    const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/type-meters/${typeMeterId}`, typeMeterData);
+    const response = await axiosClient.put(`user/type-meters/${typeMeterId}`, typeMeterData);
     return response.data;
   } catch (error) {
     console.error('Error updating type meter:', error);
@@ -45,7 +44,7 @@ export const updateTypeMeter = async (typeMeterId: string, typeMeterData: any) =
 
 export const deleteTypeMeter = async (typeMeterId: string) => {
   try {
-    const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/type-meters/${typeMeterId}`);
+    const response = await axiosClient.delete(`user/type-meters/${typeMeterId}`);
     return response.data;
   } catch (error) {
     console.error('Error deleting type meter:', error);

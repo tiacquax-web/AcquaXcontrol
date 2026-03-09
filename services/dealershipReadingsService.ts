@@ -1,7 +1,6 @@
 import { DealershipReading } from "@prisma/client";
-import axios from "axios";
+import axiosClient from "@/services/axiosClient";
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface GetDealershipReadingParams {
     companyId?: string;
@@ -40,7 +39,7 @@ export const getDealershipReadings = async ({ id, fromDate, toDate, withDealersh
         if (toDate) params.end_date = toDate.toISOString();
         if (type) params.type = type;
 
-        const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/dealership-reading`, { params });
+        const response = await axiosClient.get(`user/dealership-reading`, { params });
         return response.data;
     } catch (error) {
         console.error("Error fetching dealership readings:", error);
@@ -51,7 +50,7 @@ export const getDealershipReadings = async ({ id, fromDate, toDate, withDealersh
 
 export const createDealershipReading = async (readingData: any) => {
     try {
-        const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/dealership-reading`, readingData);
+        const response = await axiosClient.post(`user/dealership-reading`, readingData);
         return response.data;
     } catch (error) {
         console.error('Error creating dealership reading:', error);
@@ -61,7 +60,7 @@ export const createDealershipReading = async (readingData: any) => {
 
 export const updateDealershipReading = async (readingId: string, readingData: any) => {
     try {
-        const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/dealership-reading/${readingId}`, readingData);
+        const response = await axiosClient.put(`user/dealership-reading/${readingId}`, readingData);
         return response.data;
     } catch (error) {
         console.error('Error updating dealership reading:', error);
@@ -71,7 +70,7 @@ export const updateDealershipReading = async (readingId: string, readingData: an
 
 export const deleteDealershipReading = async (readingId: string) => {
     try {
-        const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/dealership-reading/${readingId}`);
+        const response = await axiosClient.delete(`user/dealership-reading/${readingId}`);
         return response.data;
     } catch (error) {
         console.error('Error deleting dealership reading:', error);

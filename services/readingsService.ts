@@ -1,7 +1,6 @@
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 import { Reading } from '@prisma/client';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 // export async function getUserMeterReadings(meterId: string, period: { from: string, to: string }, showLastN = 6) {
 //   try {
@@ -36,7 +35,7 @@ const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 //       },
 //     });
 
-//     const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/readings/?meter_id=${meterId}&start_date=${period.from}&end_date=${period.to}&reading_type=all&select_manual=${selectManual}`);
+//     const response = await axiosClient.get(`user/readings/?meter_id=${meterId}&start_date=${period.from}&end_date=${period.to}&reading_type=all&select_manual=${selectManual}`);
 //     const data = response.data;
 
 //     const res = {
@@ -46,7 +45,7 @@ const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 //     };
 
 //     if (res.iotReadings.length < 2 && res.manualReadings.length < 2 && showLastN) {
-//       const newResponse = await axios.get(`${NEXT_PUBLIC_API_URL}/user/readings/?meter_id=${meterId}&reading_type=all&show_last_n=${showLastN}&select_manual=${selectManual}`);
+//       const newResponse = await axiosClient.get(`user/readings/?meter_id=${meterId}&reading_type=all&show_last_n=${showLastN}&select_manual=${selectManual}`);
 //       const newData = newResponse.data;
 
 //       return {
@@ -105,8 +104,8 @@ const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 //     const meterIdsParam = meterIds.join(',');
 
 //     // Primeira requisição: busca pelas leituras dentro do período informado
-//     const response = await axios.get(
-//       `${NEXT_PUBLIC_API_URL}/user/readings/multiple?meter_ids=${meterIdsParam}&start_date=${period.from}&end_date=${period.to}&reading_type=all&select_manual=${selectManual}`
+//     const response = await axiosClient.get(
+//       `user/readings/multiple?meter_ids=${meterIdsParam}&start_date=${period.from}&end_date=${period.to}&reading_type=all&select_manual=${selectManual}`
 //     );
 //     const data = response.data;
 
@@ -162,7 +161,7 @@ export async function getReadings({ withApartment, withBlock, withComplex, readi
     if (take) params.take = take;
     if (skip) params.skip = skip;
 
-    const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/readings`, { params });
+    const response = await axiosClient.get(`user/readings`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching readings:', error);
@@ -180,7 +179,7 @@ export interface CreatePreReadingInput {
 
 export async function createPreReading(input: CreatePreReadingInput) {
   try {
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/readings`, {
+    const response = await axiosClient.post(`user/readings`, {
       apartmentId: input.apartmentId,
       meterId: input.meterId,
       coverBase64: input.coverBase64,
@@ -197,7 +196,7 @@ export async function createPreReading(input: CreatePreReadingInput) {
 
 export async function updateReading(id: string, data: Partial<Reading>) {
   try {
-    const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/readings/${id}`, data);
+    const response = await axiosClient.put(`user/readings/${id}`, data);
     return response.data;
   } catch (error) {
     console.error('Error updating reading:', error);
@@ -207,8 +206,8 @@ export async function updateReading(id: string, data: Partial<Reading>) {
 
 export const createReadingsFromSheet = async (rows: any[], allowUpdates: boolean = false) => {
   try {
-    const response = await axios.post(
-      `${NEXT_PUBLIC_API_URL}/user/readings`,
+    const response = await axiosClient.post(
+      `user/readings`,
       JSON.stringify({ rows, allowUpdates }),
       { headers: { "Content-Type": "application/json" } }
     );

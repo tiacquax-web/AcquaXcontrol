@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import axios from "axios";
+import axiosClient from "@/services/axiosClient";
 import { ApartmentWithConsumptionReport } from "@/types/apartment";
 import { DealershipReadingFull } from "@/types/fullTypes";
 
@@ -39,7 +39,7 @@ export const useDealershipFilipetaData = ({ dealershipReadingId, order }: UseDea
       setError(null);
       try {
         const orderQuery = order ? `?order=${order}` : '';
-        const response = await axios.get<FilipetaData>(`/api/dealership-readings/${dealershipReadingId}/filipeta${orderQuery}`);
+        const response = await axiosClient.get<FilipetaData>(`dealership-readings/${dealershipReadingId}/filipeta${orderQuery}`);
         setData(response.data);
       } catch (err: any) {
         console.error("Error fetching filipeta data:", err);

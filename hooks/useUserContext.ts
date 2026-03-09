@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
+import axiosClient from '@/services/axiosClient';
 
 export interface ApartmentWithContext {
   id: string;
@@ -58,9 +56,7 @@ export function useUserContext() {
       setLoading(true);
       setError(null);
       try {
-        const res = await axios.get(`${NEXT_PUBLIC_API_URL}/auth/my-context`, {
-          withCredentials: true,
-        });
+        const res = await axiosClient.get('/auth/my-context');
         setContext(res.data);
       } catch (err: any) {
         const message = err.response?.data?.error || err.message || 'Erro ao buscar contexto';

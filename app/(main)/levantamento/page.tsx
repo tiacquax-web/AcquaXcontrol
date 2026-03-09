@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import axios from 'axios';
+
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, Legend, ReferenceLine,
@@ -24,7 +24,8 @@ import { useUserContext } from '@/hooks/useUserContext';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl } from '@/lib/utils';
 
-const API = process.env.NEXT_PUBLIC_API_URL;
+import axiosClient from '@/services/axiosClient';
+const API = 'meter-report';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function buildMonthOptions(count = 24) {
@@ -330,7 +331,7 @@ export default function LevantamentoPage() {
     const params: Record<string, string> = { month, year };
     if (complexId) params.complex_id = complexId;
     if (aptId) params.apartment_id = aptId;
-    const res = await axios.get<{ list: MeterReportItem[] }>(`${API}/meter-report`, { params, withCredentials: true });
+    const res = await axiosClient.get<{ list: MeterReportItem[] }>(`${API}`, { params, withCredentials: true });
     return res.data.list;
   }, []);
 

@@ -1,8 +1,7 @@
 import { PermissionableEntity } from '@prisma/client';
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 import type { Apartment } from '@prisma/client';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface getApartmentsProps {
   companyId?: string;
@@ -51,7 +50,7 @@ export const getApartments = async ({ getAvailableForEntity, withBlock, withComp
     console.log("🔗 Chamando API de apartamentos com parâmetros:", params);
     
     // Não envia mais o select, pois o backend sempre inclui block e complex
-    const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/apartments`, { params });
+    const response = await axiosClient.get(`user/apartments`, { params });
     
     console.log("📨 Resposta da API de apartamentos:", response.data);
     
@@ -65,7 +64,7 @@ export const getApartments = async ({ getAvailableForEntity, withBlock, withComp
 
 export const createApartment = async (apartmentData: any) => {
   try {
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/apartments`, apartmentData);
+    const response = await axiosClient.post(`user/apartments`, apartmentData);
     return response.data;
   } catch (error) {
     console.error('Error creating apartment:', error);
@@ -75,7 +74,7 @@ export const createApartment = async (apartmentData: any) => {
 
 export const updateApartment = async (apartmentId: string, apartmentData: any) => {
   try {
-    const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/apartments/${apartmentId}`, apartmentData);
+    const response = await axiosClient.put(`user/apartments/${apartmentId}`, apartmentData);
     return response.data;
   } catch (error) {
     console.error('Error updating apartment:', error);
@@ -85,7 +84,7 @@ export const updateApartment = async (apartmentId: string, apartmentData: any) =
 
 export const deleteApartment = async (apartmentId: string) => {
   try {
-    const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/apartments/${apartmentId}`);
+    const response = await axiosClient.delete(`user/apartments/${apartmentId}`);
     return response.data;
   } catch (error) {
     console.error('Error deleting apartment:', error);
@@ -95,8 +94,8 @@ export const deleteApartment = async (apartmentId: string) => {
 
 export const createApartmentsFromSheet = async (apartments: Array<{ name: string; blockId: string; fraction?: number; status?: string }>) => {
   try {
-    const response = await axios.post(
-      `${NEXT_PUBLIC_API_URL}/user/apartments`,
+    const response = await axiosClient.post(
+      `user/apartments`,
       JSON.stringify(apartments),
       { headers: { 'Content-Type': 'application/json' } }
     );

@@ -1,7 +1,6 @@
 import { PermissionableEntity } from '@prisma/client';
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface getCompaniesProps {
     nameQuery?: string;
@@ -20,7 +19,7 @@ export const getCompanies = async ({ getAvailableForEntity, companyId, nameQuery
     if (nameQuery) params.search = nameQuery;
     if (documentCompany) params.document_company = documentCompany;
 
-    const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/companies`, { params });
+    const response = await axiosClient.get(`user/companies`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching companies:', error);
@@ -30,7 +29,7 @@ export const getCompanies = async ({ getAvailableForEntity, companyId, nameQuery
 
 export const createCompany = async (companyData: any) => {
   try {
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/companies`, companyData);
+    const response = await axiosClient.post(`user/companies`, companyData);
     return response.data;
   } catch (error) {
     console.error('Error creating company:', error);
@@ -40,7 +39,7 @@ export const createCompany = async (companyData: any) => {
 
 export const updateCompany = async (companyId: string, companyData: any) => {
   try {
-    const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/companies/${companyId}`, companyData);
+    const response = await axiosClient.put(`user/companies/${companyId}`, companyData);
     return response.data;
   } catch (error) {
     console.error('Error updating company:', error);
@@ -50,7 +49,7 @@ export const updateCompany = async (companyId: string, companyData: any) => {
 
 export const deleteCompany = async (companyId: string) => {
   try {
-    const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/companies/${companyId}`);
+    const response = await axiosClient.delete(`user/companies/${companyId}`);
     return response.data;
   } catch (error) {
     console.error('Error deleting company:', error);

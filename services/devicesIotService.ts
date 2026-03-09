@@ -1,7 +1,6 @@
-import axios from "axios";
+import axiosClient from "@/services/axiosClient";
 import type { IotDevice } from "@prisma/client";
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export interface GetDevicesIotFilters {
     semLink?: boolean;
@@ -22,7 +21,7 @@ export async function getDevicesIot(filters: GetDevicesIotFilters) {
     params.take = pageSize;
     params.skip = (page - 1) * pageSize;
 
-    const { data } = await axios.get(`/api/user/devices`, { params });
+    const { data } = await axiosClient.get(`/api/user/devices`, { params });
 
     return {
         list: data.devices || [],
@@ -38,16 +37,16 @@ export async function getDevicesIot(filters: GetDevicesIotFilters) {
 
 
 export async function createDeviceIot(device: Partial<IotDevice>) {
-    const { data } = await axios.post(`${NEXT_PUBLIC_API_URL}/user/devices`, device);
+    const { data } = await axiosClient.post(`user/devices`, device);
     return data;
 }
 
 export async function updateDeviceIot(device: Partial<IotDevice>) {
-    const { data } = await axios.put(`${NEXT_PUBLIC_API_URL}/user/devices/${device.id}`, device);
+    const { data } = await axiosClient.put(`user/devices/${device.id}`, device);
     return data;
 }
 
 export async function deleteDeviceIot(id: string) {
-    const { data } = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/devices/${id}`);
+    const { data } = await axiosClient.delete(`user/devices/${id}`);
     return data;
 }

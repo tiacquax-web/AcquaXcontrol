@@ -1,6 +1,5 @@
-import axios from 'axios';
+import axiosClient from '@/services/axiosClient';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface getRolesProps {
     searchQuery?: string;
@@ -17,7 +16,7 @@ export const getRoles = async ({ searchQuery, take, skip, orderBy }: getRolesPro
     if (skip) params.skip = skip;
     if (orderBy) params.orderBy = orderBy;
 
-    const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/roles`, { params });
+    const response = await axiosClient.get(`user/roles`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching role assignments:', error);
@@ -27,7 +26,7 @@ export const getRoles = async ({ searchQuery, take, skip, orderBy }: getRolesPro
 
 export const createRole = async (roleAssignmentData: any) => {
   try {
-    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/roles`, roleAssignmentData);
+    const response = await axiosClient.post(`user/roles`, roleAssignmentData);
     return response.data;
   } catch (error) {
     console.error('Error creating user:', error);
@@ -37,7 +36,7 @@ export const createRole = async (roleAssignmentData: any) => {
 
 export const updateRole = async (userId: string, roleAssignmentData: any) => {
   try {
-    const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/roles/${userId}`, roleAssignmentData);
+    const response = await axiosClient.put(`user/roles/${userId}`, roleAssignmentData);
     return response.data;
   } catch (error) {
     console.error('Error updating user:', error);
@@ -47,7 +46,7 @@ export const updateRole = async (userId: string, roleAssignmentData: any) => {
 
 export const deleteRole = async (roleAssignmentId: string) => {
   try {
-    const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/roles/${roleAssignmentId}`);
+    const response = await axiosClient.delete(`user/roles/${roleAssignmentId}`);
     return response.data;
   } catch (error) {
     console.error('Error deleting role assignment:', error);
