@@ -1,7 +1,7 @@
 {
-  "name": "Acqua X Control",
-  "short_name": "Acqua X",
-  "description": "Sua medição de água em tempo real",
+  "name": "AcquaX Field",
+  "short_name": "AcquaX Field",
+  "description": "Gestão de leituras e ordens de serviço em campo",
   "start_url": "/login?utm_source=pwa",
   "scope": "/",
   "display": "standalone",
@@ -12,26 +12,5 @@
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
     { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable any" }
-  ],
-  "screenshots": [
-    {
-      "src": "/screenshots/Dashboard-print.png",
-      "sizes": "426x926",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Dashboard com visão geral dos consumos"
-    },
-    {
-      "src": "/screenshots/Leitura-print.png",
-      "sizes": "423x925",
-      "type": "image/png",
-      "label": "Detalhes da leitura de um medidor"
-    },
-    {
-      "src": "/screenshots/Reservatorio-print.png",
-      "sizes": "430x928",
-      "type": "image/png",
-      "label": "Monitoramento do nível do reservatório"
-    }
   ]
 }

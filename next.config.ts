@@ -34,6 +34,13 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
 
+  // ─── Permite origens externas no dev (sandbox / proxy) ────────────────────
+  allowedDevOrigins: [
+    '*.sandbox.novita.ai',
+    'localhost',
+    '127.0.0.1',
+  ],
+
   // ─── Security & CORS headers ───────────────────────────────────────────────
   async headers() {
     return [

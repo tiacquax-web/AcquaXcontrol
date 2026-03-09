@@ -10,13 +10,13 @@ export default function PrivacyPolicyPage() {
       <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 my-4" role="alert">
         <p className="font-bold">Transparência</p>
         <p>
-          Esta política descreve como a Acqua X Control coleta, usa, compartilha e protege seus dados pessoais no site e aplicativo. O texto reflete o funcionamento atual do sistema conforme implementado no código.
+          Esta política descreve como a AcquaX Field coleta, usa, compartilha e protege seus dados pessoais no site e aplicativo. O texto reflete o funcionamento atual do sistema conforme implementado no código.
         </p>
       </div>
 
       <h2 className="text-2xl font-semibold mt-6">1. Controlador e Contato</h2>
       <p>
-        Controlador: Acqua X Control. Encarregado (DPO): responsável designado. Contato: suporte@acquaxdobrasil.com.br.
+        Controlador: AcquaX Field. Encarregado (DPO): responsável designado. Contato: suporte@acquaxdobrasil.com.br.
       </p>
 
       <h2 className="text-2xl font-semibold mt-6">2. Dados Pessoais Tratados</h2>

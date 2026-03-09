@@ -58,11 +58,13 @@ export default function Login() {
               alt="Acqua X do Brasil"
               width={250}
               height={50}
-              className="mb-2"
+              className="mb-1"
               priority
             />
           </div>
-          {/* <CardTitle className="text-2xl font-bold text-center">Entrar</CardTitle> */}
+          <div className="text-center">
+            <span className="text-sm font-semibold tracking-widest text-sky-500 uppercase">Field</span>
+          </div>
           <CardDescription className="text-center">Entre com seu email e senha para acessar sua conta</CardDescription>
         </CardHeader>
         <CardContent>

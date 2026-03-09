@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Acqua X Control",
-  description: "Sua medição de água em tempo real",
+  title: "AcquaX Field",
+  description: "Gestão de leituras e ordens de serviço em campo",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: "/icons/icon-192.png",

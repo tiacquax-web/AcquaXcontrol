@@ -164,7 +164,7 @@ const CHAPTER_CONTENT: Record<string, React.ReactNode> = {
   intro: (
     <div>
       <p className="text-slate-600 mb-4">
-        O <strong>AcquaX Control</strong> é um sistema de gestão de consumo de água para condomínios.
+        O <strong>AcquaX Field</strong> é um sistema de gestão de consumo de água para condomínios.
         Ele conecta três pontos principais:
       </p>
       <div className="bg-slate-50 border rounded-xl p-4 font-mono text-sm text-slate-700 space-y-1 my-4">
@@ -817,7 +817,7 @@ export default function GuiaPage() {
             <BookOpen size={20} className="text-teal-600" />
             <div>
               <p className="font-bold text-slate-800 text-sm leading-tight">Livro de UX</p>
-              <p className="text-xs text-slate-400">AcquaX Control · v1.0</p>
+              <p className="text-xs text-slate-400">AcquaX Field · v1.0</p>
             </div>
           </div>
         </div>

@@ -185,14 +185,17 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible={isMobile ? "offcanvas" : "icon"}>
       <SidebarHeader className="flex items-start justify-between py-4">
-        <Image
-          src="/logo-acquax.png"
-          alt="Acqua X do Brasil"
-          width={250}
-          height={50}
-          className="mb-3"
-          priority
-        />
+        <div>
+          <Image
+            src="/logo-acquax.png"
+            alt="Acqua X do Brasil"
+            width={220}
+            height={44}
+            className="mb-1"
+            priority
+          />
+          <div className="pl-1 text-xs font-bold tracking-widest text-sky-500 uppercase">Field</div>
+        </div>
         <SidebarTrigger />
       </SidebarHeader>
 

@@ -712,7 +712,7 @@ export default function LevantamentoPage() {
 
           {/* Footer print */}
           <div className="hidden print:block text-xs text-gray-400 text-center mt-4">
-            AcquaX Control — Levantamento — {complexDisplayName} Bl.{moradorRow.blockName} Ap.{moradorRow.aptName} — Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}
+            AcquaX Field — Levantamento — {complexDisplayName} Bl.{moradorRow.blockName} Ap.{moradorRow.aptName} — Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}
           </div>
         </>
       )}
@@ -980,7 +980,7 @@ export default function LevantamentoPage() {
 
           {/* Footer print */}
           <div className="hidden print:block text-xs text-gray-400 text-center mt-4">
-            AcquaX Control — Levantamento de Consumo — {complexDisplayName} — Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}
+            AcquaX Field — Levantamento de Consumo — {complexDisplayName} — Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}
           </div>
         </>
       )}
