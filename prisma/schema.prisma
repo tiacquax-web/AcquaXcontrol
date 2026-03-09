@@ -132,6 +132,19 @@ model User {
   assignedServiceOrders   ServiceOrder[]     @relation("AssignedServiceOrders")
   createdServiceOrders    ServiceOrder[]     @relation("SOCreatedByUser")
   updatedServiceOrders    ServiceOrder[]     @relation("SOUpdatedByUser")
+  reviewedServiceOrders   ServiceOrder[]     @relation("SOReviewedByUser")
+  billEnteredServiceOrders ServiceOrder[]    @relation("SOBillEnteredByUser")
+  approvedServiceOrders   ServiceOrder[]     @relation("SOApprovedByUser")
+
+  // Relacionamento com SpreadsheetTemplate
+  createdTemplates        SpreadsheetTemplate[] @relation("TemplateCreatedByUser")
+  updatedTemplates        SpreadsheetTemplate[] @relation("TemplateUpdatedByUser")
+
+  // Relacionamento com GeneratedSpreadsheet
+  generatedSpreadsheets   GeneratedSpreadsheet[] @relation("SpreadsheetGeneratedByUser")
+
+  // Relacionamento com FieldPhoto
+  takenPhotos             FieldPhoto[]       @relation("PhotoTakenByUser")
 
   preferences Json? // Novo campo para armazenar preferências do usuário
 
@@ -1514,10 +1527,15 @@ enum RouteStatus {
 }
 
 enum ServiceOrderStatus {
-  PENDING       // Aguardando execução
-  IN_PROGRESS   // Leiturista em campo
-  COMPLETED     // Finalizada (assinada)
-  CANCELLED     // Cancelada
+  PENDING          // Aguardando execução
+  IN_PROGRESS      // Leiturista em campo
+  COMPLETED        // Leiturista finalizou (assinada)
+  UNDER_REVIEW     // Técnico interno conferindo
+  AWAITING_BILL    // Aguardando conta da distribuidora
+  CALCULATING      // Calculando rateio
+  PREVIEW          // Pré-visualização gerada — aguardando aprovação
+  APPROVED         // Aprovado — planilhas geradas
+  CANCELLED        // Cancelada
 }
 
 model ReadingRoute {
@@ -1618,6 +1636,42 @@ model ServiceOrder {
   
   // Resumo das leituras (JSON com totais)
   readingSummary        Json?
+
+  // ── Etapa: Conferência do técnico interno ──────────────────────────────────
+  reviewedAt            DateTime?         @db.Timestamp
+  reviewedByUserId      String?
+  reviewedByUser        User?             @relation("SOReviewedByUser", fields: [reviewedByUserId], references: [id])
+  reviewNotes           String?           // Observações do técnico
+
+  // ── Etapa: Conta da distribuidora ─────────────────────────────────────────
+  billAmount            Float?            // Valor total da conta (R$)
+  billDueDate           DateTime?         @db.Timestamp  // Vencimento
+  billMonth             Int?              // Mês de competência da conta
+  billYear              Int?              // Ano de competência
+  billReference         String?           // Nº da fatura / referência
+  billEnteredAt         DateTime?         @db.Timestamp
+  billEnteredByUserId   String?
+  billEnteredByUser     User?             @relation("SOBillEnteredByUser", fields: [billEnteredByUserId], references: [id])
+
+  // ── Etapa: Cálculo do rateio ───────────────────────────────────────────────
+  totalMeasuredM3       Float?            // Total medido pelos hidrômetros
+  commonAreaM3          Float?            // Área comum calculada
+  commonAreaType        String?           // "DIFFERENCE" | "OWN_METER" | "CUSTOM"
+  commonAreaValue       Float?            // Valor R$ da área comum
+  rateioMethod          String?           // "FRACAO_IDEAL" | "DIVISAO_SIMPLES"
+  calculatedAt          DateTime?         @db.Timestamp
+  
+  // Prévia do rateio em JSON {apartmentId, consumption, amount, fraction}
+  rateioPreview         Json?
+
+  // ── Etapa: Aprovação final ─────────────────────────────────────────────────
+  approvedAt            DateTime?         @db.Timestamp
+  approvedByUserId      String?
+  approvedByUser        User?             @relation("SOApprovedByUser", fields: [approvedByUserId], references: [id])
+  approvalNotes         String?
+
+  // Planilhas geradas
+  spreadsheets          GeneratedSpreadsheet[]
   
   // Itens da ordem de serviço (apartamentos lidos)
   serviceOrderItems     ServiceOrderItem[]
@@ -1686,4 +1740,159 @@ model ServiceOrderItem {
   @@index([apartmentId])
   @@index([meterId])
   @@index([status])
+}
+
+// ─── Modelo de Planilha (Template) ────────────────────────────────────────────
+model SpreadsheetTemplate {
+  id                  String    @id @map("_id") @default(uuid())
+
+  name                String    // Ex: "Modelo América Clube"
+  description         String?
+
+  // Condomínio (opcional — pode ser um template genérico)
+  complexId           String?
+  complexName         String?
+  companyId           String?
+
+  // Tipo de rateio padrão para este template
+  rateioMethod        String    @default("FRACAO_IDEAL") // "FRACAO_IDEAL" | "DIVISAO_SIMPLES"
+
+  // Tipo de área comum
+  commonAreaType      String    @default("DIFFERENCE") // "DIFFERENCE" | "OWN_METER" | "CUSTOM"
+  commonAreaLabel     String?   @default("Área Comum") // Nome para exibir: "Área Comum", "Alinhamento", etc.
+
+  // Campos do template — mapeamento das colunas (JSON)
+  // Ex: { "unit": "A", "meterRegister": "B", "previousReading": "C", ... }
+  columnMapping       Json?
+
+  // Arquivo de exemplo/base (URL)
+  sampleFileUrl       String?
+  sampleFileName      String?
+
+  // Config de cobrança
+  includeSewerageRate Boolean   @default(false)
+  sewerageRate        Float?    // % de esgoto sobre o consumo de água
+  includeAdminFee     Boolean   @default(false)
+  adminFeeType        String?   // "FIXED" | "PERCENTAGE"
+  adminFeeValue       Float?
+
+  // Ativo/inativo
+  isActive            Boolean   @default(true)
+
+  // Planilhas geradas a partir deste template
+  generatedSpreadsheets GeneratedSpreadsheet[]
+
+  // Auditoria
+  createdAt           DateTime  @default(now()) @db.Timestamp
+  updatedAt           DateTime  @updatedAt @db.Timestamp
+  deletedAt           DateTime? @db.Timestamp
+
+  createdByUserId     String?
+  createdByUser       User?     @relation("TemplateCreatedByUser", fields: [createdByUserId], references: [id])
+  updatedByUserId     String?
+  updatedByUser       User?     @relation("TemplateUpdatedByUser", fields: [updatedByUserId], references: [id])
+
+  @@map("SpreadsheetTemplates")
+  @@index([complexId])
+  @@index([companyId])
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+// ─── Planilha Gerada ──────────────────────────────────────────────────────────
+model GeneratedSpreadsheet {
+  id                  String    @id @map("_id") @default(uuid())
+
+  // Origem
+  serviceOrderId      String
+  serviceOrder        ServiceOrder @relation(fields: [serviceOrderId], references: [id])
+
+  templateId          String?
+  template            SpreadsheetTemplate? @relation(fields: [templateId], references: [id])
+
+  // Contexto
+  complexId           String?
+  complexName         String?
+  companyId           String?
+  month               Int
+  year                Int
+
+  // Status da geração
+  status              String    @default("GENERATING") // "GENERATING" | "READY" | "ERROR"
+
+  // Arquivo gerado
+  fileUrl             String?
+  fileName            String?
+  fileSize            Int?      // bytes
+
+  // Dados do rateio usado na geração (snapshot)
+  rateioSnapshot      Json?
+
+  generatedAt         DateTime? @db.Timestamp
+  generatedByUserId   String?
+  generatedByUser     User?     @relation("SpreadsheetGeneratedByUser", fields: [generatedByUserId], references: [id])
+
+  createdAt           DateTime  @default(now()) @db.Timestamp
+  updatedAt           DateTime  @updatedAt @db.Timestamp
+
+  @@map("GeneratedSpreadsheets")
+  @@index([serviceOrderId])
+  @@index([templateId])
+  @@index([complexId])
+  @@index([month, year])
+  @@index([status])
+}
+
+// ─── Foto de leitura / fachada ────────────────────────────────────────────────
+model FieldPhoto {
+  id                  String    @id @map("_id") @default(uuid())
+
+  // Origem
+  serviceOrderId      String?
+  serviceOrderItemId  String?
+
+  // Contexto
+  complexId           String?
+  complexName         String?
+  blockId             String?
+  blockName           String?
+  apartmentId         String?
+  apartmentName       String?
+  meterId             String?
+  meterRegister       String?
+
+  // Mês/ano de referência
+  month               Int?
+  year                Int?
+
+  // Arquivo
+  url                 String    // URL da foto no storage
+  thumbnailUrl        String?
+  fileName            String?
+  fileSize            Int?
+
+  // Tipo
+  photoType           String    @default("METER") // "METER" | "FACADE" | "OTHER"
+  caption             String?   // Descrição/legenda
+
+  // Origem da captura
+  source              String    @default("CAMERA") // "CAMERA" | "UPLOAD"
+
+  takenAt             DateTime? @db.Timestamp
+  takenByUserId       String?
+  takenByUser         User?     @relation("PhotoTakenByUser", fields: [takenByUserId], references: [id])
+
+  createdAt           DateTime  @default(now()) @db.Timestamp
+  updatedAt           DateTime  @updatedAt @db.Timestamp
+  deletedAt           DateTime? @db.Timestamp
+
+  @@map("FieldPhotos")
+  @@index([serviceOrderId])
+  @@index([serviceOrderItemId])
+  @@index([complexId])
+  @@index([apartmentId])
+  @@index([meterId])
+  @@index([month, year])
+  @@index([photoType])
+  @@index([deletedAt])
 }

@@ -6,89 +6,57 @@ import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
 import { Skeleton } from "@/components/ui/skeleton"
 
 import {
-  CircleGauge, Building2, Building, DoorClosed,
-  Gauge, ShieldCheck, HousePlus, ReceiptText,
-  ChartBarIncreasing, LayoutDashboard, GaugeCircle,
-  Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen,
-  Route, ClipboardList,
+  LayoutDashboard, Route, ClipboardList, Camera,
+  FileSpreadsheet, FilePlus2,
+  Building2, Building, DoorClosed,
+  GaugeCircle, UsersRound, ShieldCheck, HousePlus,
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
 
-// ─── Menu items ───────────────────────────────────────────────────────────────
-// Regra: items sem requiresCreate aparecem para todos os perfis que têm
-//        permissão de leitura na entidade mapeada.
-//        Items com requiresCreate=true só aparecem para quem pode criar
-//        (admin, programador, síndico com permissão total).
+// ─── Menu items do AcquaX Field ──────────────────────────────────────────────
 const items = [
+  // ── Operação ──
   {
     title: "Início",
     url: "/dashboard",
     icon: LayoutDashboard,
-    group: 'Geral',
-  },
-  {
-    title: "Relatórios",
-    url: "/apartment-report",
-    icon: ChartBarIncreasing,
-    group: 'Geral',
-  },
-  {
-    title: "Contas",
-    url: "/dealership-readings",
-    icon: ReceiptText,
-    group: 'Geral',
-  },
-  {
-    title: "Leituras",
-    url: "/readings",
-    icon: CircleGauge,
-    group: 'Geral',
-  },
-  {
-    title: "Filipeta Medição",
-    url: "/meter-report",
-    icon: FileText,
-    group: 'Geral',
+    group: 'Operação',
   },
   {
     title: "Rotas de Leitura",
     url: "/reading-routes",
     icon: Route,
-    group: 'Geral',
+    group: 'Operação',
   },
   {
     title: "Ordens de Serviço",
     url: "/service-orders",
     icon: ClipboardList,
-    group: 'Geral',
+    group: 'Operação',
   },
   {
-    title: "Levantamento",
-    url: "/levantamento",
-    icon: TrendingUp,
-    group: 'Geral',
-  },
-  {
-    title: "Monitoramento",
-    url: "/monitoring",
-    icon: Gauge,
-    group: 'Geral',
-  },
-  {
-    title: "Medidores de Nível",
-    url: "/reservoir-monitoring",
-    icon: Droplets,
-    group: 'Geral',
-  },
-  {
-    title: "Guia de Uso",
-    url: "/guia",
-    icon: BookOpen,
-    group: 'Geral',
+    title: "Fotos",
+    url: "/photos",
+    icon: Camera,
+    group: 'Operação',
   },
 
-  // ── Cadastros: só para perfis com permissão de criar ──
+  // ── Faturamento ──
+  {
+    title: "Modelos de Planilha",
+    url: "/spreadsheet-templates",
+    icon: FileSpreadsheet,
+    group: 'Faturamento',
+  },
+  {
+    title: "Gerar Planilhas",
+    url: "/generate-spreadsheets",
+    icon: FilePlus2,
+    group: 'Faturamento',
+  },
+
+  // ── Cadastros ──
   {
     title: "Administradoras",
     url: "/companies",
@@ -125,20 +93,6 @@ const items = [
     requiresCreate: true,
   },
   {
-    title: "IOTs",
-    url: "/devices",
-    icon: Radio,
-    group: 'Cadastros',
-    requiresCreate: true,
-  },
-  {
-    title: "Reservatórios",
-    url: "/reservoirs",
-    icon: Droplets,
-    group: 'Cadastros',
-    requiresCreate: true,
-  },
-  {
     title: "Usuários",
     url: "/users",
     icon: UsersRound,
@@ -159,11 +113,9 @@ export function AppSidebar() {
   const { permissions, loading } = usePermissionsContext();
 
   function hasAnyPermission(url: string, requiresCreate?: boolean) {
-    // Dashboard sempre visível
     if (url === '/dashboard') return true;
     if (!permissions) return false;
     const entity = sidebarPermissionMap[url];
-    // URL sem mapeamento de entidade → visível se tiver qualquer permissão
     if (!entity) return permissions.length > 0;
     if (requiresCreate) {
       return permissions.some((p: any) => p.entity === entity && p.action === 'create');
@@ -210,7 +162,7 @@ export function AppSidebar() {
                       <Skeleton className="h-4 w-16 mb-2" />
                       <Skeleton className="h-2 w-full mb-2" />
                     </div>
-                    {Array.from({ length: 5 }).map((_, i) => (
+                    {Array.from({ length: 4 }).map((_, i) => (
                       <div key={i} className="flex items-center gap-2 mb-2 pl-2">
                         <Skeleton className="h-5 w-5 rounded-full" />
                         <Skeleton className="h-4 w-20" />
