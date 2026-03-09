@@ -18,16 +18,6 @@ export default function Account() {
         }
     }, [user]);
 
-    useEffect(() => {
-        if (saveError) {
-            toast({
-                title: "Erro ao salvar",
-                description: saveError,
-                variant: "destructive",
-            });
-        }
-    }, [saveError, toast]);
-
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setForm(f => ({ ...f, [name]: value }));
@@ -46,16 +36,28 @@ export default function Account() {
         }
         const updateData: any = { name: form.name, email: form.email };
         if (form.password) updateData.password = form.password;
-        const userId = (user as any)?.id;
-        if (!userId) return;
-        const updated = await updateUser(updateData);
-        if (updated) {
+        try {
+            const updated = await updateUser(updateData);
+            if (updated) {
+                toast({
+                    title: "Dados atualizados com sucesso!",
+                    description: "Suas informações foram salvas.",
+                    variant: "default",
+                });
+                setForm(f => ({ ...f, password: "", confirmPassword: "" }));
+            } else {
+                toast({
+                    title: "Erro ao salvar",
+                    description: saveError || "Não foi possível atualizar os dados. Tente novamente.",
+                    variant: "destructive",
+                });
+            }
+        } catch (err: any) {
             toast({
-                title: "Dados atualizados com sucesso!",
-                description: "Suas informações foram salvas.",
-                variant: "default",
+                title: "Erro ao salvar",
+                description: err?.response?.data?.error || err?.message || "Erro inesperado ao salvar os dados.",
+                variant: "destructive",
             });
-            setForm(f => ({ ...f, password: "", confirmPassword: "" }));
         }
     };
 

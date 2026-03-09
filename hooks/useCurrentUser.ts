@@ -41,7 +41,7 @@ export function useUpdateCurrentUser() {
     } catch (err: any) {
       const message = err.response?.data?.error || err.message || "Unknown error";
       setError(message || 'Erro ao atualizar usuário');
-      throw err;
+      return null;
     } finally {
       setLoading(false);
     }

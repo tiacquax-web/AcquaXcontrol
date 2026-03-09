@@ -10,6 +10,7 @@ interface useApartmentsProps {
   withComplex?: boolean;
   withBlock?: boolean;
   withCompany?: boolean;
+  companyId?: string;
   complexId?: string;
   blockId?: string;
   nameQuery?: string;
@@ -21,13 +22,16 @@ interface useApartmentsProps {
   enabled?: boolean;
 }
 
-export const useApartments = ({ withComplex, withBlock, withCompany, complexId, blockId, nameQuery, getAvailableForEntity, take = 10, skip = 0, orderBy, orderDirection, enabled = true }: useApartmentsProps) => {
+export const useApartments = ({ withComplex, withBlock, withCompany, companyId, complexId, blockId, nameQuery, getAvailableForEntity, take = 10, skip = 0, orderBy, orderDirection, enabled = true }: useApartmentsProps) => {
   const [apartments, setApartments] = useState<ApartmentFull[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [totalCount, setTotalCount] = useState(0)
+  const [sequence, setSequence] = useState(0)
 
   const debouncedNameQuery = useDebounce(nameQuery, 350);
+
+  const refetch = () => setSequence(s => s + 1);
 
   useEffect(() => {
     // Só busca apartamentos se enabled for true
@@ -39,7 +43,7 @@ export const useApartments = ({ withComplex, withBlock, withCompany, complexId, 
     const fetchApartments = async () => {
       setLoading(true)
       try {
-        const data = await getApartments({ withComplex, withBlock, withCompany, complexId, blockId, nameQuery: debouncedNameQuery, getAvailableForEntity, take, skip, orderBy, orderDirection })
+        const data = await getApartments({ withComplex, withBlock, withCompany, companyId, complexId, blockId, nameQuery: debouncedNameQuery, getAvailableForEntity, take, skip, orderBy, orderDirection })
         setApartments(data.list)
         setTotalCount(data.totalCount || 0)
         setError(null)
@@ -52,9 +56,9 @@ export const useApartments = ({ withComplex, withBlock, withCompany, complexId, 
     };
 
     fetchApartments()
-  }, [complexId, blockId, debouncedNameQuery, getAvailableForEntity, take, skip, enabled, withComplex, withBlock, withCompany])
+  }, [companyId, complexId, blockId, debouncedNameQuery, getAvailableForEntity, take, skip, enabled, withComplex, withBlock, withCompany, sequence])
 
-  return { apartments, loading, error, totalCount }
+  return { apartments, loading, error, totalCount, refetch }
 };
 
 export const useApartmentMutations = () => {

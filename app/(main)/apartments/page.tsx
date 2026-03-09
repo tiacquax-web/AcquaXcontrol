@@ -24,7 +24,7 @@ export default function ApartmentsPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [take, setTake] = useState(10);
     const [skip, setSkip] = useState(0);
-    const { apartments, error, loading, totalCount = 0 } = useApartments({ ...filters, take, skip, withComplex: true, withBlock: true });
+    const { apartments, error, loading, totalCount = 0, refetch } = useApartments({ ...filters, take, skip, withComplex: true, withBlock: true });
     const { createApartment, updateApartment, deleteApartment, error: mutationError } = useApartmentMutations()
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [currentApartment, setCurrentApartment] = useState<Apartment | null>(null)
@@ -58,6 +58,7 @@ export default function ApartmentsPage() {
             } else {
                 await createApartment(apartmentData as Apartment)
             }
+            refetch()
             setIsModalOpen(false)
         } catch (error) {
             console.error("Erro ao salvar apartamento:", error)
@@ -68,6 +69,7 @@ export default function ApartmentsPage() {
         if (window.confirm("Tem certeza que deseja excluir este apartamento?")) {
             try {
                 await deleteApartment(id)
+                refetch()
             } catch (error) {
                 console.error("Erro ao excluir apartamento:", error)
             }

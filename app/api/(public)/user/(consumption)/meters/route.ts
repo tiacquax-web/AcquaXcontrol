@@ -4,7 +4,6 @@ import { getUserContextsForActionOnEntity } from "@/lib/userContexts"
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ContextType, Meter } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
-
 // Aumenta o timeout para 60s (Vercel Hobby permite até 60s)
 export const maxDuration = 60;
 
@@ -418,13 +417,9 @@ function getQueryParams(req: NextRequest) {
 
 export async function GET(req: NextRequest): Promise<Response> {
     try {
-        // validate user session
-        const session = req.cookies.get('session')?.value
-        const validSession = session ? await isSessionValid(session) : false
-        if (!validSession) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-        // get userId from session
-        const userId = validSession.userId
+        // validate user session — usa validateUserSession para suportar JWT mesmo quando sessão não está no banco
+        const { userId, error: sessionError } = await validateUserSession(req)
+        if (sessionError || !userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         
         // get query params
         const { meterId, companyId, complexId, blockId, apartmentId, withApartment, withBlock, withComplex, withTypeMeter, search, take, skip, orderBy, orderDirection } = getQueryParams(req)
@@ -433,8 +428,14 @@ export async function GET(req: NextRequest): Promise<Response> {
         const contextType : ContextType | undefined = apartmentId ? 'apartment' : blockId ? 'block' : complexId ? 'complex' : companyId ? 'company' : undefined
         const contextId = contextType === 'apartment' ? apartmentId : contextType === 'block' ? blockId : contextType === 'complex' ? complexId : contextType === 'company' ? companyId : undefined
 
-        if (!contextType || !contextId)
-            return NextResponse.json({ error: 'Nenhum contexto válido foi informado.' }, { status: 400 })
+        // If no context is provided, check if the user has system-level permission
+        if (!contextType || !contextId) {
+            // Allow system users (admin/programmer) to search without context
+            const contexts = await getUserContextsForActionOnEntity(userId, 'meter', 'read')
+            if (!contexts.system) {
+                return NextResponse.json({ error: 'Por favor, selecione um condomínio para visualizar os medidores.' }, { status: 400 })
+            }
+        }
 
         // Build include object
         const include: any = {}
