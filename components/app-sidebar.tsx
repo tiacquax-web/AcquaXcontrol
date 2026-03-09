@@ -16,44 +16,50 @@ import { sidebarPermissionMap } from './sidebar-permission-map';
 
 // ─── Menu items do AcquaX Field ──────────────────────────────────────────────
 const items = [
-  // ── Operação ──
+  // ── Operação — visível para todos os usuários logados ──
   {
     title: "Início",
     url: "/dashboard",
     icon: LayoutDashboard,
     group: 'Operação',
+    alwaysVisible: true,
   },
   {
     title: "Rotas de Leitura",
     url: "/reading-routes",
     icon: Route,
     group: 'Operação',
+    alwaysVisible: true,
   },
   {
     title: "Ordens de Serviço",
     url: "/service-orders",
     icon: ClipboardList,
     group: 'Operação',
+    alwaysVisible: true,
   },
   {
     title: "Fotos",
     url: "/photos",
     icon: Camera,
     group: 'Operação',
+    alwaysVisible: true,
   },
 
-  // ── Faturamento ──
+  // ── Faturamento — visível para todos os usuários logados ──
   {
     title: "Modelos de Planilha",
     url: "/spreadsheet-templates",
     icon: FileSpreadsheet,
     group: 'Faturamento',
+    alwaysVisible: true,
   },
   {
     title: "Gerar Planilhas",
     url: "/generate-spreadsheets",
     icon: FilePlus2,
     group: 'Faturamento',
+    alwaysVisible: true,
   },
 
   // ── Cadastros ──
@@ -112,7 +118,9 @@ export function AppSidebar() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { permissions, loading } = usePermissionsContext();
 
-  function hasAnyPermission(url: string, requiresCreate?: boolean) {
+  function hasAnyPermission(url: string, requiresCreate?: boolean, alwaysVisible?: boolean) {
+    // Itens marcados como alwaysVisible aparecem para qualquer usuário logado
+    if (alwaysVisible) return Array.isArray(permissions) ? permissions.length >= 0 : true;
     if (url === '/dashboard') return true;
     if (!permissions) return false;
     const entity = sidebarPermissionMap[url];
@@ -130,7 +138,7 @@ export function AppSidebar() {
 
   const visibleGroups = groups.filter((group) =>
     items.some(
-      (item) => item.group === group && hasAnyPermission(item.url, (item as any).requiresCreate)
+      (item) => item.group === group && hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).alwaysVisible)
     )
   );
 
@@ -181,7 +189,7 @@ export function AppSidebar() {
                       .filter(
                         (item) =>
                           item.group === group &&
-                          hasAnyPermission(item.url, (item as any).requiresCreate)
+                          hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).alwaysVisible)
                       )
                       .map((item) => (
                         <SidebarMenuItem key={item.title}>

@@ -9,7 +9,9 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
   const { permissions } = usePermissionsContext();
 
-  function hasAnyPermission(url: string, requiresCreate?: boolean) {
+  function hasAnyPermission(url: string, requiresCreate?: boolean, alwaysVisible?: boolean) {
+    // Itens de Operação e Faturamento aparecem para qualquer usuário logado
+    if (alwaysVisible) return true;
     if (url === '/dashboard') return true;
     if (!permissions) return false;
     const entity = sidebarPermissionMap[url];
@@ -29,7 +31,7 @@ export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onO
     sidebarItems.some(
       (item: ItemType) =>
         item.group === group &&
-        hasAnyPermission(item.url, (item as any).requiresCreate)
+        hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).alwaysVisible)
     )
   );
 
@@ -54,7 +56,7 @@ export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onO
                         .filter(
                           (item: ItemType) =>
                             item.group === group &&
-                            hasAnyPermission(item.url, (item as any).requiresCreate)
+                            hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).alwaysVisible)
                         )
                         .map((item: ItemType) => (
                           <SidebarMenuItem key={item.title}>
