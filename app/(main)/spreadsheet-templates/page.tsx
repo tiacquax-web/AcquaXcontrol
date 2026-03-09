@@ -50,6 +50,14 @@ const EMPTY_FORM = {
   isActive: true,
 }
 
+interface Complex {
+  id: string
+  socialName: string
+  aliasName?: string
+  sewerageType?: string
+  sewerageRate?: number
+}
+
 export default function SpreadsheetTemplatesPage() {
   const { toast } = useToast()
   const [templates, setTemplates] = useState<SpreadsheetTemplate[]>([])
@@ -62,6 +70,7 @@ export default function SpreadsheetTemplatesPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const [complexes, setComplexes] = useState<Complex[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -76,6 +85,32 @@ export default function SpreadsheetTemplatesPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    fetch("/api/(public)/user/(places)/complexes?take=500")
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(d => setComplexes(d.data || d || []))
+      .catch(() => {})
+  }, [])
+
+  const f = useCallback((key: string, value: any) => setForm(prev => ({ ...prev, [key]: value })), [])
+
+  // Auto-fill sewerage from condo when complexId changes
+  const handleComplexChange = useCallback((complexId: string) => {
+    f("complexId", complexId)
+    if (complexId && complexId !== "none") {
+      const condo = complexes.find(c => c.id === complexId)
+      if (condo) {
+        f("complexName", condo.socialName)
+        if (condo.sewerageType && condo.sewerageType !== "NENHUM") {
+          f("includeSewerageRate", true)
+          f("sewerageRate", condo.sewerageRate || 0)
+        }
+      }
+    } else {
+      f("complexName", "")
+    }
+  }, [complexes, f])
 
   const filtered = templates.filter(t =>
     !search ||
@@ -175,8 +210,6 @@ export default function SpreadsheetTemplatesPage() {
       toast({ title: "Erro ao excluir", variant: "destructive" })
     }
   }
-
-  const f = (key: string, value: any) => setForm(prev => ({ ...prev, [key]: value }))
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -341,10 +374,18 @@ export default function SpreadsheetTemplatesPage() {
             {/* Condomínio */}
             <div className="space-y-2">
               <Label>Condomínio (opcional)</Label>
-              <Input value={form.complexName}
-                onChange={e => f("complexName", e.target.value)}
-                placeholder="Nome do condomínio (deixe vazio para modelo genérico)" />
-              <p className="text-xs text-muted-foreground">Se preenchido, este modelo será vinculado a este condomínio específico.</p>
+              <Select value={form.complexId} onValueChange={handleComplexChange}>
+                <SelectTrigger><SelectValue placeholder="Selecione o condomínio (opcional)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Modelo genérico (sem condomínio) —</SelectItem>
+                  {complexes.map(c => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.socialName}{c.aliasName ? ` (${c.aliasName})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Se selecionado, a taxa de esgoto será preenchida automaticamente a partir do cadastro do condomínio.</p>
             </div>
 
             {/* Rateio */}

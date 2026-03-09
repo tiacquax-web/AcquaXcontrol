@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast"
 import {
     ArrowLeft, CheckCircle2, Clock, FileText, Pen, Camera, Upload,
     User, Building2, Calendar, Package, Loader2, XCircle, AlertCircle,
-    ImageIcon
+    ImageIcon, Printer, FileDown
 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
@@ -270,6 +270,106 @@ export default function ServiceOrderDetailPage() {
         }
     }
 
+    // PDF generation
+    const generatePDF = (mode: 'before' | 'after') => {
+        if (!order) return
+        const isSigned = mode === 'after'
+        const MONTHS_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
+        const monthLabel = MONTHS_PT[(order.month || 1) - 1]
+
+        const rows = order.serviceOrderItems.map((item, idx) => `
+            <tr style="background:${idx % 2 === 0 ? '#fff' : '#f9fafb'}">
+                <td style="padding:6px 8px;border:1px solid #e5e7eb">${item.blockName || ''}</td>
+                <td style="padding:6px 8px;border:1px solid #e5e7eb">${item.apartmentName || ''}</td>
+                <td style="padding:6px 8px;border:1px solid #e5e7eb;font-family:monospace">${item.meterRegister || ''}</td>
+                <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:right">${item.previousReading != null ? Number(item.previousReading).toFixed(3) : ''}</td>
+                <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:right;${!isSigned ? 'min-width:80px' : ''}">${isSigned ? (item.currentReading != null ? Number(item.currentReading).toFixed(3) : '') : '<span style="color:#bbb">______</span>'}</td>
+                <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:right">${isSigned && item.consumption != null ? Number(item.consumption).toFixed(3) : ''}</td>
+                <td style="padding:6px 8px;border:1px solid #e5e7eb">${isSigned ? (item.status === 'READ' ? '✓' : item.status === 'SKIPPED' ? 'Pulado' : item.status === 'ERROR' ? 'Erro' : '') : ''}</td>
+            </tr>
+        `).join('')
+
+        const sigSection = isSigned ? `
+            <div style="display:flex;gap:32px;margin-top:32px">
+                <div style="flex:1;text-align:center">
+                    ${order.leiturnistaSignature
+                        ? `<img src="${order.leiturnistaSignature}" style="max-height:60px;max-width:200px;border-bottom:1px solid #000" />`
+                        : '<div style="height:60px;border-bottom:1px solid #000"></div>'}
+                    <p style="font-size:11px;margin-top:4px">Assinatura do Leiturista<br/>${order.assignedToUser?.name || ''}</p>
+                </div>
+                <div style="flex:1;text-align:center">
+                    ${order.syndicSignature
+                        ? `<img src="${order.syndicSignature}" style="max-height:60px;max-width:200px;border-bottom:1px solid #000" />`
+                        : '<div style="height:60px;border-bottom:1px solid #000"></div>'}
+                    <p style="font-size:11px;margin-top:4px">Assinatura do ${order.syndicRole || 'Síndico'}<br/>${order.syndicName || ''}</p>
+                </div>
+            </div>
+        ` : `
+            <div style="display:flex;gap:32px;margin-top:40px">
+                <div style="flex:1;text-align:center">
+                    <div style="height:60px;border-bottom:1px solid #000"></div>
+                    <p style="font-size:11px;margin-top:4px">Assinatura do Leiturista</p>
+                </div>
+                <div style="flex:1;text-align:center">
+                    <div style="height:60px;border-bottom:1px solid #000"></div>
+                    <p style="font-size:11px;margin-top:4px">Assinatura do Síndico / Responsável</p>
+                </div>
+            </div>
+        `
+
+        const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<title>OS ${order.orderNumber} — ${isSigned ? 'Assinada' : 'Campo'}</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12px; color: #111; margin: 20px; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  h2 { font-size: 13px; margin: 0 0 12px; color: #555; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  th { background: #1e3a5f; color: #fff; padding: 6px 8px; border: 1px solid #1e3a5f; text-align: left; font-size: 11px; }
+  @media print { .no-print { display: none; } }
+</style>
+</head>
+<body>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+    <div>
+      <h1>Ordem de Serviço ${order.orderNumber}</h1>
+      <h2>${order.complexSocialName || ''} — ${monthLabel}/${order.year}</h2>
+    </div>
+    <div style="text-align:right;font-size:11px;color:#555">
+      ${isSigned ? `Status: ${order.status === 'COMPLETED' ? 'Concluída' : order.status}<br/>` : ''}
+      Leiturista: ${order.assignedToUser?.name || 'Não atribuído'}<br/>
+      Gerado em: ${new Date().toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Bloco</th><th>Unidade</th><th>Medidor</th>
+        <th style="text-align:right">Leit. Anterior</th>
+        <th style="text-align:right">${isSigned ? 'Leit. Atual' : 'Leit. Atual (campo)'}</th>
+        <th style="text-align:right">Consumo (m³)</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  ${sigSection}
+  <div class="no-print" style="margin-top:20px">
+    <button onclick="window.print()" style="padding:8px 16px;background:#1e3a5f;color:white;border:none;border-radius:4px;cursor:pointer">🖨️ Imprimir / Salvar PDF</button>
+  </div>
+</body>
+</html>`
+
+        const win = window.open('', '_blank', 'width=900,height=700')
+        if (win) {
+            win.document.write(html)
+            win.document.close()
+            setTimeout(() => win.print(), 600)
+        }
+    }
+
     const completeOrder = async () => {
         if (!window.confirm("Confirmar conclusão da ordem de serviço? Isso irá finalizar a rota.")) return
         setSaving(true)
@@ -319,21 +419,31 @@ export default function ServiceOrderDetailPage() {
     return (
         <div className="space-y-6 w-full p-6">
             {/* Header */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
                 <Button variant="ghost" size="icon" onClick={() => router.back()}>
                     <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                     <h1 className="text-2xl font-bold flex items-center gap-2">
                         <FileText className="h-6 w-6" />
                         {order.orderNumber}
                     </h1>
                     <p className="text-muted-foreground">{order.complexSocialName} — {MONTHS[order.month - 1]} / {order.year}</p>
                 </div>
-                <Badge variant={statusCfg.variant as any} className="flex items-center gap-1">
-                    {statusCfg.icon}
-                    {statusCfg.label}
-                </Badge>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                    <Badge variant={statusCfg.variant as any} className="flex items-center gap-1">
+                        {statusCfg.icon}
+                        {statusCfg.label}
+                    </Badge>
+                    <Button variant="outline" size="sm" onClick={() => generatePDF('before')} title="PDF para campo (sem leituras preenchidas)">
+                        <Printer className="h-4 w-4 mr-1" />
+                        PDF Campo
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => generatePDF('after')} title="PDF com leituras e assinaturas">
+                        <FileDown className="h-4 w-4 mr-1" />
+                        PDF Assinado
+                    </Button>
+                </div>
             </div>
 
             {/* Summary cards */}

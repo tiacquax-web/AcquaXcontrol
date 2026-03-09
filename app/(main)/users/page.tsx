@@ -35,6 +35,7 @@ export default function UsersPage() {
         refetch 
     } = useUsers({ 
         searchQuery,
+        excludeRole: "Morador",
         take,
         skip
     })

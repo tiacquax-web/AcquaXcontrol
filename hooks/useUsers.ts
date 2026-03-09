@@ -15,6 +15,7 @@ interface useUsersProps {
     documentUser?: string;
     userId?: string;
     roleName?: string;
+    excludeRole?: string;
     contextType?: ContextType;
     contextId?: string;
     take?: number;
@@ -26,7 +27,8 @@ export const useUsers = ({
     userId, 
     searchQuery, 
     documentUser, 
-    roleName, 
+    roleName,
+    excludeRole,
     contextType, 
     contextId, 
     take = 10, 
@@ -55,7 +57,8 @@ export const useUsers = ({
                     userId, 
                     searchQuery: debouncedSearchQuery, 
                     documentUser: debouncedDocumentUser, 
-                    roleName, 
+                    roleName,
+                    excludeRole,
                     contextType, 
                     contextId,
                     take,
@@ -75,7 +78,7 @@ export const useUsers = ({
         };
 
         fetchUsers();
-    }, [debouncedSearchQuery, debouncedDocumentUser, contextType, contextId, userId, roleName, take, skip, enabled]);
+    }, [debouncedSearchQuery, debouncedDocumentUser, contextType, contextId, userId, roleName, excludeRole, take, skip, enabled]);
 
     const hasNextPage = skip + take < totalCount;
     const hasPreviousPage = skip > 0;
@@ -89,7 +92,8 @@ export const useUsers = ({
                 userId, 
                 searchQuery: debouncedSearchQuery, 
                 documentUser: debouncedDocumentUser, 
-                roleName, 
+                roleName,
+                excludeRole,
                 contextType, 
                 contextId,
                 take,

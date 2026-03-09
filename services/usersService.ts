@@ -7,19 +7,21 @@ interface getUsersProps {
     documentUser?: string;
     userId?: string;
     roleName?: string;
+    excludeRole?: string;
     contextType?: ContextType;
     contextId?: string;
     take?: number;
     skip?: number;
 }
 
-export const getUsers = async ({ userId, searchQuery, documentUser, roleName, contextType, contextId, take = 10, skip = 0 }: getUsersProps) => {
+export const getUsers = async ({ userId, searchQuery, documentUser, roleName, excludeRole, contextType, contextId, take = 10, skip = 0 }: getUsersProps) => {
   try {
     const params: any = {};
     if (searchQuery) params.search = searchQuery;
     if (documentUser) params.documentUser = documentUser;
     if (userId) params.user_id = userId;
     if (roleName) params.role_name = roleName;
+    if (excludeRole) params.exclude_role = excludeRole;
     if (contextType) params.role_context_type = contextType;
     if (contextId) params.role_context_id = contextId;
     if (take) params.take = take;

@@ -99,17 +99,19 @@ export default function ReadingRoutesPage() {
 
     const fetchComplexes = useCallback(async () => {
         try {
-            const res = await fetch("/api/(public)/user/(places)/complexes?take=200&status=Ativo")
+            const res = await fetch("/api/(public)/user/(places)/complexes?take=500")
             if (res.ok) {
                 const data = await res.json()
-                setComplexes(data.data || data || [])
+                const list = data.data || data || []
+                // Filter active only client-side to avoid URL encoding issues
+                setComplexes(list.filter((c: any) => !c.status || c.status === 'Ativo'))
             }
         } catch { /* ignore */ }
     }, [])
 
     const fetchUsers = useCallback(async () => {
         try {
-            const res = await fetch("/api/users?take=200")
+            const res = await fetch("/api/(public)/user/users?take=200")
             if (res.ok) {
                 const data = await res.json()
                 setUsers(data.data || data || [])

@@ -486,24 +486,13 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
                         <SelectItem value="REAL_CONSUMO">Real Consumo</SelectItem>
                         <SelectItem value="M3_MEDIO">M³ Médio</SelectItem>
                         <SelectItem value="PROGRESSIVIDADE">Progressividade</SelectItem>
+                        <SelectItem value="none">— Não definido —</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="totalConsumptionM3">Consumo Total da Conta (m³)</Label>
-                    <Input
-                      id="totalConsumptionM3"
-                      name="totalConsumptionM3"
-                      type="number"
-                      step="0.001"
-                      placeholder="Ex: 1800"
-                      value={(formData as any).totalConsumptionM3 ?? ""}
-                      onChange={handleNumberChange}
-                    />
-                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="minimumConsumptionM3">Mínimo por Unidade (m³)</Label>
                     <Input
@@ -535,18 +524,7 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="commonAreaConsumptionM3">Consumo Áreas Comuns (m³)</Label>
-                    <Input
-                      id="commonAreaConsumptionM3"
-                      name="commonAreaConsumptionM3"
-                      type="number"
-                      step="0.001"
-                      placeholder="Ex: 200"
-                      value={(formData as any).commonAreaConsumptionM3 ?? ""}
-                      onChange={handleNumberChange}
-                    />
-                  </div>
+
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

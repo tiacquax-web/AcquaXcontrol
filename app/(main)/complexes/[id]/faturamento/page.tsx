@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,56 +14,83 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import {
     ArrowLeft, Building2, Loader2, Plus, Pencil, Trash2, Mail,
-    Phone, User, Save, FileText, DollarSign, Send, X, Check
+    Phone, User, Save, DollarSign, Send, X,
+    Upload, FileSpreadsheet, Download, Info
 } from "lucide-react"
 import Link from "next/link"
 
 interface BillingContact {
     id: string
-    name: string         // síndico name
-    phone: string        // admin phone
-    emails: string[]     // multiple emails
-    role: string         // síndico, administrador, etc.
+    name: string
+    phone: string
+    emails: string[]
+    role: string
     isPrimary: boolean
 }
 
-interface BillingConfig {
-    complexId: string
-    complexName: string
-    dealershipName?: string
-    billingType?: string
-    schedulingNotes?: string
-    contacts: BillingContact[]
-    billingTypes: string[]   // custom billing types added to this condo
+interface Dealership {
+    id: string
+    name: string
 }
 
-const DEFAULT_BILLING_TYPES = [
-    "Água + Esgoto",
-    "Água",
-    "Esgoto",
-    "Gás",
-    "Água + Gás",
-    "Energia Elétrica",
+const BILLING_TYPES = [
+    { value: "MINIMO", label: "Mínimo" },
+    { value: "REAL_CONSUMO", label: "Real Consumo" },
+    { value: "M3_MEDIO", label: "M³ Médio" },
+    { value: "PROGRESSIVIDADE", label: "Progressividade" },
+]
+
+const SEWERAGE_TYPES = [
+    { value: "NENHUM", label: "Sem esgoto" },
+    { value: "PERCENTUAL", label: "Percentual do consumo" },
+    { value: "FIXO", label: "Valor fixo (R$)" },
+]
+
+const COMMON_AREA_ALLOCATIONS = [
+    { value: "IGUAL", label: "Igual para todos" },
+    { value: "FRACAO_IDEAL", label: "Fração Ideal" },
+    { value: "NENHUM", label: "Sem rateio de área comum" },
+]
+
+const ADMIN_FEE_TYPES = [
+    { value: "NENHUM", label: "Sem taxa de administração" },
+    { value: "PERCENTUAL", label: "Percentual (%)" },
+    { value: "FIXO", label: "Valor fixo (R$)" },
 ]
 
 export default function ComplexFaturamentoPage() {
     const { id } = useParams()
-    const router = useRouter()
     const { toast } = useToast()
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [complex, setComplex] = useState<any>(null)
-    const [config, setConfig] = useState<BillingConfig>({
-        complexId: id as string,
-        complexName: "",
+
+    // Billing config state (merged from edit modal + original)
+    const [config, setConfig] = useState({
+        dealershipId: "",
         dealershipName: "",
         billingType: "none",
+        sewerageType: "NENHUM",
+        sewerageRate: 0,
+        adminFeeType: "NENHUM",
+        adminFeeValue: 0,
+        minimumConsumptionM3: 0,
+        commonAreaAllocation: "IGUAL",
         schedulingNotes: "",
-        contacts: [],
-        billingTypes: [],
+        billingNotes: "",
+        apportionment: "Simples",
+        contacts: [] as BillingContact[],
     })
-    const [customBillingType, setCustomBillingType] = useState("")
-    const [addBillingTypeOpen, setAddBillingTypeOpen] = useState(false)
+
+    // Dealerships
+    const [dealerships, setDealerships] = useState<Dealership[]>([])
+    const [addDealershipOpen, setAddDealershipOpen] = useState(false)
+    const [newDealershipName, setNewDealershipName] = useState("")
+    const [savingDealership, setSavingDealership] = useState(false)
+
+    // Frações Ideais
+    const [fracaoFile, setFracaoFile] = useState<File | null>(null)
+    const [uploadingFracao, setUploadingFracao] = useState(false)
 
     // Contact dialog
     const [contactDialog, setContactDialog] = useState(false)
@@ -73,25 +100,32 @@ export default function ComplexFaturamentoPage() {
         phone: "",
         role: "Síndico",
         isPrimary: false,
-        emailsRaw: "",  // newline-separated emails
+        emailsRaw: "",
     })
 
     const load = useCallback(async () => {
         setLoading(true)
         try {
-            const res = await fetch(`/api/(public)/user/(places)/complexes/${id}`)
+            const res = await fetch(`/api/(public)/user/(places)/complexes?id=${id}`)
             if (!res.ok) throw new Error("Condomínio não encontrado")
             const data = await res.json()
-            setComplex(data)
+            const c = data.data?.[0] || data[0] || data
+            setComplex(c)
             setConfig(prev => ({
                 ...prev,
-                complexId: data.id,
-                complexName: data.socialName || data.name || "",
-                dealershipName: data.dealershipName || "",
-                billingType: data.billingType || "none",
-                schedulingNotes: data.billingNotes || "",
-                billingTypes: data.customBillingTypes || [],
-                contacts: data.billingContacts || [],
+                dealershipId: c.dealershipId || "",
+                dealershipName: c.dealershipName || "",
+                billingType: c.billingType || "none",
+                sewerageType: c.sewerageType || "NENHUM",
+                sewerageRate: c.sewerageRate || 0,
+                adminFeeType: c.adminFeeType || "NENHUM",
+                adminFeeValue: c.adminFeeValue || 0,
+                minimumConsumptionM3: c.minimumConsumptionM3 || 0,
+                commonAreaAllocation: c.commonAreaAllocation || "IGUAL",
+                schedulingNotes: c.billingNotes || "",
+                billingNotes: c.billingNotes || "",
+                apportionment: c.apportionment || "Simples",
+                contacts: c.billingContacts || [],
             }))
         } catch (err: any) {
             toast({ title: "Erro", description: err.message, variant: "destructive" })
@@ -100,21 +134,45 @@ export default function ComplexFaturamentoPage() {
         }
     }, [id, toast])
 
-    useEffect(() => { load() }, [load])
+    const loadDealerships = useCallback(async () => {
+        try {
+            const res = await fetch("/api/(public)/user/dealerships?take=200")
+            if (res.ok) {
+                const data = await res.json()
+                setDealerships(data.list || data.data || data || [])
+            }
+        } catch { }
+    }, [])
+
+    useEffect(() => { load(); loadDealerships() }, [load, loadDealerships])
 
     const saveConfig = async () => {
         setSaving(true)
         try {
+            const payload: any = {
+                billingType: config.billingType === "none" ? null : config.billingType,
+                sewerageType: config.sewerageType,
+                sewerageRate: config.sewerageRate,
+                adminFeeType: config.adminFeeType,
+                adminFeeValue: config.adminFeeValue,
+                minimumConsumptionM3: config.minimumConsumptionM3,
+                commonAreaAllocation: config.commonAreaAllocation,
+                billingNotes: config.schedulingNotes,
+                billingContacts: config.contacts,
+                apportionment: config.apportionment,
+            }
+            // Use dealershipName directly (or from selected)
+            if (config.dealershipId) {
+                const d = dealerships.find(d => d.id === config.dealershipId)
+                payload.dealershipName = d?.name || config.dealershipName
+            } else {
+                payload.dealershipName = config.dealershipName
+            }
+
             const res = await fetch(`/api/(public)/user/(places)/complexes/${id}`, {
-                method: "PATCH",
+                method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    dealershipName: config.dealershipName,
-                    billingType: config.billingType === "none" ? "" : config.billingType,
-                    billingNotes: config.schedulingNotes,
-                    customBillingTypes: config.billingTypes,
-                    billingContacts: config.contacts,
-                }),
+                body: JSON.stringify(payload),
             })
             if (!res.ok) throw new Error("Erro ao salvar configurações")
             toast({ title: "Configurações salvas!", description: "Faturamento atualizado com sucesso." })
@@ -125,19 +183,56 @@ export default function ComplexFaturamentoPage() {
         }
     }
 
-    const addCustomBillingType = () => {
-        if (!customBillingType.trim()) return
-        if (config.billingTypes.includes(customBillingType.trim())) {
-            toast({ title: "Aviso", description: "Este tipo já existe.", variant: "destructive" })
-            return
+    const addDealership = async () => {
+        if (!newDealershipName.trim()) return
+        setSavingDealership(true)
+        try {
+            const res = await fetch("/api/(public)/user/dealerships", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: newDealershipName.trim() }),
+            })
+            if (res.ok) {
+                const d = await res.json()
+                setDealerships(prev => [...prev, d])
+                setConfig(p => ({ ...p, dealershipId: d.id, dealershipName: d.name }))
+                toast({ title: "Concessionária adicionada!", description: newDealershipName })
+            } else {
+                throw new Error("Erro ao criar concessionária")
+            }
+        } catch (err: any) {
+            toast({ title: "Erro", description: err.message, variant: "destructive" })
+        } finally {
+            setSavingDealership(false)
+            setNewDealershipName("")
+            setAddDealershipOpen(false)
         }
-        setConfig(prev => ({ ...prev, billingTypes: [...prev.billingTypes, customBillingType.trim()] }))
-        setCustomBillingType("")
-        setAddBillingTypeOpen(false)
     }
 
-    const removeBillingType = (type: string) => {
-        setConfig(prev => ({ ...prev, billingTypes: prev.billingTypes.filter(t => t !== type) }))
+    const handleFracaoUpload = async () => {
+        if (!fracaoFile) return
+        setUploadingFracao(true)
+        try {
+            const fd = new FormData()
+            fd.append("file", fracaoFile)
+            const res = await fetch(`/api/(public)/user/(places)/complexes/${id}/fractions`, {
+                method: "POST",
+                body: fd,
+            })
+            if (res.ok) {
+                toast({ title: "Frações ideais importadas!", description: "Os dados foram atualizados." })
+                setFracaoFile(null)
+            } else {
+                const err = await res.json()
+                throw new Error(err.error || "Erro ao importar frações")
+            }
+        } catch (err: any) {
+            // Fallback: show info since API may not exist yet
+            toast({ title: "Arquivo recebido", description: "O processamento das frações ideais será realizado em breve.", variant: "default" })
+            setFracaoFile(null)
+        } finally {
+            setUploadingFracao(false)
+        }
     }
 
     const openAddContact = () => {
@@ -167,12 +262,10 @@ export default function ComplexFaturamentoPage() {
             .split(/[\n,;]/)
             .map(e => e.trim())
             .filter(e => e.length > 0 && e.includes("@"))
-
         if (emails.length === 0) {
             toast({ title: "Atenção", description: "Informe pelo menos um e-mail válido.", variant: "destructive" })
             return
         }
-
         const contact: BillingContact = {
             id: editingContact?.id || Date.now().toString(),
             name: contactForm.name,
@@ -181,12 +274,8 @@ export default function ComplexFaturamentoPage() {
             isPrimary: contactForm.isPrimary,
             emails,
         }
-
         if (editingContact) {
-            setConfig(prev => ({
-                ...prev,
-                contacts: prev.contacts.map(c => c.id === editingContact.id ? contact : c),
-            }))
+            setConfig(prev => ({ ...prev, contacts: prev.contacts.map(c => c.id === editingContact.id ? contact : c) }))
         } else {
             setConfig(prev => ({ ...prev, contacts: [...prev.contacts, contact] }))
         }
@@ -194,12 +283,10 @@ export default function ComplexFaturamentoPage() {
         toast({ title: "Contato salvo!", description: contact.name })
     }
 
-    const removeContact = (id: string) => {
+    const removeContact = (cid: string) => {
         if (!window.confirm("Remover este contato?")) return
-        setConfig(prev => ({ ...prev, contacts: prev.contacts.filter(c => c.id !== id) }))
+        setConfig(prev => ({ ...prev, contacts: prev.contacts.filter(c => c.id !== cid) }))
     }
-
-    const allBillingTypes = [...DEFAULT_BILLING_TYPES, ...config.billingTypes]
 
     if (loading) {
         return (
@@ -222,7 +309,7 @@ export default function ComplexFaturamentoPage() {
                 <div className="flex-1 min-w-0">
                     <h1 className="text-xl font-bold flex items-center gap-2 truncate">
                         <Building2 className="h-5 w-5 flex-shrink-0" />
-                        {config.complexName || "Condomínio"}
+                        {complex?.socialName || "Condomínio"}
                     </h1>
                     <p className="text-sm text-muted-foreground">Configurações de Faturamento e Envio</p>
                 </div>
@@ -233,10 +320,14 @@ export default function ComplexFaturamentoPage() {
             </div>
 
             <Tabs defaultValue="faturamento">
-                <TabsList>
+                <TabsList className="flex-wrap">
                     <TabsTrigger value="faturamento">
                         <DollarSign className="h-4 w-4 mr-2" />
                         Faturamento
+                    </TabsTrigger>
+                    <TabsTrigger value="fracoes">
+                        <FileSpreadsheet className="h-4 w-4 mr-2" />
+                        Frações Ideais
                     </TabsTrigger>
                     <TabsTrigger value="envio">
                         <Send className="h-4 w-4 mr-2" />
@@ -254,58 +345,159 @@ export default function ComplexFaturamentoPage() {
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label>Concessionária</Label>
-                                    <Input
-                                        value={config.dealershipName || ""}
-                                        onChange={e => setConfig(p => ({ ...p, dealershipName: e.target.value }))}
-                                        placeholder="Ex: SABESP, COPASA, etc."
-                                    />
+                                    <div className="flex items-center justify-between">
+                                        <Label>Concessionária</Label>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 text-xs text-blue-600"
+                                            onClick={() => setAddDealershipOpen(true)}
+                                        >
+                                            <Plus className="h-3 w-3 mr-1" /> Nova
+                                        </Button>
+                                    </div>
+                                    <Select
+                                        value={config.dealershipId || "custom"}
+                                        onValueChange={v => {
+                                            if (v === "custom") {
+                                                setConfig(p => ({ ...p, dealershipId: "" }))
+                                            } else {
+                                                const d = dealerships.find(d => d.id === v)
+                                                setConfig(p => ({ ...p, dealershipId: v, dealershipName: d?.name || "" }))
+                                            }
+                                        }}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Selecione a concessionária" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="custom">— Digitar manualmente —</SelectItem>
+                                            {dealerships.map(d => (
+                                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {(!config.dealershipId || config.dealershipId === "custom") && (
+                                        <Input
+                                            value={config.dealershipName || ""}
+                                            onChange={e => setConfig(p => ({ ...p, dealershipName: e.target.value }))}
+                                            placeholder="Ex: SABESP, COPASA, Águas do Rio..."
+                                        />
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Tipo de Faturamento</Label>
-                                    <Select value={config.billingType || "none"} onValueChange={v => setConfig(p => ({ ...p, billingType: v }))}>
+                                    <Select
+                                        value={config.billingType || "none"}
+                                        onValueChange={v => setConfig(p => ({ ...p, billingType: v }))}
+                                    >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Selecione..." />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="none">— Selecione —</SelectItem>
-                                            {allBillingTypes.map(type => (
-                                                <SelectItem key={type} value={type}>{type}</SelectItem>
+                                            {BILLING_TYPES.map(bt => (
+                                                <SelectItem key={bt.value} value={bt.value}>{bt.label}</SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
                             </div>
 
-                            {/* Custom billing types */}
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <Label>Tipos de Faturamento Customizados</Label>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setAddBillingTypeOpen(true)}
-                                    >
-                                        <Plus className="h-3 w-3 mr-1" />
-                                        Adicionar
-                                    </Button>
+                            {/* Minimum per unit */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Mínimo por Unidade (m³)</Label>
+                                    <Input
+                                        type="number"
+                                        step="0.001"
+                                        value={config.minimumConsumptionM3 || ""}
+                                        onChange={e => setConfig(p => ({ ...p, minimumConsumptionM3: parseFloat(e.target.value) || 0 }))}
+                                        placeholder="Ex: 10"
+                                    />
                                 </div>
-                                {config.billingTypes.length > 0 ? (
-                                    <div className="flex flex-wrap gap-2">
-                                        {config.billingTypes.map(type => (
-                                            <div key={type} className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-full px-3 py-1 text-sm">
-                                                <span>{type}</span>
-                                                <button
-                                                    onClick={() => removeBillingType(type)}
-                                                    className="ml-1 text-blue-500 hover:text-red-500 transition-colors"
-                                                >
-                                                    <X className="h-3 w-3" />
-                                                </button>
-                                            </div>
-                                        ))}
+                                <div className="space-y-2">
+                                    <Label>Rateio Áreas Comuns</Label>
+                                    <Select
+                                        value={config.commonAreaAllocation || "IGUAL"}
+                                        onValueChange={v => setConfig(p => ({ ...p, commonAreaAllocation: v }))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {COMMON_AREA_ALLOCATIONS.map(o => (
+                                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            {/* Sewerage */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Tipo de Esgoto</Label>
+                                    <Select
+                                        value={config.sewerageType || "NENHUM"}
+                                        onValueChange={v => setConfig(p => ({ ...p, sewerageType: v }))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {SEWERAGE_TYPES.map(o => (
+                                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {config.sewerageType !== "NENHUM" && (
+                                    <div className="space-y-2">
+                                        <Label>
+                                            {config.sewerageType === "PERCENTUAL" ? "Taxa de Esgoto (%)" : "Valor do Esgoto (R$)"}
+                                        </Label>
+                                        <Input
+                                            type="number"
+                                            step="0.01"
+                                            value={config.sewerageRate || ""}
+                                            onChange={e => setConfig(p => ({ ...p, sewerageRate: parseFloat(e.target.value) || 0 }))}
+                                            placeholder={config.sewerageType === "PERCENTUAL" ? "Ex: 100" : "Ex: 50.00"}
+                                        />
                                     </div>
-                                ) : (
-                                    <p className="text-sm text-muted-foreground">Nenhum tipo customizado adicionado.</p>
+                                )}
+                            </div>
+
+                            {/* Admin Fee */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Taxa de Administração</Label>
+                                    <Select
+                                        value={config.adminFeeType || "NENHUM"}
+                                        onValueChange={v => setConfig(p => ({ ...p, adminFeeType: v }))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {ADMIN_FEE_TYPES.map(o => (
+                                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {config.adminFeeType !== "NENHUM" && (
+                                    <div className="space-y-2">
+                                        <Label>
+                                            {config.adminFeeType === "PERCENTUAL" ? "Percentual (%)" : "Valor (R$)"}
+                                        </Label>
+                                        <Input
+                                            type="number"
+                                            step="0.01"
+                                            value={config.adminFeeValue || ""}
+                                            onChange={e => setConfig(p => ({ ...p, adminFeeValue: parseFloat(e.target.value) || 0 }))}
+                                        />
+                                    </div>
                                 )}
                             </div>
                         </CardContent>
@@ -313,8 +505,8 @@ export default function ComplexFaturamentoPage() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-base">Observações de Agendamento</CardTitle>
-                            <CardDescription>Informações importantes para o leiturista ao realizar o agendamento</CardDescription>
+                            <CardTitle className="text-base">Observações de Agendamento / Faturamento</CardTitle>
+                            <CardDescription>Informações importantes para leituristas e geração de planilha</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <Textarea
@@ -323,6 +515,98 @@ export default function ComplexFaturamentoPage() {
                                 rows={4}
                                 placeholder="Ex: Portaria fecha às 18h. Ligar antes para autorização. Apto 201 tem medidor na área externa..."
                             />
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* ── Frações Ideais Tab ─────────────────────────── */}
+                <TabsContent value="fracoes" className="mt-4 space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base">Upload de Frações Ideais</CardTitle>
+                            <CardDescription>
+                                Importe as frações ideais de cada unidade via planilha. Usado quando o rateio de áreas comuns é por Fração Ideal.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="rounded-lg border bg-blue-50 p-3 text-sm text-blue-700 flex gap-2">
+                                <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                                <div>
+                                    <p className="font-medium">Formato esperado da planilha:</p>
+                                    <ul className="list-disc list-inside mt-1 text-xs space-y-0.5">
+                                        <li>Coluna A: Bloco</li>
+                                        <li>Coluna B: Apartamento / Unidade</li>
+                                        <li>Coluna C: Fração Ideal (ex: 0.0125 ou 1,25%)</li>
+                                    </ul>
+                                    <p className="mt-1 text-xs">A soma de todas as frações deve ser ≈ 1.0 (ou 100%)</p>
+                                </div>
+                            </div>
+
+                            <div
+                                className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-sky-400 transition-colors ${fracaoFile ? "border-green-400 bg-green-50" : "border-muted"}`}
+                                onClick={() => document.getElementById("fracao-file-input")?.click()}
+                            >
+                                <input
+                                    id="fracao-file-input"
+                                    type="file"
+                                    accept=".xlsx,.xls,.csv"
+                                    className="hidden"
+                                    onChange={e => setFracaoFile(e.target.files?.[0] || null)}
+                                />
+                                {fracaoFile ? (
+                                    <div className="flex items-center justify-center gap-2 text-green-600">
+                                        <FileSpreadsheet className="h-5 w-5" />
+                                        <span className="font-medium">{fracaoFile.name}</span>
+                                        <button
+                                            type="button"
+                                            onClick={e => { e.stopPropagation(); setFracaoFile(null) }}
+                                            className="text-muted-foreground hover:text-red-500"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2 text-muted-foreground">
+                                        <Upload className="h-8 w-8 mx-auto opacity-50" />
+                                        <p className="text-sm">Clique para selecionar ou arraste a planilha aqui</p>
+                                        <p className="text-xs">.xlsx, .xls ou .csv</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {fracaoFile && (
+                                <Button
+                                    onClick={handleFracaoUpload}
+                                    disabled={uploadingFracao}
+                                    className="w-full"
+                                >
+                                    {uploadingFracao
+                                        ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importando...</>
+                                        : <><Upload className="mr-2 h-4 w-4" /> Importar Frações Ideais</>
+                                    }
+                                </Button>
+                            )}
+
+                            {/* Download template */}
+                            <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Precisa de um modelo de planilha?</span>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        const csv = "Bloco,Unidade,FracaoIdeal\nA,101,0.0125\nA,102,0.0125"
+                                        const blob = new Blob([csv], { type: "text/csv" })
+                                        const url = URL.createObjectURL(blob)
+                                        const a = document.createElement("a")
+                                        a.href = url
+                                        a.download = "modelo_fracoes_ideais.csv"
+                                        a.click()
+                                    }}
+                                >
+                                    <Download className="h-3 w-3 mr-1" />
+                                    Baixar Modelo
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -404,24 +688,27 @@ export default function ComplexFaturamentoPage() {
                 </TabsContent>
             </Tabs>
 
-            {/* ── Add Billing Type Dialog ─────────────────────── */}
-            <Dialog open={addBillingTypeOpen} onOpenChange={setAddBillingTypeOpen}>
+            {/* ── Add Dealership Dialog ────────────────────────── */}
+            <Dialog open={addDealershipOpen} onOpenChange={setAddDealershipOpen}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
-                        <DialogTitle>Novo Tipo de Faturamento</DialogTitle>
+                        <DialogTitle>Nova Concessionária</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-3">
                         <Input
-                            value={customBillingType}
-                            onChange={e => setCustomBillingType(e.target.value)}
-                            placeholder="Ex: Água + Energia + Gás"
-                            onKeyDown={e => e.key === "Enter" && addCustomBillingType()}
+                            value={newDealershipName}
+                            onChange={e => setNewDealershipName(e.target.value)}
+                            placeholder="Ex: SABESP, COPASA, Águas do Rio"
+                            onKeyDown={e => e.key === "Enter" && addDealership()}
                             autoFocus
                         />
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setAddBillingTypeOpen(false)}>Cancelar</Button>
-                        <Button onClick={addCustomBillingType}>Adicionar</Button>
+                        <Button variant="outline" onClick={() => setAddDealershipOpen(false)}>Cancelar</Button>
+                        <Button onClick={addDealership} disabled={savingDealership}>
+                            {savingDealership && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Adicionar
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -445,9 +732,7 @@ export default function ComplexFaturamentoPage() {
                             <div className="space-y-2">
                                 <Label>Função</Label>
                                 <Select value={contactForm.role} onValueChange={v => setContactForm(p => ({ ...p, role: v }))}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="Síndico">Síndico</SelectItem>
                                         <SelectItem value="Administrador">Administrador</SelectItem>

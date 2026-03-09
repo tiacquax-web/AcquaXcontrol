@@ -42,6 +42,7 @@ function getQueryParams(req: NextRequest) {
     // query params - custom
     const userId = req.nextUrl.searchParams.get('id') || undefined
     const roleName = req.nextUrl.searchParams.get('role_name') || undefined
+    const excludeRole = req.nextUrl.searchParams.get('exclude_role') || undefined
     const contextType = req.nextUrl.searchParams.get('role_context_type') || undefined
     const contextId = req.nextUrl.searchParams.get('role_context_id') || undefined
 
@@ -56,7 +57,7 @@ function getQueryParams(req: NextRequest) {
     const orderBy = req.nextUrl.searchParams.get('orderBy') || 'createdAt'
     const orderDirection = req.nextUrl.searchParams.get('orderDirection') || 'desc'
 
-    return { getAvailableForEntity, userId, roleName, contextType, contextId, search, take, skip, orderBy, orderDirection }
+    return { getAvailableForEntity, userId, roleName, excludeRole, contextType, contextId, search, take, skip, orderBy, orderDirection }
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -70,14 +71,14 @@ export async function GET(req: NextRequest): Promise<Response> {
         const userId = validSession.userId
 
         // get query params
-        const { userId: searchUserId, search, take, contextId: roleContextId, contextType: roleContextType, roleName, skip, orderBy, orderDirection } = getQueryParams(req)
+        const { userId: searchUserId, search, take, contextId: roleContextId, contextType: roleContextType, roleName, excludeRole, skip, orderBy, orderDirection } = getQueryParams(req)
 
         // identify context
         const contextType: ContextType | undefined = undefined
         const contextId = undefined
 
         // extra where
-        const where = {
+        const where: any = {
             id: searchUserId ?? undefined,
             Roles: !roleName ? undefined : {
                 some: {
@@ -88,6 +89,18 @@ export async function GET(req: NextRequest): Promise<Response> {
                         { contextId: roleContextType === ContextType.complex ? roleContextId : undefined },
                         { complex: { companyId: roleContextType === ContextType.company ? roleContextId : undefined } }
                     ]
+                }
+            }
+        }
+
+        // Exclude users with specific role (e.g., exclude Moradores)
+        if (excludeRole) {
+            where.NOT = {
+                Roles: {
+                    some: {
+                        Role: { name: excludeRole, deletedAt: null },
+                        deletedAt: null,
+                    }
                 }
             }
         }

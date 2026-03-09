@@ -99,6 +99,7 @@ export default function EmailsProgramadosPage() {
 
     // Schedule dialog
     const [scheduleDialog, setScheduleDialog] = useState(false)
+    const [editingSchedule, setEditingSchedule] = useState<ScheduledEmail | null>(null)
     const [scheduleForm, setScheduleForm] = useState({
         templateId: "none",
         complexId: "all",
@@ -181,6 +182,31 @@ Equipe AcquaX`,
             .catch(() => { })
     }, [])
 
+    const openNewSchedule = () => {
+        setEditingSchedule(null)
+        setScheduleForm({ templateId: "none", complexId: "all", targetAll: true, scheduledFor: "", month: String(new Date().getMonth() + 1), year: String(new Date().getFullYear()) })
+        setScheduleDialog(true)
+    }
+
+    const openEditSchedule = (item: ScheduledEmail) => {
+        setEditingSchedule(item)
+        setScheduleForm({
+            templateId: item.templateId,
+            complexId: item.complexId || "all",
+            targetAll: item.targetAll,
+            scheduledFor: item.scheduledFor || "",
+            month: String(item.month),
+            year: String(item.year),
+        })
+        setScheduleDialog(true)
+    }
+
+    const deleteSchedule = (id: string) => {
+        if (!window.confirm("Excluir este agendamento?")) return
+        setScheduled(prev => prev.filter(s => s.id !== id))
+        toast({ title: "Agendamento excluído." })
+    }
+
     const openNewTemplate = () => {
         setEditingTemplate(null)
         setTemplateForm({ ...EMPTY_TEMPLATE })
@@ -244,28 +270,44 @@ Equipe AcquaX`,
         }
         setScheduling(true)
         try {
-            await new Promise(r => setTimeout(r, 500))
+            await new Promise(r => setTimeout(r, 400))
             const template = templates.find(t => t.id === scheduleForm.templateId)
             const complex = complexes.find(c => c.id === scheduleForm.complexId)
-            const newScheduled: ScheduledEmail = {
-                id: Date.now().toString(),
-                templateId: scheduleForm.templateId,
-                templateName: template?.name || "",
-                complexId: scheduleForm.complexId === "all" ? undefined : scheduleForm.complexId,
-                complexName: scheduleForm.complexId === "all" ? "Todos os condomínios" : (complex?.socialName || ""),
-                targetAll: scheduleForm.complexId === "all",
-                scheduledFor: scheduleForm.scheduledFor || undefined,
-                status: "PENDING",
-                month: parseInt(scheduleForm.month),
-                year: parseInt(scheduleForm.year),
-                recipientCount: scheduleForm.complexId === "all" ? complexes.length : 1,
-                createdAt: new Date().toISOString(),
+
+            if (editingSchedule) {
+                setScheduled(prev => prev.map(s => s.id === editingSchedule.id ? {
+                    ...s,
+                    templateId: scheduleForm.templateId,
+                    templateName: template?.name || s.templateName,
+                    complexId: scheduleForm.complexId === "all" ? undefined : scheduleForm.complexId,
+                    complexName: scheduleForm.complexId === "all" ? "Todos os condomínios" : (complex?.socialName || ""),
+                    targetAll: scheduleForm.complexId === "all",
+                    scheduledFor: scheduleForm.scheduledFor || undefined,
+                    month: parseInt(scheduleForm.month),
+                    year: parseInt(scheduleForm.year),
+                } : s))
+                toast({ title: "Agendamento atualizado!" })
+            } else {
+                const newScheduled: ScheduledEmail = {
+                    id: Date.now().toString(),
+                    templateId: scheduleForm.templateId,
+                    templateName: template?.name || "",
+                    complexId: scheduleForm.complexId === "all" ? undefined : scheduleForm.complexId,
+                    complexName: scheduleForm.complexId === "all" ? "Todos os condomínios" : (complex?.socialName || ""),
+                    targetAll: scheduleForm.complexId === "all",
+                    scheduledFor: scheduleForm.scheduledFor || undefined,
+                    status: "PENDING",
+                    month: parseInt(scheduleForm.month),
+                    year: parseInt(scheduleForm.year),
+                    recipientCount: scheduleForm.complexId === "all" ? complexes.length : 1,
+                    createdAt: new Date().toISOString(),
+                }
+                setScheduled(prev => [newScheduled, ...prev])
+                toast({ title: "E-mail agendado!", description: `Para ${newScheduled.complexName}` })
             }
-            setScheduled(prev => [newScheduled, ...prev])
-            toast({ title: "E-mail agendado!", description: `Para ${newScheduled.complexName}` })
             setScheduleDialog(false)
         } catch {
-            toast({ title: "Erro", description: "Não foi possível agendar o e-mail.", variant: "destructive" })
+            toast({ title: "Erro", description: "Não foi possível salvar o agendamento.", variant: "destructive" })
         } finally {
             setScheduling(false)
         }
@@ -312,6 +354,10 @@ Equipe AcquaX`,
                     <TabsTrigger value="agendamentos">
                         <Calendar className="h-4 w-4 mr-2" />
                         Agendamentos
+                    </TabsTrigger>
+                    <TabsTrigger value="codigos">
+                        <Copy className="h-4 w-4 mr-2" />
+                        Códigos {"{{ }}"}
                     </TabsTrigger>
                 </TabsList>
 
@@ -410,7 +456,7 @@ Equipe AcquaX`,
                 {/* ── AGENDAMENTOS TAB ──────────────────────────────── */}
                 <TabsContent value="agendamentos" className="mt-4">
                     <div className="flex justify-end mb-4">
-                        <Button onClick={() => { setScheduleForm({ templateId: "none", complexId: "all", targetAll: true, scheduledFor: "", month: String(new Date().getMonth() + 1), year: String(new Date().getFullYear()) }); setScheduleDialog(true) }}>
+                        <Button onClick={openNewSchedule}>
                             <Plus className="h-4 w-4 mr-2" />
                             Novo Agendamento
                         </Button>
@@ -461,14 +507,30 @@ Equipe AcquaX`,
                                                     </div>
                                                 </div>
                                                 {item.status === "PENDING" && (
-                                                    <Button
-                                                        size="sm"
-                                                        onClick={() => handleSendNow(item)}
-                                                        className="flex-shrink-0"
-                                                    >
-                                                        <Send className="h-3 w-3 mr-1" />
-                                                        Enviar Agora
-                                                    </Button>
+                                                    <div className="flex items-center gap-1">
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() => handleSendNow(item)}
+                                                        >
+                                                            <Send className="h-3 w-3 mr-1" />
+                                                            Enviar Agora
+                                                        </Button>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => openEditSchedule(item)}
+                                                        >
+                                                            <Pencil className="h-3 w-3" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => deleteSchedule(item.id)}
+                                                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                        >
+                                                            <Trash2 className="h-3 w-3" />
+                                                        </Button>
+                                                    </div>
                                                 )}
                                                 {item.status === "SENDING" && (
                                                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -483,6 +545,51 @@ Equipe AcquaX`,
                             })}
                         </div>
                     )}
+                </TabsContent>
+
+                {/* ── CÓDIGOS TAB ──────────────────────────────────── */}
+                <TabsContent value="codigos" className="mt-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base">Códigos de Automação {"{{ }}"}</CardTitle>
+                            <CardDescription>
+                                Use estes códigos nos templates de e-mail para inserir dados automaticamente.
+                                Clique em qualquer código para copiar.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-3">
+                                {PLACEHOLDERS.map(p => (
+                                    <div
+                                        key={p.key}
+                                        className="flex items-center justify-between gap-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer group"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(p.key)
+                                            toast({ title: "Copiado!", description: p.key })
+                                        }}
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <code className="text-sm font-mono text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200 flex-shrink-0">
+                                                {p.key}
+                                            </code>
+                                            <span className="text-sm text-muted-foreground truncate">{p.desc}</span>
+                                        </div>
+                                        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <Copy className="h-4 w-4 text-muted-foreground" />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mt-4 rounded-lg border bg-yellow-50 p-3 text-sm text-yellow-800">
+                                <p className="font-medium mb-1">💡 Como usar:</p>
+                                <ul className="list-disc list-inside space-y-1 text-xs">
+                                    <li>Insira os códigos diretamente no assunto ou corpo do e-mail</li>
+                                    <li>Use <code className="bg-white px-1 rounded">{"{{#if CAMPO}}"}</code> e <code className="bg-white px-1 rounded">{"{{/if}}"}</code> para blocos condicionais</li>
+                                    <li>Os valores são substituídos automaticamente no momento do envio</li>
+                                </ul>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </TabsContent>
             </Tabs>
 
@@ -572,10 +679,10 @@ Equipe AcquaX`,
             </Dialog>
 
             {/* ── Schedule Dialog ─────────────────────────────── */}
-            <Dialog open={scheduleDialog} onOpenChange={setScheduleDialog}>
+            <Dialog open={scheduleDialog} onOpenChange={v => { setScheduleDialog(v); if (!v) setEditingSchedule(null) }}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Agendar E-mail</DialogTitle>
+                        <DialogTitle>{editingSchedule ? "Editar Agendamento" : "Agendar E-mail"}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
                         <div className="space-y-2">
@@ -648,7 +755,7 @@ Equipe AcquaX`,
                         <Button variant="outline" onClick={() => setScheduleDialog(false)}>Cancelar</Button>
                         <Button onClick={handleSchedule} disabled={scheduling}>
                             {scheduling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Agendar Envio
+                            {editingSchedule ? "Salvar" : "Agendar Envio"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
