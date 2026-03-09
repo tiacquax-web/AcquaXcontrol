@@ -7,12 +7,13 @@ import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 import { Switch } from "./ui/switch"
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert"
-import { AlertCircle, Upload, X, FileSpreadsheet, Loader2, Trash2 } from "lucide-react"
+import { AlertCircle, Upload, X, FileSpreadsheet, Loader2, Trash2, Plus } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Progress } from "./ui/progress"
 import * as XLSX from "xlsx"
 import { useReadingMutations } from "@/hooks/useReadings"
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "./ui/table"
+import { Badge } from "./ui/badge"
 
 interface ImportReadingsDialogProps {
     open: boolean
@@ -32,20 +33,34 @@ interface InvalidRow {
     row: any
 }
 
+interface LoadedFile {
+    file: File
+    rows: any[]
+}
+
+// Checks if a row is completely empty (all values null/undefined/"")
+function isEmptyRow(row: any): boolean {
+    return Object.values(row).every(
+        v => v === null || v === undefined || String(v).trim() === ""
+    )
+}
+
 export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: ImportReadingsDialogProps) {
     const { toast } = useToast()
-    const [file, setFile] = useState<File | null>(null)
+    const [loadedFiles, setLoadedFiles] = useState<LoadedFile[]>([])
     const [isUploading, setIsUploading] = useState(false)
     const [progress, setProgress] = useState(0)
     const [errors, setErrors] = useState<ImportError[]>([])
-    const [importRows, setImportRows] = useState<any[] | null>(null)
     const [invalidRows, setInvalidRows] = useState<InvalidRow[]>([])
     const [generalError, setGeneralError] = useState<string | null>(null)
     const [allowUpdates, setAllowUpdates] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const { createReadingsFromSheetMutation, loading: loadingMutation } = useReadingMutations()
 
-    // Função para validar uma linha
+    // All rows merged from all files
+    const importRows: any[] = loadedFiles.flatMap(lf => lf.rows)
+
+    // Validate a single row
     const validateRow = (row: any, index: number): InvalidRow | null => {
         const requiredFields = ['chassi', 'leitura', 'mes_ref', 'ano_ref', 'data_leitura', 'pre_leitura']
         const missingFields: string[] = []
@@ -59,7 +74,7 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
         if (missingFields.length > 0) {
             return {
                 index,
-                rowNumber: index + 2, // +2 porque Excel começa em 1 e tem o header
+                rowNumber: index + 2,
                 missingFields,
                 row
             }
@@ -68,10 +83,9 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
         return null
     }
 
-    // Função para validar todas as linhas
+    // Validate all rows
     const validateImportRows = (rows: any[]) => {
         const invalid: InvalidRow[] = []
-        console.log(rows)
         rows.forEach((row, index) => {
             const invalidRow = validateRow(row, index)
             if (invalidRow) {
@@ -80,73 +94,116 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
         })
 
         setInvalidRows(invalid)
-        
+
         if (invalid.length > 0) {
             toast({
                 variant: "destructive",
                 title: "Algumas linhas são inválidas",
-                description: "Verifique-as e confirme a correção"
+                description: `${invalid.length} linha(s) com campos obrigatórios em branco. Verifique ou remova-as para continuar.`
             })
         }
     }
 
-    // Função para remover linhas inválidas
+    // Remove invalid rows from all loaded files
     const removeInvalidRows = () => {
-        if (!importRows) return
+        if (importRows.length === 0) return
 
-        const validRows = importRows.filter((_, index) => 
-            !invalidRows.some(invalid => invalid.index === index)
-        )
+        // Build a set of global indexes to remove
+        const indexesToRemove = new Set(invalidRows.map(ir => ir.index))
 
-        setImportRows(validRows)
+        // Rebuild per-file rows without the invalid ones
+        let globalIndex = 0
+        const updatedFiles = loadedFiles.map(lf => {
+            const filtered = lf.rows.filter(() => {
+                const keep = !indexesToRemove.has(globalIndex)
+                globalIndex++
+                return keep
+            })
+            return { ...lf, rows: filtered }
+        })
+
+        setLoadedFiles(updatedFiles)
         setInvalidRows([])
 
         toast({
             title: "Linhas inválidas removidas",
-            description: `${invalidRows.length} linhas foram removidas. ${validRows.length} linhas restantes.`
+            description: `${invalidRows.length} linhas foram removidas.`
         })
     }
 
-    // Effect para validar quando importRows mudar
+    // Re-validate when merged rows change
     useEffect(() => {
-        if (importRows && importRows.length > 0) {
+        if (importRows.length > 0) {
             validateImportRows(importRows)
+        } else {
+            setInvalidRows([])
         }
-    }, [importRows])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loadedFiles])
+
+    // Parse a single file into rows (skip fully empty rows)
+    const parseFile = async (file: File): Promise<any[]> => {
+        const data = await file.arrayBuffer()
+        const workbook = XLSX.read(data, { type: "array" })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const json: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: "" })
+        // Filter out completely empty rows
+        return json.filter(row => !isEmptyRow(row))
+    }
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const selectedFile = e.target.files?.[0] || null
-        setFile(selectedFile)
+        const files = Array.from(e.target.files || [])
+        if (files.length === 0) return
+
+        setIsUploading(true)
         setErrors([])
-        setImportRows(null)
-        setInvalidRows([])
-        if (selectedFile) {
-            setIsUploading(true)
-            try {
-                const data = await selectedFile.arrayBuffer()
-                const workbook = XLSX.read(data, { type: "array" })
-                const sheetName = workbook.SheetNames[0]
-                const worksheet = workbook.Sheets[sheetName]
-                const json: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: "" })
-                setImportRows(json)
-            } catch (err: any) {
-                toast({
-                    variant: "destructive",
-                    title: "Erro ao ler arquivo",
-                    description: err?.message || "Não foi possível ler o arquivo.",
-                })
-            } finally {
-                setIsUploading(false)
+        setGeneralError(null)
+
+        try {
+            const newLoaded: LoadedFile[] = []
+            for (const file of files) {
+                // Skip if already loaded
+                if (loadedFiles.some(lf => lf.file.name === file.name && lf.file.size === file.size)) {
+                    toast({
+                        variant: "destructive",
+                        title: "Arquivo duplicado",
+                        description: `${file.name} já foi adicionado.`
+                    })
+                    continue
+                }
+                const rows = await parseFile(file)
+                newLoaded.push({ file, rows })
             }
+            if (newLoaded.length > 0) {
+                setLoadedFiles(prev => [...prev, ...newLoaded])
+            }
+        } catch (err: any) {
+            toast({
+                variant: "destructive",
+                title: "Erro ao ler arquivo",
+                description: err?.message || "Não foi possível ler o arquivo.",
+            })
+        } finally {
+            setIsUploading(false)
+            // Reset input so the same file can be added again if needed
+            if (fileInputRef.current) fileInputRef.current.value = ""
         }
     }
 
+    const removeFile = (index: number) => {
+        setLoadedFiles(prev => prev.filter((_, i) => i !== index))
+        setErrors([])
+        setInvalidRows([])
+        setGeneralError(null)
+    }
+
     const handleImport = async () => {
-        if (!importRows || importRows.length === 0) {
+        if (importRows.length === 0) {
             toast({
                 variant: "destructive",
                 title: "Nenhum dado para importar",
-                description: "Selecione um arquivo válido para importar.",
+                description: "Selecione pelo menos um arquivo válido para importar.",
             })
             return
         }
@@ -200,14 +257,11 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
         }
     }
 
-    const resetFileInput = () => {
-        if (fileInputRef.current) {
-            fileInputRef.current.value = ""
-        }
-        setFile(null)
+    const resetAll = () => {
+        if (fileInputRef.current) fileInputRef.current.value = ""
+        setLoadedFiles([])
         setErrors([])
         setInvalidRows([])
-        setImportRows(null)
         setGeneralError(null)
     }
 
@@ -218,29 +272,71 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
                     <DialogHeader>
                         <DialogTitle>Importar Leituras</DialogTitle>
                         <DialogDescription>
-                            Faça upload de uma planilha com os dados das leituras. O sistema irá atualizar os registros existentes ou criar novos conforme necessário.
+                            Faça upload de uma ou mais planilhas (ex: Fase I e Fase II). Linhas completamente vazias são ignoradas automaticamente.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
+                        {/* File picker */}
                         <div className="space-y-2">
-                            <Label htmlFor="file">Arquivo de Planilha</Label>
+                            <Label htmlFor="file">Arquivo(s) de Planilha</Label>
                             <div className="flex items-center gap-2">
-                                <Input id="file" type="file" accept=".xlsx,.xls,.csv,.ods" onChange={handleFileChange} ref={fileInputRef} className="flex-1" />
-                                {file && (
-                                    <Button variant="ghost" size="icon" onClick={resetFileInput}>
-                                        <X className="h-4 w-4" />
-                                    </Button>
+                                <Input
+                                    id="file"
+                                    type="file"
+                                    accept=".xlsx,.xls,.csv,.ods"
+                                    multiple
+                                    onChange={handleFileChange}
+                                    ref={fileInputRef}
+                                    className="flex-1"
+                                    disabled={isUploading}
+                                />
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={isUploading}
+                                    title="Adicionar mais arquivos"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Você pode selecionar múltiplos arquivos de uma vez (Fase I e Fase II, por exemplo).
+                            </p>
+                        </div>
+
+                        {/* Loaded files list */}
+                        {loadedFiles.length > 0 && (
+                            <div className="space-y-2">
+                                {loadedFiles.map((lf, i) => (
+                                    <div key={i} className="flex items-center justify-between bg-muted/40 rounded-md px-3 py-2 text-sm">
+                                        <div className="flex items-center gap-2">
+                                            <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+                                            <span className="font-medium truncate max-w-[280px]" title={lf.file.name}>{lf.file.name}</span>
+                                            <Badge variant="secondary" className="text-xs">{lf.rows.length} linhas</Badge>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7"
+                                            onClick={() => removeFile(i)}
+                                            disabled={isUploading}
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                ))}
+                                {loadedFiles.length > 1 && (
+                                    <div className="text-xs text-muted-foreground px-1">
+                                        Total combinado: <strong>{importRows.length}</strong> linhas
+                                    </div>
                                 )}
                             </div>
-                        </div>
-                        {file && (
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <FileSpreadsheet className="h-4 w-4" />
-                                <span>{file.name}</span>
-                            </div>
                         )}
-                        {importRows && importRows.length > 0 && (
-                            <div className="border rounded-md overflow-auto" style={{ maxHeight: '280px' }}>
+
+                        {/* Preview table */}
+                        {importRows.length > 0 && (
+                            <div className="border rounded-md overflow-auto" style={{ maxHeight: '260px' }}>
                                 <Table className="text-xs w-fit min-w-[700px]">
                                     <TableHeader className="sticky top-0 bg-background z-10">
                                         <TableRow>
@@ -262,7 +358,7 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
                                             const invalidRowObj = invalidRows.find(invalid => invalid.index === i)
                                             const isInvalid = !!invalidRowObj
                                             const hasError = !!errorObj
-                                            
+
                                             return (
                                                 <TableRow key={i} className={`border-b last:border-0 hover:bg-muted/40 ${hasError ? 'bg-red-50 dark:bg-red-950/30' : isInvalid ? 'bg-orange-50 dark:bg-orange-950/30' : 'bg-card'}`}>
                                                     {(errors.length > 0 || invalidRows.length > 0) && (
@@ -282,6 +378,7 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
                                 </Table>
                             </div>
                         )}
+
                         {isUploading && (
                             <div className="space-y-2">
                                 <div className="flex justify-between text-sm">
@@ -291,16 +388,18 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
                                 <Progress value={progress} />
                             </div>
                         )}
+
                         {invalidRows.length > 0 && (
                             <Alert variant="destructive">
                                 <AlertCircle className="h-4 w-4" />
                                 <AlertTitle>Linhas inválidas detectadas</AlertTitle>
                                 <AlertDescription>
-                                    {invalidRows.length} linha(s) possuem campos obrigatórios em branco. 
+                                    {invalidRows.length} linha(s) possuem campos obrigatórios em branco.
                                     Corrija os dados ou remova essas linhas para continuar com a importação.
                                 </AlertDescription>
                             </Alert>
                         )}
+
                         {errors.length > 0 && (
                             <Alert variant="destructive">
                                 <AlertCircle className="h-4 w-4" />
@@ -316,6 +415,7 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
                                 </AlertDescription>
                             </Alert>
                         )}
+
                         {generalError && (
                             <Alert variant="destructive">
                                 <AlertCircle className="h-4 w-4" />
@@ -325,6 +425,7 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
                                 </AlertDescription>
                             </Alert>
                         )}
+
                         <div className="text-sm text-muted-foreground">
                             <p>O arquivo deve conter as seguintes colunas:</p>
                             <ul className="list-disc pl-5">
@@ -338,7 +439,7 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
                                 <li>pre_leitura (Sim/Não)</li>
                             </ul>
                         </div>
-                        
+
                         {/* Switch para permitir atualizações */}
                         <div className="flex items-center space-x-2 pt-4 border-t">
                             <Switch
@@ -359,21 +460,26 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
                             <X className="mr-2 h-4 w-4" />
                             Cancelar
                         </Button>
+                        {loadedFiles.length > 0 && (
+                            <Button variant="ghost" onClick={resetAll} disabled={isUploading}>
+                                Limpar tudo
+                            </Button>
+                        )}
                         {invalidRows.length > 0 && (
-                            <Button 
-                                variant="destructive" 
+                            <Button
+                                variant="destructive"
                                 onClick={removeInvalidRows}
                                 disabled={isUploading}
                                 className="bg-orange-600 hover:bg-orange-700"
                             >
                                 <Trash2 className="mr-2 h-4 w-4" />
-                                Remover linhas inválidas ({invalidRows.length})
+                                Remover inválidas ({invalidRows.length})
                             </Button>
                         )}
                     </div>
-                    <Button 
-                        onClick={handleImport} 
-                        disabled={!file || isUploading || invalidRows.length > 0}
+                    <Button
+                        onClick={handleImport}
+                        disabled={importRows.length === 0 || isUploading || invalidRows.length > 0}
                     >
                         {isUploading ? (
                             <>
@@ -383,7 +489,7 @@ export function ImportReadingsDialog({ open, onOpenChange, onImportComplete }: I
                         ) : (
                             <>
                                 <Upload className="mr-2 h-4 w-4" />
-                                Importar
+                                Importar {importRows.length > 0 ? `(${importRows.length} linhas)` : ''}
                             </>
                         )}
                     </Button>
