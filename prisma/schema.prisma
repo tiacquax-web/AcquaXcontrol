@@ -123,6 +123,16 @@ model User {
   updatedRecurringSchedules RecurringSchedule[] @relation("RecurringScheduleUpdater")
   createdScheduleOverrides ScheduleOverride[] @relation("ScheduleOverrideCreator")
 
+  // Relacionamento com ReadingRoute
+  assignedRoutes          ReadingRoute[]     @relation("AssignedRoutes")
+  createdRoutes           ReadingRoute[]     @relation("RouteCreatedByUser")
+  updatedRoutes           ReadingRoute[]     @relation("RouteUpdatedByUser")
+
+  // Relacionamento com ServiceOrder
+  assignedServiceOrders   ServiceOrder[]     @relation("AssignedServiceOrders")
+  createdServiceOrders    ServiceOrder[]     @relation("SOCreatedByUser")
+  updatedServiceOrders    ServiceOrder[]     @relation("SOUpdatedByUser")
+
   preferences Json? // Novo campo para armazenar preferências do usuário
 
   // Índices
@@ -200,6 +210,10 @@ enum PermissionableEntity {
   // EXTENSÃO RRULE: Novas entidades para agendas recorrentes
   recurringSchedule
   scheduleOverride
+
+  // Rotas de leitura e ordens de serviço
+  readingRoute
+  serviceOrder
 
   // Features (not entities)
   monitoringDashboard
@@ -392,6 +406,43 @@ model Complex {
   apportionment             String        @default("Simples")
   status                    String        @default("Ativo")
 
+  // ### MODELO DE FATURAMENTO (Campos amarelos das planilhas) ###
+  // Concessionária
+  dealershipName            String?       // Ex: "Águas do Rio", "SABESP", "IGUÁ"
+  billingType               String?       // "MÍNIMO" | "REAL_CONSUMO" | "M3_MÉDIO" | "PROGRESSIVIDADE"
+  
+  // Datas de leitura
+  currentReadingDate        DateTime?     @db.Timestamp  // Data da leitura atual (B7)
+  previousReadingDate       DateTime?     @db.Timestamp  // Data da leitura anterior (B8)
+  nextReadingDate           DateTime?     @db.Timestamp  // Data da próxima leitura (B9)
+  invoiceDate               DateTime?     @db.Timestamp  // Data da fatura (F10)
+  
+  // Consumo e fatura
+  totalConsumptionM3        Float?        // Consumo total registrado na conta (F8)
+  invoiceTotal              Float?        // Valor total da fatura da concessionária (F7)
+  
+  // Tarifas (tabela progressiva) - JSON com faixas: [{min, max, rate}]
+  tariffTable               Json?         // Tabela de tarifas em JSON
+  
+  // Taxa de esgoto (% do consumo de água, ou fixo)
+  sewerageType              String?       // "PERCENTUAL" | "FIXO" | "NENHUM"
+  sewerageRate              Float?        // Percentual ou valor fixo do esgoto
+  
+  // Consumo mínimo
+  minimumConsumptionM3      Float?        // Consumo mínimo por unidade (m³)
+  minimumConsumptionValue   Float?        // Valor mínimo por unidade (R$)
+  
+  // Rateio de áreas comuns
+  commonAreaAllocation      String?       // "IGUAL" | "FRACAO_IDEAL" | "NENHUM"
+  commonAreaConsumptionM3   Float?        // Consumo das áreas comuns em m³
+  
+  // Taxa de administração / serviço
+  adminFeeType              String?       // "PERCENTUAL" | "FIXO" | "NENHUM"
+  adminFeeValue             Float?        // Percentual ou valor fixo da taxa de administração
+  
+  // Observações e notas do modelo
+  billingNotes              String?       // Observações gerais do modelo de faturamento
+
   deletedAt                 DateTime?     @db.Timestamp
   createdAt                 DateTime      @default(now()) @db.Timestamp
   updatedAt                 DateTime      @updatedAt @db.Timestamp
@@ -417,6 +468,9 @@ model Complex {
 
   // Relacionamento com Reservoir
   reservoirs Reservoir[]
+
+  // Relacionamento com ReadingRoute
+  readingRoutes ReadingRoute[]
 
   // Mapeamento
   @@map("Complexes")
@@ -1445,4 +1499,191 @@ model ScheduleOverride {
   @@index([originalDate])
   @@index([overrideType])
   @@index([createdAt])
+}
+
+// ########################################
+// ### ROTAS DE LEITURA E ORDENS DE SERVIÇO ###
+// ########################################
+
+enum RouteStatus {
+  DRAFT         // Rascunho - sendo configurada
+  ACTIVE        // Ativa - disponível para execução
+  IN_PROGRESS   // Em andamento - leiturista executando
+  COMPLETED     // Concluída - todas as leituras feitas
+  CANCELLED     // Cancelada
+}
+
+enum ServiceOrderStatus {
+  PENDING       // Aguardando execução
+  IN_PROGRESS   // Leiturista em campo
+  COMPLETED     // Finalizada (assinada)
+  CANCELLED     // Cancelada
+}
+
+model ReadingRoute {
+  id                String      @id @map("_id") @default(uuid())
+  
+  name              String      // Ex: "Rota Janeiro 2026 - América Clube"
+  description       String?
+  
+  month             Int         // Mês de referência (1-12)
+  year              Int         // Ano de referência
+  
+  status            RouteStatus @default(DRAFT)
+  
+  // Datas planejadas
+  plannedStartDate  DateTime?   @db.Timestamp
+  plannedEndDate    DateTime?   @db.Timestamp
+  
+  // Datas reais
+  startedAt         DateTime?   @db.Timestamp
+  completedAt       DateTime?   @db.Timestamp
+  
+  // Contexto
+  complexId         String
+  complex           Complex     @relation(fields: [complexId], references: [id])
+  companyId         String?
+  companyName       String?
+  complexName       String?
+  complexSocialName String?
+  
+  // Leiturista responsável
+  assignedToUserId  String?
+  assignedToUser    User?       @relation("AssignedRoutes", fields: [assignedToUserId], references: [id])
+  
+  // Ordem de serviço gerada
+  serviceOrders     ServiceOrder[]
+  
+  // Auditoria
+  createdAt         DateTime    @default(now()) @db.Timestamp
+  updatedAt         DateTime    @updatedAt @db.Timestamp
+  deletedAt         DateTime?   @db.Timestamp
+  
+  createdByUserId   String?
+  createdByUser     User?       @relation("RouteCreatedByUser", fields: [createdByUserId], references: [id])
+  updatedByUserId   String?
+  updatedByUser     User?       @relation("RouteUpdatedByUser", fields: [updatedByUserId], references: [id])
+  
+  @@map("ReadingRoutes")
+  @@index([complexId])
+  @@index([companyId])
+  @@index([status])
+  @@index([month, year])
+  @@index([assignedToUserId])
+  @@index([deletedAt])
+}
+
+model ServiceOrder {
+  id                    String            @id @map("_id") @default(uuid())
+  
+  // Número sequencial da OS para exibição
+  orderNumber           String            // Ex: "OS-2026-001"
+  
+  status                ServiceOrderStatus @default(PENDING)
+  
+  // Rota origem
+  readingRouteId        String
+  readingRoute          ReadingRoute      @relation(fields: [readingRouteId], references: [id])
+  
+  // Contexto
+  complexId             String
+  companyId             String?
+  companyName           String?
+  complexName           String?
+  complexSocialName     String?
+  
+  month                 Int
+  year                  Int
+  
+  // Leiturista
+  assignedToUserId      String?
+  assignedToUser        User?             @relation("AssignedServiceOrders", fields: [assignedToUserId], references: [id])
+  
+  // Datas
+  plannedDate           DateTime?         @db.Timestamp
+  startedAt             DateTime?         @db.Timestamp
+  completedAt           DateTime?         @db.Timestamp
+  
+  // Observações
+  notes                 String?
+  
+  // Assinaturas (URLs das imagens ou base64)
+  leiturnistaSignature  String?           // Assinatura do leiturista
+  syndicSignature       String?           // Assinatura do síndico/responsável
+  syndicName            String?           // Nome do signatário do condomínio
+  syndicRole            String?           // Cargo do signatário (ex: "Síndico", "Zelador")
+  
+  // PDF gerado da ordem de serviço
+  pdfUrl                String?
+  
+  // Resumo das leituras (JSON com totais)
+  readingSummary        Json?
+  
+  // Itens da ordem de serviço (apartamentos lidos)
+  serviceOrderItems     ServiceOrderItem[]
+  
+  // Auditoria
+  createdAt             DateTime          @default(now()) @db.Timestamp
+  updatedAt             DateTime          @updatedAt @db.Timestamp
+  deletedAt             DateTime?         @db.Timestamp
+  
+  createdByUserId       String?
+  createdByUser         User?             @relation("SOCreatedByUser", fields: [createdByUserId], references: [id])
+  updatedByUserId       String?
+  updatedByUser         User?             @relation("SOUpdatedByUser", fields: [updatedByUserId], references: [id])
+  
+  @@map("ServiceOrders")
+  @@index([readingRouteId])
+  @@index([complexId])
+  @@index([companyId])
+  @@index([status])
+  @@index([month, year])
+  @@index([assignedToUserId])
+  @@index([orderNumber])
+  @@index([deletedAt])
+}
+
+model ServiceOrderItem {
+  id                String          @id @map("_id") @default(uuid())
+  
+  serviceOrderId    String
+  serviceOrder      ServiceOrder    @relation(fields: [serviceOrderId], references: [id])
+  
+  // Referência da unidade
+  apartmentId       String?
+  apartmentName     String?
+  blockId           String?
+  blockName         String?
+  
+  // Medidor
+  meterId           String?
+  meterRegister     String?
+  
+  // Leitura
+  previousReading   Float?          // Leitura anterior
+  currentReading    Float?          // Leitura atual registrada
+  consumption       Float?          // Consumo calculado
+  
+  // Foto da leitura
+  photoUrl          String?         // URL da foto tirada pelo leiturista OU upload
+  photoUploadedAt   DateTime?       @db.Timestamp
+  photoSource       String?         // "CAMERA" | "UPLOAD" - origem da foto
+  
+  // Status do item
+  status            String          @default("PENDING") // "PENDING" | "READ" | "SKIPPED" | "ERROR"
+  skipReason        String?         // Motivo de pular (ex: "Medidor inacessível")
+  
+  // Ordem de exibição na rota
+  sortOrder         Int             @default(0)
+  
+  readAt            DateTime?       @db.Timestamp
+  
+  createdAt         DateTime        @default(now()) @db.Timestamp
+  updatedAt         DateTime        @updatedAt @db.Timestamp
+  
+  @@map("ServiceOrderItems")
+  @@index([serviceOrderId])
+  @@index([apartmentId])
+  @@index([meterId])
+  @@index([status])
 }

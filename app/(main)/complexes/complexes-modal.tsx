@@ -51,6 +51,17 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
     twitter: "",
     apportionment: "Simples",
     status: "Ativo",
+    // Billing fields
+    dealershipName: "",
+    billingType: "",
+    totalConsumptionM3: undefined,
+    minimumConsumptionM3: undefined,
+    commonAreaAllocation: "IGUAL",
+    sewerageType: "NENHUM",
+    sewerageRate: undefined,
+    adminFeeType: "NENHUM",
+    adminFeeValue: undefined,
+    billingNotes: "",
     userNamePrefix: "",
     userPasswordPrefix: "",
     userEmailPrefix: "",
@@ -103,6 +114,13 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
         twitter: "",
         apportionment: "Simples",
         status: "Ativo",
+        // Billing defaults
+        dealershipName: "",
+        billingType: "",
+        commonAreaAllocation: "IGUAL",
+        sewerageType: "NENHUM",
+        adminFeeType: "NENHUM",
+        billingNotes: "",
         userNamePrefix: "",
         userPasswordPrefix: "",
         userEmailPrefix: "",
@@ -123,6 +141,11 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value === "" ? undefined : parseFloat(value) }))
   }
 
   const handleSelectChange = (name: string, value: string) => {
@@ -252,10 +275,11 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <Tabs defaultValue="basic">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="basic">Informações Básicas</TabsTrigger>
               <TabsTrigger value="address">Endereço</TabsTrigger>
               <TabsTrigger value="additional">Adicional</TabsTrigger>
+              <TabsTrigger value="billing">Faturamento</TabsTrigger>
               <TabsTrigger value="management">Gestão</TabsTrigger>
               <TabsTrigger value="users-bulk">Usuários</TabsTrigger>
             </TabsList>
@@ -428,6 +452,180 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
                       <Input id="twitter" name="twitter" value={formData.twitter || ""} onChange={handleChange} />
                     </div>
                   </div>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="billing" className="space-y-4 mt-4">
+              <div className="bg-blue-50 dark:bg-blue-950 rounded-md p-3 text-sm text-blue-700 dark:text-blue-300 mb-2">
+                Configure o modelo de faturamento para geração da planilha mensal (campos amarelos).
+              </div>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="dealershipName">Concessionária</Label>
+                    <Input
+                      id="dealershipName"
+                      name="dealershipName"
+                      placeholder="Ex: Águas do Rio, SABESP, IGUÁ"
+                      value={(formData as any).dealershipName || ""}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="billingType">Tipo de Faturamento</Label>
+                    <Select
+                      value={(formData as any).billingType || ""}
+                      onValueChange={v => handleSelectChange("billingType", v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o tipo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="MINIMO">Mínimo</SelectItem>
+                        <SelectItem value="REAL_CONSUMO">Real Consumo</SelectItem>
+                        <SelectItem value="M3_MEDIO">M³ Médio</SelectItem>
+                        <SelectItem value="PROGRESSIVIDADE">Progressividade</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="totalConsumptionM3">Consumo Total da Conta (m³)</Label>
+                    <Input
+                      id="totalConsumptionM3"
+                      name="totalConsumptionM3"
+                      type="number"
+                      step="0.001"
+                      placeholder="Ex: 1800"
+                      value={(formData as any).totalConsumptionM3 ?? ""}
+                      onChange={handleNumberChange}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="minimumConsumptionM3">Mínimo por Unidade (m³)</Label>
+                    <Input
+                      id="minimumConsumptionM3"
+                      name="minimumConsumptionM3"
+                      type="number"
+                      step="0.001"
+                      placeholder="Ex: 10"
+                      value={(formData as any).minimumConsumptionM3 ?? ""}
+                      onChange={handleNumberChange}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="commonAreaAllocation">Rateio Áreas Comuns</Label>
+                    <Select
+                      value={(formData as any).commonAreaAllocation || "IGUAL"}
+                      onValueChange={v => handleSelectChange("commonAreaAllocation", v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Tipo de rateio" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="IGUAL">Igual para todos</SelectItem>
+                        <SelectItem value="FRACAO_IDEAL">Fração Ideal</SelectItem>
+                        <SelectItem value="NENHUM">Sem rateio</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="commonAreaConsumptionM3">Consumo Áreas Comuns (m³)</Label>
+                    <Input
+                      id="commonAreaConsumptionM3"
+                      name="commonAreaConsumptionM3"
+                      type="number"
+                      step="0.001"
+                      placeholder="Ex: 200"
+                      value={(formData as any).commonAreaConsumptionM3 ?? ""}
+                      onChange={handleNumberChange}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="sewerageType">Esgoto</Label>
+                    <Select
+                      value={(formData as any).sewerageType || "NENHUM"}
+                      onValueChange={v => handleSelectChange("sewerageType", v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Tipo de esgoto" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NENHUM">Sem esgoto</SelectItem>
+                        <SelectItem value="PERCENTUAL">Percentual do consumo</SelectItem>
+                        <SelectItem value="FIXO">Valor fixo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sewerageRate">
+                      {(formData as any).sewerageType === "PERCENTUAL" ? "% do esgoto" : "Valor esgoto (R$)"}
+                    </Label>
+                    <Input
+                      id="sewerageRate"
+                      name="sewerageRate"
+                      type="number"
+                      step="0.01"
+                      placeholder={(formData as any).sewerageType === "PERCENTUAL" ? "Ex: 100 (= 100%)" : "Ex: 50.00"}
+                      value={(formData as any).sewerageRate ?? ""}
+                      onChange={handleNumberChange}
+                      disabled={(formData as any).sewerageType === "NENHUM"}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="adminFeeType">Taxa de Administração</Label>
+                    <Select
+                      value={(formData as any).adminFeeType || "NENHUM"}
+                      onValueChange={v => handleSelectChange("adminFeeType", v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Tipo de taxa" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NENHUM">Sem taxa</SelectItem>
+                        <SelectItem value="PERCENTUAL">Percentual</SelectItem>
+                        <SelectItem value="FIXO">Valor fixo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="adminFeeValue">
+                      {(formData as any).adminFeeType === "PERCENTUAL" ? "% da taxa" : "Valor da taxa (R$)"}
+                    </Label>
+                    <Input
+                      id="adminFeeValue"
+                      name="adminFeeValue"
+                      type="number"
+                      step="0.01"
+                      placeholder={(formData as any).adminFeeType === "PERCENTUAL" ? "Ex: 5 (= 5%)" : "Ex: 100.00"}
+                      value={(formData as any).adminFeeValue ?? ""}
+                      onChange={handleNumberChange}
+                      disabled={(formData as any).adminFeeType === "NENHUM"}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="billingNotes">Observações do Faturamento</Label>
+                  <Input
+                    id="billingNotes"
+                    name="billingNotes"
+                    placeholder="Notas sobre o modelo de faturamento deste condomínio"
+                    value={(formData as any).billingNotes || ""}
+                    onChange={handleChange}
+                  />
                 </div>
               </div>
             </TabsContent>

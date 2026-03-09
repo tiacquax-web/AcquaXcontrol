@@ -10,6 +10,7 @@ import {
   Gauge, ShieldCheck, HousePlus, ReceiptText,
   ChartBarIncreasing, LayoutDashboard, GaugeCircle,
   Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen,
+  Route, ClipboardList,
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
@@ -48,6 +49,18 @@ const items = [
     title: "Filipeta Medição",
     url: "/meter-report",
     icon: FileText,
+    group: 'Geral',
+  },
+  {
+    title: "Rotas de Leitura",
+    url: "/reading-routes",
+    icon: Route,
+    group: 'Geral',
+  },
+  {
+    title: "Ordens de Serviço",
+    url: "/service-orders",
+    icon: ClipboardList,
     group: 'Geral',
   },
   {
