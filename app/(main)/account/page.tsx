@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 
 export default function Account() {
     const { user, loading, error } = useCurrentUser();
-    const { updateUser, loading: saving } = useUpdateCurrentUser();
+    const { updateUser, loading: saving, error: saveError } = useUpdateCurrentUser();
     const { toast } = useToast();
     const [form, setForm] = useState<{ name: string; email: string; password: string; confirmPassword: string }>({ name: "", email: "", password: "", confirmPassword: "" });
 
@@ -48,7 +48,7 @@ export default function Account() {
             } else {
                 toast({
                     title: "Erro ao salvar",
-                    description: "Não foi possível atualizar os dados. Tente novamente.",
+                    description: saveError || "Não foi possível atualizar os dados. Tente novamente.",
                     variant: "destructive",
                 });
             }

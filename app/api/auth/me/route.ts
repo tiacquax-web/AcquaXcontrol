@@ -8,7 +8,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'acquax-super-secret-jwt-key-2024';
 export async function GET(req: NextRequest): Promise<Response> {
     // Validate user session (aceita cookie JWT mesmo sem sessão no banco)
     const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
-    if (sessionError) return NextResponse.json({ sessionError }, { status: sessionStatus });
+    if (sessionError) return NextResponse.json({ error: sessionError }, { status: sessionStatus });
     if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
     // Tenta buscar usuário pela sessão no banco, senão busca direto pelo userId do JWT
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 export async function PUT(req: NextRequest): Promise<Response> {
     // Validate user session
     const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
-    if (sessionError) return NextResponse.json({ sessionError }, { status: sessionStatus });
+    if (sessionError) return NextResponse.json({ error: sessionError }, { status: sessionStatus });
     if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
     // Tenta buscar usuário pela sessão no banco, senão busca direto pelo userId do JWT

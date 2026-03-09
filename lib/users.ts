@@ -125,13 +125,10 @@ export async function updateUser(id: string, data: User, userId:string) {
 
 export async function updateCurrentUser(id: string, data: Partial<User>, userId: string, req: NextRequest) {
   try {
-    // Validate user session (do not return NextResponse here; return plain object expected by callers)
-    const { userId: sessionUserId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
-    if (sessionError) return { user: null, error: sessionError, status: sessionStatus };
-    if (!sessionUserId) return { user: null, error: 'Não autorizado', status: 401 };
-
-    // Must be authenticated and update only own user
-    if (!sessionUserId || !id || (sessionUserId !== id)) {
+    // userId já foi validado pelo route handler — não revalidar aqui para evitar
+    // falhas quando a sessão expirou do banco mas o JWT ainda é válido no cookie.
+    // Apenas garantir que o usuário só pode atualizar a si mesmo.
+    if (!userId || !id || userId !== id) {
       return { user: null, error: 'Usuário não autenticado', status: 401 };
     }
 
@@ -154,14 +151,18 @@ export async function updateCurrentUser(id: string, data: Partial<User>, userId:
     // Normalize email when provided
     if (updateData.email) updateData.email = normalizeEmail(updateData.email);
 
-    // Audit - use sessionUserId for updatedByUserId
-    updateData.updatedByUserId = sessionUserId;
+    // Audit - use userId for updatedByUserId
+    updateData.updatedByUserId = userId;
 
     // Direct update to avoid global 'user update' permission check
     const updatedUser = await prisma.user.update({ where: { id }, data: updateData });
 
     return { user: updatedUser, error: null, status: 200 };
-  } catch (error) {
+  } catch (error: any) {
+    // Tratar erro de email duplicado (Prisma P2002)
+    if (error?.code === 'P2002' && error?.meta?.target?.includes('email')) {
+      return { user: null, error: 'Este e-mail já está em uso por outra conta.', status: 409 };
+    }
     return { user: null, error: error instanceof Error ? error.message : 'Erro interno', status: 500 };
   }
 }
