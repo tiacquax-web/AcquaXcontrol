@@ -16,13 +16,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Apaga o cookie com as mesmas opções usadas na criação
+    const proto = req.headers.get('x-forwarded-proto') ?? '';
+    const isHttps = proto === 'https' || process.env.NODE_ENV === 'production';
     const response = NextResponse.json({ ok: true });
     response.cookies.set('session', '', {
         httpOnly: true,
         maxAge: 0,
         path: '/',
         sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
+        secure: isHttps,
         expires: new Date(0),
     });
 

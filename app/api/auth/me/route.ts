@@ -111,7 +111,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
                 maxAge: 60 * 60,
                 path: '/',
                 sameSite: 'lax',
-                secure: process.env.NODE_ENV === 'production',
+                secure: (req.headers.get('x-forwarded-proto') === 'https' || process.env.NODE_ENV === 'production'),
             });
             return response;
         } catch (e) {

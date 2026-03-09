@@ -8,7 +8,7 @@ import prisma from '@/lib/prisma';
 // Máximo 5 tentativas por IP em janela de 5 minutos (300 segundos).
 // Armazena: { count: number, resetAt: number (timestamp ms) }
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_MAX = 20;             // aumentado para não bloquear testes
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutos
 
 function getRateLimitEntry(ip: string) {
@@ -165,12 +165,17 @@ export async function POST(req: Request) {
     response.headers.set('Access-Control-Allow-Origin', getAllowedOrigin(req));
     response.headers.set('Access-Control-Allow-Credentials', 'true');
 
+    // secure=true sempre que o site for acessado via HTTPS (sandbox novita usa HTTPS)
+    // Detecta via x-forwarded-proto ou NODE_ENV
+    const proto = (req.headers as any).get?.('x-forwarded-proto') ?? '';
+    const isHttps = proto === 'https' || process.env.NODE_ENV === 'production';
+
     response.cookies.set('session', session.token, {
       httpOnly: true,
-      maxAge: 60 * 60, // 1 hora
+      maxAge: 60 * 60 * 8, // 8 horas
       path: '/',
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      secure: isHttps,
     });
 
     return response;
