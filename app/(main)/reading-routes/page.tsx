@@ -66,7 +66,7 @@ export default function ReadingRoutesPage() {
     const [users, setUsers] = useState<User[]>([])
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [search, setSearch] = useState("")
-    const [filterStatus, setFilterStatus] = useState("")
+    const [filterStatus, setFilterStatus] = useState("all")
     const [creating, setCreating] = useState(false)
     const { toast } = useToast()
 
@@ -75,8 +75,8 @@ export default function ReadingRoutesPage() {
         description: "",
         month: (new Date().getMonth() + 1).toString(),
         year: CURRENT_YEAR.toString(),
-        complexId: "",
-        assignedToUserId: "",
+        complexId: "none",
+        assignedToUserId: "none",
         plannedStartDate: "",
     })
 
@@ -85,7 +85,7 @@ export default function ReadingRoutesPage() {
         try {
             const params = new URLSearchParams()
             if (search) params.set("search", search)
-            if (filterStatus) params.set("status", filterStatus)
+            if (filterStatus && filterStatus !== "all") params.set("status", filterStatus)
             const res = await fetch(`/api/reading-routes?${params}`)
             if (!res.ok) throw new Error("Erro ao buscar rotas")
             const data = await res.json()
@@ -122,7 +122,7 @@ export default function ReadingRoutesPage() {
 
     // Auto-generate route name when complex/month/year changes
     useEffect(() => {
-        const complex = complexes.find(c => c.id === form.complexId)
+        const complex = complexes.find(c => c.id === form.complexId && form.complexId !== 'none')
         if (complex && form.month && form.year) {
             const monthName = MONTHS[parseInt(form.month) - 1]
             const name = `Rota ${monthName} ${form.year} - ${complex.aliasName || complex.socialName}`
@@ -131,7 +131,7 @@ export default function ReadingRoutesPage() {
     }, [form.complexId, form.month, form.year, complexes])
 
     const handleCreate = async () => {
-        if (!form.complexId || !form.month || !form.year) {
+        if (!form.complexId || form.complexId === 'none' || !form.month || !form.year) {
             toast({ title: "Atenção", description: "Preencha todos os campos obrigatórios", variant: "destructive" })
             return
         }
@@ -144,7 +144,7 @@ export default function ReadingRoutesPage() {
                     ...form,
                     month: parseInt(form.month),
                     year: parseInt(form.year),
-                    assignedToUserId: form.assignedToUserId || undefined,
+                    assignedToUserId: (form.assignedToUserId && form.assignedToUserId !== "none") ? form.assignedToUserId : null,
                     plannedStartDate: form.plannedStartDate || undefined,
                 })
             })
@@ -160,7 +160,7 @@ export default function ReadingRoutesPage() {
             setIsModalOpen(false)
             setForm({
                 name: "", description: "", month: (new Date().getMonth() + 1).toString(),
-                year: CURRENT_YEAR.toString(), complexId: "", assignedToUserId: "", plannedStartDate: ""
+                year: CURRENT_YEAR.toString(), complexId: "none", assignedToUserId: "none", plannedStartDate: ""
             })
             fetchRoutes()
         } catch (err: any) {
@@ -219,7 +219,7 @@ export default function ReadingRoutesPage() {
                                 <SelectValue placeholder="Todos os status" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="">Todos os status</SelectItem>
+                                <SelectItem value="all">Todos os status</SelectItem>
                                 {Object.entries(STATUS_CONFIG).map(([value, cfg]) => (
                                     <SelectItem key={value} value={value}>{cfg.label}</SelectItem>
                                 ))}
@@ -398,6 +398,7 @@ export default function ReadingRoutesPage() {
                                     <SelectValue placeholder="Selecione o condomínio" />
                                 </SelectTrigger>
                                 <SelectContent>
+                                    <SelectItem value="none">Selecione o condomínio</SelectItem>
                                     {complexes.map(c => (
                                         <SelectItem key={c.id} value={c.id}>
                                             {c.socialName}{c.aliasName ? ` (${c.aliasName})` : ""}
@@ -427,7 +428,7 @@ export default function ReadingRoutesPage() {
                                     <SelectValue placeholder="Selecione o leiturista" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="">Não atribuído</SelectItem>
+                                    <SelectItem value="none">Não atribuído</SelectItem>
                                     {users.map(u => (
                                         <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                                     ))}

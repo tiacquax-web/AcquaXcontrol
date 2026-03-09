@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 import {
   LayoutDashboard, Route, ClipboardList, Camera,
-  FileSpreadsheet, FilePlus2,
+  FileSpreadsheet, FilePlus2, BarChart2, Mail,
   Building2, Building, DoorClosed,
   GaugeCircle, UsersRound, ShieldCheck, HousePlus,
 } from "lucide-react"
@@ -58,6 +58,20 @@ const items = [
     title: "Gerar Planilhas",
     url: "/generate-spreadsheets",
     icon: FilePlus2,
+    group: 'Faturamento',
+    alwaysVisible: true,
+  },
+  {
+    title: "Acompanhamento",
+    url: "/acompanhamento",
+    icon: BarChart2,
+    group: 'Faturamento',
+    alwaysVisible: true,
+  },
+  {
+    title: "E-mails Programados",
+    url: "/emails-programados",
+    icon: Mail,
     group: 'Faturamento',
     alwaysVisible: true,
   },

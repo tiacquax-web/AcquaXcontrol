@@ -5,7 +5,8 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building2, Loader2, MapPin, Phone, Plus, Search } from "lucide-react"
+import { Building2, Loader2, MapPin, Phone, Plus, Search, DollarSign } from "lucide-react"
+import Link from "next/link"
 import { useComplexes, useComplexMutations } from "@/hooks/useComplexes"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -209,6 +210,12 @@ export default function ComplexesPage() {
                                                     </TableCell>
                                                     <TableCell className="text-right">
                                                         <div className="flex justify-end gap-2">
+                                                            <Link href={`/complexes/${complex.id}/faturamento`}>
+                                                                <Button variant="outline" size="sm">
+                                                                    <DollarSign className="h-3 w-3 mr-1" />
+                                                                    Faturamento
+                                                                </Button>
+                                                            </Link>
                                                             <Button variant="outline" size="sm" onClick={() => handleEditComplex(complex)}>
                                                                 Editar
                                                             </Button>

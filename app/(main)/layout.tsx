@@ -2,6 +2,7 @@ import { ResponsiveNavigation, ResponsivePadding } from "@/components/responsive
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/toaster";
 import { PermissionsProvider } from "./PermissionsContext";
+import { ResidentGuard } from "@/components/resident-guard";
 
 
 export default function RootLayout({
@@ -11,14 +12,16 @@ export default function RootLayout({
 }>) {
     return (
         <PermissionsProvider>
-            <SidebarProvider>
-                <ResponsiveNavigation />
-                <main className="overflow-hidden pt-8 md:w-full">
-                    {children}
-                    <Toaster />
-                </main>
-                <ResponsivePadding />
-            </SidebarProvider>
+            <ResidentGuard>
+                <SidebarProvider>
+                    <ResponsiveNavigation />
+                    <main className="overflow-hidden pt-8 md:w-full">
+                        {children}
+                        <Toaster />
+                    </main>
+                    <ResponsivePadding />
+                </SidebarProvider>
+            </ResidentGuard>
         </PermissionsProvider>
     );
 }

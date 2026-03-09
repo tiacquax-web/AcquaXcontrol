@@ -44,7 +44,7 @@ interface ServiceOrder {
 export default function ServiceOrdersPage() {
     const [orders, setOrders] = useState<ServiceOrder[]>([])
     const [loading, setLoading] = useState(true)
-    const [filterStatus, setFilterStatus] = useState("")
+    const [filterStatus, setFilterStatus] = useState("all")
     const [search, setSearch] = useState("")
     const { toast } = useToast()
 
@@ -52,7 +52,7 @@ export default function ServiceOrdersPage() {
         setLoading(true)
         try {
             const params = new URLSearchParams()
-            if (filterStatus) params.set("status", filterStatus)
+            if (filterStatus && filterStatus !== "all") params.set("status", filterStatus)
             const res = await fetch(`/api/service-orders?${params}`)
             if (!res.ok) throw new Error("Erro ao buscar ordens de serviço")
             const data = await res.json()
@@ -108,7 +108,7 @@ export default function ServiceOrdersPage() {
                                 <SelectValue placeholder="Todos os status" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="">Todos os status</SelectItem>
+                                <SelectItem value="all">Todos os status</SelectItem>
                                 {Object.entries(STATUS_CONFIG).map(([value, cfg]) => (
                                     <SelectItem key={value} value={value}>{cfg.label}</SelectItem>
                                 ))}

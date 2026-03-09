@@ -1,12 +1,13 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { FilePlus2, Download, Search, RefreshCw, CheckCircle, Clock, XCircle, Filter } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { FilePlus2, Download, Search, RefreshCw, CheckCircle, Clock, XCircle, Filter, Loader2, Building2, Calendar, Info } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import axiosClient from "@/services/axiosClient"
 import { toast } from "@/hooks/use-toast"
@@ -60,7 +61,12 @@ export default function GenerateSpreadsheetsPage() {
   const [generateOpen, setGenerateOpen] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [newServiceOrderId, setNewServiceOrderId] = useState("")
-  const [newTemplateId, setNewTemplateId] = useState("")
+  const [newTemplateId, setNewTemplateId] = useState("none")
+  // OS lookup state
+  const [lookingUpOS, setLookingUpOS] = useState(false)
+  const [foundOrder, setFoundOrder] = useState<any>(null)
+  // Templates list
+  const [templates, setTemplates] = useState<any[]>([])
 
   const load = async () => {
     setLoading(true)
@@ -80,6 +86,11 @@ export default function GenerateSpreadsheetsPage() {
 
   useEffect(() => {
     load()
+    // Load templates
+    fetch("/api/spreadsheet-templates?take=100")
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(d => setTemplates(d.data || []))
+      .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStatus, filterMonth, filterYear])
 
@@ -88,6 +99,27 @@ export default function GenerateSpreadsheetsPage() {
     const q = search.toLowerCase()
     return s.complexName?.toLowerCase().includes(q) || s.fileName?.toLowerCase().includes(q)
   })
+
+  // Lookup OS details when ID changes
+  const lookupOS = useCallback(async (id: string) => {
+    if (!id.trim() || id.length < 10) { setFoundOrder(null); return }
+    setLookingUpOS(true)
+    try {
+      const res = await fetch(`/api/service-orders?search=${encodeURIComponent(id)}&take=1`)
+      if (!res.ok) { setFoundOrder(null); return }
+      const data = await res.json()
+      const orders = data.data || []
+      // Try exact match on orderNumber or id
+      const match = orders.find((o: any) => o.id === id.trim() || o.orderNumber === id.trim())
+      setFoundOrder(match || orders[0] || null)
+    } catch { setFoundOrder(null) }
+    finally { setLookingUpOS(false) }
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => lookupOS(newServiceOrderId), 600)
+    return () => clearTimeout(timer)
+  }, [newServiceOrderId, lookupOS])
 
   const handleGenerate = async () => {
     if (!newServiceOrderId.trim()) {
@@ -98,7 +130,7 @@ export default function GenerateSpreadsheetsPage() {
     try {
       await axiosClient.post("/generated-spreadsheets", {
         serviceOrderId: newServiceOrderId.trim(),
-        templateId: newTemplateId.trim() || undefined,
+        templateId: (newTemplateId && newTemplateId !== "none") ? newTemplateId.trim() : undefined,
       })
       toast({ title: "Planilha em geração! Aguarde alguns instantes." })
       setGenerateOpen(false)
@@ -256,32 +288,73 @@ export default function GenerateSpreadsheetsPage() {
       </Card>
 
       {/* Generate Dialog */}
-      <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
+      <Dialog open={generateOpen} onOpenChange={(open) => { setGenerateOpen(open); if (!open) { setFoundOrder(null); setNewServiceOrderId(""); setNewTemplateId("none") } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Gerar Nova Planilha</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="serviceOrderId">ID da Ordem de Serviço *</Label>
-              <Input
-                id="serviceOrderId"
-                placeholder="Cole o ID da ordem de serviço aqui"
-                value={newServiceOrderId}
-                onChange={(e) => setNewServiceOrderId(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Você pode copiar o ID na página de Ordens de Serviço.
-              </p>
+              <Label htmlFor="serviceOrderId">Número ou ID da Ordem de Serviço *</Label>
+              <div className="relative">
+                <Input
+                  id="serviceOrderId"
+                  placeholder="Ex: OS-2026-03-A1B2C3 ou cole o ID"
+                  value={newServiceOrderId}
+                  onChange={(e) => setNewServiceOrderId(e.target.value)}
+                />
+                {lookingUpOS && (
+                  <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+              {foundOrder && (
+                <div className="rounded-md bg-green-50 border border-green-200 p-2.5 text-sm space-y-1">
+                  <div className="flex items-center gap-1.5 text-green-700 font-medium">
+                    <Building2 className="h-3.5 w-3.5" />
+                    {foundOrder.complexSocialName || foundOrder.complexName || "Condomínio"}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-green-600 text-xs">
+                    <Calendar className="h-3 w-3" />
+                    {MONTHS[(foundOrder.month || 1) - 1]} / {foundOrder.year}
+                    &nbsp;·&nbsp;OS: {foundOrder.orderNumber}
+                  </div>
+                </div>
+              )}
+              {!foundOrder && newServiceOrderId.trim().length > 5 && !lookingUpOS && (
+                <p className="text-xs text-muted-foreground">
+                  OS não encontrada. Verifique o número ou acesse{" "}
+                  <a href="/service-orders" className="text-blue-600 hover:underline">Ordens de Serviço</a>.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="templateId">Modelo de Planilha (opcional)</Label>
-              <Input
-                id="templateId"
-                placeholder="ID do modelo (deixe vazio para usar o padrão)"
-                value={newTemplateId}
-                onChange={(e) => setNewTemplateId(e.target.value)}
-              />
+              <Label htmlFor="templateId">Modelo de Planilha</Label>
+              <Select value={newTemplateId} onValueChange={setNewTemplateId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Padrão (sem modelo)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Padrão (sem modelo)</SelectItem>
+                  {templates.map((t: any) => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {newTemplateId && newTemplateId !== "none" && (() => {
+                const tmpl = templates.find((t: any) => t.id === newTemplateId)
+                if (!tmpl) return null
+                return (
+                  <div className="rounded-md bg-blue-50 border border-blue-200 p-2.5 text-xs text-blue-700 space-y-0.5">
+                    <div className="flex items-center gap-1 font-medium">
+                      <Info className="h-3 w-3" />
+                      Sobre este modelo
+                    </div>
+                    {tmpl.description && <p>{tmpl.description}</p>}
+                    <p>Método de rateio: <strong>{tmpl.rateioMethod === "FRACAO_IDEAL" ? "Fração Ideal" : tmpl.rateioMethod}</strong></p>
+                    {tmpl.commonAreaLabel && <p>Área comum: <strong>{tmpl.commonAreaLabel}</strong></p>}
+                  </div>
+                )
+              })()}
             </div>
           </div>
           <DialogFooter>

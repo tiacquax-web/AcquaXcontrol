@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
-import { Plus, FileSpreadsheet, Pencil, Trash2, Upload, Eye, Building2, ChevronDown, ChevronUp } from "lucide-react"
+import { Plus, FileSpreadsheet, Pencil, Trash2, Upload, Eye, Building2, FileUp, Info, X } from "lucide-react"
 import axiosClient from "@/services/axiosClient"
 
 interface SpreadsheetTemplate {
@@ -37,7 +37,7 @@ interface SpreadsheetTemplate {
 const EMPTY_FORM = {
   name: "",
   description: "",
-  complexId: "",
+  complexId: "none",
   complexName: "",
   rateioMethod: "FRACAO_IDEAL",
   commonAreaType: "DIFFERENCE",
@@ -59,34 +59,43 @@ export default function SpreadsheetTemplatesPage() {
   const [editing, setEditing] = useState<SpreadsheetTemplate | null>(null)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadingId, setUploadingId] = useState<string | null>(null)
 
-  const fetchTemplates = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await axiosClient.get("/spreadsheet-templates")
-      setTemplates(res.data.list || res.data || [])
+      const res = await axiosClient.get<{ list: SpreadsheetTemplate[] }>("/spreadsheet-templates")
+      setTemplates(res.data.list || [])
     } catch {
-      toast({ title: "Erro ao carregar modelos", variant: "destructive" })
+      setTemplates([])
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }, [])
 
-  useEffect(() => { fetchTemplates() }, [fetchTemplates])
+  useEffect(() => { load() }, [load])
 
-  function openNew() {
+  const filtered = templates.filter(t =>
+    !search ||
+    t.name.toLowerCase().includes(search.toLowerCase()) ||
+    (t.complexName || "").toLowerCase().includes(search.toLowerCase())
+  )
+
+  const openCreate = () => {
     setEditing(null)
     setForm({ ...EMPTY_FORM })
+    setUploadFile(null)
     setModalOpen(true)
   }
 
-  function openEdit(t: SpreadsheetTemplate) {
+  const openEdit = (t: SpreadsheetTemplate) => {
     setEditing(t)
     setForm({
       name: t.name,
       description: t.description || "",
-      complexId: t.complexId || "",
+      complexId: t.complexId || "none",
       complexName: t.complexName || "",
       rateioMethod: t.rateioMethod,
       commonAreaType: t.commonAreaType,
@@ -98,25 +107,35 @@ export default function SpreadsheetTemplatesPage() {
       adminFeeValue: t.adminFeeValue || 0,
       isActive: t.isActive,
     })
+    setUploadFile(null)
     setModalOpen(true)
   }
 
-  async function handleSave() {
+  const handleSave = async () => {
     if (!form.name.trim()) {
       toast({ title: "Nome é obrigatório", variant: "destructive" })
       return
     }
     setSaving(true)
     try {
+      const payload = {
+        ...form,
+        complexId: form.complexId !== "none" ? form.complexId : undefined,
+        complexName: form.complexName || undefined,
+      }
       if (editing) {
-        await axiosClient.put(`/spreadsheet-templates/${editing.id}`, form)
+        await axiosClient.put(`/spreadsheet-templates/${editing.id}`, payload)
         toast({ title: "Modelo atualizado!" })
       } else {
-        await axiosClient.post("/spreadsheet-templates", form)
+        const res = await axiosClient.post<{ id: string }>("/spreadsheet-templates", payload)
+        // If a file was selected, upload it now
+        if (uploadFile && res.data?.id) {
+          await doUpload(res.data.id, uploadFile)
+        }
         toast({ title: "Modelo criado!" })
       }
       setModalOpen(false)
-      fetchTemplates()
+      load()
     } catch {
       toast({ title: "Erro ao salvar modelo", variant: "destructive" })
     } finally {
@@ -124,129 +143,170 @@ export default function SpreadsheetTemplatesPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Excluir este modelo?")) return
+  const doUpload = async (templateId: string, file: File) => {
+    const fd = new FormData()
+    fd.append("file", file)
     try {
-      await axiosClient.delete(`/spreadsheet-templates/${id}`)
+      setUploadingId(templateId)
+      await axiosClient.post(`/spreadsheet-templates/${templateId}/upload`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      toast({ title: "Planilha modelo enviada!", description: "O sistema processará o mapeamento de colunas." })
+    } catch {
+      toast({ title: "Erro ao enviar planilha", description: "Verifique o arquivo e tente novamente.", variant: "destructive" })
+    } finally {
+      setUploadingId(null)
+      load()
+    }
+  }
+
+  const handleUploadExisting = async (templateId: string, file: File) => {
+    await doUpload(templateId, file)
+  }
+
+  const handleDelete = async () => {
+    if (!deleteId) return
+    try {
+      await axiosClient.delete(`/spreadsheet-templates/${deleteId}`)
       toast({ title: "Modelo excluído" })
-      fetchTemplates()
+      setDeleteId(null)
+      load()
     } catch {
       toast({ title: "Erro ao excluir", variant: "destructive" })
     }
   }
 
-  const filtered = templates.filter(t =>
-    t.name.toLowerCase().includes(search.toLowerCase()) ||
-    (t.complexName || "").toLowerCase().includes(search.toLowerCase())
-  )
+  const f = (key: string, value: any) => setForm(prev => ({ ...prev, [key]: value }))
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="container mx-auto px-4 py-8 max-w-6xl">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <FileSpreadsheet className="h-6 w-6 text-sky-500" />
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <FileSpreadsheet className="h-8 w-8 text-sky-500" />
             Modelos de Planilha
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Cadastre os modelos de filipeta/planilha por condomínio
+          <p className="text-muted-foreground mt-1">
+            Cadastre os modelos usados para gerar as filipetas mensais de cada condomínio.
           </p>
         </div>
-        <Button onClick={openNew} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Novo Modelo
+        <Button onClick={openCreate} className="bg-sky-500 hover:bg-sky-600">
+          <Plus className="h-4 w-4 mr-2" /> Novo Modelo
         </Button>
       </div>
 
+      {/* Info box */}
+      <Card className="mb-6 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+        <CardContent className="pt-4 pb-4 flex gap-3">
+          <Info className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+          <div className="text-sm text-blue-800 dark:text-blue-300">
+            <strong>Como funciona:</strong> Faça upload da planilha Excel que a administradora usa (ex.: filipeta do condomínio).
+            O sistema aprende o layout da planilha e, a cada mês, preenche automaticamente com as leituras registradas nas Ordens de Serviço.
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Search */}
-      <Input
-        placeholder="Buscar por nome ou condomínio..."
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        className="max-w-sm"
-      />
+      <div className="flex gap-3 mb-6">
+        <Input
+          placeholder="Buscar por nome ou condomínio..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="max-w-md"
+        />
+      </div>
 
       {/* List */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1,2,3].map(i => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader><div className="h-5 bg-muted rounded w-3/4" /></CardHeader>
-              <CardContent><div className="h-4 bg-muted rounded w-1/2" /></CardContent>
-            </Card>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <FileSpreadsheet className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="font-medium">Nenhum modelo cadastrado</p>
-            <p className="text-sm mt-1">Clique em "Novo Modelo" para começar</p>
+          <CardContent className="flex flex-col items-center py-16">
+            <FileSpreadsheet className="h-16 w-16 text-muted-foreground mb-4" />
+            <p className="text-xl font-medium text-muted-foreground">Nenhum modelo encontrado</p>
+            <p className="text-sm text-muted-foreground mt-1">Clique em &quot;Novo Modelo&quot; para começar.</p>
+            <Button className="mt-4 bg-sky-500 hover:bg-sky-600" onClick={openCreate}>
+              <Plus className="h-4 w-4 mr-2" /> Criar Primeiro Modelo
+            </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-3">
           {filtered.map(t => (
-            <Card key={t.id} className={`border-2 ${t.isActive ? "border-sky-500/30" : "border-muted opacity-60"}`}>
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between gap-2">
+            <Card key={t.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <CardTitle className="text-base truncate">{t.name}</CardTitle>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-base">{t.name}</span>
+                      <Badge variant={t.isActive ? "default" : "secondary"}>
+                        {t.isActive ? "Ativo" : "Inativo"}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        {t.rateioMethod === "FRACAO_IDEAL" ? "Fração Ideal" : "Divisão Simples"}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        {t.commonAreaType === "DIFFERENCE" ? "Área comum = Diferença"
+                          : t.commonAreaType === "OWN_METER" ? "Área comum = Medidor próprio"
+                          : "Área comum = Personalizado"}
+                      </Badge>
+                    </div>
                     {t.complexName && (
-                      <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-                        <Building2 className="h-3 w-3" />
-                        {t.complexName}
-                      </div>
+                      <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-1">
+                        <Building2 className="h-3 w-3" /> {t.complexName}
+                      </p>
                     )}
-                  </div>
-                  <Badge variant={t.isActive ? "default" : "secondary"} className="shrink-0">
-                    {t.isActive ? "Ativo" : "Inativo"}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex gap-2 flex-wrap">
-                  <Badge variant="outline" className="text-xs">
-                    {t.rateioMethod === "FRACAO_IDEAL" ? "Fração Ideal" : "Divisão Simples"}
-                  </Badge>
-                  <Badge variant="outline" className="text-xs">
-                    {t.commonAreaLabel || "Área Comum"}:{" "}
-                    {t.commonAreaType === "DIFFERENCE" ? "Diferença" : t.commonAreaType === "OWN_METER" ? "Medidor Próprio" : "Customizado"}
-                  </Badge>
-                </div>
-
-                {/* Expandir detalhes */}
-                <button
-                  className="text-xs text-sky-500 flex items-center gap-1"
-                  onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}
-                >
-                  {expandedId === t.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  {expandedId === t.id ? "Menos detalhes" : "Ver detalhes"}
-                </button>
-
-                {expandedId === t.id && (
-                  <div className="text-xs space-y-1 bg-muted/30 rounded p-2">
-                    {t.description && <p className="text-muted-foreground">{t.description}</p>}
-                    {t.includeSewerageRate && <p>Esgoto: {t.sewerageRate}%</p>}
-                    {t.includeAdminFee && (
-                      <p>Taxa Admin: {t.adminFeeType === "FIXED" ? `R$ ${t.adminFeeValue}` : `${t.adminFeeValue}%`}</p>
+                    {t.description && (
+                      <p className="text-sm text-muted-foreground mt-0.5">{t.description}</p>
                     )}
                     {t.sampleFileName && (
-                      <a href={t.sampleFileUrl} target="_blank" className="text-sky-500 flex items-center gap-1">
-                        <Eye className="h-3 w-3" /> {t.sampleFileName}
-                      </a>
+                      <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                        <FileUp className="h-3 w-3" />
+                        Planilha: {t.sampleFileName}
+                        {t.sampleFileUrl && (
+                          <a href={t.sampleFileUrl} target="_blank" rel="noopener noreferrer"
+                            className="ml-1 text-blue-600 underline" onClick={e => e.stopPropagation()}>
+                            ver
+                          </a>
+                        )}
+                      </p>
                     )}
                   </div>
-                )}
-
-                <div className="flex gap-2 pt-1">
-                  <Button size="sm" variant="outline" className="flex-1 gap-1" onClick={() => openEdit(t)}>
-                    <Pencil className="h-3 w-3" /> Editar
-                  </Button>
-                  <Button size="sm" variant="destructive" className="gap-1" onClick={() => handleDelete(t.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* Upload button */}
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        className="hidden"
+                        onChange={async e => {
+                          const file = e.target.files?.[0]
+                          if (file) await handleUploadExisting(t.id, file)
+                          e.target.value = ""
+                        }}
+                      />
+                      <Button variant="outline" size="sm" asChild>
+                        <span>
+                          {uploadingId === t.id ? (
+                            <><Upload className="h-3 w-3 mr-1 animate-bounce" /> Enviando...</>
+                          ) : (
+                            <><Upload className="h-3 w-3 mr-1" /> {t.sampleFileName ? "Atualizar" : "Upload Planilha"}</>
+                          )}
+                        </span>
+                      </Button>
+                    </label>
+                    <Button variant="outline" size="sm" onClick={() => openEdit(t)}>
+                      <Pencil className="h-3 w-3 mr-1" /> Editar
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => setDeleteId(t.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -254,122 +314,174 @@ export default function SpreadsheetTemplatesPage() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Create/Edit Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? "Editar Modelo" : "Novo Modelo de Planilha"}</DialogTitle>
+            <DialogTitle>
+              {editing ? "Editar Modelo de Planilha" : "Novo Modelo de Planilha"}
+            </DialogTitle>
           </DialogHeader>
+          <div className="space-y-5 py-2">
+            {/* Name */}
+            <div className="space-y-2">
+              <Label htmlFor="name">Nome do Modelo *</Label>
+              <Input id="name" value={form.name} onChange={e => f("name", e.target.value)}
+                placeholder="Ex.: Filipeta Padrão SABESP" />
+            </div>
 
-          <div className="space-y-4 py-2">
-            {/* Nome */}
-            <div className="space-y-1">
-              <Label>Nome do modelo *</Label>
-              <Input placeholder="Ex: Modelo América Clube" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="desc">Descrição / Observações</Label>
+              <Textarea id="desc" value={form.description}
+                onChange={e => f("description", e.target.value)}
+                placeholder="Descreva quando usar este modelo, particularidades, etc." rows={2} />
             </div>
 
             {/* Condomínio */}
-            <div className="space-y-1">
+            <div className="space-y-2">
               <Label>Condomínio (opcional)</Label>
-              <Input placeholder="Nome do condomínio" value={form.complexName} onChange={e => setForm(f => ({ ...f, complexName: e.target.value }))} />
+              <Input value={form.complexName}
+                onChange={e => f("complexName", e.target.value)}
+                placeholder="Nome do condomínio (deixe vazio para modelo genérico)" />
+              <p className="text-xs text-muted-foreground">Se preenchido, este modelo será vinculado a este condomínio específico.</p>
             </div>
 
-            {/* Descrição */}
-            <div className="space-y-1">
-              <Label>Descrição</Label>
-              <Textarea placeholder="Observações sobre este modelo..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} />
-            </div>
-
+            {/* Rateio */}
             <div className="grid grid-cols-2 gap-4">
-              {/* Método de rateio */}
-              <div className="space-y-1">
-                <Label>Método de rateio</Label>
-                <Select value={form.rateioMethod} onValueChange={v => setForm(f => ({ ...f, rateioMethod: v }))}>
+              <div className="space-y-2">
+                <Label>Método de Rateio *</Label>
+                <Select value={form.rateioMethod} onValueChange={v => f("rateioMethod", v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="FRACAO_IDEAL">Fração Ideal</SelectItem>
-                    <SelectItem value="DIVISAO_SIMPLES">Divisão Simples</SelectItem>
+                    <SelectItem value="DIVISAO_SIMPLES">Divisão Simples (igual)</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {form.rateioMethod === "FRACAO_IDEAL"
+                    ? "Rateio proporcional à fração ideal de cada unidade"
+                    : "Divisão igual entre todas as unidades"}
+                </p>
               </div>
-
-              {/* Tipo área comum */}
-              <div className="space-y-1">
-                <Label>Tipo de área comum</Label>
-                <Select value={form.commonAreaType} onValueChange={v => setForm(f => ({ ...f, commonAreaType: v }))}>
+              <div className="space-y-2">
+                <Label>Tipo de Área Comum *</Label>
+                <Select value={form.commonAreaType} onValueChange={v => f("commonAreaType", v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="DIFFERENCE">Diferença (total - soma)</SelectItem>
-                    <SelectItem value="OWN_METER">Medidor próprio</SelectItem>
-                    <SelectItem value="CUSTOM">Customizado</SelectItem>
+                    <SelectItem value="DIFFERENCE">Diferença (total - soma individuais)</SelectItem>
+                    <SelectItem value="OWN_METER">Medidor próprio de área comum</SelectItem>
+                    <SelectItem value="CUSTOM">Personalizado (alinhamento)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            {/* Nome da área comum */}
-            <div className="space-y-1">
-              <Label>Como chamar a área comum neste condomínio</Label>
-              <Input placeholder="Ex: Área Comum, Alinhamento, Diferença..." value={form.commonAreaLabel} onChange={e => setForm(f => ({ ...f, commonAreaLabel: e.target.value }))} />
+            <div className="space-y-2">
+              <Label>Nome da Linha de Área Comum</Label>
+              <Input value={form.commonAreaLabel}
+                onChange={e => f("commonAreaLabel", e.target.value)}
+                placeholder="Ex.: Área Comum, Alinhamento, Compensação..." />
             </div>
 
-            {/* Esgoto */}
-            <div className="flex items-center justify-between rounded border p-3">
-              <div>
-                <p className="text-sm font-medium">Cobrar esgoto</p>
-                <p className="text-xs text-muted-foreground">Aplica percentual sobre o consumo</p>
+            {/* Sewerage */}
+            <div className="border rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Incluir Taxa de Esgoto</Label>
+                <Switch checked={form.includeSewerageRate}
+                  onCheckedChange={v => f("includeSewerageRate", v)} />
               </div>
-              <Switch checked={form.includeSewerageRate} onCheckedChange={v => setForm(f => ({ ...f, includeSewerageRate: v }))} />
+              {form.includeSewerageRate && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Taxa de Esgoto (%)</Label>
+                    <Input type="number" value={form.sewerageRate}
+                      onChange={e => f("sewerageRate", parseFloat(e.target.value) || 0)}
+                      placeholder="Ex.: 100" />
+                  </div>
+                </div>
+              )}
             </div>
-            {form.includeSewerageRate && (
-              <div className="space-y-1">
-                <Label>Percentual de esgoto (%)</Label>
-                <Input type="number" min={0} max={200} value={form.sewerageRate} onChange={e => setForm(f => ({ ...f, sewerageRate: parseFloat(e.target.value) }))} />
+
+            {/* Admin fee */}
+            <div className="border rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Incluir Taxa de Administração</Label>
+                <Switch checked={form.includeAdminFee}
+                  onCheckedChange={v => f("includeAdminFee", v)} />
+              </div>
+              {form.includeAdminFee && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Tipo</Label>
+                    <Select value={form.adminFeeType} onValueChange={v => f("adminFeeType", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PERCENTAGE">Percentual (%)</SelectItem>
+                        <SelectItem value="FIXED">Valor Fixo (R$)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Valor</Label>
+                    <Input type="number" value={form.adminFeeValue}
+                      onChange={e => f("adminFeeValue", parseFloat(e.target.value) || 0)} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* File upload (new template) */}
+            {!editing && (
+              <div className="space-y-2">
+                <Label>Upload da Planilha Modelo (opcional)</Label>
+                <div className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-sky-400 transition-colors ${uploadFile ? "border-green-400 bg-green-50 dark:bg-green-950/20" : "border-muted"}`}>
+                  <input type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                    id="template-file-upload"
+                    onChange={e => setUploadFile(e.target.files?.[0] || null)} />
+                  <label htmlFor="template-file-upload" className="cursor-pointer block">
+                    {uploadFile ? (
+                      <div className="flex items-center justify-center gap-2 text-green-600">
+                        <FileUp className="h-5 w-5" />
+                        <span className="font-medium">{uploadFile.name}</span>
+                        <button type="button" onClick={e => { e.preventDefault(); setUploadFile(null) }}>
+                          <X className="h-4 w-4 text-muted-foreground hover:text-red-500" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-muted-foreground">
+                        <Upload className="h-8 w-8 mx-auto mb-2" />
+                        <p className="text-sm">Clique para selecionar ou arraste o arquivo .xlsx aqui</p>
+                        <p className="text-xs mt-1">O sistema irá mapear as colunas automaticamente</p>
+                      </div>
+                    )}
+                  </label>
+                </div>
               </div>
             )}
 
-            {/* Taxa admin */}
-            <div className="flex items-center justify-between rounded border p-3">
-              <div>
-                <p className="text-sm font-medium">Taxa de administração</p>
-                <p className="text-xs text-muted-foreground">Cobrada por unidade</p>
-              </div>
-              <Switch checked={form.includeAdminFee} onCheckedChange={v => setForm(f => ({ ...f, includeAdminFee: v }))} />
-            </div>
-            {form.includeAdminFee && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label>Tipo</Label>
-                  <Select value={form.adminFeeType} onValueChange={v => setForm(f => ({ ...f, adminFeeType: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="FIXED">Valor fixo (R$)</SelectItem>
-                      <SelectItem value="PERCENTAGE">Percentual (%)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label>{form.adminFeeType === "FIXED" ? "Valor (R$)" : "Percentual (%)"}</Label>
-                  <Input type="number" min={0} value={form.adminFeeValue} onChange={e => setForm(f => ({ ...f, adminFeeValue: parseFloat(e.target.value) }))} />
-                </div>
-              </div>
-            )}
-
-            {/* Ativo */}
-            <div className="flex items-center justify-between rounded border p-3">
-              <div>
-                <p className="text-sm font-medium">Modelo ativo</p>
-                <p className="text-xs text-muted-foreground">Disponível para uso na geração de planilhas</p>
-              </div>
-              <Switch checked={form.isActive} onCheckedChange={v => setForm(f => ({ ...f, isActive: v }))} />
+            <div className="flex items-center justify-between border rounded-lg p-3">
+              <Label>Modelo Ativo</Label>
+              <Switch checked={form.isActive} onCheckedChange={v => f("isActive", v)} />
             </div>
           </div>
-
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? "Salvando..." : editing ? "Salvar alterações" : "Criar modelo"}
+            <Button onClick={handleSave} disabled={saving} className="bg-sky-500 hover:bg-sky-600">
+              {saving ? "Salvando..." : editing ? "Salvar Alterações" : "Criar Modelo"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirm */}
+      <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Excluir Modelo?</DialogTitle></DialogHeader>
+          <p className="text-muted-foreground text-sm">Esta ação não pode ser desfeita.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleDelete}>Excluir</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
