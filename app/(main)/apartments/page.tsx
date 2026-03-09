@@ -152,10 +152,10 @@ export default function ApartmentsPage() {
                         {/* Filtros hierárquicos */}
                         <div className="flex flex-col sm:flex-row gap-4 mb-6">
                             <div className="flex-1 min-w-[180px]">
-                                <ComboboxCompany setSelectedCompany={setSelectedCompany} company={selectedCompany} />
+                                <ComboboxCompany setSelectedCompany={setSelectedCompany} company={selectedCompany} autoSelectSingle={false} />
                             </div>
                             <div className="flex-1 min-w-[180px]">
-                                <ComboboxComplex setSelectedComplex={setSelectedComplex} complex={selectedComplex} companyId={selectedCompany?.id} />
+                                <ComboboxComplex setSelectedComplex={setSelectedComplex} complex={selectedComplex} companyId={selectedCompany?.id} autoSelectSingle={false} />
                             </div>
                             <div className="flex-1 min-w-[180px]">
                                 <ComboboxBlock setSelectedBlock={setSelectedBlock} block={selectedBlock} complexId={selectedComplex?.id} />

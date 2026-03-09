@@ -131,15 +131,13 @@ export default function ReadingsPage() {
                             {TypeFilter}
                             <div className="flex items-center space-x-2">
                                 <HousePlus className="h-5 w-5 text-muted-foreground" />
-                                <SelectCompany setSelectedCompany={setSelectedCompany} company={selectedCompany} getAvailableForEntity={PermissionableEntity.dealershipReading} />
+                                <SelectCompany setSelectedCompany={setSelectedCompany} company={selectedCompany} getAvailableForEntity={PermissionableEntity.dealershipReading} autoSelectSingle={false} />
                             </div>
 
-                            {selectedCompany?.id &&
-                                <div className="flex items-center space-x-2">
-                                    <Building2 className="h-5 w-5 text-muted-foreground" />
-                                    <ComplexesCombobox setSelectedComplex={setSelectedComplex} complex={selectedComplex} getAvailableForEntity={PermissionableEntity.dealershipReading} />
-                                </div>
-                            }
+                            <div className="flex items-center space-x-2">
+                                <Building2 className="h-5 w-5 text-muted-foreground" />
+                                <ComplexesCombobox setSelectedComplex={setSelectedComplex} complex={selectedComplex} companyId={selectedCompany?.id} getAvailableForEntity={PermissionableEntity.dealershipReading} autoSelectSingle={false} />
+                            </div>
 
                             <div className="flex items-center justify-between space-x-2 w-full">
                                 <Button variant="outline" size="sm" className="h-9">

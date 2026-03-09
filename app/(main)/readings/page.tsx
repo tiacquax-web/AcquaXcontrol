@@ -339,6 +339,7 @@ export default function ReadingsPage() {
                   <SelectCompany
                     company={filters.company}
                     getAvailableForEntity='reading'
+                    autoSelectSingle={false}
                     setSelectedCompany={(company) => {
                       setFilters((prev) => ({
                         ...prev,
@@ -355,6 +356,7 @@ export default function ReadingsPage() {
                   <SelectComplex
                     complex={filters.complex}
                     getAvailableForEntity='reading'
+                    autoSelectSingle={false}
                     setSelectedComplex={(complex) => {
                       setFilters((prev) => ({
                         ...prev,

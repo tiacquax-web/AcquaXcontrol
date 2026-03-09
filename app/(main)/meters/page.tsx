@@ -183,6 +183,7 @@ export default function MetersPage() {
                   </Label>
                   <SelectCompany
                     company={filters.company}
+                    autoSelectSingle={false}
                     setSelectedCompany={(company) => {
                       setFilters((prev) => ({
                         ...prev,
@@ -202,6 +203,7 @@ export default function MetersPage() {
                   <SelectComplex
                     complex={filters.complex}
                     companyId={filters.company?.id}
+                    autoSelectSingle={false}
                     setSelectedComplex={(complex) => {
                       setFilters((prev) => ({ ...prev, complex, block: undefined, apartment: undefined }))
                     }}
