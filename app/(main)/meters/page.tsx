@@ -331,15 +331,9 @@ export default function MetersPage() {
                     <TableBody>
                       {meters.length === 0 ? (
                         <TableRow>
-                          {!filters.complex ? (
-                            <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
-                              Por favor, selecione um condomínio para visualizar os medidores
-                            </TableCell>
-                          ) : (
-                            <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
-                              Nenhum medidor encontrado
-                            </TableCell>
-                          )}
+                          <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+                            Nenhum medidor encontrado
+                          </TableCell>
                         </TableRow>
                       ) : (
                         meters.map((meter, index) => (

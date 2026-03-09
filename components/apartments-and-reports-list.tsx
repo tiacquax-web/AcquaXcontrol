@@ -28,6 +28,7 @@ interface ApartmentsAndReportsListProps {
   blockId: string
   search: string
   viewType: "Cards" | "List"
+  apartmentId?: string
   dateRange?: {
     from: Date
     to: Date
@@ -43,6 +44,7 @@ export default function ApartmentsAndReportsList({
   blockId,
   search,
   viewType,
+  apartmentId,
   dateRange,
   selectedReports = [],
   setSelectedReports = () => {},
@@ -66,6 +68,7 @@ export default function ApartmentsAndReportsList({
     withReadingDate: true,
     complexId,
     blockId,
+    apartmentId,
     search,
     activeSearch,
     withMetersCount: true,

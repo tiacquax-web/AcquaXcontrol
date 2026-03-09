@@ -125,13 +125,10 @@ export async function updateUser(id: string, data: User, userId:string) {
 
 export async function updateCurrentUser(id: string, data: Partial<User>, userId: string, req: NextRequest) {
   try {
-    // Validate user session (do not return NextResponse here; return plain object expected by callers)
-    const { userId: sessionUserId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
-    if (sessionError) return { user: null, error: sessionError, status: sessionStatus };
-    if (!sessionUserId) return { user: null, error: 'Não autorizado', status: 401 };
-
-    // Must be authenticated and update only own user
-    if (!sessionUserId || !id || (sessionUserId !== id)) {
+    // userId já foi validado pelo route handler — não revalidar aqui para evitar
+    // falhas quando a sessão expirou do banco mas o JWT ainda é válido no cookie.
+    // Apenas garantir que o usuário só pode atualizar a si mesmo.
+    if (!userId || !id || userId !== id) {
       return { user: null, error: 'Usuário não autenticado', status: 401 };
     }
 
@@ -154,14 +151,18 @@ export async function updateCurrentUser(id: string, data: Partial<User>, userId:
     // Normalize email when provided
     if (updateData.email) updateData.email = normalizeEmail(updateData.email);
 
-    // Audit - use sessionUserId for updatedByUserId
-    updateData.updatedByUserId = sessionUserId;
+    // Audit - use userId for updatedByUserId
+    updateData.updatedByUserId = userId;
 
     // Direct update to avoid global 'user update' permission check
     const updatedUser = await prisma.user.update({ where: { id }, data: updateData });
 
     return { user: updatedUser, error: null, status: 200 };
-  } catch (error) {
+  } catch (error: any) {
+    // Tratar erro de email duplicado (Prisma P2002)
+    if (error?.code === 'P2002' && error?.meta?.target?.includes('email')) {
+      return { user: null, error: 'Este e-mail já está em uso por outra conta.', status: 409 };
+    }
     return { user: null, error: error instanceof Error ? error.message : 'Erro interno', status: 500 };
   }
 }
@@ -230,13 +231,48 @@ export async function getUserByValidSession(token: string) {
 }
 
 export async function validateUserSession(req: NextRequest):Promise<{ userId: string | null; error: string | null; status: number }> {
-  // validate user session
-  const session = req.cookies.get('session')?.value
-  const validSession = session ? await isSessionValid(session) : false
+  // 1. Cookie de sessão (browser) — tenta primeiro no banco, depois verifica JWT diretamente
+  const sessionCookie = req.cookies.get('session')?.value;
+  if (sessionCookie) {
+    const validSession = await isSessionValid(sessionCookie);
+    if (validSession) {
+      return { userId: validSession.userId, error: null, status: 200 };
+    }
+    // Sessão não está no banco (expirou ou foi limpa), mas o JWT pode ainda ser válido
+    // Verifica o JWT diretamente do cookie
+    try {
+      const { jwtVerify } = await import('jose');
+      const JWT_SECRET_VAL = process.env.JWT_SECRET || 'acquax-super-secret-jwt-key-2024';
+      const secret = new TextEncoder().encode(JWT_SECRET_VAL);
+      const { payload } = await jwtVerify(sessionCookie, secret);
+      const userId = payload.userId as string;
+      if (userId) {
+        return { userId, error: null, status: 200 };
+      }
+    } catch (_jwtErr) {
+      // JWT inválido ou expirado — continua para outros métodos
+    }
+  }
 
-  if (!validSession) return { userId: null, error: 'Unauthorized', status: 401 }
+  // 2. Bearer token JWT (chamadas Axios com Authorization: Bearer)
+  const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const jwtToken = authHeader.substring(7);
+    try {
+      const { jwtVerify } = await import('jose');
+      const JWT_SECRET = process.env.JWT_SECRET || 'acquax-super-secret-jwt-key-2024';
+      const secret = new TextEncoder().encode(JWT_SECRET);
+      const { payload } = await jwtVerify(jwtToken, secret);
+      const userId = payload.userId as string;
+      if (userId) {
+        return { userId, error: null, status: 200 };
+      }
+    } catch (_e) {
+      // Token inválido ou expirado
+    }
+  }
 
-  return { userId: validSession.userId, error: null, status: 200 }
+  return { userId: null, error: 'Unauthorized', status: 401 };
 }
 
 interface BulkUserData {

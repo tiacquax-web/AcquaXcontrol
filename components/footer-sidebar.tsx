@@ -11,16 +11,16 @@ export function FooterSidebar() {
     const {user, error, loading} = useCurrentUser();
 
     function signOut() {
-        console.log("Signing out...");
+        // Chama a API que apaga o cookie HttpOnly no servidor
+        // e só redireciona após a confirmação
         fetch("/api/auth/logout", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            }
-        }).then(() => {
-            window.location.href = "/";
-        }).catch((error) => {
-            console.error("Error during sign out:", error);
+            headers: { "Content-Type": "application/json" },
+            credentials: "include", // garante que o cookie é enviado e recebido
+        })
+        .finally(() => {
+            // Redireciona para /login independente do resultado
+            window.location.href = "/login";
         });
     }
     return (

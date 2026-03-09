@@ -5,6 +5,7 @@ import type { Apartment } from '@prisma/client';
 const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface getApartmentsProps {
+  companyId?: string;
   complexId?: string;
   blockId?: string;
   nameQuery?: string;
@@ -30,11 +31,12 @@ export interface ApartmentWithBlockAndComplex extends Apartment {
   } | null;
 }
 
-export const getApartments = async ({ getAvailableForEntity, withBlock, withCompany, withComplex, apartmentId, complexId, blockId, nameQuery, take, skip, orderBy, orderDirection }: getApartmentsProps) => {
+export const getApartments = async ({ getAvailableForEntity, withBlock, withCompany, withComplex, apartmentId, companyId, complexId, blockId, nameQuery, take, skip, orderBy, orderDirection }: getApartmentsProps) => {
   try {
     const params: any = {}
     if (getAvailableForEntity) params.getAvailableForEntity = getAvailableForEntity
     if (apartmentId) params.id = apartmentId
+    if (companyId) params.company_id = companyId
     if (complexId) params.complex_id = complexId
     if (blockId) params.block_id = blockId
     if (nameQuery) params.search = nameQuery

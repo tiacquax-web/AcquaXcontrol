@@ -5,160 +5,168 @@ import { useMediaQuery } from "@/hooks/use-media-query"
 import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
 import { Skeleton } from "@/components/ui/skeleton"
 
-import { Calendar, BarChart4, Newspaper, HardHat, CircleGauge, Building2, Building, DoorClosed, BookUser, Gauge, Users, ShieldCheck, HousePlus, Receipt, ReceiptText, NotepadText, BarChart2, ChartBarIncreasing, LayoutDashboard, GaugeCircle, Power, Radio, SquareUserIcon, Briefcase, BriefcaseBusiness, UsersRound, Droplets } from "lucide-react"
+import {
+  CircleGauge, Building2, Building, DoorClosed,
+  Gauge, ShieldCheck, HousePlus, ReceiptText,
+  ChartBarIncreasing, LayoutDashboard, GaugeCircle,
+  Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen,
+} from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
 
-// Menu items.
+// ─── Menu items ───────────────────────────────────────────────────────────────
+// Regra: items sem requiresCreate aparecem para todos os perfis que têm
+//        permissão de leitura na entidade mapeada.
+//        Items com requiresCreate=true só aparecem para quem pode criar
+//        (admin, programador, síndico com permissão total).
 const items = [
   {
     title: "Início",
     url: "/dashboard",
     icon: LayoutDashboard,
-    group: 'Geral'
+    group: 'Geral',
   },
   {
     title: "Relatórios",
     url: "/apartment-report",
     icon: ChartBarIncreasing,
-    group: 'Geral'
+    group: 'Geral',
   },
   {
     title: "Contas",
     url: "/dealership-readings",
     icon: ReceiptText,
-    group: 'Geral'
+    group: 'Geral',
   },
   {
     title: "Leituras",
     url: "/readings",
     icon: CircleGauge,
-    group: 'Geral'
+    group: 'Geral',
+  },
+  {
+    title: "Filipeta Medição",
+    url: "/meter-report",
+    icon: FileText,
+    group: 'Geral',
+  },
+  {
+    title: "Levantamento",
+    url: "/levantamento",
+    icon: TrendingUp,
+    group: 'Geral',
   },
   {
     title: "Monitoramento",
     url: "/monitoring",
     icon: Gauge,
-    group: 'Geral'
+    group: 'Geral',
   },
   {
     title: "Medidores de Nível",
     url: "/reservoir-monitoring",
     icon: Droplets,
-    group: 'Geral'
+    group: 'Geral',
   },
   {
-    title: "Agenda",
-    url: "/calendar",
-    icon: Calendar,
-    group: 'Geral'
+    title: "Guia de Uso",
+    url: "/guia",
+    icon: BookOpen,
+    group: 'Geral',
   },
-  {
-    title: "Novidades",
-    url: "/blog/post-1",
-    icon: Newspaper,
-    group: 'Geral'
-  },
-  {
-    title: "Serviços",
-    url: "/solutions",
-    icon: HardHat,
-    group: 'Geral'
-  },
+
+  // ── Cadastros: só para perfis com permissão de criar ──
   {
     title: "Administradoras",
     url: "/companies",
     icon: HousePlus,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "Condomínios",
     url: "/complexes",
     icon: Building2,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "Blocos",
     url: "/blocks",
     icon: Building,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "Apartamentos",
     url: "/apartments",
     icon: DoorClosed,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "Medidores",
     url: "/meters",
     icon: GaugeCircle,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "IOTs",
     url: "/devices",
     icon: Radio,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "Reservatórios",
     url: "/reservoirs",
     icon: Droplets,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
-  // {
-  //   title: "Moradores",
-  //   url: "/residents",
-  //   icon: SquareUserIcon,
-  //   group: 'Cadastros'
-  // },
-  // {
-  //   title: "Síndicos",
-  //   url: "/syndics",
-  //   icon: BriefcaseBusiness,
-  //   group: 'Cadastros'
-  // },
   {
     title: "Usuários",
     url: "/users",
     icon: UsersRound,
-    group: 'Cadastros'
+    group: 'Cadastros',
+    requiresCreate: true,
   },
   {
     title: "Papéis",
     url: "/roles",
     icon: ShieldCheck,
-    group: 'Cadastros'
-  }
+    group: 'Cadastros',
+    requiresCreate: true,
+  },
 ]
 
 export function AppSidebar() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { permissions, loading } = usePermissionsContext();
 
-  // Função para checar permissão de leitura
-  function hasAnyPermission(url: string) {
-    console.log('Checking permissions for URL:', url);
-    if (url === '/dashboard' || url === '/solutions') return true; // Dashboard e Serviços sempre disponíveis
-    if (!permissions || !permissions) return false;
+  function hasAnyPermission(url: string, requiresCreate?: boolean) {
+    // Dashboard sempre visível
+    if (url === '/dashboard') return true;
+    if (!permissions) return false;
     const entity = sidebarPermissionMap[url];
-    if (!entity) return true; // Se não mapeado, mostra
-    return permissions.some(
-      (p: any) => p.entity === entity
-    );
+    // URL sem mapeamento de entidade → visível se tiver qualquer permissão
+    if (!entity) return permissions.length > 0;
+    if (requiresCreate) {
+      return permissions.some((p: any) => p.entity === entity && p.action === 'create');
+    }
+    return permissions.some((p: any) => p.entity === entity);
   }
 
   const groups = items.reduce<string[]>((acc, item) => {
-    if (!acc.includes(item.group)) {
-      acc.push(item.group);
-    }
+    if (!acc.includes(item.group)) acc.push(item.group);
     return acc;
   }, []);
 
-  // Filtra grupos que possuem pelo menos um item visível
   const visibleGroups = groups.filter((group) =>
-    items.some((item) => item.group === group && hasAnyPermission(item.url))
+    items.some(
+      (item) => item.group === group && hasAnyPermission(item.url, (item as any).requiresCreate)
+    )
   );
 
   return (
@@ -174,6 +182,7 @@ export function AppSidebar() {
         />
         <SidebarTrigger />
       </SidebarHeader>
+
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
@@ -196,20 +205,26 @@ export function AppSidebar() {
               ) : (
                 visibleGroups.map((group) => (
                   <div key={group}>
-                    <SidebarGroupLabel key={group}>
+                    <SidebarGroupLabel>
                       {group}
-                      <div className="border-t-2 border-gray-200 ml-3 w-full"></div>
+                      <div className="border-t-2 border-gray-200 ml-3 w-full" />
                     </SidebarGroupLabel>
-                    {items.filter((item) => item.group === group && hasAnyPermission(item.url)).map((item) => (
-                      <SidebarMenuItem key={item.title}>
-                        <SidebarMenuButton asChild tooltip={item.title}>
-                          <a href={item.url}>
-                            <item.icon />
-                            <span>{item.title}</span>
-                          </a>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
+                    {items
+                      .filter(
+                        (item) =>
+                          item.group === group &&
+                          hasAnyPermission(item.url, (item as any).requiresCreate)
+                      )
+                      .map((item) => (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton asChild tooltip={item.title}>
+                            <a href={item.url}>
+                              <item.icon />
+                              <span>{item.title}</span>
+                            </a>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))}
                   </div>
                 ))
               )}
@@ -217,13 +232,12 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
       <FooterSidebar />
     </Sidebar>
   );
 }
 
-// Exporta o tipo dos itens para uso em outros componentes
 type ItemType = typeof items[number];
 export type { ItemType };
 export { items };
-

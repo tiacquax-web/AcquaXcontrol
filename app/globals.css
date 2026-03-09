@@ -216,6 +216,84 @@
     border: 1px solid black;
   }
 
+  /* ── Filipeta Medição (MeterReportCard) — impressão ── */
+  /* Oculta botões, header de filtros e navegação */
+  .meter-report-print-bar,
+  .meter-report-filters {
+    display: none !important;
+  }
+
+  /* Cada card ocupa uma página própria */
+  .meter-report-card-print {
+    page-break-after: always;
+    page-break-inside: avoid;
+    break-after: page;
+    break-inside: avoid;
+    border: 1px solid #333 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  .meter-report-card-print:last-child {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Foto versão tela (next/image fill com position:absolute): OCULTA no print */
+  .meter-photo-screen {
+    display: none !important;
+  }
+
+  /* Foto versão print (<img> nativo position:static): VISÍVEL no print */
+  .meter-photo-print {
+    display: block !important;
+    width: 100% !important;
+    max-height: 220px !important;
+    object-fit: contain !important;
+    background: #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Garante que a área da foto tenha altura automática no print */
+  .meter-report-photo-area {
+    height: auto !important;
+    background: #000 !important;
+  }
+
+  /* ── Levantamento — fotos dos medidores na impressão ── */
+
+  /* Thumbnail da tela: oculto no print */
+  .levantamento-photo-screen {
+    display: none !important;
+  }
+
+  /* Modal da tela: oculto no print */
+  .levantamento-photo-modal {
+    display: none !important;
+  }
+
+  /* Foto nativa para print: visível, tamanho generoso */
+  .levantamento-photo-print {
+    display: block !important;
+    width: 100px !important;
+    height: 100px !important;
+    object-fit: contain !important;
+    background: #000 !important;
+    border: 1px solid #ccc !important;
+    border-radius: 4px !important;
+    margin: 0 auto !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Filtros e elementos interativos do levantamento: ocultos no print */
+  .print\:hidden {
+    display: none !important;
+  }
+
   /* Last report should not have page break */
   .filipeta-grid-report:last-child {
     page-break-after: avoid;
@@ -269,3 +347,56 @@
   }
 }
 
+/* ── Levantamento: fotos ocultas na TELA (só aparecem no @media print) ── */
+/* O <img class="levantamento-photo-print"> é o elemento estático para impressão */
+/* Na tela normal, usamos o thumbnail clicável (.levantamento-photo-screen) */
+.levantamento-photo-print {
+  display: none;
+}
+
+/* ── Morador: card de foto do medidor ── */
+/* Tela: foto visível como elemento de bloco normal */
+.morador-meter-photo {
+  display: block;
+  width: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+/* Tela: botão de zoom visível */
+.morador-zoom-btn {
+  display: flex;
+}
+
+/* Impressão: estilos para os cards de foto do morador */
+@media print {
+  /* Grid de cards: 2 por linha na impressão */
+  .morador-cards-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  /* Card do medidor morador: borda e sem sombra */
+  .morador-meter-card {
+    border: 1px solid #d1d5db !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Foto do medidor morador: tamanho generoso, sem corte */
+  .morador-meter-photo {
+    display: block !important;
+    width: 100% !important;
+    max-height: 260px !important;
+    min-height: 180px !important;
+    object-fit: contain !important;
+    background: #000 !important;
+  }
+
+  /* Ocultar botão de zoom no print */
+  .morador-zoom-btn {
+    display: none !important;
+  }
+}

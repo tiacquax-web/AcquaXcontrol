@@ -24,12 +24,18 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
   const complexName = complex ? (complex.socialName || '') : 'referência pendente';
   const blockName = block ? (block.name || '') : 'referência pendente';
   const apartmentName = apartment ? (apartment.name || '') : 'referência pendente';
-  const companyStreetLine = company
-    ? (company.street ? `${company.street}${company.number ? `, ${company.number}` : ''}` : '')
-    : 'referência pendente';
-  const companyCityStateLine = company
-    ? `${company.city || ''}${company.city && company.state ? ' ' : ''}${company.state || ''}`
-    : 'referência pendente';
+
+  // Endereço do CONDOMÍNIO (complex) — sem fallback para empresa
+  const complexStreet = complex?.street?.trim() || '';
+  const companyStreetLine = complexStreet
+    ? `${complexStreet}${complex.number ? `, ${complex.number}` : ''}${complex.neighborhood ? `, ${complex.neighborhood}` : ''}`
+    : '';
+  const complexCity = complex?.city?.trim() || '';
+  const complexState = complex?.state?.trim() || '';
+  const complexZip = complex?.zipcode?.trim() || '';
+  const companyCityStateLine = (complexCity || complexState || complexZip)
+    ? `${complexCity}${(complexCity && complexState) ? ' - ' : ''}${complexState}${complexZip ? ` - CEP: ${complexZip}` : ''}`
+    : '';
   
   const prevReport1 = history?.[0];
   const prevReport2 = history?.[1];

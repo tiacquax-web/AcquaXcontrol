@@ -7,13 +7,11 @@ import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import EnhancedCarousel from "@/components/services-carousel"
 import ComplexesCombobox from "@/components/ComboboxComplex"
 import BlocksCombobox from "@/components/ComboboxBlock"
 import BlocksList from "@/components/BlocksList"
 import ComplexesList from "@/components/ComplexesList"
 import { DateRangeSelector } from "@/components/date-range-selector"
-import { itemsList as ServicesList } from "@/store/demo"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import SelectCompany from "@/components/ComboboxCompany"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -323,11 +321,7 @@ export default function ReadingsPage() {
                 </Card>
             </section>
 
-            <Separator className="my-8" />
 
-            <section className="container mx-auto px-4 md:px-6">
-                <EnhancedCarousel items={ServicesList} alignItems="center" />
-            </section>
         </div>
     )
 }

@@ -1,6 +1,16 @@
 import prisma from '@/lib/prisma';
 import { ContextType, PermissionAction, PermissionableEntity } from '@prisma/client';
 
+// Helper: MongoDB-safe filter for "not deleted" (deletedAt is null OR not set)
+function notDeleted() {
+    return {
+        OR: [
+            { deletedAt: null },
+            { deletedAt: { isSet: false } },
+        ],
+    };
+}
+
 async function getUserContexts(userId: string) {
     const assignments = await prisma.roleAssignment.findMany({
         where: { userId },
@@ -42,22 +52,29 @@ async function getUserContextsForActionOnEntity(userId: string, entityType: Perm
     const assignments = await prisma.roleAssignment.findMany({
         where: {
             userId,
+            OR: [
+                { deletedAt: null },
+                { deletedAt: { isSet: false } },
+            ],
             Role: {
                 permissions: {
                     some: {
                         entity: entityType,
                         action,
-                        deletedAt: null,
+                        OR: [
+                            { deletedAt: null },
+                            { deletedAt: { isSet: false } },
+                        ],
                     },
                 },
-                deletedAt: null,
+                OR: [
+                    { deletedAt: null },
+                    { deletedAt: { isSet: false } },
+                ],
             },
-            deletedAt: null,
         },
         select: { contextId: true, contextType: true },
     });
-
-    console.log("Assignments:", assignments);
 
     return {
         apartmentIds: assignments.filter((a) => a.contextType === ContextType.apartment).map((a) => a.contextId),

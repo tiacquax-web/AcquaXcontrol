@@ -48,6 +48,13 @@ export const chartConfig: ConsumptionChartConfig = {
 const thirtyDaysAgo = new Date(new Date().setDate(new Date().getDate() - 30));
 const today = new Date();
 
+export const consumptionChartConfig: ConsumptionChartConfig = {
+    reading: {
+        label: "Consumo em m³",
+        color: "hsl(var(--chart-2))",
+    },
+}
+
 export default function ReadingsGraph({
     meterId,
     view = viewOptions.cumulative,
@@ -59,7 +66,8 @@ export default function ReadingsGraph({
     error: propError,
     onSelectReading,
     detailsModalAvailable,
-    onRemove
+    onRemove,
+    chartConfigOverride,
 }: {
     meterId: string,
     view?: View,
@@ -72,9 +80,12 @@ export default function ReadingsGraph({
     onSelectReading?: (reading: ReadingFull) => void
     detailsModalAvailable?: boolean
     onRemove?: (meterId: string) => void
+    chartConfigOverride?: ConsumptionChartConfig
 }) {
     const [modalOpen, setModalOpen] = useState(false);
     const [selectedReading, setSelectedReading] = useState<ReadingFull | undefined>(undefined);
+
+    const activeChartConfig = chartConfigOverride ?? chartConfig;
 
     const period_text = {
         from: dateRange?.from?.toISOString().split("T")[0] || "",
@@ -239,7 +250,7 @@ export default function ReadingsGraph({
                 title={`Medidor ${meterTitle}`}
                 description=''
                 data={chartData}
-                config={chartConfig}
+                config={activeChartConfig}
                 height={250}
                 xAxisKey='date'
                 xAxisLabel='Date'

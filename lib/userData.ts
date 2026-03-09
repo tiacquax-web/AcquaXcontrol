@@ -529,11 +529,18 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     where: cleanWhere({
                         AND: [
                             {
+                                OR: [
+                                    { deletedAt: null },
+                                    { deletedAt: { isSet: false } },
+                                ],
+                            },
+                            {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
                             },
                             extraWhere,
                         ]
                     }),
+                    orderBy: { name: 'asc' },
                     take: take < 200 ? take : 200,
                 });
                 return { entity: dealerships, error: null, status: 200 };
@@ -1045,7 +1052,6 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
 
             // Readings and Reports
             case PermissionableEntity.dealershipReading:
-                console.warn("WE ARE HERE")
                 const dealershipReadingPermissionInContext = await prisma.complex.findFirst({
                     where: {
                         id: data.complexId,
@@ -1056,19 +1062,30 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                     },
                     select: {
                         id: true,
-                        companyId: true
+                        companyId: true,
+                        company: { select: { id: true } } // fallback quando companyId desnormalizado está null
                     }
                 });
-                console.warn('dealershipReadingPermissionInContext', dealershipReadingPermissionInContext)
                 if (dealershipReadingPermissionInContext) {
-                    // Validação do campo desnormalizado
-                    if (!dealershipReadingPermissionInContext.companyId) {
-                        return { entity: null, error: 'Campo desnormalizado companyId não encontrado no condomínio referenciado.', status: 400 };
+                    // Resolver companyId: preferir campo desnormalizado, senão usar via relação
+                    const resolvedCompanyId =
+                        dealershipReadingPermissionInContext.companyId ||
+                        dealershipReadingPermissionInContext.company?.id ||
+                        null;
+
+                    if (resolvedCompanyId) {
+                        // Atualizar campo desnormalizado no banco se estava null
+                        if (!dealershipReadingPermissionInContext.companyId) {
+                            await prisma.complex.update({
+                                where: { id: dealershipReadingPermissionInContext.id },
+                                data: { companyId: resolvedCompanyId }
+                            }).catch(() => { /* best-effort — não falhar a criação por isso */ });
+                        }
+                        data.companyId = resolvedCompanyId;
                     }
-                    
-                    // Adiciona o companyId desnormalizado do complex
-                    data.companyId = dealershipReadingPermissionInContext.companyId;
-                    
+                    // Se não houver empresa associada, criamos a leitura sem companyId
+                    // (não bloquear operação por campo opcional)
+
                     const dealershipReading = await prisma.dealershipReading.create({ data: { ...data } });
                     return { entity: dealershipReading, status: 201, error: null };
                 } else {
@@ -1087,10 +1104,19 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                         ]
                     },
                     select: {
-                        id:true,
+                        id: true,
                         blockId: true,
                         complexId: true,
                         companyId: true,
+                        // fallback relations para campos desnormalizados null
+                        block: {
+                            select: {
+                                id: true,
+                                complexId: true,
+                                companyId: true,
+                                complex: { select: { id: true, companyId: true } }
+                            }
+                        }
                     }
                 });
 
@@ -1099,10 +1125,12 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                         id: data.dealershipReadingId,
                         deletedAt: null
                     },
-                    select:{
+                    select: {
                         id: true,
                         complexId: true,
                         companyId: true,
+                        // fallback
+                        complex: { select: { id: true, companyId: true, company: { select: { id: true } } } }
                     }
                 });
 
@@ -1111,46 +1139,39 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                     return { entity: null, error: 'Leitura de concessionária não encontrada.', status: 400 };
                 if (!referedApartment)
                     return { entity: null, error: 'Apartamento não encontrado ou sem permissão de acesso.', status: 404 };
-                
-                // Validando existencia dos campos desnormalizados de contexto
-                const denormalizedFieldsForApt = ['blockId', 'complexId', 'companyId'];
-                const denormalizedFieldsForComplex = ['companyId'];
-                // ... em referedApartment
-                if (referedApartment) {
-                    for (const field of denormalizedFieldsForApt) {
-                        if (!referedApartment[field as keyof typeof referedApartment]) {
-                            return { entity: null, error: `Campo desnormalizado ${field} não encontrado no apartamento referenciado.`, status: 400 };
-                        }
-                    }
+
+                // Resolver campos desnormalizados do apartamento via relação quando null
+                const aptBlockId = referedApartment.blockId || referedApartment.block?.id || null;
+                const aptComplexId = referedApartment.complexId || referedApartment.block?.complexId || referedApartment.block?.complex?.id || null;
+                const aptCompanyId = referedApartment.companyId || referedApartment.block?.companyId || referedApartment.block?.complex?.companyId || null;
+
+                // Resolver companyId da leitura de concessionária
+                const drCompanyId = referedDealershipReading.companyId ||
+                    referedDealershipReading.complex?.companyId ||
+                    referedDealershipReading.complex?.company?.id || null;
+
+                // Atualizar campos desnormalizados no banco se estavam null (best-effort)
+                if (!referedApartment.blockId && aptBlockId) {
+                    await prisma.apartment.update({ where: { id: referedApartment.id }, data: { blockId: aptBlockId, complexId: aptComplexId || undefined, companyId: aptCompanyId || undefined } }).catch(() => {});
                 }
-                // ... em referedDealershipReading
-                if (referedDealershipReading) {
-                    for (const field of denormalizedFieldsForComplex) {
-                        if (!referedDealershipReading[field as keyof typeof referedDealershipReading]) {
-                            return { entity: null, error: `Campo desnormalizado ${field} não encontrado no condomínio referenciado.`, status: 400 };
-                        }
-                    }
+                if (!referedDealershipReading.companyId && drCompanyId) {
+                    await prisma.dealershipReading.update({ where: { id: referedDealershipReading.id }, data: { companyId: drCompanyId } }).catch(() => {});
                 }
 
                 // Validando consistência dos contextos (dealershipReading e Apartment vinculados)
-                if (referedDealershipReading.complexId !== referedApartment?.complexId)
+                const drComplexId = referedDealershipReading.complexId || referedDealershipReading.complex?.id || null;
+                if (drComplexId && aptComplexId && drComplexId !== aptComplexId)
                     return { entity: null, error: 'Condomínio do relatório inconsistente com condomínio da leitura de concessionária.', status: 400 };
-                if (referedDealershipReading.companyId !== referedApartment?.companyId)
-                    return { entity: null, error: 'Empresa prestadora de serviços do condomínio inconsistente com empresa prestadora vinculada na leitura de concessionária.', status: 400 };
 
                 const finalApartmentConsumptionReportData = {
                     ...data,
-                    blockId: referedApartment.blockId,
-                    complexId: referedApartment.complexId,
-                    companyId: referedApartment.companyId,
+                    blockId: aptBlockId,
+                    complexId: aptComplexId,
+                    companyId: aptCompanyId,
                 };
 
-                if (referedApartment) {
-                    const apartmentConsumptionReport = await prisma.apartmentConsumptionReport.create({ data: { ...finalApartmentConsumptionReportData } });
-                    return { entity: apartmentConsumptionReport, status: 201, error: null };
-                } else {
-                    return { entity: null, error: 'Não autorizado', status: 401 };
-                }
+                const apartmentConsumptionReport = await prisma.apartmentConsumptionReport.create({ data: { ...finalApartmentConsumptionReportData } });
+                return { entity: apartmentConsumptionReport, status: 201, error: null };
             case PermissionableEntity.reading:
                 const readingPermissionInContext = await prisma.meter.findFirst({
                     where: {
@@ -1506,12 +1527,13 @@ async function bulkCreateEntity(userId: string, entityType: PermissionableEntity
 
                 console.warn('Allowed complex IDs for dealership reading:', allowedComplexIdsForDealershipReading);
 
-                // Busca os dados desnormalizados para todos os complexes permitidos
+                // Busca os dados desnormalizados para todos os complexes permitidos (com fallback via relação)
                 const complexesDataForDealershipReading = await prisma.complex.findMany({
                     where: { id: { in: allowedComplexIdsForDealershipReading } },
                     select: {
                         id: true,
                         companyId: true,
+                        company: { select: { id: true } } // fallback quando companyId desnormalizado está null
                     }
                 });
 
@@ -1538,15 +1560,17 @@ async function bulkCreateEntity(userId: string, entityType: PermissionableEntity
                     }
 
                     // Validação dos campos desnormalizados do complexo
-                    if (!complexData.companyId) {
-                        dealershipReadingErrors.push(`Campo desnormalizado companyId não encontrado no condomínio ${dealershipReading.complexId}.`);
+                    // Resolver companyId via relação quando campo desnormalizado está null
+                    const resolvedComplexCompanyId = complexData.companyId || (complexData as any).company?.id || null;
+                    if (!resolvedComplexCompanyId) {
+                        dealershipReadingErrors.push(`Condomínio ${dealershipReading.complexId} não possui empresa associada. Por favor, associe o condomínio a uma empresa antes de criar leituras.`);
                         continue;
                     }
 
                     // Se chegou até aqui, a leitura é válida - adiciona campos desnormalizados
                     validatedDealershipReadings.push({
                         ...dealershipReading,
-                        companyId: complexData.companyId,
+                        companyId: resolvedComplexCompanyId,
                     });
                 }
 
@@ -1610,7 +1634,7 @@ async function bulkCreateEntity(userId: string, entityType: PermissionableEntity
 
                 console.warn('Allowed apartment IDs for reports:', allowedApartmentIdsForReports);
 
-                // Busca os dados desnormalizados para todos os apartments permitidos
+                // Busca os dados desnormalizados para todos os apartments permitidos (com fallback via relação)
                 const apartmentsDataForReports = await prisma.apartment.findMany({
                     where: { id: { in: allowedApartmentIdsForReports } },
                     select: {
@@ -1618,10 +1642,11 @@ async function bulkCreateEntity(userId: string, entityType: PermissionableEntity
                         blockId: true,
                         complexId: true,
                         companyId: true,
+                        block: { select: { id: true, complexId: true, companyId: true, complex: { select: { id: true, companyId: true } } } }
                     }
                 });
 
-                // Busca os dados das leituras de concessionária para validação
+                // Busca os dados das leituras de concessionária para validação (com fallback via relação)
                 const dealershipReadingsData = await prisma.dealershipReading.findMany({
                     where: {
                         id: { in: uniqueDealershipReadingIds },
@@ -1631,6 +1656,7 @@ async function bulkCreateEntity(userId: string, entityType: PermissionableEntity
                         id: true,
                         complexId: true,
                         companyId: true,
+                        complex: { select: { id: true, companyId: true, company: { select: { id: true } } } }
                     }
                 });
 
@@ -1663,41 +1689,29 @@ async function bulkCreateEntity(userId: string, entityType: PermissionableEntity
                         continue;
                     }
 
-                    // Validação dos campos desnormalizados do apartamento
-                    const denormalizedFieldsForApt = ['blockId', 'complexId', 'companyId'];
-                    for (const field of denormalizedFieldsForApt) {
-                        if (!apartmentData[field as keyof typeof apartmentData]) {
-                            errors.push(`Campo desnormalizado ${field} não encontrado no apartamento ${report.apartmentId}.`);
-                            continue;
-                        }
-                    }
+                    // Resolver campos desnormalizados do apartamento via relação quando null
+                    const rptAptBlockId = apartmentData.blockId || (apartmentData as any).block?.id || null;
+                    const rptAptComplexId = apartmentData.complexId || (apartmentData as any).block?.complexId || (apartmentData as any).block?.complex?.id || null;
+                    const rptAptCompanyId = apartmentData.companyId || (apartmentData as any).block?.companyId || (apartmentData as any).block?.complex?.companyId || null;
 
-                    // Validação dos campos desnormalizados da leitura da concessionária
-                    const denormalizedFieldsForDealership = ['companyId'];
-                    for (const field of denormalizedFieldsForDealership) {
-                        if (!dealershipReadingData[field as keyof typeof dealershipReadingData]) {
-                            errors.push(`Campo desnormalizado ${field} não encontrado na leitura de concessionária ${report.dealershipReadingId}.`);
-                            continue;
-                        }
-                    }
+                    // Resolver companyId da leitura de concessionária
+                    const rptDrCompanyId = dealershipReadingData.companyId ||
+                        (dealershipReadingData as any).complex?.companyId ||
+                        (dealershipReadingData as any).complex?.company?.id || null;
+                    const rptDrComplexId = dealershipReadingData.complexId || (dealershipReadingData as any).complex?.id || null;
 
-                    // Validação de consistência dos contextos
-                    if (dealershipReadingData.complexId !== apartmentData.complexId) {
+                    // Validação de consistência dos contextos (apenas quando ambos têm valor)
+                    if (rptDrComplexId && rptAptComplexId && rptDrComplexId !== rptAptComplexId) {
                         errors.push(`Condomínio do apartamento ${report.apartmentId} inconsistente com condomínio da leitura de concessionária ${report.dealershipReadingId}.`);
-                        continue;
-                    }
-
-                    if (dealershipReadingData.companyId !== apartmentData.companyId) {
-                        errors.push(`Empresa do apartamento ${report.apartmentId} inconsistente com empresa da leitura de concessionária ${report.dealershipReadingId}.`);
                         continue;
                     }
 
                     // Se chegou até aqui, o relatório é válido - adiciona campos desnormalizados
                     validatedReports.push({
                         ...report,
-                        blockId: apartmentData.blockId,
-                        complexId: apartmentData.complexId,
-                        companyId: apartmentData.companyId,
+                        blockId: rptAptBlockId,
+                        complexId: rptAptComplexId,
+                        companyId: rptAptCompanyId,
                     });
                 }
 
