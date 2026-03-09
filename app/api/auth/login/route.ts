@@ -51,6 +51,7 @@ const LoginSchema = z.object({
 
 // ─── CORS helpers ─────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
+  'https://acqua-x-field.vercel.app',
   'https://acquaxcontrol.com.br',
   'https://www.acquaxcontrol.com.br',
 ];
