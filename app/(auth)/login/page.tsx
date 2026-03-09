@@ -1,6 +1,5 @@
 "use client"
 
-import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -25,7 +24,6 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>
 
 export default function Login() {
-  const router = useRouter()
   const { login, loading: isLoading, error } = useLogin()
 
   const form = useForm<FormValues>({
@@ -39,11 +37,13 @@ export default function Login() {
   const onSubmit = async (values: FormValues) => {
     try {
       const data = await login(values)
+      // Usa window.location para forçar reload completo
+      // Isso garante que o middleware leia o cookie recém-criado
       if (data.user?.mustUpdateCredentials) {
-        router.push("/first-access")
+        window.location.href = "/first-access"
         return
       }
-      router.push("/dashboard")
+      window.location.href = "/dashboard"
     } catch {
     }
   }

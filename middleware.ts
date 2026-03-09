@@ -151,7 +151,9 @@ export async function middleware(req: NextRequest) {
   const authPaths = ['/login', '/signup', '/first-access'];
   const isAuthPath = authPaths.some((p) => pathname.startsWith(p));
   const isRootPath = pathname === '/';
-  const token = req.cookies.get('session')?.value;
+  // Aceita token via cookie httpOnly 'session' OU cookie acessível 'auth_token'
+  // O 'auth_token' é usado como fallback para browsers que bloqueiam o cookie Secure em dev
+  const token = req.cookies.get('session')?.value || req.cookies.get('auth_token')?.value;
 
   if (!token) {
     if (isAuthPath) {

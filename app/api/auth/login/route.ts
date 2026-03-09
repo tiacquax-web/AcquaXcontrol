@@ -170,12 +170,23 @@ export async function POST(req: Request) {
     const proto = (req.headers as any).get?.('x-forwarded-proto') ?? '';
     const isHttps = proto === 'https' || process.env.NODE_ENV === 'production';
 
+    // Cookie principal (httpOnly, Secure quando HTTPS)
     response.cookies.set('session', session.token, {
       httpOnly: true,
       maxAge: 60 * 60 * 8, // 8 horas
       path: '/',
       sameSite: 'lax',
       secure: isHttps,
+    });
+
+    // Cookie fallback acessível pelo JS — usado quando o browser bloqueia o httpOnly
+    // (ex: Safari iOS em modo privado, browsers que ignoram Secure em dev)
+    response.cookies.set('auth_token', session.token, {
+      httpOnly: false,
+      maxAge: 60 * 60 * 8,
+      path: '/',
+      sameSite: 'lax',
+      secure: false, // Sem Secure para garantir que SEMPRE seja salvo
     });
 
     return response;
