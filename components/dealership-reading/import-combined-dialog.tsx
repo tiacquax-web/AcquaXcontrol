@@ -16,6 +16,7 @@ import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useCombinedImport } from "@/hooks/useCombinedImport";
 import { useComplexes } from "@/hooks/useComplexes";
@@ -25,11 +26,12 @@ import {
   Download, 
   CheckCircle, 
   AlertCircle, 
-  X, 
   Loader2,
   BarChart3,
   FileText,
-  Link
+  Link,
+  Image,
+  Info
 } from "lucide-react";
 import { CombinedImportResult } from "@/types/combined-import";
 
@@ -59,6 +61,7 @@ export function ImportCombinedDialog({
     validationResult,
     isImporting,
     importResult,
+    cdnAutoFillCount,
     validateFile,
     importDataWithPolicy,
     clearData,
@@ -66,6 +69,10 @@ export function ImportCombinedDialog({
   } = useCombinedImport();
 
   const { complexes, loading: complexesLoading } = useComplexes({ id: complexId });
+
+  // Get the CDN pattern from the loaded complex
+  const complex = complexes?.[0] as any;
+  const cdnPhotoPattern: string = complex?.cdnPhotoPattern || "";
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null;
@@ -83,13 +90,8 @@ export function ImportCombinedDialog({
     }
 
     try {
-      await validateFile(file, monthRef, yearRef, complexes);
-      
-      // Se chegou até aqui, a validação foi executada com sucesso
-      // O resultado (seja válido ou com erros) estará em validationResult
-      
+      await validateFile(file, monthRef, yearRef, complexes, cdnPhotoPattern || undefined);
     } catch (error) {
-      // Este catch só deve ser para erros realmente inesperados
       console.error("Erro inesperado na validação:", error);
       toast({
         title: "Erro inesperado",
@@ -126,20 +128,16 @@ export function ImportCombinedDialog({
       const policy = replaceReadings ? 'replace' : 'skip';
       const result = await importDataWithPolicy(dealershipReadingId, policy);
 
-      // Sempre informar o resultado via toast
       toast({
         title: "Importação concluída",
         description: `${result.readingsCreated} leituras e ${result.reportsCreated + result.reportsUpdated} relatórios processados.`,
       });
 
-      // Se nada foi criado, manter modal aberto e mostrar erros para o usuário
       if ((result.readingsCreated + result.reportsCreated + result.reportsUpdated) === 0) {
-        // manter o importResult (já setado no hook) e abrir painel de erros
         setShowErrorsPanel(true);
         return;
       }
 
-      // Caso contrário, sinalizar sucesso e fechar modal
       onImportSuccess(result);
       setOpen(false);
     } catch (error) {
@@ -152,7 +150,6 @@ export function ImportCombinedDialog({
   };
 
   const handleDownloadTemplate = () => {
-    // Criar dados do template
     const templateData = [
       [
         "condominio", "ano_ref", "mes_ref", "bloco", "apartamento",
@@ -174,7 +171,6 @@ export function ImportCombinedDialog({
       ]
     ];
 
-    // Criar arquivo CSV
     const csvContent = templateData.map(row => row.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -213,18 +209,12 @@ export function ImportCombinedDialog({
 
   const getStepText = () => {
     switch (importProgress.step) {
-      case 'validating':
-        return 'Validando dados...';
-      case 'importing-readings':
-        return 'Importando leituras...';
-      case 'importing-reports':
-        return 'Importando relatórios...';
-      case 'linking':
-        return 'Vinculando dados...';
-      case 'completed':
-        return 'Concluído!';
-      default:
-        return 'Processando...';
+      case 'validating': return 'Validando dados...';
+      case 'importing-readings': return 'Importando leituras...';
+      case 'importing-reports': return 'Importando relatórios...';
+      case 'linking': return 'Vinculando dados...';
+      case 'completed': return 'Concluído!';
+      default: return 'Processando...';
     }
   };
 
@@ -250,6 +240,33 @@ export function ImportCombinedDialog({
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* CDN Pattern Info */}
+          {cdnPhotoPattern ? (
+            <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 p-3">
+              <Image className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-green-900">Link CDN automático ativo</p>
+                <p className="text-xs text-green-700 mt-0.5">
+                  Linhas sem foto terão o link gerado automaticamente com o padrão configurado no condomínio.
+                </p>
+                <code className="text-xs text-green-800 bg-green-100 px-1 rounded break-all block mt-1">
+                  {cdnPhotoPattern}
+                </code>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+              <div className="text-sm text-amber-800">
+                <p className="font-medium">Padrão CDN não configurado</p>
+                <p className="text-xs mt-0.5">
+                  Configure o <strong>Padrão de URL das Fotos (CDN)</strong> na aba <em>Faturamento</em> do condomínio
+                  para gerar links de foto automaticamente nas linhas sem foto.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Template Download */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
@@ -344,6 +361,16 @@ export function ImportCombinedDialog({
                           <div className="text-xs text-muted-foreground">Com ambos</div>
                         </div>
                       </div>
+
+                      {/* CDN auto-fill count */}
+                      {cdnAutoFillCount > 0 && (
+                        <div className="mt-3 flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-3 py-2">
+                          <Image className="h-4 w-4 text-green-600 shrink-0" />
+                          <span className="text-sm text-green-800">
+                            <strong>{cdnAutoFillCount}</strong> link(s) de foto gerado(s) automaticamente via padrão CDN.
+                          </span>
+                        </div>
+                      )}
 
                       {validationResult.warnings.length > 0 && (
                         <div className="mt-3">
@@ -552,7 +579,6 @@ export function ImportCombinedDialog({
                           </ul>
                         </div>
                       )}
-                      {/* Botão para visualizar todos os erros em detalhe */}
                       {importResult.errors.length > 0 && (
                         <div className="mt-2">
                           <Button variant="ghost" size="sm" onClick={() => setShowErrorsPanel(true)}>
@@ -602,7 +628,8 @@ export function ImportCombinedDialog({
           </div>
         </div>
       </DialogContent>
-      {/* Erros detalhados: painel simples dentro do modal */}
+
+      {/* Erros detalhados */}
       {showErrorsPanel && importResult && importResult.errors.length > 0 && (
         <DialogContent className="max-w-4xl max-h-[60vh] overflow-y-auto">
           <DialogHeader>

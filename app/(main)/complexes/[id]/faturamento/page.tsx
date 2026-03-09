@@ -79,6 +79,7 @@ export default function ComplexFaturamentoPage() {
         schedulingNotes: "",
         billingNotes: "",
         apportionment: "Simples",
+        cdnPhotoPattern: "",
         contacts: [] as BillingContact[],
     })
 
@@ -125,6 +126,7 @@ export default function ComplexFaturamentoPage() {
                 schedulingNotes: c.billingNotes || "",
                 billingNotes: c.billingNotes || "",
                 apportionment: c.apportionment || "Simples",
+                cdnPhotoPattern: c.cdnPhotoPattern || "",
                 contacts: c.billingContacts || [],
             }))
         } catch (err: any) {
@@ -160,6 +162,7 @@ export default function ComplexFaturamentoPage() {
                 billingNotes: config.schedulingNotes,
                 billingContacts: config.contacts,
                 apportionment: config.apportionment,
+                cdnPhotoPattern: config.cdnPhotoPattern || null,
             }
             // Use dealershipName directly (or from selected)
             if (config.dealershipId) {
@@ -515,6 +518,44 @@ export default function ComplexFaturamentoPage() {
                                 rows={4}
                                 placeholder="Ex: Portaria fecha às 18h. Ligar antes para autorização. Apto 201 tem medidor na área externa..."
                             />
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base flex items-center gap-2">
+                                <span>🔗</span> Padrão de URL das Fotos (CDN)
+                            </CardTitle>
+                            <CardDescription>
+                                Padrão de link CDN para geração automática de fotos no upload. Use as variáveis:{" "}
+                                <code className="bg-muted px-1 rounded text-xs">{"{{mes}}"}</code>{" "}
+                                <code className="bg-muted px-1 rounded text-xs">{"{{bloco}}"}</code>{" "}
+                                <code className="bg-muted px-1 rounded text-xs">{"{{apartamento}}"}</code>{" "}
+                                <code className="bg-muted px-1 rounded text-xs">{"{{fase}}"}</code>
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <Input
+                                value={config.cdnPhotoPattern || ""}
+                                onChange={e => setConfig(p => ({ ...p, cdnPhotoPattern: e.target.value }))}
+                                placeholder="Ex: https://cdn.acquaxcontrol.com.br/Contemporâneo/{{mes}}/Fotos/Fase l/{{bloco}}/{{apartamento}}.jpg"
+                                className="font-mono text-sm"
+                            />
+                            {config.cdnPhotoPattern && (
+                                <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
+                                    <p className="font-semibold mb-1">Prévia do link gerado:</p>
+                                    <p className="font-mono break-all">
+                                        {config.cdnPhotoPattern
+                                            .replace("{{mes}}", "11 - Novembro")
+                                            .replace("{{bloco}}", "BOTERO")
+                                            .replace("{{apartamento}}", "101")
+                                            .replace("{{fase}}", "Fase l")}
+                                    </p>
+                                </div>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                                💡 Quando a coluna <strong>foto</strong> estiver vazia na planilha de upload, o sistema gerará o link automaticamente usando este padrão.
+                            </p>
                         </CardContent>
                     </Card>
                 </TabsContent>

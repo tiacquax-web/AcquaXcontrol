@@ -456,6 +456,12 @@ model Complex {
   // Observações e notas do modelo
   billingNotes              String?       // Observações gerais do modelo de faturamento
 
+  // ### CDN / FOTOS ###
+  // Padrão de URL das fotos do condomínio no CDN (ex: https://cdn.acquaxcontrol.com.br/Contemporâneo/{mes}/{bloco}/{apartamento}.jpg)
+  // Variáveis disponíveis: {mes}, {bloco}, {apartamento}, {fase}
+  // Exemplo real: https://cdn.acquaxcontrol.com.br/Contemporâneo/{mes}/Fotos/Fase l/{bloco}/{apartamento}.jpg
+  cdnPhotoPattern           String?       // Padrão de URL CDN para geração automática de links de fotos
+
   deletedAt                 DateTime?     @db.Timestamp
   createdAt                 DateTime      @default(now()) @db.Timestamp
   updatedAt                 DateTime      @updatedAt @db.Timestamp
