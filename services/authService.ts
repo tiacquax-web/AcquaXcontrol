@@ -1,6 +1,8 @@
 import axios from "axios";
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
+// Usa URL relativa (/api) como fallback seguro quando NEXT_PUBLIC_API_URL não está definida.
+// Isso garante que o frontend sempre chame a API correta, mesmo sem a variável de ambiente.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 export interface LoginPayload {
   email: string;
@@ -19,7 +21,7 @@ export interface LoginResponse {
 }
 
 export const login = async (payload: LoginPayload) => {
-  const response = await axios.post<LoginResponse>(`${NEXT_PUBLIC_API_URL}/auth/login`, payload, {
+  const response = await axios.post<LoginResponse>(`${API_URL}/auth/login`, payload, {
     withCredentials: true,
   });
   return response.data;
