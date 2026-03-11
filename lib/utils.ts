@@ -9,6 +9,7 @@ export function cleanWhere(obj: any): any {
     if (Array.isArray(obj)) {
         // Remove objetos vazios do array
         return obj.map(cleanWhere).filter(item =>
+            item !== null && item !== undefined &&
             !(typeof item === 'object' && item !== null && Object.keys(item).length === 0)
         );
     } else if (typeof obj === 'object' && obj !== null) {
