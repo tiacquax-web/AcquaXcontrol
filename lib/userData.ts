@@ -897,6 +897,10 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
     try {
         data.deletedAt = null;
         data.createdByUserId = userId;
+        // Guarantee createdAt/updatedAt are real Date objects, not strings
+        // (Prisma @db.Timestamp requires native Date — ISO strings cause P2023 corruption)
+        if (data.createdAt !== undefined) delete data.createdAt;
+        if (data.updatedAt !== undefined) delete data.updatedAt;
 
         const contexts = await getUserContextsForActionOnEntity(userId, entityType, 'create');
         const hasSystemPermission = !!contexts.system;
