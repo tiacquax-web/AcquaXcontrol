@@ -140,7 +140,50 @@ export default function ComplexesPage() {
         if (importInputRef.current) importInputRef.current.value = ''
     }
 
-    const handleDeleteComplex = async (id: string) => {
+    const handleDownloadTemplate = async () => {
+        const XLSX = (await import('xlsx')).default || (await import('xlsx'))
+        const template = [
+            {
+                'Nome': 'Ex: Residencial Solar',
+                'Nome Fantasia': 'Ex: Solar',
+                'CNPJ': '00.000.000/0000-00',
+                'Cidade': 'São Paulo',
+                'Estado': 'SP',
+                'Endereço': 'Rua das Flores, 123',
+                'Telefone': '(11) 3000-0000',
+                'Celular': '(11) 90000-0000',
+                'Status': 'Ativo',
+            },
+            {
+                'Nome': 'Ex: Condomínio Verde',
+                'Nome Fantasia': 'Verde',
+                'CNPJ': '',
+                'Cidade': 'Campinas',
+                'Estado': 'SP',
+                'Endereço': 'Av. Central, 456',
+                'Telefone': '',
+                'Celular': '',
+                'Status': 'Ativo',
+            },
+        ]
+        const worksheet = XLSX.utils.json_to_sheet(template)
+        worksheet['!cols'] = Object.keys(template[0]).map(k => ({ wch: Math.max(k.length, 25) }))
+        const workbook = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Condomínios')
+        const buffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = 'modelo_importacao_condominios.xlsx'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+        toast({ title: 'Modelo baixado!', description: 'Preencha a planilha e importe de volta.' })
+    }
+
+
         if (window.confirm("Tem certeza que deseja excluir este condomínio?")) {
             try {
                 const deletedComplex = await deleteComplex(id)
@@ -186,6 +229,9 @@ export default function ComplexesPage() {
                         <Button variant="outline" onClick={() => importInputRef.current?.click()} disabled={importLoading}>
                             {importLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                             Importar Planilha
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={handleDownloadTemplate} title="Baixar modelo de planilha">
+                            <Download className="mr-1 h-3 w-3" /> Modelo
                         </Button>
                         <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportComplexes} />
                         <Button onClick={handleAddComplex}>

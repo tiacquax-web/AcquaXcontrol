@@ -150,6 +150,19 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (sessionError) return NextResponse.json({ sessionError }, { status: sessionStatus });
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
+        // Check if user is a system-level user (can manage role assignments)
+        const systemAssignment = await prisma.roleAssignment.findFirst({
+            where: {
+                userId,
+                contextType: ContextType.system,
+                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+            },
+            select: { id: true },
+        });
+        if (!systemAssignment) {
+            return NextResponse.json({ error: 'Não autorizado: apenas usuários do sistema podem gerenciar papéis.' }, { status: 401 });
+        }
+
         // Parse request body
         const reqBody = await req.json();
         const body = cleanEntityBody(reqBody); // Clean the body to remove unwanted fields
@@ -158,13 +171,34 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (!body) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
         if (Object.keys(body).length === 0) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
 
-        // Attempt to create the entity
-        const { entity, error: creationError, status: creationStatus } = await createEntity(userId, 'roleAssignment', body);
-        if (creationError) return NextResponse.json({ error: creationError }, { status: creationStatus });
-        if (!entity) return NextResponse.json({ error: 'Internal Server Error - Entity not created' }, { status: 500 });
+        // Check for duplicate assignment
+        const alreadyCreated = await prisma.roleAssignment.findFirst({
+            where: {
+                userId: body.userId,
+                roleId: body.roleId,
+                contextId: body.contextId,
+                contextType: body.contextType,
+                deletedAt: null,
+            }
+        });
+        if (alreadyCreated) {
+            return NextResponse.json({ error: 'Esta função já está atribuída ao usuário no contexto informado.' }, { status: 409 });
+        }
+
+        // Create role assignment
+        const roleAssignment = await prisma.roleAssignment.create({
+            data: {
+                userId: body.userId,
+                roleId: body.roleId,
+                contextId: body.contextId,
+                contextType: body.contextType,
+                createdByUserId: userId,
+                deletedAt: null,
+            }
+        });
 
         // Return the created entity data
-        return NextResponse.json(entity);
+        return NextResponse.json(roleAssignment, { status: 201 });
 
     } catch (error: any) {
         // Log and handle unexpected errors

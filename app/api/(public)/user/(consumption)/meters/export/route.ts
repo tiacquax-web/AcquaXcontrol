@@ -48,7 +48,7 @@ export async function POST(req: NextRequest): Promise<Response> {
                         block: { select: { name: true, complex: { select: { socialName: true } } } }
                     }
                 },
-                TypeMeter: { select: { name: true } },
+                typeMeter: { select: { name: true } },
             },
             orderBy: [{ apartment: { block: { complex: { socialName: 'asc' } } } }, { register: 'asc' }],
             take: 50000,
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
         const exportData = meters.map(m => ({
             'Chassi/Registro': m.register || '',
-            'Tipo': m.TypeMeter?.name || '',
+            'Tipo': m.typeMeter?.name || '',
             'Condomínio': m.apartment?.block?.complex?.socialName || '',
             'Bloco': m.apartment?.block?.name || '',
             'Apartamento': m.apartment?.name || '',

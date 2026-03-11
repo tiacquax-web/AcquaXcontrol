@@ -37,11 +37,10 @@ export async function GET(req: NextRequest): Promise<Response> {
                     city: true,
                     state: true,
                     status: true,
+                    // Count blocks via relation (Complex HAS blocks[])
                     _count: {
                         select: {
                             blocks: { where: { deletedAt: null } },
-                            Apartment: { where: { deletedAt: null } },
-                            meters: { where: { deletedAt: null } },
                         }
                     }
                 },
@@ -52,8 +51,29 @@ export async function GET(req: NextRequest): Promise<Response> {
             prisma.complex.count({ where }),
         ]);
 
-        // Get last reading date per complex
         const complexIds = complexes.map(c => c.id);
+
+        // Count apartments and meters per complex via denormalized complexId field
+        const [aptCounts, meterCounts] = await Promise.all([
+            prisma.apartment.groupBy({
+                by: ['complexId'],
+                where: { complexId: { in: complexIds }, deletedAt: null },
+                _count: { id: true },
+            }),
+            prisma.meter.groupBy({
+                by: ['complexId'],
+                where: { complexId: { in: complexIds }, deletedAt: null },
+                _count: { id: true },
+            }),
+        ]);
+
+        const aptCountMap: Record<string, number> = {};
+        aptCounts.forEach(a => { if (a.complexId) aptCountMap[a.complexId] = a._count.id; });
+
+        const meterCountMap: Record<string, number> = {};
+        meterCounts.forEach(m => { if (m.complexId) meterCountMap[m.complexId] = m._count.id; });
+
+        // Get last reading date per complex
         const lastReadings = await prisma.apartmentConsumptionReport.findMany({
             where: { complexId: { in: complexIds }, deletedAt: null },
             select: { complexId: true, yearRef: true, monthRef: true },
@@ -69,22 +89,33 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         // Get login counts per complex (last 30 days via RoleAssignments)
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+        // Complex-level role assignments
         const roleAssignments = await prisma.roleAssignment.findMany({
             where: { contextId: { in: complexIds }, contextType: 'complex', deletedAt: null },
             select: { userId: true, contextId: true },
         });
-        // Also apartment-level role assignments
-        const apartmentIds = (await prisma.apartment.findMany({
-            where: { complexId: { in: complexIds }, deletedAt: null },
-            select: { id: true, complexId: true }
-        }));
-        const aptToComplex: Record<string, string> = {};
-        apartmentIds.forEach(a => { if (a.complexId) aptToComplex[a.id] = a.complexId; });
 
+        // Apartment-level role assignments (using denormalized complexId)
         const aptRoleAssignments = await prisma.roleAssignment.findMany({
-            where: { contextId: { in: apartmentIds.map(a => a.id) }, contextType: 'apartment', deletedAt: null },
+            where: {
+                contextType: 'apartment',
+                deletedAt: null,
+            },
             select: { userId: true, contextId: true },
+            take: 10000,
         });
+
+        // Build apt→complex map for apt role assignments
+        const aptIds = [...new Set(aptRoleAssignments.map(ra => ra.contextId))];
+        const aptComplexMap: Record<string, string> = {};
+        if (aptIds.length > 0) {
+            const apts = await prisma.apartment.findMany({
+                where: { id: { in: aptIds }, complexId: { in: complexIds } },
+                select: { id: true, complexId: true },
+            });
+            apts.forEach(a => { if (a.complexId) aptComplexMap[a.id] = a.complexId; });
+        }
 
         // Get recent sessions for those users
         const allUserIds = [...new Set([...roleAssignments, ...aptRoleAssignments].map(ra => ra.userId))];
@@ -92,6 +123,7 @@ export async function GET(req: NextRequest): Promise<Response> {
             where: { userId: { in: allUserIds }, createdAt: { gte: thirtyDaysAgo } },
             select: { userId: true },
             distinct: ['userId'],
+            take: 5000,
         }) : [];
         const recentUserSet = new Set(recentSessions.map(s => s.userId));
 
@@ -103,29 +135,33 @@ export async function GET(req: NextRequest): Promise<Response> {
             }
         }
         for (const ra of aptRoleAssignments) {
-            const cxId = aptToComplex[ra.contextId];
+            const cxId = aptComplexMap[ra.contextId];
             if (cxId && recentUserSet.has(ra.userId)) {
                 accessCountMap[cxId] = (accessCountMap[cxId] || 0) + 1;
             }
         }
 
         // Most active apartment per complex (login)
-        const topAptPerComplex: Record<string, { name: string; logins: number }> = {};
         const userCountPerApt: Record<string, Set<string>> = {};
         for (const ra of aptRoleAssignments) {
-            if (recentUserSet.has(ra.userId)) {
+            const cxId = aptComplexMap[ra.contextId];
+            if (cxId && recentUserSet.has(ra.userId)) {
                 if (!userCountPerApt[ra.contextId]) userCountPerApt[ra.contextId] = new Set();
                 userCountPerApt[ra.contextId].add(ra.userId);
             }
         }
         // Get apt names
-        const aptNames = await prisma.apartment.findMany({
-            where: { id: { in: Object.keys(userCountPerApt) } },
-            select: { id: true, name: true, complexId: true }
-        });
+        const activeAptIds = Object.keys(userCountPerApt);
         const aptNameMap: Record<string, { name: string; complexId: string | null }> = {};
-        aptNames.forEach(a => { aptNameMap[a.id] = { name: a.name, complexId: a.complexId }; });
+        if (activeAptIds.length > 0) {
+            const aptNames = await prisma.apartment.findMany({
+                where: { id: { in: activeAptIds } },
+                select: { id: true, name: true, complexId: true }
+            });
+            aptNames.forEach(a => { aptNameMap[a.id] = { name: a.name, complexId: a.complexId }; });
+        }
 
+        const topAptPerComplex: Record<string, { name: string; logins: number }> = {};
         for (const [aptId, userSet] of Object.entries(userCountPerApt)) {
             const aptInfo = aptNameMap[aptId];
             if (!aptInfo?.complexId) continue;
@@ -143,8 +179,8 @@ export async function GET(req: NextRequest): Promise<Response> {
             state: cx.state,
             status: cx.status,
             totalBlocks: cx._count.blocks,
-            totalApartments: cx._count.Apartment,
-            totalMeters: cx._count.meters,
+            totalApartments: aptCountMap[cx.id] || 0,
+            totalMeters: meterCountMap[cx.id] || 0,
             lastReading: lastReadingMap[cx.id] || null,
             loginsLast30Days: accessCountMap[cx.id] || 0,
             topApartment: topAptPerComplex[cx.id] || null,

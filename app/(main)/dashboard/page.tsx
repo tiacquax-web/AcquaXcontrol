@@ -1217,13 +1217,14 @@ export default function Dashboard() {
   };
 
   // ── Role detection ──────────────────────────────────────────────────────────
-  // Programador (isSystem + role='Programador') → ProgramadorDashboard (atalhos)
   // Administrador (isSystem + role='Administrador') → AdminKPIDashboard (panorama KPI)
-  // Síndico / Administradora de empresa          → SindicoDashboard
-  // Morador (só apartments)                       → MoradorDashboard
+  // Programador (isSystem + não-Administrador)       → ProgramadorDashboard (atalhos)
+  // Síndico / Administradora de empresa              → SindicoDashboard
+  // Morador (só apartments)                          → MoradorDashboard
   const isSystem      = context?.isSystem ?? false;
-  const isProgramador = isSystem && (context?.systemRoles ?? []).includes('Programador');
   const isAdministrador = isSystem && (context?.systemRoles ?? []).includes('Administrador');
+  // Programador = qualquer usuário system que NÃO seja Administrador (inclui 'Programador', roles sem nome específico, etc.)
+  const isProgramador = isSystem && !isAdministrador;
   const isMorador = useMemo(() => {
     if (!context) return false;
     return !context.isSystem
@@ -1243,7 +1244,6 @@ export default function Dashboard() {
     }
     if (isProgramador)    return <ProgramadorDashboard />;
     if (isAdministrador)  return <AdminKPIDashboard />;
-    if (isSystem)         return <AdminKPIDashboard />;  // fallback: outros roles system → panorama
     if (isMorador)        return <MoradorDashboard router={router} />;
     return <SindicoDashboard />;   // síndico ou administradora
   };
