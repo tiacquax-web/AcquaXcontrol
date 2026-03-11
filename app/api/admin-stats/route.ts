@@ -48,26 +48,29 @@ export async function GET(req: NextRequest): Promise<Response> {
       prisma.session.findMany({
         where: { createdAt: { gte: todayStart, lte: todayEnd } },
         select: { userId: true, createdAt: true },
+        take: 5000,
       }),
 
       // Sessões últimos 7 dias
       prisma.session.findMany({
         where: { createdAt: { gte: sevenDaysAgo, lte: todayEnd } },
         select: { userId: true, createdAt: true },
+        take: 20000,
       }),
 
       // Sessões últimos 30 dias
       prisma.session.findMany({
         where: { createdAt: { gte: thirtyDaysAgo, lte: todayEnd } },
         select: { userId: true },
+        take: 50000,
       }),
 
-      // Última filipeta por condomínio (top 300 mais recentes, agrupado)
+      // Última filipeta por condomínio (usando distinct para pegar apenas uma por complexId)
       prisma.apartmentConsumptionReport.findMany({
         where: { deletedAt: null },
         select: { complexId: true, yearRef: true, monthRef: true },
         orderBy: [{ yearRef: 'desc' }, { monthRef: 'desc' }],
-        take: 5000,
+        distinct: ['complexId'],
       }),
 
       // Top 10 condomínios com contagens básicas (MUITO mais rápido que buscar todos)
