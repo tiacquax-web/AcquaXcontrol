@@ -46,7 +46,7 @@ async function validateApartmentsBatch(reqBody: any[]): Promise<ValidationResult
 
     // Busca todos os complexos necessários
     const complexList = await prisma.complex.findMany({
-        where: { socialName: { in: allCondominios, mode: 'insensitive' }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+        where: { socialName: { in: allCondominios, mode: 'insensitive' }, deletedAt: null },
         select: { id: true, socialName: true }
     });
 
