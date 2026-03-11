@@ -75,7 +75,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         // Get last reading date per complex
         const lastReadings = await prisma.apartmentConsumptionReport.findMany({
-            where: { complexId: { in: complexIds }, deletedAt: null },
+            where: { complexId: { in: complexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
             select: { complexId: true, yearRef: true, monthRef: true },
             orderBy: [{ yearRef: 'desc' }, { monthRef: 'desc' }],
             distinct: ['complexId'],
