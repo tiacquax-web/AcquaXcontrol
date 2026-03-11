@@ -13,7 +13,8 @@ Estas 3 coisas são **CRÍTICAS** e devem estar salvas em local seguro (ex: cofr
 
 | Item | Valor | Onde usar |
 |------|-------|-----------|
-| MongoDB Atlas URI | `mongodb+srv://ruivagiulia_db_user:MUWnoaseItSukxnY@acquaxcontrol.gtkok07.mongodb.net/acquax?appName=acquaxcontrol` | Variável `DATABASE_URL` no Vercel |
+| MongoDB Digital Ocean URI | `mongodb+srv://doadmin:Tm014AtR79y6ZS83@db-mongodb-acquaxc-nyc3-81713-2abc9433.mongo.ondigitalocean.com/AcquaXControl_PRD?authSource=admin&tls=true` | Variável `DATABASE_URL` no Vercel |
+| MongoDB Atlas URI (backup) | `mongodb+srv://ruivagiulia_db_user:MUWnoaseItSukxnY@acquaxcontrol.gtkok07.mongodb.net/acquax?appName=acquaxcontrol` | Backup — não usar mais como principal |
 | JWT Secret | `acquax-super-secret-jwt-key-2024` | Variável `JWT_SECRET` no Vercel |
 | GitHub | https://github.com/tiacquax-web/AcquaXcontrol | Código-fonte |
 
@@ -53,8 +54,8 @@ AcquaXControl
 Copie isso exatamente no painel do Vercel em **Settings → Environment Variables**:
 
 ```env
-# === BANCO DE DADOS ===
-DATABASE_URL="mongodb+srv://ruivagiulia_db_user:MUWnoaseItSukxnY@acquaxcontrol.gtkok07.mongodb.net/acquax?appName=acquaxcontrol"
+# === BANCO DE DADOS (Digital Ocean — banco principal) ===
+DATABASE_URL="mongodb+srv://doadmin:Tm014AtR79y6ZS83@db-mongodb-acquaxc-nyc3-81713-2abc9433.mongo.ondigitalocean.com/AcquaXControl_PRD?authSource=admin&tls=true"
 
 # === AUTENTICAÇÃO ===
 JWT_SECRET="acquax-super-secret-jwt-key-2024"
