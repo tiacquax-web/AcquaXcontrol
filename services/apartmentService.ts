@@ -56,7 +56,6 @@ export const getApartments = async ({ getAvailableForEntity, withBlock, withComp
     console.log("📨 Resposta da API de apartamentos:", response.data);
     
     return response.data;
-    return response.data;
   } catch (error) {
     console.error('Error fetching apartments:', error);
     throw error;

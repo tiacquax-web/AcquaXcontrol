@@ -92,7 +92,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         // Complex-level role assignments
         const roleAssignments = await prisma.roleAssignment.findMany({
-            where: { contextId: { in: complexIds }, contextType: 'complex', deletedAt: null },
+            where: { contextId: { in: complexIds }, contextType: 'complex', OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
             select: { userId: true, contextId: true },
         });
 
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         const aptRoleAssignments = await prisma.roleAssignment.findMany({
             where: {
                 contextType: 'apartment',
-                deletedAt: null,
+                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
             },
             select: { userId: true, contextId: true },
             take: 10000,

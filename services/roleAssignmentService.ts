@@ -21,9 +21,9 @@ export const getRoleAssignments = async ({ withUser, withRole, withContext, sear
     if (withContext) params.with_context = withContext;
     if (searchQuery) params.search = searchQuery;
     if (userId) params.user_id = userId;
-    if (roleId) params.role_id = userId;
-    if (userName) params.user_name = roleId;
-    if (roleName) params.role_name = roleId;
+    if (roleId) params.role_id = roleId;
+    if (userName) params.user_name = userName;
+    if (roleName) params.role_name = roleName;
 
     const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/role-assignments`, { params });
     return response.data;

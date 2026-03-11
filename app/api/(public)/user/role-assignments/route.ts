@@ -170,14 +170,17 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (!body) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
         if (Object.keys(body).length === 0) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
 
-        // Check for duplicate assignment
+        // Check for duplicate assignment (active - not deleted)
         const alreadyCreated = await prisma.roleAssignment.findFirst({
             where: {
                 userId: body.userId,
                 roleId: body.roleId,
                 contextId: body.contextId,
                 contextType: body.contextType,
-                deletedAt: null,
+                OR: [
+                    { deletedAt: null },
+                    { deletedAt: { isSet: false } },
+                ],
             }
         });
         if (alreadyCreated) {
