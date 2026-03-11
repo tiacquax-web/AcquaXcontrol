@@ -10,7 +10,6 @@ import { Loader2, Search, Download, Printer, ChevronLeft, ChevronRight, Building
 import { useToast } from "@/hooks/use-toast"
 import { useDebounce } from "@/hooks/use-debounce"
 import axios from "axios"
-import * as XLSX from "xlsx"
 
 interface ApuracaoItem {
     id: string
@@ -95,6 +94,7 @@ export default function ApuracaoPage() {
                 'Apt. mais ativo': item.topApartment ? `${item.topApartment.name} (${item.topApartment.logins} logins)` : '-',
             }))
 
+            const XLSX = await import('xlsx')
             const worksheet = XLSX.utils.json_to_sheet(exportData)
             const colWidths = Object.keys(exportData[0] || {}).map(k => ({
                 wch: Math.max(k.length, ...exportData.map(r => String((r as any)[k] || '').length)) + 2

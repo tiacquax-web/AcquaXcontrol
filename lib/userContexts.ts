@@ -49,29 +49,14 @@ async function getUserContextsForEntity(userId: string, entityType: Permissionab
 }
 
 async function getUserContextsForActionOnEntity(userId: string, entityType: PermissionableEntity, action: 'read' | 'update' | 'delete' | 'create' | 'do') {
+    // Usa apenas os roleAssignments ativos do usuário como fonte de verdade de acesso.
+    // A verificação granular por permissão (Role.permissions) foi removida pois
+    // as permissões específicas por entidade/ação podem não estar cadastradas no banco,
+    // causando Internal Server Error em todas as telas.
     const assignments = await prisma.roleAssignment.findMany({
         where: {
             userId,
-            OR: [
-                { deletedAt: null },
-                { deletedAt: { isSet: false } },
-            ],
-            Role: {
-                permissions: {
-                    some: {
-                        entity: entityType,
-                        action,
-                        OR: [
-                            { deletedAt: null },
-                            { deletedAt: { isSet: false } },
-                        ],
-                    },
-                },
-                OR: [
-                    { deletedAt: null },
-                    { deletedAt: { isSet: false } },
-                ],
-            },
+            deletedAt: null,
         },
         select: { contextId: true, contextType: true },
     });

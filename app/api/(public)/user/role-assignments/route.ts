@@ -154,11 +154,11 @@ export async function POST(req: NextRequest): Promise<Response> {
             where: {
                 userId,
                 contextType: ContextType.system,
-                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
             },
-            select: { id: true },
+            select: { id: true, deletedAt: true },
         });
-        if (!systemAssignment) {
+        const isSystemUser = !!systemAssignment && (systemAssignment.deletedAt === null || systemAssignment.deletedAt === undefined);
+        if (!isSystemUser) {
             return NextResponse.json({ error: 'Não autorizado: apenas usuários do sistema podem gerenciar papéis.' }, { status: 401 });
         }
 
