@@ -204,6 +204,9 @@ enum PermissionableEntity {
   // Features (not entities)
   monitoringDashboard
   generateFilipeta
+
+  // Entidades legadas (existem no banco mas não implementadas no frontend)
+  serviceOrder
 }
 
 enum PermissionAction {
