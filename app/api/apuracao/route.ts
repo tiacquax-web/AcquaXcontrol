@@ -17,8 +17,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         const take = parseInt(req.nextUrl.searchParams.get('take') || '50');
         const skip = parseInt(req.nextUrl.searchParams.get('skip') || '0');
 
-        // Base query for complexes
-        const where: any = { deletedAt: null };
+        // Base query for complexes (MongoDB-safe: deletedAt null OR not set)
+        const where: any = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] };
         if (search) {
             where.OR = [
                 { socialName: { contains: search, mode: 'insensitive' } },
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest): Promise<Response> {
                     // Count blocks via relation (Complex HAS blocks[])
                     _count: {
                         select: {
-                            blocks: { where: { deletedAt: null } },
+                            blocks: { where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } },
                         }
                     }
                 },
@@ -57,12 +57,12 @@ export async function GET(req: NextRequest): Promise<Response> {
         const [aptCounts, meterCounts] = await Promise.all([
             prisma.apartment.groupBy({
                 by: ['complexId'],
-                where: { complexId: { in: complexIds }, deletedAt: null },
+                where: { complexId: { in: complexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
                 _count: { id: true },
             }),
             prisma.meter.groupBy({
                 by: ['complexId'],
-                where: { complexId: { in: complexIds }, deletedAt: null },
+                where: { complexId: { in: complexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
                 _count: { id: true },
             }),
         ]);

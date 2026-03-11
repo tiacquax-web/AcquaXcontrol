@@ -3,6 +3,15 @@ import { ContextType, PermissionableEntity, Prisma } from '@prisma/client';
 import { getUserContexts, getUserContextsForActionOnEntity, getUserContextsForEntity } from '@/lib/userContexts';
 import { cleanWhere } from './utils';
 
+// MongoDB-safe "not deleted" filter — matches records where deletedAt is null
+// OR where the field was never set (absent in older MongoDB documents).
+const notDeleted = {
+    OR: [
+        { deletedAt: null },
+        { deletedAt: { isSet: false } },
+    ],
+} as const;
+
 // Função para normalizar email removendo acentos e caracteres especiais
 function normalizeEmail(email: string): string {
     // Mapa de caracteres acentuados para normais
@@ -323,6 +332,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 const complexes = await prisma.complex.findMany({
                     where: {
                         AND: [
+                            notDeleted,
                             {
                                 socialName: search ? { contains: search, mode: "insensitive" } : undefined,
 
@@ -347,9 +357,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 const blocksQuery = {
                     where: {
                         AND: [
-                            {
-                                deletedAt: null,
-                            },
+                            notDeleted,
                             {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
 
@@ -371,13 +379,13 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     take: take < 200 ? take : 200,
                 };
                 const blocks = await prisma.block.findMany(blocksQuery);
-                const blocksCount = await prisma.block.count({ where: cleanWhere({ ...blocksQuery.where, deletedAt: null }) });
+                const blocksCount = await prisma.block.count({ where: cleanWhere({ AND: [notDeleted, ...blocksQuery.where.AND.slice(1)] }) });
                 return { entity: blocks, totalCount: blocksCount, error: null, status: 200 };
             case PermissionableEntity.apartment:
                 const apartmentsQuery = {
                     where: {
-                        deletedAt: null,
                         AND: [
+                            notDeleted,
                             {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
 
@@ -403,7 +411,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     // orderBy: orderBy ? { [orderBy]: orderDirection } : undefined,
                 };
                 const apartments = await prisma.apartment.findMany(apartmentsQuery);
-                const apartmentsCount = await prisma.apartment.count({ where: cleanWhere({ ...apartmentsQuery.where, deletedAt: null }) });
+                const apartmentsCount = await prisma.apartment.count({ where: cleanWhere({ AND: [notDeleted, ...apartmentsQuery.where.AND.slice(1)] }) });
                 return { entity: apartments, totalCount: apartmentsCount, error: null, status: 200 };
 
             // Meters and Devices
@@ -412,6 +420,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 const query:any = {
                     where: {
                         AND: [
+                            notDeleted,
                             {
                                 register: search ? { contains: search.toUpperCase() } : undefined,
 
@@ -442,7 +451,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                         [orderBy]: orderDirection,
                     },
                 });
-                const metersCount = await prisma.meter.count({ where: cleanWhere({ ...query.where, deletedAt: null }) });
+                const metersCount = await prisma.meter.count({ where: cleanWhere({ AND: [notDeleted, ...query.where.AND.slice(1)] }) });
                 return { entity: meters, totalCount: metersCount, error: null, status: 200 };
             case PermissionableEntity.typeMeter:
                 const typeMeters = await prisma.typeMeter.findMany({
@@ -2999,15 +3008,22 @@ async function getAvailableComplexesForEntity(
 
     // Query principal para buscar complexes
     console.time("getAvailableComplexesForEntity - prisma.complex.findMany");
+    // Add notDeleted filter to finalWhere
+    const finalWhereWithNotDeleted = {
+        AND: [
+            notDeleted,
+            ...(finalWhere.AND || [finalWhere]),
+        ]
+    };
     const [availableComplexes, availableComplexCount] = await Promise.all([
         prisma.complex.findMany({
-            where: finalWhere,
+            where: finalWhereWithNotDeleted,
             select: baseSelect,
             take: take,
             skip: skip
         }),
         prisma.complex.count({
-            where: { ...finalWhere, deletedAt: null },
+            where: finalWhereWithNotDeleted,
         })
     ]);
     console.timeEnd("getAvailableComplexesForEntity - prisma.complex.findMany");
@@ -3275,6 +3291,7 @@ async function getAvailableBlocksForEntity(
         const availableBlocks = await prisma.block.findMany({
             where: {
                 AND: [
+                    notDeleted,
                     {
                         complexId: complexId ? complexId : undefined,
                         name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
@@ -3295,6 +3312,7 @@ async function getAvailableBlocksForEntity(
     const availableBlocks = await prisma.block.findMany({
         where: {
             AND: [
+                notDeleted,
                 {
                     OR: [
                         { id: { in: blockIds } }, // Blocos diretos
@@ -3363,10 +3381,10 @@ async function getAvailableApartmentsForEntity(
         const [availableApartments, totalCount] = await Promise.all([
             prisma.apartment.findMany({
                 where: {
-                    id: apartmentId ?? undefined,
-                    deletedAt: null,
                     AND: [
+                        notDeleted,
                         {
+                            id: apartmentId ?? undefined,
                             name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
                             blockId: blockId ? blockId : undefined,
                             block: {
@@ -3387,10 +3405,10 @@ async function getAvailableApartmentsForEntity(
             }),
             prisma.apartment.count({
                 where: {
-                    id: apartmentId ?? undefined,
-                    deletedAt: null,
                     AND: [
+                        notDeleted,
                         {
+                            id: apartmentId ?? undefined,
                             name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
                             blockId: blockId ? blockId : undefined,
                             block: {
@@ -3411,6 +3429,7 @@ async function getAvailableApartmentsForEntity(
         prisma.apartment.findMany({
             where: {
                 AND: [
+                    notDeleted,
                     { id: apartmentId ?? undefined },
                     {
                         OR: [
@@ -3437,6 +3456,7 @@ async function getAvailableApartmentsForEntity(
         prisma.apartment.count({
             where: {
                 AND: [
+                    notDeleted,
                     { id: apartmentId ?? undefined },
                     {
                         OR: [

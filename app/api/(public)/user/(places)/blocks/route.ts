@@ -119,7 +119,7 @@ export async function POST(req: NextRequest): Promise<Response> {
             // Busca todos os complexIds únicos de uma vez
             const uniqueComplexIds = [...new Set(reqBody.map(block => block.complexId).filter(Boolean))];
             const existingComplexes = await prisma.complex.findMany({
-                where: { id: { in: uniqueComplexIds }, deletedAt: null },
+                where: { id: { in: uniqueComplexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
                 select: { id: true }
             });
             const existingComplexIds = new Set(existingComplexes.map(c => c.id));
