@@ -1,8 +1,8 @@
 import axios from "axios";
 
-// Usa URL relativa /api diretamente — elimina redirect 307 sem→www que bloqueava cookies
-// Fallback seguro: process.env.NEXT_PUBLIC_API_URL deve ser '/api' ou não definida
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
+// URL relativa /api — independente de variável de ambiente
+// Isso evita que NEXT_PUBLIC_API_URL do Vercel (URL absoluta) sobrescreva o valor correto
+const API_URL = "/api";
 
 export interface LoginPayload {
   email: string;

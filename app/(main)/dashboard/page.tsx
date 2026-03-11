@@ -163,7 +163,7 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
     setChartData([]);
     setTotalAnual(null);
 
-    const base = process.env.NEXT_PUBLIC_API_URL;
+    const base = '/api';
     const now = new Date();
     const maxMonth = Number(selectedYear) === currentYear ? now.getMonth() + 1 : 12;
     const months = Array.from({ length: maxMonth }, (_, i) => String(i + 1).padStart(2, '0'));
@@ -302,7 +302,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
   useEffect(() => {
     if (ctxLoading || apartments.length === 0 || !activeAptId) return;
     setLoadingFilipetas(true);
-    const base = process.env.NEXT_PUBLIC_API_URL;
+    const base = '/api';
     Promise.all(
       last3.map(m =>
         fetch(`${base}/meter-report?month=${m.month}&year=${m.year}&apartment_id=${activeAptId}`, { credentials: 'include' })
@@ -732,7 +732,7 @@ function useAdminStats() {
     setLoading(true);
     setError(null);
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL;
+      const base = '/api';
       const res = await fetch(`${base}/admin-stats`, {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

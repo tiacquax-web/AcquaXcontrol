@@ -24,7 +24,7 @@ import { useUserContext } from '@/hooks/useUserContext';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl } from '@/lib/utils';
 
-const API = process.env.NEXT_PUBLIC_API_URL;
+const API = '/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function buildMonthOptions(count = 24) {
