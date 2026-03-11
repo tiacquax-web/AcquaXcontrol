@@ -1,7 +1,7 @@
 import axios from "axios";
 
-// Usa URL relativa (/api) como fallback seguro quando NEXT_PUBLIC_API_URL não está definida.
-// Isso garante que o frontend sempre chame a API correta, mesmo sem a variável de ambiente.
+// Usa URL relativa /api diretamente — elimina redirect 307 sem→www que bloqueava cookies
+// Fallback seguro: process.env.NEXT_PUBLIC_API_URL deve ser '/api' ou não definida
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 export interface LoginPayload {

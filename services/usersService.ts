@@ -1,7 +1,7 @@
 import { ContextType } from '@prisma/client';
 import axios from 'axios';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
+const NEXT_PUBLIC_API_URL = '/api';
 
 interface getUsersProps {
     searchQuery?: string;

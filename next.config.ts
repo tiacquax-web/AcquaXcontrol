@@ -34,6 +34,10 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
 
+  // ─── Dev origins permitidos (sandbox Novita / qualquer *.sandbox.novita.ai) ─
+  // Necessário no Next.js 15 para que o hot-reload e cookies funcionem via proxy
+  allowedDevOrigins: ['*.sandbox.novita.ai'],
+
   // ─── Security & CORS headers ───────────────────────────────────────────────
   async headers() {
     return [

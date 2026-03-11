@@ -1,7 +1,7 @@
 import { selectMeterProps } from '@/types/meter';
 import axios from 'axios';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
+const NEXT_PUBLIC_API_URL = '/api';
 
 interface getMetersProps {
   blockId?: string;
