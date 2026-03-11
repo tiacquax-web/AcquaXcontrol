@@ -115,8 +115,12 @@ async function validateApartmentsBatch(reqBody: any[]): Promise<ValidationResult
             apartmentData.fraction = Number(rowFracao);
         }
 
-        validApartmentData.push({ name: rowName, blockId, rowIndex: idx, data: apartmentData });
-    }
+        validApartmentData.push({
+    name: nome_da_linha,
+    blockId: blockId,
+    fraction: linhaFracao,
+    data: linha
+});
 
     // Se há erros na validação básica, retorna
     if (errors.length > 0) {
