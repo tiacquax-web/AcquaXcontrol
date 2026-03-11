@@ -183,7 +183,7 @@ export default function ComplexesPage() {
         toast({ title: 'Modelo baixado!', description: 'Preencha a planilha e importe de volta.' })
     }
 
-
+    const handleDeleteComplex = async (id: string) => {
         if (window.confirm("Tem certeza que deseja excluir este condomínio?")) {
             try {
                 const deletedComplex = await deleteComplex(id)

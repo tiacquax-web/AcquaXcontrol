@@ -3,7 +3,6 @@ import { createEntity, deleteEntity, getEntityListData, updateEntityData } from 
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ApartmentConsumptionReport, ContextType, DealershipType } from "@prisma/client"
 import prisma from '@/lib/prisma'
-import { id } from "date-fns/locale"
 import { NextRequest, NextResponse } from "next/server"
 
 function getQueryParams(req: NextRequest) {

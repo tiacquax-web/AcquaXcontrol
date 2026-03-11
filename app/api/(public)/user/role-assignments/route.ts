@@ -1,9 +1,8 @@
 import { cleanEntityBody } from "@/lib/prisma"
-import { createEntity, getEntityListData } from "@/lib/userData"
+import { getEntityListData } from "@/lib/userData"
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ContextType, Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
-import { id } from "date-fns/locale"
 import { NextRequest, NextResponse } from "next/server"
 
 function getQueryParams(req: NextRequest) {
