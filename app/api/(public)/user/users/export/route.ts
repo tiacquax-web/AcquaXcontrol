@@ -6,123 +6,127 @@ import * as XLSX from 'xlsx';
 
 export async function POST(req: NextRequest): Promise<Response> {
     try {
-        // Validar sessão do usuário
         const session = req.cookies.get('session')?.value;
         const validSession = session ? await isSessionValid(session) : false;
-        if (!validSession) {
-            return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-        }
+        if (!validSession) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         const userId = validSession.userId;
-
-        // Verificar se o usuário tem permissão para atualizar usuários
         const contexts = await getUserContextsForActionOnEntity(userId, 'user', 'update');
-        const hasPermission = contexts.system || 
-                             contexts.companyIds.length > 0 || 
-                             contexts.complexIds.length > 0 || 
-                             contexts.blockIds.length > 0 || 
-                             contexts.apartmentIds.length > 0;
+        const hasPermission = contexts.system || contexts.companyIds.length > 0 ||
+            contexts.complexIds.length > 0 || contexts.blockIds.length > 0 || contexts.apartmentIds.length > 0;
+        if (!hasPermission) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-        if (!hasPermission) {
-            return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-        }
-
-        // Obter parâmetros da requisição
         const body = await req.json();
-        const { 
-            search = '', 
-            userIds = [] // IDs específicos de usuários para exportar
-        } = body;
+        const { search = '', userIds = [], complexId = '', roleId = '' } = body;
 
-        // Buscar usuários conforme os filtros e permissões
-        let whereClause: any = {
-            deletedAt: null,
-            AND: []
-        };
+        // Se filtro por condomínio: buscar os userId vinculados ao complexId via RoleAssignment
+        let filteredByComplexUserIds: string[] | null = null;
+        if (complexId) {
+            // Busca usuários com RoleAssignment no contexto do condomínio, bloco ou apt do condomínio
+            const blockIds = (await prisma.block.findMany({
+                where: { complexId, deletedAt: null }, select: { id: true }
+            })).map(b => b.id);
+            const aptIds = (await prisma.apartment.findMany({
+                where: { complexId, deletedAt: null }, select: { id: true }
+            })).map(a => a.id);
 
-        // Filtro de busca
+            const assigns = await prisma.roleAssignment.findMany({
+                where: {
+                    deletedAt: null,
+                    OR: [
+                        { contextId: complexId, contextType: 'complex' },
+                        { contextId: { in: blockIds }, contextType: 'block' },
+                        { contextId: { in: aptIds }, contextType: 'apartment' },
+                    ]
+                },
+                select: { userId: true }
+            });
+            filteredByComplexUserIds = [...new Set(assigns.map(a => a.userId))];
+        }
+
+        // Se filtro por papel
+        let filteredByRoleUserIds: string[] | null = null;
+        if (roleId) {
+            const assigns = await prisma.roleAssignment.findMany({
+                where: { roleId, deletedAt: null },
+                select: { userId: true }
+            });
+            filteredByRoleUserIds = [...new Set(assigns.map(a => a.userId))];
+        }
+
+        // Construir cláusula where
+        const andClauses: any[] = [{ deletedAt: null }];
         if (search) {
-            whereClause.AND.push({
-                OR: [
-                    { name: { contains: search, mode: "insensitive" } },
-                    { email: { contains: search, mode: "insensitive" } },
-                    { documentPerson: { contains: search, mode: "insensitive" } }
-                ]
-            });
+            andClauses.push({ OR: [
+                { name: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+            ]});
         }
-
-        // Filtro por IDs específicos
-        if (userIds.length > 0) {
-            whereClause.AND.push({
-                id: { in: userIds }
-            });
-        }
-
-        // Aplicar filtros de permissão se necessário
-        if (!contexts.system) {
-            // Se não tem permissão system, aplicar filtros contextuais
-            // Por enquanto, vamos buscar todos os usuários já que a validação contextual 
-            // seria mais complexa (precisaria verificar relacionamentos)
-            // Em uma implementação futura, pode-se adicionar filtros baseados nos contextos
-        }
+        if (userIds.length > 0) andClauses.push({ id: { in: userIds } });
+        if (filteredByComplexUserIds !== null) andClauses.push({ id: { in: filteredByComplexUserIds } });
+        if (filteredByRoleUserIds !== null) andClauses.push({ id: { in: filteredByRoleUserIds } });
 
         const users = await prisma.user.findMany({
-            where: whereClause,
-            select: {
-                id: true,
-                name: true,
-                email: true,
-                documentPerson: true,
-                telephone: true,
-                cell: true,
-                createdAt: true,
-                updatedAt: true
-            },
-            orderBy: { name: 'asc' }
+            where: { AND: andClauses },
+            select: { id: true, name: true, email: true, documentPerson: true, telephone: true, cell: true, createdAt: true },
+            orderBy: { name: 'asc' },
         });
 
-        // Se não há usuários, retornar erro
-        if (users.length === 0) {
-            return NextResponse.json({ error: 'Nenhum usuário encontrado' }, { status: 404 });
+        if (users.length === 0) return NextResponse.json({ error: 'Nenhum usuário encontrado' }, { status: 404 });
+
+        // Buscar papel de cada usuário
+        const allAssigns = await prisma.roleAssignment.findMany({
+            where: { userId: { in: users.map(u => u.id) }, deletedAt: null },
+            select: { userId: true, roleId: true, contextType: true, contextId: true }
+        });
+        const allRoleIds = [...new Set(allAssigns.map(a => a.roleId))];
+        const roles = await prisma.role.findMany({ where: { id: { in: allRoleIds } }, select: { id: true, name: true } });
+        const roleMap: Record<string, string> = {};
+        roles.forEach(r => { roleMap[r.id] = r.name; });
+
+        // Buscar nome do condomínio se filtro ativo
+        let complexName = '';
+        if (complexId) {
+            const cx = await prisma.complex.findUnique({ where: { id: complexId }, select: { socialName: true } });
+            complexName = cx?.socialName || '';
         }
 
-        // Preparar dados para a planilha
-        const exportData: any[] = [];
-
-        for (const user of users) {
-            const userData: any = {
+        // Montar planilha
+        const exportData = users.map(user => {
+            const assigns = allAssigns.filter(a => a.userId === user.id);
+            const papeis = assigns.map(a => roleMap[a.roleId] || a.roleId).join(', ');
+            return {
                 'Nome': user.name,
                 'Email': user.email,
                 'Documento': user.documentPerson || '',
                 'Telefone': user.telephone || '',
                 'Celular': user.cell || '',
-                'Data de Criação': user.createdAt?.toLocaleDateString('pt-BR') || '',
-                'Última Atualização': user.updatedAt?.toLocaleDateString('pt-BR') || ''
+                'Papéis': papeis,
+                'Data de Cadastro': user.createdAt?.toLocaleDateString('pt-BR') || '',
             };
+        });
 
-            exportData.push(userData);
-        }
-
-        // Criar planilha Excel
         const worksheet = XLSX.utils.json_to_sheet(exportData);
+        // Auto-largura de colunas
+        const colWidths = Object.keys(exportData[0] || {}).map(k => ({
+            wch: Math.max(k.length, ...exportData.map(r => String((r as any)[k] || '').length)) + 2
+        }));
+        worksheet['!cols'] = colWidths;
+
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Usuários');
+        const sheetName = complexName ? `Usuários - ${complexName.substring(0, 25)}` : 'Usuários';
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
 
-        // Gerar buffer da planilha
         const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        const fileName = `usuarios_${complexName ? complexName.replace(/\s+/g, '_') + '_' : ''}${new Date().toISOString().split('T')[0]}.xlsx`;
 
-        // Definir nome do arquivo
-        const fileName = `usuarios_${new Date().toISOString().split('T')[0]}.xlsx`;
-
-        // Retornar arquivo Excel
         return new NextResponse(excelBuffer, {
             status: 200,
             headers: {
                 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'Content-Disposition': `attachment; filename="${fileName}"`
-            }
+                'Content-Disposition': `attachment; filename="${fileName}"`,
+            },
         });
-
     } catch (error: any) {
         console.error('Error exporting users:', error);
         return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });

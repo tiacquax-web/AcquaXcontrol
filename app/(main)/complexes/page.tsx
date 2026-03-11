@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building2, Loader2, MapPin, Phone, Plus, Search } from "lucide-react"
+import { Building2, Download, Loader2, MapPin, Phone, Plus, Search, Upload } from "lucide-react"
 import { useComplexes, useComplexMutations } from "@/hooks/useComplexes"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast"
 import ComplexModal from "./complexes-modal"
 import type { Complex } from "@prisma/client"
 import type { ComplexFull } from "@/types/fullTypes"
+import axios from "axios"
+import { useRef } from "react"
 
 export default function ComplexesPage() {
     const [filters, setFilters] = useState({ nameQuery: "", documentCompany: "" })
@@ -24,6 +26,9 @@ export default function ComplexesPage() {
     const { toast } = useToast()
     // Estado local para lista reativa
     const [localComplexes, setLocalComplexes] = useState<ComplexFull[]>([])
+    const [exportLoading, setExportLoading] = useState(false)
+    const [importLoading, setImportLoading] = useState(false)
+    const importInputRef = useRef<HTMLInputElement>(null)
 
     useEffect(() => {
         setLocalComplexes(complexes)
@@ -66,6 +71,75 @@ export default function ComplexesPage() {
         }
     }
 
+    const handleExportComplexes = async () => {
+        setExportLoading(true)
+        try {
+            const response = await axios.post('/api/user/complexes/export', {
+                search: filters.nameQuery,
+            }, { responseType: 'blob' })
+            const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+            const url = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = `condominios_${new Date().toISOString().split('T')[0]}.xlsx`
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            window.URL.revokeObjectURL(url)
+            toast({ title: 'Exportação concluída!', description: 'Planilha baixada com sucesso.' })
+        } catch (error: any) {
+            toast({ title: 'Erro na exportação', description: error.response?.data?.error || error.message, variant: 'destructive' })
+        } finally {
+            setExportLoading(false)
+        }
+    }
+
+    const handleImportComplexes = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        setImportLoading(true)
+        try {
+            const XLSX = (await import('xlsx')).default || (await import('xlsx'))
+            const reader = new FileReader()
+            reader.onload = async (ev) => {
+                try {
+                    const data = new Uint8Array(ev.target?.result as ArrayBuffer)
+                    const workbook = XLSX.read(data, { type: 'array' })
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]]
+                    const rows: any[] = XLSX.utils.sheet_to_json(sheet)
+                    const importedComplexes: any[] = []
+                    for (const row of rows) {
+                        const complexData = {
+                            socialName: row['Nome'] || row['socialName'] || row['name'] || '',
+                            aliasName: row['Nome Fantasia'] || row['aliasName'] || '',
+                            documentCompany: row['CNPJ'] || row['documentCompany'] || '',
+                            city: row['Cidade'] || row['city'] || '',
+                            state: row['Estado'] || row['state'] || '',
+                            address: row['Endereço'] || row['address'] || '',
+                            telephone: row['Telefone'] || row['telephone'] || '',
+                            cell: row['Celular'] || row['cell'] || '',
+                            status: row['Status'] || row['status'] || 'Ativo',
+                        }
+                        if (!complexData.socialName) continue
+                        const created = await createComplex(complexData as any)
+                        if (created?.id) importedComplexes.push(created)
+                    }
+                    setLocalComplexes((prev) => [...importedComplexes, ...prev])
+                    toast({ title: `${importedComplexes.length} condomínio(s) importado(s)!`, description: 'Importação concluída com sucesso.' })
+                } catch (err: any) {
+                    toast({ title: 'Erro na importação', description: err.message, variant: 'destructive' })
+                } finally {
+                    setImportLoading(false)
+                }
+            }
+            reader.readAsArrayBuffer(file)
+        } catch (err: any) {
+            toast({ title: 'Erro', description: err.message, variant: 'destructive' })
+            setImportLoading(false)
+        }
+        if (importInputRef.current) importInputRef.current.value = ''
+    }
+
     const handleDeleteComplex = async (id: string) => {
         if (window.confirm("Tem certeza que deseja excluir este condomínio?")) {
             try {
@@ -104,9 +178,20 @@ export default function ComplexesPage() {
                         <CardTitle className="text-2xl font-bold">Condomínios</CardTitle>
                         <CardDescription>Gerencie condomínios e suas informações</CardDescription>
                     </div>
-                    <Button onClick={handleAddComplex}>
-                        <Plus className="mr-2 h-4 w-4" /> Add Complex
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={handleExportComplexes} disabled={exportLoading}>
+                            {exportLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                            Exportar
+                        </Button>
+                        <Button variant="outline" onClick={() => importInputRef.current?.click()} disabled={importLoading}>
+                            {importLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                            Importar Planilha
+                        </Button>
+                        <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportComplexes} />
+                        <Button onClick={handleAddComplex}>
+                            <Plus className="mr-2 h-4 w-4" /> Adicionar Condomínio
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col space-y-4">
@@ -116,7 +201,7 @@ export default function ComplexesPage() {
                                 <Input
                                     type="text"
                                     name="nameQuery"
-                                    placeholder="Search by name"
+                                    placeholder="Buscar por nome"
                                     value={filters.nameQuery}
                                     onChange={handleFilterChange}
                                     className="pl-8"
@@ -127,7 +212,7 @@ export default function ComplexesPage() {
                                 <Input
                                     type="text"
                                     name="documentCompany"
-                                    placeholder="Search by CNPJ"
+                                    placeholder="Buscar por CNPJ"
                                     value={filters.documentCompany}
                                     onChange={handleFilterChange}
                                     className="pl-8"
@@ -148,19 +233,19 @@ export default function ComplexesPage() {
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>Name</TableHead>
-                                            <TableHead>Location</TableHead>
+                                            <TableHead>Nome</TableHead>
+                                            <TableHead>Localização</TableHead>
                                             <TableHead>CNPJ</TableHead>
                                             <TableHead>Status</TableHead>
-                                            <TableHead>Contact</TableHead>
-                                            <TableHead className="text-right">Actions</TableHead>
+                                            <TableHead>Contato</TableHead>
+                                            <TableHead className="text-right">Ações</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {localComplexes.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
-                                                    No complexes found
+                                                    Nenhum condomínio encontrado
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
@@ -204,7 +289,7 @@ export default function ComplexesPage() {
                                                                 <span>{complex.telephone || complex.cell}</span>
                                                             </div>
                                                         ) : (
-                                                            <span className="text-muted-foreground">No contact</span>
+                                                            <span className="text-muted-foreground">Sem contato</span>
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-right">

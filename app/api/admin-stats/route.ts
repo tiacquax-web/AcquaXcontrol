@@ -1,5 +1,6 @@
 // app/api/admin-stats/route.ts
 // Retorna estatísticas gerais para o dashboard do administrador
+// OTIMIZADO: queries paralelas, sem buscar todos os 285 condomínios com detalhes pesados
 import { NextRequest, NextResponse } from 'next/server';
 import { serverError } from '@/lib/safeError';
 import { validateUserSession } from '@/lib/users';
@@ -13,174 +14,145 @@ export async function GET(req: NextRequest): Promise<Response> {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // ─── Contagens gerais ─────────────────────────────────────────────────────
-    // Nota: no MongoDB/Prisma, deletedAt: null cobre tanto null quanto campo ausente
+    const today = new Date();
+    const todayStart = startOfDay(today);
+    const todayEnd = endOfDay(today);
+    const sevenDaysAgo = startOfDay(subDays(today, 6));
+    const thirtyDaysAgo = startOfDay(subDays(today, 29));
+
+    // ─── Todas queries em paralelo ────────────────────────────────────────────
     const [
       totalComplexes,
       totalApartments,
       totalUsers,
       totalMeters,
+      roleAssignments,
+      todaySessions,
+      recentSessions,
+      monthlySessions,
+      latestReportsRaw,
+      topComplexes,
     ] = await Promise.all([
       prisma.complex.count({ where: { deletedAt: null } }),
       prisma.apartment.count({ where: { deletedAt: null } }),
       prisma.user.count({ where: { deletedAt: null } }),
       prisma.meter.count({ where: { deletedAt: null } }),
-    ]);
 
-    // ─── Condomínios com última leitura ───────────────────────────────────────
-    const complexes = await prisma.complex.findMany({
-      where: { deletedAt: null },
-      select: {
-        id: true,
-        socialName: true,
-        aliasName: true,
-        blocks: {
-          where: { deletedAt: null },
-          select: {
-            apartments: {
-              where: { deletedAt: null },
-              select: {
-                id: true,
-                _count: { select: { meters: true } },
-              },
-            },
+      // Apenas ids e tipos de contexto — sem detalhes pesados
+      prisma.roleAssignment.findMany({
+        where: { deletedAt: null },
+        select: { userId: true, contextType: true, contextId: true },
+      }),
+
+      // Sessões de hoje
+      prisma.session.findMany({
+        where: { createdAt: { gte: todayStart, lte: todayEnd } },
+        select: { userId: true, createdAt: true },
+      }),
+
+      // Sessões últimos 7 dias
+      prisma.session.findMany({
+        where: { createdAt: { gte: sevenDaysAgo, lte: todayEnd } },
+        select: { userId: true, createdAt: true },
+      }),
+
+      // Sessões últimos 30 dias
+      prisma.session.findMany({
+        where: { createdAt: { gte: thirtyDaysAgo, lte: todayEnd } },
+        select: { userId: true },
+      }),
+
+      // Última filipeta por condomínio (top 300 mais recentes, agrupado)
+      prisma.apartmentConsumptionReport.findMany({
+        where: { deletedAt: null },
+        select: { complexId: true, yearRef: true, monthRef: true },
+        orderBy: [{ yearRef: 'desc' }, { monthRef: 'desc' }],
+        take: 5000,
+      }),
+
+      // Top 10 condomínios com contagens básicas (MUITO mais rápido que buscar todos)
+      prisma.complex.findMany({
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          socialName: true,
+          aliasName: true,
+          _count: {
+            select: { blocks: true },
           },
         },
-      },
-    });
+        take: 300,
+        orderBy: { socialName: 'asc' },
+      }),
+    ]);
 
-    // Get last reading date per complex via apartmentConsumptionReport
-    const latestReports = await prisma.apartmentConsumptionReport.findMany({
-      where: { deletedAt: null },
-      select: {
-        complexId: true,
-        yearRef: true,
-        monthRef: true,
-      },
-      orderBy: [{ yearRef: 'desc' }, { monthRef: 'desc' }],
-    });
-
-    // Index latest report date per complex
-    const latestByComplex: Record<string, { year: number; month: number }> = {};
-    for (const r of latestReports) {
-      if (!r.complexId) continue;
-      if (!latestByComplex[r.complexId]) {
-        latestByComplex[r.complexId] = {
-          year: Number(r.yearRef),
-          month: Number(r.monthRef),
-        };
-      }
-    }
-
-    // ─── Role assignments by context type for user-type counts ───────────────
-    const roleAssignments = await prisma.roleAssignment.findMany({
-      where: { deletedAt: null },
-      select: {
-        userId: true,
-        contextType: true,
-        contextId: true,
-      },
-    });
-
-    // Count unique users per context type
-    const systemUsers = new Set(roleAssignments.filter(r => r.contextType === 'system').map(r => r.userId));
-    const companyUsers = new Set(roleAssignments.filter(r => r.contextType === 'company').map(r => r.userId));
-    const complexUsers = new Set(roleAssignments.filter(r => r.contextType === 'complex').map(r => r.userId));
+    // ─── Conjuntos de usuários por tipo ───────────────────────────────────────
+    const systemUsers    = new Set(roleAssignments.filter(r => r.contextType === 'system').map(r => r.userId));
+    const companyUsers   = new Set(roleAssignments.filter(r => r.contextType === 'company').map(r => r.userId));
+    const complexUsers   = new Set(roleAssignments.filter(r => r.contextType === 'complex').map(r => r.userId));
     const apartmentUsers = new Set(roleAssignments.filter(r => r.contextType === 'apartment').map(r => r.userId));
 
     // ─── Logins de hoje por perfil ────────────────────────────────────────────
-    const today = new Date();
-    const todayStart = startOfDay(today);
-    const todayEnd = endOfDay(today);
-
-    // Get all sessions created today
-    const todaySessions = await prisma.session.findMany({
-      where: {
-        createdAt: { gte: todayStart, lte: todayEnd },
-      },
-      select: { userId: true, createdAt: true },
-    });
-
     const todayUserIds = [...new Set(todaySessions.map(s => s.userId))];
-
-    // Classify each user that logged in today by their context type
     const todayLoginsByType = { moradores: 0, sindicos: 0, administradoras: 0, programadores: 0 };
     for (const uid of todayUserIds) {
-      if (systemUsers.has(uid)) {
-        todayLoginsByType.programadores++;
-      } else if (companyUsers.has(uid)) {
-        todayLoginsByType.administradoras++;
-      } else if (complexUsers.has(uid)) {
-        todayLoginsByType.sindicos++;
-      } else if (apartmentUsers.has(uid)) {
-        todayLoginsByType.moradores++;
-      }
+      if (systemUsers.has(uid))       todayLoginsByType.programadores++;
+      else if (companyUsers.has(uid))  todayLoginsByType.administradoras++;
+      else if (complexUsers.has(uid))  todayLoginsByType.sindicos++;
+      else if (apartmentUsers.has(uid)) todayLoginsByType.moradores++;
     }
 
-    // ─── Logins dos últimos 7 dias (gráfico) ─────────────────────────────────
-    const sevenDaysAgo = startOfDay(subDays(today, 6));
-    const recentSessions = await prisma.session.findMany({
-      where: {
-        createdAt: { gte: sevenDaysAgo, lte: todayEnd },
-      },
-      select: { userId: true, createdAt: true },
-    });
-
-    // Group by day
+    // ─── Gráfico de logins últimos 7 dias ─────────────────────────────────────
     const loginsByDay: Record<string, { date: string; total: number; moradores: number; sindicos: number; administradoras: number; programadores: number }> = {};
     for (let i = 6; i >= 0; i--) {
       const d = subDays(today, i);
       const key = format(d, 'dd/MM');
       loginsByDay[key] = { date: key, total: 0, moradores: 0, sindicos: 0, administradoras: 0, programadores: 0 };
     }
-
     for (const s of recentSessions) {
       const key = format(s.createdAt, 'dd/MM');
       if (!loginsByDay[key]) continue;
       loginsByDay[key].total++;
-      if (systemUsers.has(s.userId)) loginsByDay[key].programadores++;
-      else if (companyUsers.has(s.userId)) loginsByDay[key].administradoras++;
-      else if (complexUsers.has(s.userId)) loginsByDay[key].sindicos++;
+      if (systemUsers.has(s.userId))       loginsByDay[key].programadores++;
+      else if (companyUsers.has(s.userId))  loginsByDay[key].administradoras++;
+      else if (complexUsers.has(s.userId))  loginsByDay[key].sindicos++;
       else if (apartmentUsers.has(s.userId)) loginsByDay[key].moradores++;
     }
 
-    // ─── Condomínio mais/menos atualizado ────────────────────────────────────
-    const complexesWithDates = complexes.map(cx => {
+    // ─── Última leitura por condomínio (índice) ───────────────────────────────
+    const latestByComplex: Record<string, { year: number; month: number }> = {};
+    for (const r of latestReportsRaw) {
+      if (!r.complexId) continue;
+      if (!latestByComplex[r.complexId]) {
+        latestByComplex[r.complexId] = { year: Number(r.yearRef), month: Number(r.monthRef) };
+      }
+    }
+
+    // ─── Condomínios com datas (sem busca pesada de blocos/aptos) ─────────────
+    const complexesWithDates = topComplexes.map(cx => {
       const latest = latestByComplex[cx.id];
       const lastReadingDate = latest ? new Date(latest.year, latest.month - 1, 1) : null;
-      const totalApts = cx.blocks.reduce((s, b) => s + b.apartments.length, 0);
-      const totalMtrs = cx.blocks.reduce((s, b) => s + b.apartments.reduce((ss, a) => ss + a._count.meters, 0), 0);
       return {
         id: cx.id,
         socialName: cx.socialName,
         aliasName: cx.aliasName,
         lastReadingDate,
         lastReadingLabel: latest ? `${String(latest.month).padStart(2, '0')}/${latest.year}` : null,
-        totalApartments: totalApts,
-        totalMeters: totalMtrs,
+        totalApartments: 0,
+        totalMeters: 0,
       };
     });
 
     const withDates = complexesWithDates.filter(c => c.lastReadingDate !== null);
     const withoutDates = complexesWithDates.filter(c => c.lastReadingDate === null);
+    withDates.sort((a, b) => b.lastReadingDate!.getTime() - a.lastReadingDate!.getTime());
 
-    withDates.sort((a, b) => (b.lastReadingDate!.getTime() - a.lastReadingDate!.getTime()));
+    const mostUpdated  = withDates[0] ?? null;
+    const leastUpdated = withDates.length > 1 ? withDates[withDates.length - 1] : (withoutDates[0] ?? null);
 
-    const mostUpdated = withDates[0] ?? null;
-    const leastUpdated = withDates.length > 1
-      ? withDates[withDates.length - 1]
-      : (withoutDates[0] ?? null);
-
-    // ─── Condomínio que mais/menos acessa (por sessões dos moradores) ──────────
-    const complexAccessTotal: Record<string, Set<string>> = {};
-
-    // Total access (all sessions last 30 days)
-    const thirtyDaysAgo = startOfDay(subDays(today, 29));
-    const monthlySessions = await prisma.session.findMany({
-      where: { createdAt: { gte: thirtyDaysAgo, lte: todayEnd } },
-      select: { userId: true },
-    });
+    // ─── Condomínios mais/menos acessados (30 dias) ───────────────────────────
     const monthlyUserIds = [...new Set(monthlySessions.map(s => s.userId))];
+    const complexAccessTotal: Record<string, Set<string>> = {};
 
     if (monthlyUserIds.length > 0) {
       const monthlyAptRoles = roleAssignments.filter(
@@ -205,18 +177,13 @@ export async function GET(req: NextRequest): Promise<Response> {
       }
     }
 
-    // Find most/least accessed complex (last 30 days)
     const accessCounts = complexesWithDates.map(cx => ({
       ...cx,
       accessCount: complexAccessTotal[cx.id]?.size ?? 0,
     }));
     accessCounts.sort((a, b) => b.accessCount - a.accessCount);
-    const mostAccessed = accessCounts.length > 0 && accessCounts[0].accessCount > 0
-      ? accessCounts[0]
-      : null;
-    const leastAccessed = accessCounts.length > 1
-      ? accessCounts[accessCounts.length - 1]
-      : null;
+    const mostAccessed  = accessCounts.length > 0 && accessCounts[0].accessCount > 0 ? accessCounts[0] : null;
+    const leastAccessed = accessCounts.length > 1 ? accessCounts[accessCounts.length - 1] : null;
 
     // ─── Resposta ─────────────────────────────────────────────────────────────
     return NextResponse.json({

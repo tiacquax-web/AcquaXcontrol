@@ -10,11 +10,14 @@ interface getUsersProps {
     roleName?: string;
     contextType?: ContextType;
     contextId?: string;
+    complexId?: string;
+    blockId?: string;
+    roleId?: string;
     take?: number;
     skip?: number;
 }
 
-export const getUsers = async ({ userId, searchQuery, documentUser, roleName, contextType, contextId, take = 10, skip = 0 }: getUsersProps) => {
+export const getUsers = async ({ userId, searchQuery, documentUser, roleName, contextType, contextId, complexId, blockId, roleId, take = 10, skip = 0 }: getUsersProps) => {
   try {
     const params: any = {};
     if (searchQuery) params.search = searchQuery;
@@ -23,6 +26,9 @@ export const getUsers = async ({ userId, searchQuery, documentUser, roleName, co
     if (roleName) params.role_name = roleName;
     if (contextType) params.role_context_type = contextType;
     if (contextId) params.role_context_id = contextId;
+    if (complexId) params.complex_id = complexId;
+    if (blockId) params.block_id = blockId;
+    if (roleId) params.role_id = roleId;
     if (take) params.take = take;
     if (skip) params.skip = skip;
 
@@ -96,13 +102,17 @@ export const createBulkUsersForComplex = async ({
 interface ExportUsersProps {
   search?: string;
   userIds?: string[];
+  complexId?: string;
+  roleId?: string;
 }
 
-export const exportUsers = async ({ search, userIds = [] }: ExportUsersProps) => {
+export const exportUsers = async ({ search, userIds = [], complexId, roleId }: ExportUsersProps) => {
   try {
     const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/users/export`, {
       search,
-      userIds
+      userIds,
+      complexId: complexId || undefined,
+      roleId: roleId || undefined,
     }, {
       responseType: 'blob' // Importante para receber arquivo binário
     });

@@ -18,4 +18,5 @@ export const sidebarPermissionMap: Record<string, string> = {
   '/users': 'user',
   '/roles': 'role',
   '/guia': 'system',
+  '/apuracao': 'complex',
 };

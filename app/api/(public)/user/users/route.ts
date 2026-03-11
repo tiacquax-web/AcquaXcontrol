@@ -55,8 +55,11 @@ function getQueryParams(req: NextRequest) {
     const skip = parseInt(req.nextUrl.searchParams.get('skip') || '0')
     const orderBy = req.nextUrl.searchParams.get('orderBy') || 'createdAt'
     const orderDirection = req.nextUrl.searchParams.get('orderDirection') || 'desc'
+    const complexId = req.nextUrl.searchParams.get('complex_id') || undefined
+    const blockId = req.nextUrl.searchParams.get('block_id') || undefined
+    const roleId = req.nextUrl.searchParams.get('role_id') || undefined
 
-    return { getAvailableForEntity, userId, roleName, contextType, contextId, search, take, skip, orderBy, orderDirection }
+    return { getAvailableForEntity, userId, roleName, contextType, contextId, search, take, skip, orderBy, orderDirection, complexId, blockId, roleId }
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -70,15 +73,56 @@ export async function GET(req: NextRequest): Promise<Response> {
         const userId = validSession.userId
 
         // get query params
-        const { userId: searchUserId, search, take, contextId: roleContextId, contextType: roleContextType, roleName, skip, orderBy, orderDirection } = getQueryParams(req)
+        const { userId: searchUserId, search, take, contextId: roleContextId, contextType: roleContextType, roleName, skip, orderBy, orderDirection, complexId, blockId, roleId } = getQueryParams(req)
+
+        // Filtrar por complexo/bloco via RoleAssignment
+        let userIdsByContext: string[] | undefined = undefined;
+        if (complexId || blockId) {
+            const blockIds = blockId ? [blockId] : (await prisma.block.findMany({
+                where: { complexId, deletedAt: null }, select: { id: true }
+            })).map(b => b.id);
+            const aptIds = (await prisma.apartment.findMany({
+                where: { OR: [
+                    ...(complexId ? [{ complexId, deletedAt: null }] : []),
+                    ...(blockId ? [{ blockId, deletedAt: null }] : []),
+                ]}, select: { id: true }
+            })).map(a => a.id);
+            const assigns = await prisma.roleAssignment.findMany({
+                where: {
+                    deletedAt: null,
+                    OR: [
+                        ...(complexId ? [{ contextId: complexId, contextType: ContextType.complex }] : []),
+                        ...(blockIds.length ? [{ contextId: { in: blockIds }, contextType: ContextType.block }] : []),
+                        ...(aptIds.length ? [{ contextId: { in: aptIds }, contextType: ContextType.apartment }] : []),
+                    ]
+                },
+                select: { userId: true }
+            });
+            userIdsByContext = [...new Set(assigns.map(a => a.userId))];
+        }
+
+        // Filtrar por papel
+        let userIdsByRole: string[] | undefined = undefined;
+        if (roleId) {
+            const assigns = await prisma.roleAssignment.findMany({
+                where: { roleId, deletedAt: null }, select: { userId: true }
+            });
+            userIdsByRole = [...new Set(assigns.map(a => a.userId))];
+        }
 
         // identify context
         const contextType: ContextType | undefined = undefined
         const contextId = undefined
 
+        // Build AND filters for userIds
+        const andFilters: any[] = [];
+        if (userIdsByContext !== undefined) andFilters.push({ id: { in: userIdsByContext } });
+        if (userIdsByRole !== undefined) andFilters.push({ id: { in: userIdsByRole } });
+
         // extra where
-        const where = {
+        const where: any = {
             id: searchUserId ?? undefined,
+            ...(andFilters.length > 0 ? { AND: andFilters } : {}),
             Roles: !roleName ? undefined : {
                 some: {
                     Role: {

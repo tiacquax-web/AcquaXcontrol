@@ -17,6 +17,9 @@ interface useUsersProps {
     roleName?: string;
     contextType?: ContextType;
     contextId?: string;
+    complexId?: string;
+    blockId?: string;
+    roleId?: string;
     take?: number;
     skip?: number;
     enabled?: boolean;
@@ -29,6 +32,9 @@ export const useUsers = ({
     roleName, 
     contextType, 
     contextId, 
+    complexId,
+    blockId,
+    roleId,
     take = 10, 
     skip = 0,
     enabled = true 
@@ -58,6 +64,9 @@ export const useUsers = ({
                     roleName, 
                     contextType, 
                     contextId,
+                    complexId,
+                    blockId,
+                    roleId,
                     take,
                     skip
                 });
@@ -75,7 +84,7 @@ export const useUsers = ({
         };
 
         fetchUsers();
-    }, [debouncedSearchQuery, debouncedDocumentUser, contextType, contextId, userId, roleName, take, skip, enabled]);
+    }, [debouncedSearchQuery, debouncedDocumentUser, contextType, contextId, complexId, blockId, roleId, userId, roleName, take, skip, enabled]);
 
     const hasNextPage = skip + take < totalCount;
     const hasPreviousPage = skip > 0;
@@ -92,6 +101,9 @@ export const useUsers = ({
                 roleName, 
                 contextType, 
                 contextId,
+                complexId,
+                blockId,
+                roleId,
                 take,
                 skip
             });

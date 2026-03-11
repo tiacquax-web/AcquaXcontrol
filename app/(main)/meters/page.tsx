@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building, Building2, DoorClosed, Gauge, HousePlus, Plus, Search, Upload } from "lucide-react"
+import { Building, Building2, DoorClosed, Download, Gauge, HousePlus, Plus, Search, Upload } from "lucide-react"
 import { useMeters, useMeterMutations } from "@/hooks/useMeters"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -73,11 +73,38 @@ export default function MetersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [currentMeter, setCurrentMeter] = useState<Partial<Meter> | undefined>(undefined)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
   const { toast } = useToast()
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFilters((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleExportMeters = async () => {
+    setExportLoading(true)
+    try {
+      const axios = (await import('axios')).default
+      const response = await axios.post('/api/user/meters/export', {
+        search: filters.nameQuery,
+        complexId: filters.complex?.id || undefined,
+        blockId: filters.block?.id || undefined,
+      }, { responseType: 'blob' })
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `medidores_${new Date().toISOString().split('T')[0]}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      toast({ title: 'Exportação concluída!', description: 'Planilha baixada.' })
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error.response?.data?.error || error.message, variant: 'destructive' })
+    } finally {
+      setExportLoading(false)
+    }
   }
 
   const handleAddMeter = () => {
@@ -162,6 +189,10 @@ export default function MetersPage() {
             <div className="flex gap-2">
               <Button onClick={handleAddMeter}>
                 <Plus className="mr-2 h-4 w-4" /> Novo Medidor
+              </Button>
+              <Button variant="outline" onClick={handleExportMeters} disabled={exportLoading}>
+                {exportLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Exportar
               </Button>
               <Button variant="secondary" onClick={() => setIsImportDialogOpen(true)}>
                 <Upload className="mr-2 h-4 w-4" /> Importar Medidores

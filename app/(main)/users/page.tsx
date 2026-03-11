@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, Mail, Phone, Plus, Search, User as UserIcon, Download, ChevronLeft, ChevronRight } from "lucide-react"
+import { Loader2, Mail, Phone, Plus, Search, User as UserIcon, Download, ChevronLeft, ChevronRight, Filter, X } from "lucide-react"
 import { useUsers, useUserMutations } from "@/hooks/useUsers"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,12 +15,28 @@ import UserModal from "./user-modal"
 import type { User } from "@prisma/client"
 import { useRoleAssignmentMutations } from "@/hooks/useRoleAssignments"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import ComplexesCombobox from "@/components/ComboboxComplex"
+import BlocksCombobox from "@/components/ComboboxBlock"
+import { useRoles } from "@/hooks/useRoles"
+import { exportUsers } from "@/services/usersService"
+import type { Complex, Block } from "@prisma/client"
 
 export default function UsersPage() {
     const [searchQuery, setSearchQuery] = useState("")
     const [currentPage, setCurrentPage] = useState(1)
     const [itemsPerPage] = useState(20)
     const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set())
+    
+    // Filtros de busca por complexo/bloco
+    const [filterComplexId, setFilterComplexId] = useState("")
+    const [filterBlockId, setFilterBlockId] = useState("")
+    const [filterRoleId, setFilterRoleId] = useState("")
+    const [filterComplex, setFilterComplex] = useState<Complex | undefined>(undefined)
+    const [filterBlock, setFilterBlock] = useState<Block | undefined>(undefined)
+    const [showFilters, setShowFilters] = useState(false)
     
     const skip = (currentPage - 1) * itemsPerPage
     const take = itemsPerPage
@@ -36,18 +52,28 @@ export default function UsersPage() {
     } = useUsers({ 
         searchQuery,
         take,
-        skip
+        skip,
+        complexId: filterComplexId || undefined,
+        blockId: filterBlockId || undefined,
+        roleId: filterRoleId || undefined,
     })
     
-    const { createUser, updateUser, deleteUser, exportUsers, error: mutationError } = useUserMutations()
+    const { createUser, updateUser, deleteUser, error: mutationError } = useUserMutations()
     const { deleteRoleAssignment, error: errorDeleteRoleAssignment, loading: loadingDeleteRoleAssignment } = useRoleAssignmentMutations()
+    const { roles } = useRoles({})
     const [currentUser, setCurrentUser] = useState<Partial<User> | undefined>(undefined)
     const [exportLoading, setExportLoading] = useState(false)
+    const [showExportModal, setShowExportModal] = useState(false)
+    const [exportComplexId, setExportComplexId] = useState("")
+    const [exportComplex, setExportComplex] = useState<Complex | undefined>(undefined)
+    const [exportRoleId, setExportRoleId] = useState("")
     const { toast } = useToast()
+
+    const hasActiveFilters = !!(filterComplexId || filterBlockId || filterRoleId)
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearchQuery(e.target.value)
-        setCurrentPage(1) // Reset page when searching
+        setCurrentPage(1)
     }
 
     const handleAddUser = () => {
@@ -69,12 +95,10 @@ export default function UsersPage() {
                     title: `${updatedUser.name.split(' ')[0] ?? 'Usuário'} atualizado com sucesso 😉`,
                     description: "O usuário foi atualizado com sucesso.",
                 })
-                // Refetch the data to update the list
                 refetch()
                 handleCloseForm()
             } else {
                 const createdUser = await createUser(userData as User)
-                console.log("createdUser", createdUser)
                 if (!createdUser)
                     return
                 
@@ -82,7 +106,6 @@ export default function UsersPage() {
                     title: `${createdUser.name ?? 'Novo usuário'} agora está no sistema ☺️`,
                     description: "O usuário foi criado com sucesso.",
                 })
-                // Refetch the data to update the list
                 refetch()
                 handleCloseForm()
             }
@@ -99,7 +122,6 @@ export default function UsersPage() {
                     title: "Usuário excluído com sucesso",
                     description: "O usuário foi excluído com sucesso.",
                 })
-                // Refetch the data to update the list
                 refetch()
             } catch (error) {
                 console.error("Erro ao excluir usuário:", error)
@@ -152,12 +174,22 @@ export default function UsersPage() {
         }
     }
 
+    const handleOpenExportModal = () => {
+        setExportComplexId(filterComplexId || "")
+        setExportComplex(filterComplex)
+        setExportRoleId(filterRoleId || "")
+        setShowExportModal(true)
+    }
+
     const handleExportUsers = async () => {
         setExportLoading(true)
+        setShowExportModal(false)
         try {
             await exportUsers({
                 search: searchQuery,
-                userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : []
+                userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : [],
+                complexId: exportComplexId || undefined,
+                roleId: exportRoleId || undefined,
             })
             
             toast({
@@ -165,7 +197,6 @@ export default function UsersPage() {
                 description: "Planilha baixada com sucesso.",
             })
             
-            // Clear selection after export
             setSelectedUsers(new Set())
             
         } catch (error: any) {
@@ -177,6 +208,15 @@ export default function UsersPage() {
         } finally {
             setExportLoading(false)
         }
+    }
+
+    const clearFilters = () => {
+        setFilterComplexId("")
+        setFilterComplex(undefined)
+        setFilterBlockId("")
+        setFilterBlock(undefined)
+        setFilterRoleId("")
+        setCurrentPage(1)
     }
 
     const totalPages = Math.ceil(totalCount / itemsPerPage)
@@ -218,13 +258,18 @@ export default function UsersPage() {
                             <CardDescription>Gerencie seus usuários e seus detalhes</CardDescription>
                         </div>
                         <div className="flex gap-2">
-                            <Button variant="outline" onClick={handleExportUsers} disabled={exportLoading}>
+                            <Button variant="outline" onClick={handleOpenExportModal} disabled={exportLoading}>
                                 {exportLoading ? (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 ) : (
                                     <Download className="mr-2 h-4 w-4" />
                                 )}
-                                Exportar Usuários
+                                Exportar
+                            </Button>
+                            <Button variant="outline" onClick={() => setShowFilters(!showFilters)}>
+                                <Filter className="mr-2 h-4 w-4" />
+                                Filtros
+                                {hasActiveFilters && <Badge className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs" variant="destructive">!</Badge>}
                             </Button>
                             <Button onClick={handleAddUser}>
                                 <Plus className="mr-2 h-4 w-4" /> Adicionar Usuário
@@ -233,7 +278,7 @@ export default function UsersPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="flex flex-col space-y-4">
-                            <div className="relative flex-1 mb-6">
+                            <div className="relative flex-1 mb-2">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     type="text"
@@ -243,6 +288,66 @@ export default function UsersPage() {
                                     className="pl-8"
                                 />
                             </div>
+
+                            {/* Filtros avançados */}
+                            {showFilters && (
+                                <div className="border rounded-lg p-4 bg-muted/30 space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-sm font-semibold">Filtrar usuários por:</Label>
+                                        {hasActiveFilters && (
+                                            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs">
+                                                <X className="h-3 w-3 mr-1" /> Limpar filtros
+                                            </Button>
+                                        )}
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                        <div className="space-y-1">
+                                            <Label className="text-xs text-muted-foreground">Condomínio</Label>
+                                            <ComplexesCombobox
+                                                complex={filterComplex as any}
+                                                setSelectedComplex={(c) => {
+                                                    setFilterComplex(c as Complex)
+                                                    setFilterComplexId(c?.id || "")
+                                                    setFilterBlock(undefined)
+                                                    setFilterBlockId("")
+                                                    setCurrentPage(1)
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs text-muted-foreground">Bloco</Label>
+                                            <BlocksCombobox
+                                                block={filterBlock as any}
+                                                complexId={filterComplexId || undefined}
+                                                setSelectedBlock={(b) => {
+                                                    setFilterBlock(b as Block)
+                                                    setFilterBlockId(b?.id || "")
+                                                    setCurrentPage(1)
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs text-muted-foreground">Papel</Label>
+                                            <Select value={filterRoleId || "all"} onValueChange={(v) => { setFilterRoleId(v === "all" ? "" : v); setCurrentPage(1) }}>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Todos os papéis" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">Todos os papéis</SelectItem>
+                                                    {roles.map(r => (
+                                                        <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                    {hasActiveFilters && (
+                                        <p className="text-xs text-muted-foreground">
+                                            Filtros ativos: {[filterComplex?.socialName, filterBlock?.name, roles.find(r => r.id === filterRoleId)?.name].filter(Boolean).join(' › ')}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
 
                             {loading ? (
                                 <div className="flex justify-center items-center py-8">
@@ -384,6 +489,58 @@ export default function UsersPage() {
                 handleDeleteRoleAssignment={handleDeleteRoleAssignment}
                 user={currentUser as User}
             />
+
+            {/* Modal de Exportação com filtros */}
+            <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
+                <DialogContent className="sm:max-w-[480px]">
+                    <DialogHeader>
+                        <DialogTitle>Exportar Usuários</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        {selectedUsers.size > 0 && (
+                            <p className="text-sm text-muted-foreground bg-muted/50 rounded p-2">
+                                {selectedUsers.size} usuário(s) selecionado(s) — somente eles serão exportados.
+                            </p>
+                        )}
+                        <div className="space-y-2">
+                            <Label>Filtrar por Condomínio <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+                            <ComplexesCombobox
+                                complex={exportComplex as any}
+                                setSelectedComplex={(c) => {
+                                    setExportComplex(c as Complex)
+                                    setExportComplexId(c?.id || "")
+                                }}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Filtrar por Papel <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+                            <Select value={exportRoleId || "all"} onValueChange={(v) => setExportRoleId(v === "all" ? "" : v)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Todos os papéis" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos os papéis</SelectItem>
+                                    {roles.map(r => (
+                                        <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {!exportComplexId && !exportRoleId && selectedUsers.size === 0 && (
+                            <p className="text-xs text-amber-600">
+                                Sem filtros selecionados, todos os usuários serão exportados.
+                            </p>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowExportModal(false)}>Cancelar</Button>
+                        <Button onClick={handleExportUsers} disabled={exportLoading}>
+                            <Download className="mr-2 h-4 w-4" />
+                            Exportar
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

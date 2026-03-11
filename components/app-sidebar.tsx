@@ -9,7 +9,7 @@ import {
   CircleGauge, Building2, Building, DoorClosed,
   Gauge, ShieldCheck, HousePlus, ReceiptText,
   ChartBarIncreasing, LayoutDashboard, GaugeCircle,
-  Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen,
+  Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen, ClipboardList,
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
@@ -67,6 +67,13 @@ const items = [
     url: "/reservoir-monitoring",
     icon: Droplets,
     group: 'Geral',
+  },
+  {
+    title: "Apuração",
+    url: "/apuracao",
+    icon: ClipboardList,
+    group: 'Geral',
+    requiresCreate: true, // somente para quem tem permissão de criar condomínios (admin/programador)
   },
   {
     title: "Guia de Uso",
