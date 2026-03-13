@@ -89,6 +89,42 @@ export async function GET(req: NextRequest): Promise<Response> {
       }),
     ]);
 
+    const topComplexIds = topComplexes.map((cx) => cx.id);
+    const [apartmentsByComplex, metersByComplex] = topComplexIds.length > 0
+      ? await Promise.all([
+          prisma.apartment.groupBy({
+            by: ['complexId'],
+            where: {
+              complexId: { in: topComplexIds },
+              deletedAt: null,
+            },
+            _count: { _all: true },
+          }),
+          prisma.meter.groupBy({
+            by: ['complexId'],
+            where: {
+              complexId: { in: topComplexIds },
+              deletedAt: null,
+            },
+            _count: { _all: true },
+          }),
+        ])
+      : [[], []];
+
+    const apartmentsCountByComplex = new Map<string, number>();
+    apartmentsByComplex.forEach((row) => {
+      if (row.complexId) {
+        apartmentsCountByComplex.set(row.complexId, row._count._all);
+      }
+    });
+
+    const metersCountByComplex = new Map<string, number>();
+    metersByComplex.forEach((row) => {
+      if (row.complexId) {
+        metersCountByComplex.set(row.complexId, row._count._all);
+      }
+    });
+
     // ─── Conjuntos de usuários por tipo ───────────────────────────────────────
     const systemUsers    = new Set(roleAssignments.filter(r => r.contextType === 'system').map(r => r.userId));
     const companyUsers   = new Set(roleAssignments.filter(r => r.contextType === 'company').map(r => r.userId));
@@ -141,8 +177,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         aliasName: cx.aliasName,
         lastReadingDate,
         lastReadingLabel: latest ? `${String(latest.month).padStart(2, '0')}/${latest.year}` : null,
-        totalApartments: 0,
-        totalMeters: 0,
+        totalApartments: apartmentsCountByComplex.get(cx.id) ?? 0,
+        totalMeters: metersCountByComplex.get(cx.id) ?? 0,
       };
     });
 
