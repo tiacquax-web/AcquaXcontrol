@@ -297,13 +297,14 @@ async function getEntityData(userId: string, entityType: PermissionableEntity, e
     }
 }
 
-async function getEntityListData(userId: string, entityType: PermissionableEntity, contextType?: ContextType, contextId?: string, search?: string, where?: any, take: number = 10, include: any = {}, skip: number = 0, orderBy: string = 'id', orderDirection: 'asc' | 'desc' = 'desc'): Promise<{ entity: any[] | null, error: string | null, status: number, totalCount?: number }> {
+async function getEntityListData(userId: string, entityType: PermissionableEntity, contextType?: ContextType, contextId?: string, search?: string, where?: any, take: number = 10, include: any = undefined, skip: number = 0, orderBy: string = 'id', orderDirection: 'asc' | 'desc' = 'desc'): Promise<{ entity: any[] | null, error: string | null, status: number, totalCount?: number }> {
     // console.log("########## getEntityListData ##########")
     // console.log({ userId, entityType, contextType, contextId, search, where, take, skip, include })
     try {
         const contexts = await getUserContextsForActionOnEntity(userId, entityType, 'read');
         const hasSystemPermission = !!contexts.system;
         const extraWhere = where ?? {};
+        const includeData = include && Object.keys(include).length > 0 ? include : undefined;
 
         switch (entityType) {
             // Places (Contexts)
@@ -345,7 +346,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             extraWhere,
                         ]
                     }),
-                    include: include ? include : undefined,
+                    include: includeData,
                     take: take < 200 ? take : 200,
                     skip: skip ? skip : 0,
                 };
@@ -372,7 +373,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             extraWhere,
                         ]
                     }),
-                    include: include ? include : undefined,
+                    include: includeData,
                     take: take < 200 ? take : 200,
                 };
                 const blocks = await prisma.block.findMany(blocksQuery);
@@ -401,7 +402,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             extraWhere,
                         ]
                     }),
-                    include: include ? include : undefined,
+                    include: includeData,
                     take: take < 2000 ? take : 2000,
                     orderBy: orderBy ? { [orderBy]: orderDirection } : undefined,
                 };
@@ -436,7 +437,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 };
                 const meters = await prisma.meter.findMany({
                     ...meterQuery,
-                    include: include && Object.keys(include).length > 0 ? include : undefined,
+                    include: includeData,
                     take: take < 200 ? take : 200,
                     skip: skip ? skip : 0,
                     orderBy: { [orderBy]: orderDirection },
@@ -589,7 +590,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     ...readingsQuery,
                     take: take < 10000 ? take : 10000, // Permite até 10.000 registros para exportação de leituras
                     skip: skip ? skip : 0,
-                    include: include ? include : undefined,
+                    include: includeData,
                 })
                 const readingsCount = await prisma.reading.count(({ where: { ...readingsQuery.where } }));
                 console.log('------------------------------------LENGTH', readingsCount)
@@ -639,7 +640,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     ...dealershipReadingsQuery,
                     take: take < 20 ? take : 20,
                     skip: skip ? skip : 0,
-                    include: include ? include : undefined,
+                    include: includeData,
                 });
 
                 const dealershipReadingsCount = await prisma.dealershipReading.count({ 
@@ -681,7 +682,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     ...apartmentConsumptionReportQuery,
                     take: take < 2000 ? take : 2000, // Permite até 2.000 registros para exportação
                     skip: skip ? skip : 0,
-                    include: include ? include : undefined,
+                    include: includeData,
                     orderBy: orderBy === 'apartment.name' ? {
                         apartment: {
                             name: orderDirection as 'asc' | 'desc'
@@ -719,7 +720,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     },
                     take: take < 200 ? take : 200,
                     skip: skip ? skip : 0,
-                    include: include ? include : undefined,
+                    include: includeData,
                     orderBy: orderBy ? { [orderBy]: orderDirection } : { createdAt: orderDirection },
                 };
                 
@@ -768,7 +769,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             extraWhere,
                         ]
                     },
-                    include: include ? include : undefined,
+                    include: includeData,
                     take: take < 200 ? take : 200,
                 });
                 return { entity: roleAssignments, error: null, status: 200 };
@@ -827,7 +828,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     take: take < 200 ? take : 200,
                     skip,
                     orderBy: { [orderBy]: orderDirection },
-                    include: include ? include : {
+                    include: includeData ?? {
                         company: {
                             select: { id: true, name: true }
                         }
@@ -870,7 +871,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     take: take < 200 ? take : 200,
                     skip,
                     orderBy: { [orderBy]: orderDirection },
-                    include: include ? include : {
+                    include: includeData ?? {
                         reservoir: {
                             select: { id: true, name: true, type: true, companyId: true }
                         }
