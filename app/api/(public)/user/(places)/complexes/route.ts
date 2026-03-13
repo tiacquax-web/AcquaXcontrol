@@ -10,10 +10,10 @@ function getQueryParams(req: NextRequest) {
     const complexId = req.nextUrl.searchParams.get('id') || undefined
     const blockId = req.nextUrl.searchParams.get('block_id') || undefined
     const apartmentId = req.nextUrl.searchParams.get('apartment_id') || undefined
-    const withCompany = req.nextUrl.searchParams.get('with_company') || undefined
-    const withBlocksCount = req.nextUrl.searchParams.get('with_blocks_count') || false
-    const withApartmentsCount = req.nextUrl.searchParams.get('with_apartments_count') || false
-    const withMetersCount = req.nextUrl.searchParams.get('with_meters_count') || false
+    const withCompany = req.nextUrl.searchParams.get('with_company') === 'true'
+    const withBlocksCount = req.nextUrl.searchParams.get('with_blocks_count') === 'true'
+    const withApartmentsCount = req.nextUrl.searchParams.get('with_apartments_count') === 'true'
+    const withMetersCount = req.nextUrl.searchParams.get('with_meters_count') === 'true'
     const onlyWithReservoirs = req.nextUrl.searchParams.get('onlyWithReservoirs') === 'true'
     const socialNames = req.nextUrl.searchParams.get('socialNames') || '[]'
 
@@ -23,8 +23,10 @@ function getQueryParams(req: NextRequest) {
 
     // parâmetros de consulta - padrão
     const search = req.nextUrl.searchParams.get('search') || ''
-    const take = parseInt(req.nextUrl.searchParams.get('take') || '12')
-    const skip = parseInt(req.nextUrl.searchParams.get('skip') || '0')
+    const takeRaw = parseInt(req.nextUrl.searchParams.get('take') || '12')
+    const skipRaw = parseInt(req.nextUrl.searchParams.get('skip') || '0')
+    const take = Number.isFinite(takeRaw) && takeRaw > 0 ? Math.min(takeRaw, 500) : 12
+    const skip = Number.isFinite(skipRaw) && skipRaw >= 0 ? skipRaw : 0
     const orderBy = req.nextUrl.searchParams.get('orderBy') || 'createdAt'
     const orderDirection = req.nextUrl.searchParams.get('orderDirection') || 'desc'
 
@@ -72,8 +74,28 @@ export async function GET(req: NextRequest): Promise<Response> {
         // retorna complexos disponíveis para entidade se solicitado
         if (getAvailableForEntity) {
             console.log("######### Buscando complexos disponíveis para entidade:", getAvailableForEntity)
-            const { list, totalCount } = await getAvailableComplexesForEntity(userId, getAvailableForEntity, search, companyId, where, !!withBlocksCount, !!withApartmentsCount, !!withMetersCount, false, onlyWithReservoirs, take, skip)
-            return NextResponse.json({ list, totalCount })
+            try {
+                const { list, totalCount } = await getAvailableComplexesForEntity(
+                    userId,
+                    getAvailableForEntity,
+                    search,
+                    companyId,
+                    where,
+                    withBlocksCount,
+                    withApartmentsCount,
+                    withMetersCount,
+                    false,
+                    onlyWithReservoirs,
+                    take,
+                    skip
+                )
+                return NextResponse.json({ list, totalCount })
+            } catch (availableError) {
+                console.error("Falha ao buscar complexos por disponibilidade, aplicando fallback:", availableError)
+                const fallback = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)
+                if (fallback.error) return NextResponse.json({ error: fallback.error }, { status: fallback.status })
+                return NextResponse.json({ list: fallback.entity ?? [], totalCount: fallback.totalCount ?? (fallback.entity?.length ?? 0) })
+            }
         }
         
         const { entity, error, status, totalCount } = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)

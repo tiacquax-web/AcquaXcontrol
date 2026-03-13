@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useEffect, useMemo, useState, forwardRef } from "react"
+import { useEffect, useState, forwardRef } from "react"
 import { Building2, Check, ChevronsUpDown, Loader2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
@@ -30,11 +30,12 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState("")
     const { complexes, loading, error } = useComplexes({ 
+      nameQuery: search,
       companyId,
       getAvailableForEntity,
       enabled: !disabled,
       withCompany,
-      take: 2000,
+      take: 300,
       skip: 0,
     })
     const [selectedId, setSelectedId] = useState<string | undefined>(complex?.id)
@@ -56,12 +57,6 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
         setAutoSelected(true)
       }
     }, [complexes, loading, autoSelectSingle, selectedId, autoSelected, setSelectedComplex])
-
-    const normalizedSearch = search.trim().toLowerCase()
-    const filteredComplexes = useMemo(() => {
-      if (!normalizedSearch) return complexes
-      return complexes.filter((c) => (c.socialName || "").toLowerCase().includes(normalizedSearch))
-    }, [complexes, normalizedSearch])
 
     const handleSelect = (value: string) => {
       if (value === selectedId) {
@@ -150,7 +145,7 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
                 <CommandEmpty>Nenhum condomínio encontrada.</CommandEmpty>
                 <CommandGroup>
                   <CommandList>
-                    {filteredComplexes.map((complex) => (
+                    {complexes.map((complex) => (
                       <CommandItem key={complex.id} value={complex.id} onSelect={handleSelect} className="cursor-pointer">
                         <Check
                           className={cn("mr-2 h-4 w-4", selectedId === complex.id ? "opacity-100" : "opacity-0")}
