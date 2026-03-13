@@ -57,7 +57,12 @@ export async function GET(req: NextRequest): Promise<Response> {
         // Apartamentos acessíveis pelo usuário:
         // - vínculo direto de apartamento
         // - herança por bloco/condomínio/empresa (contextos superiores)
-        const apartmentWhereOr: any[] = [];
+        const apartmentWhereOr: Array<
+            | { id: { in: string[] } }
+            | { blockId: { in: string[] } }
+            | { complexId: { in: string[] } }
+            | { companyId: { in: string[] } }
+        > = [];
         if (apartmentIds.length > 0) apartmentWhereOr.push({ id: { in: apartmentIds } });
         if (blockIds.length > 0) apartmentWhereOr.push({ blockId: { in: blockIds } });
         if (complexIds.length > 0) apartmentWhereOr.push({ complexId: { in: complexIds } });
@@ -87,10 +92,10 @@ export async function GET(req: NextRequest): Promise<Response> {
         // Ordenação estável para manter UX consistente no dashboard
         const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
         apartments.sort((a, b) => {
-            const cxA = (a.block as any)?.complex?.socialName || '';
-            const cxB = (b.block as any)?.complex?.socialName || '';
-            const blockA = (a.block as any)?.name || '';
-            const blockB = (b.block as any)?.name || '';
+            const cxA = a.block?.complex?.socialName || '';
+            const cxB = b.block?.complex?.socialName || '';
+            const blockA = a.block?.name || '';
+            const blockB = b.block?.name || '';
             const aptA = a.name || '';
             const aptB = b.name || '';
 
@@ -135,7 +140,7 @@ export async function GET(req: NextRequest): Promise<Response> {
             // Helper: IDs únicos de condomínios que o usuário acessa (via apartamento, bloco ou direto)
             accessibleComplexIds: [
                 ...new Set([
-                    ...apartments.map(a => (a.block as any)?.complexId || (a.block as any)?.complex?.id).filter(Boolean),
+                    ...apartments.map(a => a.block?.complexId || a.block?.complex?.id).filter(Boolean),
                     ...blocks.map(b => b.complexId).filter(Boolean),
                     ...complexIds,
                 ])

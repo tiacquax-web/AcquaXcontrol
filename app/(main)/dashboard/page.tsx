@@ -281,10 +281,10 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
     if (apartments.length <= 1) return apartments;
     const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
     return [...apartments].sort((a, b) => {
-      const aBlock = (a.block as any)?.name ?? '';
-      const bBlock = (b.block as any)?.name ?? '';
-      const aComplex = (a.block as any)?.complex?.socialName ?? '';
-      const bComplex = (b.block as any)?.complex?.socialName ?? '';
+      const aBlock = a.block?.name ?? '';
+      const bBlock = b.block?.name ?? '';
+      const aComplex = a.block?.complex?.socialName ?? '';
+      const bComplex = b.block?.complex?.socialName ?? '';
 
       const complexCmp = collator.compare(aComplex, bComplex);
       if (complexCmp !== 0) return complexCmp;
@@ -374,7 +374,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
         {!singleApartment && sortedApartments.length > 1 && (
           <div className="flex gap-2 flex-wrap">
             {sortedApartments.map(apt => {
-              const block = apt.block as any;
+              const block = apt.block;
               const cx = block?.complex;
               return (
                 <Button
@@ -396,8 +396,8 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
           <div className="rounded-lg border px-3 py-2 text-xs text-muted-foreground bg-muted/30">
             <span className="font-medium text-foreground">Unidade ativa: </span>
             <span>
-              {(activeApartment.block as any)?.complex?.socialName ? `${(activeApartment.block as any).complex.socialName} — ` : ''}
-              Bl. {(activeApartment.block as any)?.name} · Apto {activeApartment.name}
+              {activeApartment.block?.complex?.socialName ? `${activeApartment.block.complex.socialName} — ` : ''}
+              Bl. {activeApartment.block?.name} · Apto {activeApartment.name}
             </span>
           </div>
         )}
