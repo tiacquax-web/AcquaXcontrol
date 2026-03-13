@@ -39,19 +39,40 @@ async function listComplexesFallback(params: {
 
     // Busca maior e pagina em memória para evitar falhas em count/orderBy/contains no banco
     const expandedTake = Math.min(Math.max(skip + take, 200), 5000)
-    const include = withCompany ? { company: { select: { id: true, name: true } } } : undefined
+    const safeSelect: any = {
+        id: true,
+        socialName: true,
+        aliasName: true,
+        documentCompany: true,
+        city: true,
+        state: true,
+        status: true,
+        telephone: true,
+        cell: true,
+        companyId: true,
+    }
+    if (withCompany) {
+        safeSelect.company = {
+            select: {
+                id: true,
+                name: true,
+                socialName: true,
+            }
+        }
+    }
 
     let baseList: any[] = []
     try {
         baseList = await prisma.complex.findMany({
             where,
-            include,
+            select: safeSelect,
             take: expandedTake,
         })
     } catch (queryError) {
-        console.warn("Fallback query with include failed, retrying without include:", queryError)
+        console.warn("Fallback query with safe select failed, retrying with minimal select:", queryError)
         baseList = await prisma.complex.findMany({
             where,
+            select: { id: true, socialName: true, companyId: true },
             take: expandedTake,
         })
     }
