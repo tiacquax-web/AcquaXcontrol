@@ -15,33 +15,38 @@ async function listComplexesFallback(params: {
     withCompany?: boolean
 }) {
     const { search, take, skip, companyId, complexId, socialNamesParam, withCompany } = params
-    const andWhere: any[] = [
-        { deletedAt: null }
-    ]
+    const where: any = {}
+    if (companyId) where.companyId = companyId
+    if (complexId) where.id = complexId
+    if (socialNamesParam && socialNamesParam.length > 0) where.socialName = { in: socialNamesParam }
 
-    if (companyId) andWhere.push({ companyId })
-    if (complexId) andWhere.push({ id: complexId })
-    if (socialNamesParam && socialNamesParam.length > 0) andWhere.push({ socialName: { in: socialNamesParam } })
-    if (search) andWhere.push({ socialName: { contains: search } })
-
-    const where = { AND: andWhere }
+    // Busca maior e pagina em memória para evitar falhas em count/orderBy/contains no banco
+    const expandedTake = Math.min(Math.max(skip + take, 50), 2000)
     const include = withCompany ? { company: { select: { id: true, name: true } } } : undefined
 
-    const list = await prisma.complex.findMany({
-        where,
-        include,
-        take,
-        skip,
-        orderBy: { socialName: 'asc' }
-    })
-    let totalCount = list.length
+    let baseList: any[] = []
     try {
-        totalCount = await prisma.complex.count({ where })
-    } catch (countError) {
-        console.warn("Direct fallback count failed, using list length:", countError)
+        baseList = await prisma.complex.findMany({
+            where,
+            include,
+            take: expandedTake,
+        })
+    } catch (queryError) {
+        console.warn("Fallback query with include failed, retrying without include:", queryError)
+        baseList = await prisma.complex.findMany({
+            where,
+            take: expandedTake,
+        })
     }
 
-    return { list, totalCount }
+    const normalizedSearch = search.trim().toLowerCase()
+    const filtered = normalizedSearch
+        ? baseList.filter((complex: any) => (complex?.socialName || "").toLowerCase().includes(normalizedSearch))
+        : baseList
+
+    filtered.sort((a: any, b: any) => (a?.socialName || "").localeCompare(b?.socialName || ""))
+    const list = filtered.slice(skip, skip + take)
+    return { list, totalCount: filtered.length }
 }
 
 function getQueryParams(req: NextRequest) {
@@ -185,6 +190,30 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     } catch (error: any) {
         console.error("Erro ao buscar complexos:", error)
+        try {
+            const { withCompany, companyId, complexId, search, take, skip, socialNames } = getQueryParams(req)
+            let socialNamesParam: string[] | undefined
+            if (socialNames) {
+                try {
+                    const parsed = JSON.parse(socialNames)
+                    if (Array.isArray(parsed)) socialNamesParam = parsed
+                } catch (_e) {
+                    socialNamesParam = undefined
+                }
+            }
+            const direct = await listComplexesFallback({
+                search,
+                take,
+                skip,
+                companyId,
+                complexId,
+                socialNamesParam,
+                withCompany,
+            })
+            return NextResponse.json(direct)
+        } catch (fallbackError) {
+            console.error("Fallback final de complexos também falhou:", fallbackError)
+        }
         return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
     }
 }
