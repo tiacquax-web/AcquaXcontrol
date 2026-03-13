@@ -3,6 +3,43 @@ import { createEntity, deleteEntity, getAvailableComplexesForEntity, getEntityLi
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { Complex, ContextType } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
+
+async function listComplexesFallback(params: {
+    search: string
+    take: number
+    skip: number
+    companyId?: string
+    complexId?: string
+    socialNamesParam?: string[]
+    withCompany?: boolean
+}) {
+    const { search, take, skip, companyId, complexId, socialNamesParam, withCompany } = params
+    const andWhere: any[] = [
+        { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
+    ]
+
+    if (companyId) andWhere.push({ companyId })
+    if (complexId) andWhere.push({ id: complexId })
+    if (socialNamesParam && socialNamesParam.length > 0) andWhere.push({ socialName: { in: socialNamesParam } })
+    if (search) andWhere.push({ socialName: { contains: search } })
+
+    const where = { AND: andWhere }
+    const include = withCompany ? { company: { select: { id: true, name: true } } } : undefined
+
+    const [list, totalCount] = await Promise.all([
+        prisma.complex.findMany({
+            where,
+            include,
+            take,
+            skip,
+            orderBy: { socialName: 'asc' }
+        }),
+        prisma.complex.count({ where })
+    ])
+
+    return { list, totalCount }
+}
 
 function getQueryParams(req: NextRequest) {
     // parâmetros de consulta - customizados
@@ -93,14 +130,37 @@ export async function GET(req: NextRequest): Promise<Response> {
             } catch (availableError) {
                 console.error("Falha ao buscar complexos por disponibilidade, aplicando fallback:", availableError)
                 const fallback = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)
-                if (fallback.error) return NextResponse.json({ error: fallback.error }, { status: fallback.status })
-                return NextResponse.json({ list: fallback.entity ?? [], totalCount: fallback.totalCount ?? (fallback.entity?.length ?? 0) })
+                if (fallback.error || !fallback.entity) {
+                    console.warn("Fallback com contexto também falhou; aplicando fallback direto de banco.")
+                    const direct = await listComplexesFallback({
+                        search,
+                        take,
+                        skip,
+                        companyId,
+                        complexId,
+                        socialNamesParam,
+                        withCompany,
+                    })
+                    return NextResponse.json(direct)
+                }
+                return NextResponse.json({ list: fallback.entity, totalCount: fallback.totalCount ?? fallback.entity.length })
             }
         }
         
         const { entity, error, status, totalCount } = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)
-        if (error) return NextResponse.json({ error }, { status })
-        if (!entity) return NextResponse.json({ error: 'Erro interno do servidor - Entidade não encontrada' }, { status: 500 })
+        if (error || !entity) {
+            console.warn("Consulta principal de complexos falhou; aplicando fallback direto de banco.", { error, status })
+            const direct = await listComplexesFallback({
+                search,
+                take,
+                skip,
+                companyId,
+                complexId,
+                socialNamesParam,
+                withCompany,
+            })
+            return NextResponse.json(direct)
+        }
 
         console.log("######### Complexos encontrados:", entity.length)
 

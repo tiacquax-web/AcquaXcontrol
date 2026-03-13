@@ -35,7 +35,7 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
       getAvailableForEntity,
       enabled: !disabled,
       withCompany,
-      take: 300,
+      take: 500,
       skip: 0,
     })
     const [selectedId, setSelectedId] = useState<string | undefined>(complex?.id)
