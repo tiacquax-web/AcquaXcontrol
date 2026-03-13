@@ -24,7 +24,7 @@ interface SelectCompanyProps {
 }
 
 const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
-  ({ setSelectedCompany, company, required, name, disabled, getAvailableForEntity, modal = false, autoSelectSingle = true }, ref) => {
+  ({ setSelectedCompany, company, required, name, disabled, getAvailableForEntity, modal = false }, ref) => {
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState("")
     const { companies, loading, error } = useCompanies({ nameQuery: search, getAvailableForEntity })
@@ -41,12 +41,12 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
 
     // Auto-seleciona quando só há 1 empresa disponível
     useEffect(() => {
-      if (autoSelectSingle && !loading && companies.length === 1 && !selectedId && !autoSelected) {
+      if (!loading && companies.length === 1 && !selectedId && !autoSelected) {
         setSelectedId(companies[0].id)
         setSelectedCompany(companies[0])
         setAutoSelected(true)
       }
-    }, [companies, loading, autoSelectSingle, selectedId, autoSelected, setSelectedCompany])
+    }, [companies, loading, selectedId, autoSelected, setSelectedCompany])
 
     const handleSelect = (value: string) => {
       if (value === selectedId) {
@@ -77,7 +77,9 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
     }
 
     // Oculta o seletor se só há 1 empresa (já auto-selecionada)
-    if (autoSelectSingle && !loading && companies.length === 1) {
+    // Mesmo que autoSelectSingle=false em alguma tela, se só existe uma empresa
+    // o filtro fica redundante e é ocultado.
+    if (!loading && companies.length === 1) {
       return null
     }
 
