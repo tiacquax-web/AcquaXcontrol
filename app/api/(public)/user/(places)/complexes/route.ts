@@ -16,7 +16,7 @@ async function listComplexesFallback(params: {
 }) {
     const { search, take, skip, companyId, complexId, socialNamesParam, withCompany } = params
     const andWhere: any[] = [
-        { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
+        { deletedAt: null }
     ]
 
     if (companyId) andWhere.push({ companyId })
@@ -27,16 +27,19 @@ async function listComplexesFallback(params: {
     const where = { AND: andWhere }
     const include = withCompany ? { company: { select: { id: true, name: true } } } : undefined
 
-    const [list, totalCount] = await Promise.all([
-        prisma.complex.findMany({
-            where,
-            include,
-            take,
-            skip,
-            orderBy: { socialName: 'asc' }
-        }),
-        prisma.complex.count({ where })
-    ])
+    const list = await prisma.complex.findMany({
+        where,
+        include,
+        take,
+        skip,
+        orderBy: { socialName: 'asc' }
+    })
+    let totalCount = list.length
+    try {
+        totalCount = await prisma.complex.count({ where })
+    } catch (countError) {
+        console.warn("Direct fallback count failed, using list length:", countError)
+    }
 
     return { list, totalCount }
 }
@@ -107,6 +110,20 @@ export async function GET(req: NextRequest): Promise<Response> {
                 },
             }
         } : undefined
+
+        // Fast path para combobox/filtros (sem contagens pesadas): evita 500 em seletores de condomínio
+        if (!withBlocksCount && !withApartmentsCount && !withMetersCount) {
+            const direct = await listComplexesFallback({
+                search,
+                take,
+                skip,
+                companyId,
+                complexId,
+                socialNamesParam,
+                withCompany,
+            })
+            return NextResponse.json(direct)
+        }
 
         // retorna complexos disponíveis para entidade se solicitado
         if (getAvailableForEntity) {
