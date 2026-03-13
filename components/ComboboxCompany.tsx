@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useEffect, useState, forwardRef } from "react"
-import { Building, Check, ChevronsUpDown, Loader2, LucideDroplets, X } from "lucide-react"
+import { Check, ChevronsUpDown, Loader2, LucideDroplets, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -24,7 +24,7 @@ interface SelectCompanyProps {
 }
 
 const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
-  ({ setSelectedCompany, company, required, name, disabled, getAvailableForEntity, modal = false }, ref) => {
+  ({ setSelectedCompany, company, required, disabled, getAvailableForEntity, modal = false }, ref) => {
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState("")
     const { companies, loading, error } = useCompanies({ nameQuery: search, getAvailableForEntity })

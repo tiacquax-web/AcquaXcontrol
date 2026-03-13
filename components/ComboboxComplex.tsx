@@ -26,7 +26,7 @@ interface SelectComplexProps {
 }
 
 const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
-  ({ getAvailableForEntity, setSelectedComplex, complex, required, name, disabled, modal = false, withCompany = false, companyId, autoSelectSingle = true }, ref) => {
+  ({ getAvailableForEntity, setSelectedComplex, complex, required, disabled, modal = false, withCompany = false, companyId, autoSelectSingle = true }, ref) => {
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState("")
     const { complexes, loading, error } = useComplexes({ 
