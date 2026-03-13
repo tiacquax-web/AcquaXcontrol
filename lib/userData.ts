@@ -339,7 +339,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                         AND: [
                             notDeleted,
                             {
-                                socialName: search ? { contains: search, mode: "insensitive" } : undefined,
+                                socialName: search ? { contains: search } : undefined,
                                 companyId: contextType === ContextType.company ? contextId : undefined,
                                 OR: complexWhereOr && complexWhereOr.length > 0 ? complexWhereOr : undefined,
                             },
@@ -2949,7 +2949,7 @@ async function getAvailableComplexesForEntity(
         finalWhere = {
             AND: [
                 {
-                    socialName: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
+                    socialName: searchTerm ? { contains: searchTerm } : undefined,
                     companyId: companyId ? companyId : undefined,
                 },
                 extraWhere
@@ -2986,7 +2986,7 @@ async function getAvailableComplexesForEntity(
             AND: [
                 {
                     OR: complexOrConditions.length > 0 ? complexOrConditions : undefined,
-                    socialName: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
+                    socialName: searchTerm ? { contains: searchTerm } : undefined,
                     companyId: companyId ? companyId : undefined,
                 },
                 extraWhere
