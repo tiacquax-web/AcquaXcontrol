@@ -56,12 +56,12 @@ async function listComplexesFallback(params: {
         })
     }
 
-    const normalizedSearch = search.trim().toLowerCase()
+    const normalizedSearch = String(search ?? '').trim().toLowerCase()
     const filtered = normalizedSearch
-        ? baseList.filter((complex: any) => (complex?.socialName || "").toLowerCase().includes(normalizedSearch))
+        ? baseList.filter((complex: any) => String(complex?.socialName ?? "").toLowerCase().includes(normalizedSearch))
         : baseList
 
-    filtered.sort((a: any, b: any) => (a?.socialName || "").localeCompare(b?.socialName || ""))
+    filtered.sort((a: any, b: any) => String(a?.socialName ?? "").localeCompare(String(b?.socialName ?? "")))
     const paginated = filtered.slice(skip, skip + take)
 
     if (!withBlocksCount && !withApartmentsCount && !withMetersCount) {
