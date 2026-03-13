@@ -146,7 +146,7 @@ export async function GET(req: NextRequest): Promise<Response> {
                 ])
             ],
         });
-    } catch (e: any) {
+    } catch (e: unknown) {
         console.error('[my-context]', e);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
