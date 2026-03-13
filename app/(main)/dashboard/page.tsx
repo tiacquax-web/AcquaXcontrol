@@ -22,7 +22,7 @@ import SelectApartment from "@/components/ComboboxApartment";
 import SelectMeter from "@/components/ComboboxMeter";
 import { useUpdateUserPreferences } from '@/hooks/useUserPreferences';
 import { Skeleton } from "@/components/ui/skeleton";
-import { useUserContext } from "@/hooks/useUserContext";
+import { useUserContext, type ApartmentWithContext } from "@/hooks/useUserContext";
 import { useMeterReport, MeterReportItem } from "@/hooks/useMeterReport";
 import { useDealershipReadings } from '@/hooks/useDealershipReadings';
 import { useComplexes } from '@/hooks/useComplexes';
@@ -276,7 +276,39 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
 // ─── MoradorDashboard ─────────────────────────────────────────────────────────
 function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) {
   const { context, loading: ctxLoading } = useUserContext();
-  const apartments = useMemo(() => context?.apartments ?? [], [context?.apartments]);
+  const apartmentsFromContext = useMemo(() => context?.apartments ?? [], [context?.apartments]);
+  const [fallbackApartments, setFallbackApartments] = useState<ApartmentWithContext[]>([]);
+  const [loadingFallbackApartments, setLoadingFallbackApartments] = useState(false);
+
+  useEffect(() => {
+    if (ctxLoading || apartmentsFromContext.length > 0) return;
+
+    let cancelled = false;
+    setLoadingFallbackApartments(true);
+
+    // Fallback para cenários em que /auth/my-context venha sem apartments,
+    // mas o usuário ainda tenha acesso por contexto/permissão.
+    fetch('/api/apartments?getAvailableForEntity=reading&with_block=true&with_complex=true&take=200', {
+      credentials: 'include',
+    })
+      .then(r => (r.ok ? r.json() : { list: [] }))
+      .then(d => {
+        if (cancelled) return;
+        setFallbackApartments((d?.list ?? []) as ApartmentWithContext[]);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFallbackApartments([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoadingFallbackApartments(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [ctxLoading, apartmentsFromContext]);
+
+  const apartments = apartmentsFromContext.length > 0 ? apartmentsFromContext : fallbackApartments;
   const sortedApartments = useMemo(() => {
     if (apartments.length <= 1) return apartments;
     const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
@@ -349,7 +381,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
     });
   }, [ctxLoading, sortedApartments.length, activeAptId, last3]);
 
-  if (ctxLoading) {
+  if (ctxLoading || (loadingFallbackApartments && apartments.length === 0)) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -1271,8 +1303,7 @@ export default function Dashboard() {
     return !context.isSystem
       && context.companyIds.length === 0
       && context.complexes.length === 0
-      && context.blocks.length === 0
-      && context.apartments.length > 0;
+      && context.blocks.length === 0;
   }, [context]);
 
   const renderDashboard = () => {

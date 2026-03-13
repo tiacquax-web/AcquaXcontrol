@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
 import { validateUserSession } from '@/lib/users';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 /**
  * GET /api/auth/my-context
@@ -57,16 +61,19 @@ export async function GET(req: NextRequest): Promise<Response> {
         // Apartamentos acessíveis pelo usuário:
         // - vínculo direto de apartamento
         // - herança por bloco/condomínio/empresa (contextos superiores)
-        const apartmentWhereOr: Array<
-            | { id: { in: string[] } }
-            | { blockId: { in: string[] } }
-            | { complexId: { in: string[] } }
-            | { companyId: { in: string[] } }
-        > = [];
+        const apartmentWhereOr: Prisma.ApartmentWhereInput[] = [];
         if (apartmentIds.length > 0) apartmentWhereOr.push({ id: { in: apartmentIds } });
         if (blockIds.length > 0) apartmentWhereOr.push({ blockId: { in: blockIds } });
-        if (complexIds.length > 0) apartmentWhereOr.push({ complexId: { in: complexIds } });
-        if (companyIds.length > 0) apartmentWhereOr.push({ companyId: { in: companyIds } });
+        if (complexIds.length > 0) {
+            apartmentWhereOr.push({ complexId: { in: complexIds } });
+            // Fallback para bases legadas sem complexId desnormalizado no apartamento
+            apartmentWhereOr.push({ block: { complexId: { in: complexIds } } });
+        }
+        if (companyIds.length > 0) {
+            apartmentWhereOr.push({ companyId: { in: companyIds } });
+            // Fallback para bases legadas sem companyId desnormalizado no apartamento
+            apartmentWhereOr.push({ block: { complex: { companyId: { in: companyIds } } } });
+        }
 
         // Busca dados completos dos apartamentos acessíveis
         const apartments = apartmentWhereOr.length > 0
@@ -130,22 +137,31 @@ export async function GET(req: NextRequest): Promise<Response> {
             })
             : [];
 
-        return NextResponse.json({
-            isSystem,
-            systemRoles,
-            apartments,
-            blocks,
-            complexes,
-            companyIds,
-            // Helper: IDs únicos de condomínios que o usuário acessa (via apartamento, bloco ou direto)
-            accessibleComplexIds: [
-                ...new Set([
-                    ...apartments.map(a => a.block?.complexId || a.block?.complex?.id).filter(Boolean),
-                    ...blocks.map(b => b.complexId).filter(Boolean),
-                    ...complexIds,
-                ])
-            ],
-        });
+        return NextResponse.json(
+            {
+                isSystem,
+                systemRoles,
+                apartments,
+                blocks,
+                complexes,
+                companyIds,
+                // Helper: IDs únicos de condomínios que o usuário acessa (via apartamento, bloco ou direto)
+                accessibleComplexIds: [
+                    ...new Set([
+                        ...apartments.map(a => a.block?.complexId || a.block?.complex?.id).filter(Boolean),
+                        ...blocks.map(b => b.complexId).filter(Boolean),
+                        ...complexIds,
+                    ])
+                ],
+            },
+            {
+                headers: {
+                    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+                    Pragma: 'no-cache',
+                    Expires: '0',
+                },
+            }
+        );
     } catch (e: unknown) {
         console.error('[my-context]', e);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
