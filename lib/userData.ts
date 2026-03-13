@@ -351,7 +351,12 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     skip: skip ? skip : 0,
                 };
                 const complexes = await prisma.complex.findMany(complexesQuery);
-                const complexesCount = await prisma.complex.count({ where: complexesQuery.where });
+                let complexesCount = complexes.length;
+                try {
+                    complexesCount = await prisma.complex.count({ where: complexesQuery.where });
+                } catch (countError) {
+                    console.warn("Complex count query failed, using list length fallback:", countError);
+                }
                 return { entity: complexes, totalCount: complexesCount, error: null, status: 200 };
             }
             case PermissionableEntity.block: {
@@ -3012,17 +3017,20 @@ async function getAvailableComplexesForEntity(
             ...(finalWhere.AND || [finalWhere]),
         ]
     });
-    const [availableComplexes, availableComplexCount] = await Promise.all([
-        prisma.complex.findMany({
+    const availableComplexes = await prisma.complex.findMany({
+        where: finalWhereWithNotDeleted,
+        select: baseSelect,
+        take: take,
+        skip: skip
+    });
+    let availableComplexCount = availableComplexes.length;
+    try {
+        availableComplexCount = await prisma.complex.count({
             where: finalWhereWithNotDeleted,
-            select: baseSelect,
-            take: take,
-            skip: skip
-        }),
-        prisma.complex.count({
-            where: finalWhereWithNotDeleted,
-        })
-    ]);
+        });
+    } catch (countError) {
+        console.warn("Available complexes count query failed, using list length fallback:", countError);
+    }
     console.timeEnd("getAvailableComplexesForEntity - prisma.complex.findMany");
 
     // Se não precisar dos counts, retorna direto
