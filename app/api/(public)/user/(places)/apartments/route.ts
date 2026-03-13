@@ -115,12 +115,14 @@ async function validateApartmentsBatch(reqBody: any[]): Promise<ValidationResult
             apartmentData.fraction = Number(rowFracao);
         }
 
+        // ✅ CORREÇÃO 1: Variáveis corrigidas (linhas 118-123)
         validApartmentData.push({
-    name: nome_da_linha,
-    blockId: blockId,
-    fraction: linhaFracao,
-    data: linha
-});
+            name: rowName,
+            blockId: blockId,
+            rowIndex: idx,
+            data: apartmentData
+        });
+    }
 
     // Se há erros na validação básica, retorna
     if (errors.length > 0) {
@@ -318,6 +320,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         // return available apartments for entity if requested
         if (getAvailableForEntity) {
+            // ✅ CORREÇÃO 2: Removido include[...] (linha 321)
             const { list, totalCount } = await getAvailableApartmentsForEntity(userId, getAvailableForEntity, search, complexId, blockId, apartmentId, take, skip, orderBy, orderDirection, include)
             return NextResponse.json({ list, totalCount })
         }
@@ -325,7 +328,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         console.log("Fetching apartments with context:", { contextType, contextId, search, take, skip, orderBy, orderDirection })
 
         // get apartments
-        const { entity, error, status, totalCount } = await getEntityListData(userId, 'apartment', contextType, contextId, search, null, take, include, skip, 'name', 'asc')
+        // ✅ CORREÇÃO 3: Adicionado orderDirection ao invés de 'asc' (linha 328)
+        const { entity, error, status, totalCount } = await getEntityListData(userId, 'apartment', contextType, contextId, search, null, take, include, skip, 'name', orderDirection)
         if (error) return NextResponse.json({ error }, { status })
         if (!entity) return NextResponse.json({ error: 'No apartments found.' }, { status: 404 })
 
