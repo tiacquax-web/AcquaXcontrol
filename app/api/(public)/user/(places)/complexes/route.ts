@@ -3,6 +3,119 @@ import { createEntity } from "@/lib/userData"
 import { validateUserSession } from "@/lib/users"
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { MongoClient } from "mongodb"
+
+let mongoClient: MongoClient | null = null
+
+async function getMongoClient(): Promise<MongoClient | null> {
+    try {
+        if (mongoClient) return mongoClient
+        const uri = process.env.DATABASE_URL
+        if (!uri) return null
+        mongoClient = new MongoClient(uri)
+        await mongoClient.connect()
+        return mongoClient
+    } catch (error) {
+        console.error("Falha ao conectar no MongoDB raw fallback:", error)
+        return null
+    }
+}
+
+function getMongoDbName(uri: string): string {
+    const withoutQuery = uri.split("?")[0]
+    const parts = withoutQuery.split("/")
+    return parts[parts.length - 1] || "test"
+}
+
+async function listComplexesFromMongoRaw(params: {
+    search: string
+    take: number
+    skip: number
+    companyId?: string
+    complexId?: string
+    socialNamesParam?: string[]
+    withCompany?: boolean
+}) {
+    const client = await getMongoClient()
+    const uri = process.env.DATABASE_URL
+    if (!client || !uri) return null
+
+    const db = client.db(getMongoDbName(uri))
+    const complexesCol = db.collection("Complexes")
+
+    const filter: any = {
+        $and: [
+            { $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] }
+        ]
+    }
+    if (params.companyId) filter.$and.push({ companyId: params.companyId })
+    if (params.complexId) filter.$and.push({ _id: params.complexId })
+    if (params.socialNamesParam && params.socialNamesParam.length > 0) {
+        filter.$and.push({ socialName: { $in: params.socialNamesParam } })
+    }
+    if (params.search) {
+        filter.$and.push({ socialName: { $regex: params.search, $options: "i" } })
+    }
+
+    const projection: any = {
+        _id: 1,
+        socialName: 1,
+        aliasName: 1,
+        documentCompany: 1,
+        city: 1,
+        state: 1,
+        status: 1,
+        telephone: 1,
+        cell: 1,
+        companyId: 1,
+    }
+
+    const [docs, totalCount] = await Promise.all([
+        complexesCol.find(filter, { projection })
+            .sort({ socialName: 1 })
+            .skip(params.skip)
+            .limit(params.take)
+            .toArray(),
+        complexesCol.countDocuments(filter),
+    ])
+
+    const list = docs.map((doc: any) => ({
+        id: typeof doc._id === "string" ? doc._id : String(doc._id),
+        socialName: String(doc.socialName ?? ""),
+        aliasName: doc.aliasName ?? null,
+        documentCompany: doc.documentCompany ?? null,
+        city: doc.city ?? null,
+        state: doc.state ?? null,
+        status: doc.status ?? null,
+        telephone: doc.telephone ?? null,
+        cell: doc.cell ?? null,
+        companyId: doc.companyId ?? null,
+    }))
+
+    if (!params.withCompany) return { list, totalCount }
+
+    const companyIds = [...new Set(list.map((c: any) => c.companyId).filter(Boolean))]
+    if (companyIds.length === 0) return { list, totalCount }
+    const companiesCol = db.collection("Companies")
+    const companies = await companiesCol.find(
+        { _id: { $in: companyIds } },
+        { projection: { _id: 1, name: 1, socialName: 1 } }
+    ).toArray()
+    const byId = new Map<string, any>()
+    companies.forEach((c: any) => byId.set(typeof c._id === "string" ? c._id : String(c._id), c))
+    list.forEach((cx: any) => {
+        const c = byId.get(cx.companyId)
+        if (c) {
+            cx.company = {
+                id: typeof c._id === "string" ? c._id : String(c._id),
+                name: c.name ?? c.socialName ?? "",
+                socialName: c.socialName ?? c.name ?? "",
+            }
+        }
+    })
+
+    return { list, totalCount }
+}
 
 async function listComplexesFallback(params: {
     search: string
@@ -70,11 +183,26 @@ async function listComplexesFallback(params: {
         })
     } catch (queryError) {
         console.warn("Fallback query with safe select failed, retrying with minimal select:", queryError)
-        baseList = await prisma.complex.findMany({
-            where,
-            select: { id: true, socialName: true, companyId: true },
-            take: expandedTake,
-        })
+        try {
+            baseList = await prisma.complex.findMany({
+                where,
+                select: { id: true, socialName: true, companyId: true },
+                take: expandedTake,
+            })
+        } catch (minimalError) {
+            console.error("Minimal Prisma query for complexes failed, using Mongo raw fallback:", minimalError)
+            const raw = await listComplexesFromMongoRaw({
+                search,
+                take,
+                skip,
+                companyId,
+                complexId,
+                socialNamesParam,
+                withCompany,
+            })
+            if (raw) return raw
+            throw minimalError
+        }
     }
 
     const normalizedSearch = String(search ?? '').trim().toLowerCase()
