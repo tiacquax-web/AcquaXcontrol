@@ -16,11 +16,13 @@ export async function GET(req: NextRequest): Promise<Response> {
     if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
     try {
+        const notDeleted = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] };
+
         // Busca todos os role assignments do usuário (incluindo nome do papel)
         const assignments = await prisma.roleAssignment.findMany({
             where: {
                 userId,
-                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                ...notDeleted,
             },
             select: {
                 contextId: true,
@@ -35,17 +37,40 @@ export async function GET(req: NextRequest): Promise<Response> {
             .filter(a => a.contextType === 'system')
             .map(a => a.Role?.name)
             .filter(Boolean) as string[];
-        const apartmentIds = assignments.filter(a => a.contextType === 'apartment').map(a => a.contextId).filter(Boolean) as string[];
-        const blockIds = assignments.filter(a => a.contextType === 'block').map(a => a.contextId).filter(Boolean) as string[];
-        const complexIds = assignments.filter(a => a.contextType === 'complex').map(a => a.contextId).filter(Boolean) as string[];
-        const companyIds = assignments.filter(a => a.contextType === 'company').map(a => a.contextId).filter(Boolean) as string[];
+        const apartmentIds = [...new Set(assignments
+            .filter(a => a.contextType === 'apartment')
+            .map(a => a.contextId)
+            .filter(Boolean) as string[])];
+        const blockIds = [...new Set(assignments
+            .filter(a => a.contextType === 'block')
+            .map(a => a.contextId)
+            .filter(Boolean) as string[])];
+        const complexIds = [...new Set(assignments
+            .filter(a => a.contextType === 'complex')
+            .map(a => a.contextId)
+            .filter(Boolean) as string[])];
+        const companyIds = [...new Set(assignments
+            .filter(a => a.contextType === 'company')
+            .map(a => a.contextId)
+            .filter(Boolean) as string[])];
 
-        // Busca dados completos dos apartamentos vinculados diretamente
-        const apartments = apartmentIds.length > 0
+        // Apartamentos acessíveis pelo usuário:
+        // - vínculo direto de apartamento
+        // - herança por bloco/condomínio/empresa (contextos superiores)
+        const apartmentWhereOr: any[] = [];
+        if (apartmentIds.length > 0) apartmentWhereOr.push({ id: { in: apartmentIds } });
+        if (blockIds.length > 0) apartmentWhereOr.push({ blockId: { in: blockIds } });
+        if (complexIds.length > 0) apartmentWhereOr.push({ complexId: { in: complexIds } });
+        if (companyIds.length > 0) apartmentWhereOr.push({ companyId: { in: companyIds } });
+
+        // Busca dados completos dos apartamentos acessíveis
+        const apartments = apartmentWhereOr.length > 0
             ? await prisma.apartment.findMany({
                 where: {
-                    id: { in: apartmentIds },
-                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                    AND: [
+                        notDeleted,
+                        { OR: apartmentWhereOr },
+                    ],
                 },
                 include: {
                     block: {
@@ -59,12 +84,31 @@ export async function GET(req: NextRequest): Promise<Response> {
             })
             : [];
 
+        // Ordenação estável para manter UX consistente no dashboard
+        const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
+        apartments.sort((a, b) => {
+            const cxA = (a.block as any)?.complex?.socialName || '';
+            const cxB = (b.block as any)?.complex?.socialName || '';
+            const blockA = (a.block as any)?.name || '';
+            const blockB = (b.block as any)?.name || '';
+            const aptA = a.name || '';
+            const aptB = b.name || '';
+
+            const cxCmp = collator.compare(cxA, cxB);
+            if (cxCmp !== 0) return cxCmp;
+
+            const blockCmp = collator.compare(blockA, blockB);
+            if (blockCmp !== 0) return blockCmp;
+
+            return collator.compare(aptA, aptB);
+        });
+
         // Busca blocos vinculados diretamente
         const blocks = blockIds.length > 0
             ? await prisma.block.findMany({
                 where: {
                     id: { in: blockIds },
-                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                    ...notDeleted,
                 },
                 include: { complex: { include: { company: true } } }
             })
@@ -75,7 +119,7 @@ export async function GET(req: NextRequest): Promise<Response> {
             ? await prisma.complex.findMany({
                 where: {
                     id: { in: complexIds },
-                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                    ...notDeleted,
                 },
                 include: { company: true }
             })
@@ -91,7 +135,7 @@ export async function GET(req: NextRequest): Promise<Response> {
             // Helper: IDs únicos de condomínios que o usuário acessa (via apartamento, bloco ou direto)
             accessibleComplexIds: [
                 ...new Set([
-                    ...apartments.map(a => (a.block as any)?.complexId).filter(Boolean),
+                    ...apartments.map(a => (a.block as any)?.complexId || (a.block as any)?.complex?.id).filter(Boolean),
                     ...blocks.map(b => b.complexId).filter(Boolean),
                     ...complexIds,
                 ])

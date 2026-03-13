@@ -277,14 +277,45 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
 function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) {
   const { context, loading: ctxLoading } = useUserContext();
   const apartments = context?.apartments ?? [];
+  const sortedApartments = useMemo(() => {
+    if (apartments.length <= 1) return apartments;
+    const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
+    return [...apartments].sort((a, b) => {
+      const aBlock = (a.block as any)?.name ?? '';
+      const bBlock = (b.block as any)?.name ?? '';
+      const aComplex = (a.block as any)?.complex?.socialName ?? '';
+      const bComplex = (b.block as any)?.complex?.socialName ?? '';
+
+      const complexCmp = collator.compare(aComplex, bComplex);
+      if (complexCmp !== 0) return complexCmp;
+
+      const blockCmp = collator.compare(aBlock, bBlock);
+      if (blockCmp !== 0) return blockCmp;
+
+      return collator.compare(a.name ?? '', b.name ?? '');
+    });
+  }, [apartments]);
 
   const singleApartment = useMemo(() => {
-    if (!context || apartments.length !== 1) return null;
-    return apartments[0];
-  }, [context, apartments]);
+    if (!context || sortedApartments.length !== 1) return null;
+    return sortedApartments[0];
+  }, [context, sortedApartments]);
 
   const [selectedAptId, setSelectedAptId] = useState<string | null>(null);
   const activeAptId = singleApartment?.id ?? selectedAptId;
+  const activeApartment = useMemo(
+    () => sortedApartments.find(a => a.id === activeAptId) ?? singleApartment ?? null,
+    [sortedApartments, activeAptId, singleApartment]
+  );
+
+  useEffect(() => {
+    if (ctxLoading || sortedApartments.length <= 1) return;
+
+    // Seleciona automaticamente a primeira unidade para evitar dashboard "vazio".
+    if (!selectedAptId || !sortedApartments.some(a => a.id === selectedAptId)) {
+      setSelectedAptId(sortedApartments[0].id);
+    }
+  }, [ctxLoading, sortedApartments, selectedAptId]);
 
   // Filipeta preview (last 3 months)
   const [filipetasByMonth, setFilipetasByMonth] = useState<Record<string, MeterReportItem[]>>({});
@@ -300,7 +331,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
   }), []);
 
   useEffect(() => {
-    if (ctxLoading || apartments.length === 0 || !activeAptId) return;
+    if (ctxLoading || sortedApartments.length === 0 || !activeAptId) return;
     setLoadingFilipetas(true);
     const base = '/api';
     Promise.all(
@@ -316,7 +347,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
       setFilipetasByMonth(map);
       setLoadingFilipetas(false);
     });
-  }, [ctxLoading, apartments.length, activeAptId]);
+  }, [ctxLoading, sortedApartments.length, activeAptId]);
 
   if (ctxLoading) {
     return (
@@ -340,9 +371,9 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
           </Button>
         </div>
 
-        {!singleApartment && apartments.length > 1 && (
+        {!singleApartment && sortedApartments.length > 1 && (
           <div className="flex gap-2 flex-wrap">
-            {apartments.map(apt => {
+            {sortedApartments.map(apt => {
               const block = apt.block as any;
               const cx = block?.complex;
               return (
@@ -361,7 +392,17 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
           </div>
         )}
 
-        {apartments.length === 0 && (
+        {activeApartment && (
+          <div className="rounded-lg border px-3 py-2 text-xs text-muted-foreground bg-muted/30">
+            <span className="font-medium text-foreground">Unidade ativa: </span>
+            <span>
+              {(activeApartment.block as any)?.complex?.socialName ? `${(activeApartment.block as any).complex.socialName} — ` : ''}
+              Bl. {(activeApartment.block as any)?.name} · Apto {activeApartment.name}
+            </span>
+          </div>
+        )}
+
+        {sortedApartments.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">
             Nenhum apartamento vinculado à sua conta.
           </div>
@@ -370,7 +411,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
         {activeAptId ? (
           <ConsumoAnualGraph apartmentId={activeAptId} />
         ) : (
-          !singleApartment && apartments.length > 1 && (
+          !singleApartment && sortedApartments.length > 1 && (
             <p className="text-xs text-muted-foreground text-center">Selecione uma unidade para ver o gráfico de consumo.</p>
           )
         )}
@@ -387,7 +428,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
             <Link href="/meter-report" className="flex items-center gap-1">Ver todas <ChevronRight className="w-4 h-4" /></Link>
           </Button>
         </div>
-        {!activeAptId && apartments.length > 0 ? (
+        {!activeAptId && sortedApartments.length > 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">Selecione uma unidade para ver as filipetas.</p>
         ) : loadingFilipetas ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
