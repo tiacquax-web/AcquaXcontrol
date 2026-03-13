@@ -1,7 +1,6 @@
 import { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
-import { createEntity, deleteEntity, getAvailableComplexesForEntity, getEntityListData, updateEntityData } from "@/lib/userData"
-import { isSessionValid, validateUserSession } from "@/lib/users"
-import { Complex, ContextType } from "@prisma/client"
+import { createEntity } from "@/lib/userData"
+import { validateUserSession } from "@/lib/users"
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 
@@ -13,15 +12,33 @@ async function listComplexesFallback(params: {
     complexId?: string
     socialNamesParam?: string[]
     withCompany?: boolean
+    withBlocksCount?: boolean
+    withApartmentsCount?: boolean
+    withMetersCount?: boolean
+    onlyWithReservoirs?: boolean
 }) {
-    const { search, take, skip, companyId, complexId, socialNamesParam, withCompany } = params
+    const {
+        search,
+        take,
+        skip,
+        companyId,
+        complexId,
+        socialNamesParam,
+        withCompany,
+        withBlocksCount,
+        withApartmentsCount,
+        withMetersCount,
+        onlyWithReservoirs,
+    } = params
+
     const where: any = {}
     if (companyId) where.companyId = companyId
     if (complexId) where.id = complexId
     if (socialNamesParam && socialNamesParam.length > 0) where.socialName = { in: socialNamesParam }
+    if (onlyWithReservoirs) where.reservoirs = { some: { deletedAt: null } }
 
     // Busca maior e pagina em memória para evitar falhas em count/orderBy/contains no banco
-    const expandedTake = Math.min(Math.max(skip + take, 50), 2000)
+    const expandedTake = Math.min(Math.max(skip + take, 200), 5000)
     const include = withCompany ? { company: { select: { id: true, name: true } } } : undefined
 
     let baseList: any[] = []
@@ -45,8 +62,90 @@ async function listComplexesFallback(params: {
         : baseList
 
     filtered.sort((a: any, b: any) => (a?.socialName || "").localeCompare(b?.socialName || ""))
-    const list = filtered.slice(skip, skip + take)
-    return { list, totalCount: filtered.length }
+    const paginated = filtered.slice(skip, skip + take)
+
+    if (!withBlocksCount && !withApartmentsCount && !withMetersCount) {
+        return { list: paginated, totalCount: filtered.length }
+    }
+
+    const complexIds = paginated.map((c: any) => c.id)
+    if (complexIds.length === 0) {
+        return { list: paginated, totalCount: filtered.length }
+    }
+
+    const blocks = await prisma.block.findMany({
+        where: { complexId: { in: complexIds }, deletedAt: null },
+        select: { id: true, complexId: true, name: true },
+        take: 20000,
+    })
+
+    const apartments = (withApartmentsCount || withMetersCount)
+        ? await prisma.apartment.findMany({
+            where: { complexId: { in: complexIds }, deletedAt: null },
+            select: { id: true, blockId: true, complexId: true, name: true },
+            take: 50000,
+        })
+        : []
+
+    const meters = withMetersCount
+        ? await prisma.meter.findMany({
+            where: { complexId: { in: complexIds }, deletedAt: null },
+            select: { id: true, apartmentId: true, complexId: true },
+            take: 200000,
+        })
+        : []
+
+    const blocksByComplex = new Map<string, any[]>()
+    blocks.forEach((b) => {
+        const arr = blocksByComplex.get(b.complexId) || []
+        arr.push(b)
+        blocksByComplex.set(b.complexId, arr)
+    })
+
+    const apartmentsByBlock = new Map<string, any[]>()
+    apartments.forEach((a) => {
+        const arr = apartmentsByBlock.get(a.blockId) || []
+        arr.push(a)
+        apartmentsByBlock.set(a.blockId, arr)
+    })
+
+    const meterCountByApartment = new Map<string, number>()
+    meters.forEach((m) => {
+        const key = m.apartmentId || ''
+        if (!key) return
+        meterCountByApartment.set(key, (meterCountByApartment.get(key) || 0) + 1)
+    })
+
+    const enriched = paginated.map((complex: any) => {
+        const result: any = { ...complex }
+        const cBlocks = blocksByComplex.get(complex.id) || []
+        result._count = result._count || {}
+        if (withBlocksCount) result._count.blocks = cBlocks.length
+
+        if (withApartmentsCount || withMetersCount) {
+            result.blocks = cBlocks.map((block: any) => {
+                const bApts = apartmentsByBlock.get(block.id) || []
+                const blockResult: any = {
+                    id: block.id,
+                    name: block.name,
+                    complexId: block.complexId,
+                    _count: { apartments: withApartmentsCount ? bApts.length : 0 },
+                }
+                if (withMetersCount) {
+                    blockResult.apartments = bApts.map((apt: any) => ({
+                        id: apt.id,
+                        name: apt.name,
+                        blockId: apt.blockId,
+                        _count: { meters: meterCountByApartment.get(apt.id) || 0 },
+                    }))
+                }
+                return blockResult
+            })
+        }
+        return result
+    })
+
+    return { list: enriched, totalCount: filtered.length }
 }
 
 function getQueryParams(req: NextRequest) {
@@ -87,7 +186,19 @@ export async function GET(req: NextRequest): Promise<Response> {
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         // obtém parâmetros de consulta
-        const { withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection, socialNames } = getQueryParams(req)
+        const {
+            withBlocksCount,
+            withApartmentsCount,
+            withMetersCount,
+            onlyWithReservoirs,
+            withCompany,
+            companyId,
+            complexId,
+            search,
+            take,
+            skip,
+            socialNames
+        } = getQueryParams(req)
 
         // Novo: busca por múltiplos socialNames (parse resiliente para evitar 500 em query inválida)
         let socialNamesParam: string[] | undefined;
@@ -101,92 +212,20 @@ export async function GET(req: NextRequest): Promise<Response> {
             }
         }
         
-        // identifica contexto
-        const contextType: ContextType | undefined = companyId ? 'company' : undefined
-        const contextId = companyId ? companyId : undefined
-
-        const where = complexId ? { id: complexId } : (socialNamesParam && Array.isArray(socialNamesParam) && socialNamesParam.length > 0 ? { socialName: { in: socialNamesParam } } : undefined);
-
-        const include = withCompany ? {
-            company: {
-                select: {
-                    id: true,
-                    name: true,
-                },
-            }
-        } : undefined
-
-        // Fast path para combobox/filtros (sem contagens pesadas): evita 500 em seletores de condomínio
-        if (!withBlocksCount && !withApartmentsCount && !withMetersCount) {
-            const direct = await listComplexesFallback({
-                search,
-                take,
-                skip,
-                companyId,
-                complexId,
-                socialNamesParam,
-                withCompany,
-            })
-            return NextResponse.json(direct)
-        }
-
-        // retorna complexos disponíveis para entidade se solicitado
-        if (getAvailableForEntity) {
-            console.log("######### Buscando complexos disponíveis para entidade:", getAvailableForEntity)
-            try {
-                const { list, totalCount } = await getAvailableComplexesForEntity(
-                    userId,
-                    getAvailableForEntity,
-                    search,
-                    companyId,
-                    where,
-                    withBlocksCount,
-                    withApartmentsCount,
-                    withMetersCount,
-                    false,
-                    onlyWithReservoirs,
-                    take,
-                    skip
-                )
-                return NextResponse.json({ list, totalCount })
-            } catch (availableError) {
-                console.error("Falha ao buscar complexos por disponibilidade, aplicando fallback:", availableError)
-                const fallback = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)
-                if (fallback.error || !fallback.entity) {
-                    console.warn("Fallback com contexto também falhou; aplicando fallback direto de banco.")
-                    const direct = await listComplexesFallback({
-                        search,
-                        take,
-                        skip,
-                        companyId,
-                        complexId,
-                        socialNamesParam,
-                        withCompany,
-                    })
-                    return NextResponse.json(direct)
-                }
-                return NextResponse.json({ list: fallback.entity, totalCount: fallback.totalCount ?? fallback.entity.length })
-            }
-        }
-        
-        const { entity, error, status, totalCount } = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)
-        if (error || !entity) {
-            console.warn("Consulta principal de complexos falhou; aplicando fallback direto de banco.", { error, status })
-            const direct = await listComplexesFallback({
-                search,
-                take,
-                skip,
-                companyId,
-                complexId,
-                socialNamesParam,
-                withCompany,
-            })
-            return NextResponse.json(direct)
-        }
-
-        console.log("######### Complexos encontrados:", entity.length)
-
-        return NextResponse.json({ list: entity, totalCount: totalCount ?? entity.length })
+        const direct = await listComplexesFallback({
+            search,
+            take,
+            skip,
+            companyId,
+            complexId,
+            socialNamesParam,
+            withCompany,
+            withBlocksCount,
+            withApartmentsCount,
+            withMetersCount,
+            onlyWithReservoirs,
+        })
+        return NextResponse.json(direct)
 
     } catch (error: any) {
         console.error("Erro ao buscar complexos:", error)
@@ -197,7 +236,7 @@ export async function GET(req: NextRequest): Promise<Response> {
                 try {
                     const parsed = JSON.parse(socialNames)
                     if (Array.isArray(parsed)) socialNamesParam = parsed
-                } catch (_e) {
+                } catch {
                     socialNamesParam = undefined
                 }
             }
