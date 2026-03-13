@@ -276,7 +276,7 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
 // ─── MoradorDashboard ─────────────────────────────────────────────────────────
 function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) {
   const { context, loading: ctxLoading } = useUserContext();
-  const apartments = context?.apartments ?? [];
+  const apartments = useMemo(() => context?.apartments ?? [], [context?.apartments]);
   const sortedApartments = useMemo(() => {
     if (apartments.length <= 1) return apartments;
     const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
@@ -347,7 +347,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
       setFilipetasByMonth(map);
       setLoadingFilipetas(false);
     });
-  }, [ctxLoading, sortedApartments.length, activeAptId]);
+  }, [ctxLoading, sortedApartments.length, activeAptId, last3]);
 
   if (ctxLoading) {
     return (
