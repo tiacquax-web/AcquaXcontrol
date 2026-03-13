@@ -198,12 +198,13 @@ export async function isUserSessionValid(userId: string, token: string) {
 }
 
 export async function isSessionValid(token: string) {
-  const userSession = await prisma.session.findUnique({
+  const userSession = await prisma.session.findFirst({
     where: {
       token,
       expiresAt: {
         gt: new Date(),
-      }
+      },
+      deletedAt: null,
     },
   });
 
@@ -215,12 +216,13 @@ export async function isSessionValid(token: string) {
 }
 
 export async function getUserByValidSession(token: string) {
-  const sessionUser = await prisma.session.findUnique({
+  const sessionUser = await prisma.session.findFirst({
     where: {
       token,
       expiresAt: {
         gt: new Date(),
-      }
+      },
+      deletedAt: null,
     },
     select: {
       user: true,
@@ -234,9 +236,13 @@ export async function validateUserSession(req: NextRequest):Promise<{ userId: st
   // 1. Cookie de sessão (browser) — tenta primeiro no banco, depois verifica JWT diretamente
   const sessionCookie = req.cookies.get('session')?.value;
   if (sessionCookie) {
-    const validSession = await isSessionValid(sessionCookie);
-    if (validSession) {
-      return { userId: validSession.userId, error: null, status: 200 };
+    try {
+      const validSession = await isSessionValid(sessionCookie);
+      if (validSession) {
+        return { userId: validSession.userId, error: null, status: 200 };
+      }
+    } catch (sessionDbError) {
+      console.warn('Session DB validation failed, falling back to JWT check:', sessionDbError);
     }
     // Sessão não está no banco (expirou ou foi limpa), mas o JWT pode ainda ser válido
     // Verifica o JWT diretamente do cookie
