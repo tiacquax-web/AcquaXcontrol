@@ -70,3 +70,6 @@ next-env.d.ts
 core
 core.*
 *.core
+
+# local backup artifacts
+/backups/
