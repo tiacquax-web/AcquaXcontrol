@@ -332,12 +332,13 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
     const roleOptions = getRoleOptionsForUI(availableRoles);
     const getComplexLabel = (cx: any) => String(cx?.socialName ?? cx?.aliasName ?? 'Condomínio');
-    const safeComplexes = allComplexes
+    const safeComplexes = (Array.isArray(allComplexes) ? allComplexes : [])
+        .filter((cx): cx is any => !!cx && typeof cx === 'object')
         .map((cx) => ({
             ...cx,
-            id: typeof cx?.id === 'string' ? cx.id : String(cx?.id ?? ''),
-            socialName: String(cx?.socialName ?? ''),
-            aliasName: cx?.aliasName == null ? null : String(cx.aliasName),
+            id: typeof cx.id === 'string' ? cx.id : String(cx.id ?? ''),
+            socialName: String(cx.socialName ?? ''),
+            aliasName: cx.aliasName == null ? null : String(cx.aliasName),
         }))
         .filter((cx) => cx.id.trim().length > 0);
 

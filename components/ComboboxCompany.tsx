@@ -30,6 +30,14 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
     const { companies, loading, error } = useCompanies({ nameQuery: search, getAvailableForEntity })
     const [selectedId, setSelectedId] = useState<string | undefined>(company?.id)
     const [autoSelected, setAutoSelected] = useState(false)
+    const safeCompanies = (Array.isArray(companies) ? companies : [])
+      .filter((cp: any): cp is Company => !!cp && typeof cp === "object" && !!cp.id)
+      .map((cp: any) => ({
+        ...cp,
+        id: typeof cp.id === "string" ? cp.id : String(cp.id),
+        name: String(cp.name ?? cp.socialName ?? ""),
+        socialName: cp.socialName == null ? null : String(cp.socialName),
+      })) as Company[]
     const getCompanyLabel = (value: any) => String(value?.name ?? value?.socialName ?? 'Empresa')
 
     useEffect(() => {
@@ -42,19 +50,19 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
 
     // Auto-seleciona quando só há 1 empresa disponível
     useEffect(() => {
-      if (!loading && companies.length === 1 && !selectedId && !autoSelected) {
-        setSelectedId(companies[0].id)
-        setSelectedCompany(companies[0])
+      if (!loading && safeCompanies.length === 1 && !selectedId && !autoSelected) {
+        setSelectedId(safeCompanies[0].id)
+        setSelectedCompany(safeCompanies[0])
         setAutoSelected(true)
       }
-    }, [companies, loading, selectedId, autoSelected, setSelectedCompany])
+    }, [safeCompanies, loading, selectedId, autoSelected, setSelectedCompany])
 
     const handleSelect = (value: string) => {
       if (value === selectedId) {
         setSelectedId(undefined)
         setSelectedCompany(undefined)
       } else {
-        const selected = companies.find((c) => c.id === value)
+        const selected = safeCompanies.find((c) => c.id === value)
         if (selected) {
           setSelectedId(value)
           setSelectedCompany(selected)
@@ -70,7 +78,7 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
     }
 
     const selectedCompanyName = selectedId
-      ? getCompanyLabel(companies.find((c) => c.id === selectedId) || company)
+      ? getCompanyLabel(safeCompanies.find((c) => c.id === selectedId) || company)
       : ""
 
     if (error) {
@@ -80,7 +88,7 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
     // Oculta o seletor se só há 1 empresa (já auto-selecionada)
     // Mesmo que autoSelectSingle=false em alguma tela, se só existe uma empresa
     // o filtro fica redundante e é ocultado.
-    if (!loading && companies.length === 1) {
+    if (!loading && safeCompanies.length === 1) {
       return null
     }
 
@@ -136,7 +144,7 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
                 <CommandEmpty>Nenhuma empresa encontrada.</CommandEmpty>
                 <CommandGroup>
                   <CommandList>
-                    {companies.map((company) => (
+                    {safeCompanies.map((company) => (
                       <CommandItem key={company.id} value={company.id} onSelect={handleSelect} className="cursor-pointer">
                         <Check
                           className={cn("mr-2 h-4 w-4", selectedId === company.id ? "opacity-100" : "opacity-0")}

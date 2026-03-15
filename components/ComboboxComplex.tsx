@@ -40,6 +40,14 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
     })
     const [selectedId, setSelectedId] = useState<string | undefined>(complex?.id)
     const [autoSelected, setAutoSelected] = useState(false)
+    const safeComplexes = (Array.isArray(complexes) ? complexes : [])
+      .filter((cx: any): cx is Complex => !!cx && typeof cx === "object" && !!cx.id)
+      .map((cx: any) => ({
+        ...cx,
+        id: typeof cx.id === "string" ? cx.id : String(cx.id),
+        socialName: String(cx.socialName ?? ""),
+        aliasName: cx.aliasName == null ? null : String(cx.aliasName),
+      })) as Complex[]
 
     const getComplexLabel = (value: any) => {
       const raw = value?.socialName ?? value?.aliasName ?? ""
@@ -56,12 +64,12 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
 
     // Auto-seleciona quando só há 1 condomínio disponível
     useEffect(() => {
-      if (autoSelectSingle && !loading && complexes.length === 1 && !selectedId && !autoSelected) {
-        setSelectedId(complexes[0].id)
-        setSelectedComplex(complexes[0])
+      if (autoSelectSingle && !loading && safeComplexes.length === 1 && !selectedId && !autoSelected) {
+        setSelectedId(safeComplexes[0].id)
+        setSelectedComplex(safeComplexes[0])
         setAutoSelected(true)
       }
-    }, [complexes, loading, autoSelectSingle, selectedId, autoSelected, setSelectedComplex])
+    }, [safeComplexes, loading, autoSelectSingle, selectedId, autoSelected, setSelectedComplex])
 
     const handleSelect = (value: string) => {
       if (value === selectedId) {
@@ -69,7 +77,7 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
         setSelectedId(undefined)
         setSelectedComplex(undefined)
       } else {
-        const selectedComplex = complexes.find((c) => c.id === value)
+        const selectedComplex = safeComplexes.find((c) => c.id === value)
         if (selectedComplex) {
           setSelectedId(value)
           setSelectedComplex(selectedComplex)
@@ -86,7 +94,7 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
 
     // Find the selected complex name for display
     const selectedComplexName = selectedId
-      ? getComplexLabel(complexes.find((c) => c.id === selectedId) || complex)
+      ? getComplexLabel(safeComplexes.find((c) => c.id === selectedId) || complex)
       : ""
 
     if (error) {
@@ -94,7 +102,7 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
     }
 
     // Oculta o seletor se só há 1 condomínio (já auto-selecionado)
-    if (autoSelectSingle && !loading && complexes.length === 1) {
+    if (autoSelectSingle && !loading && safeComplexes.length === 1) {
       return null
     }
 
@@ -150,7 +158,7 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
                 <CommandEmpty>Nenhum condomínio encontrada.</CommandEmpty>
                 <CommandGroup>
                   <CommandList>
-                    {complexes.map((complex) => (
+                    {safeComplexes.map((complex) => (
                       <CommandItem key={complex.id} value={complex.id} onSelect={handleSelect} className="cursor-pointer">
                         <Check
                           className={cn("mr-2 h-4 w-4", selectedId === complex.id ? "opacity-100" : "opacity-0")}
