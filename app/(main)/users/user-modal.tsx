@@ -331,6 +331,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     const [bulkAdding, setBulkAdding] = useState(false);
     const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
     const roleOptions = getRoleOptionsForUI(availableRoles);
+    const getComplexLabel = (cx: any) => String(cx?.socialName ?? cx?.aliasName ?? 'Condomínio');
 
     const [cascateContextSearching, setCascateContextSearching] = useState<{
         company: Company | null;
@@ -435,7 +436,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                                             checked={selectedComplexIds.has(cx.id)}
                                             onCheckedChange={() => toggleComplexSelection(cx.id)}
                                         />
-                                        <span className="text-sm">{cx.socialName || cx.aliasName}</span>
+                                        <span className="text-sm">{getComplexLabel(cx)}</span>
                                     </div>
                                 ))}
                                 {allComplexes.length === 0 && <p className="text-center text-sm text-muted-foreground p-4">Nenhum condomínio encontrado</p>}
@@ -446,7 +447,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                         <div className="flex flex-wrap gap-1">
                             {[...selectedComplexIds].slice(0, 5).map(id => {
                                 const cx = allComplexes.find(c => c.id === id);
-                                return <Badge key={id} variant="secondary" className="text-xs">{cx?.socialName || id.slice(0,8)}</Badge>;
+                                return <Badge key={id} variant="secondary" className="text-xs">{cx ? getComplexLabel(cx) : id.slice(0,8)}</Badge>;
                             })}
                             {selectedComplexIds.size > 5 && <Badge variant="outline" className="text-xs">+{selectedComplexIds.size - 5} mais</Badge>}
                         </div>

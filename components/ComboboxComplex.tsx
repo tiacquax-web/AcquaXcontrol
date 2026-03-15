@@ -41,6 +41,11 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
     const [selectedId, setSelectedId] = useState<string | undefined>(complex?.id)
     const [autoSelected, setAutoSelected] = useState(false)
 
+    const getComplexLabel = (value: any) => {
+      const raw = value?.socialName ?? value?.aliasName ?? ""
+      return String(raw || "Condomínio")
+    }
+
     useEffect(() => {
       if (complex) {
         setSelectedId(complex.id)
@@ -81,7 +86,7 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
 
     // Find the selected complex name for display
     const selectedComplexName = selectedId
-      ? complexes.find((c) => c.id === selectedId)?.socialName || complex?.socialName || "Empresa selecionada"
+      ? getComplexLabel(complexes.find((c) => c.id === selectedId) || complex)
       : ""
 
     if (error) {
@@ -150,7 +155,7 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
                         <Check
                           className={cn("mr-2 h-4 w-4", selectedId === complex.id ? "opacity-100" : "opacity-0")}
                         />
-                        {complex.socialName}
+                        {getComplexLabel(complex)}
                       </CommandItem>
                     ))}
                   </CommandList>

@@ -7,6 +7,16 @@ import { MongoClient } from "mongodb"
 
 let mongoClient: MongoClient | null = null
 
+function safeString(value: any, fallback = ""): string {
+    if (typeof value === "string") return value
+    if (value === null || value === undefined) return fallback
+    try {
+        return String(value)
+    } catch {
+        return fallback
+    }
+}
+
 async function getMongoClient(): Promise<MongoClient | null> {
     try {
         if (mongoClient) return mongoClient
@@ -212,14 +222,31 @@ async function listComplexesFallback(params: {
 
     filtered.sort((a: any, b: any) => String(a?.socialName ?? "").localeCompare(String(b?.socialName ?? "")))
     const paginated = filtered.slice(skip, skip + take)
+    const safePaginated = paginated.map((complex: any) => ({
+        ...complex,
+        socialName: safeString(complex?.socialName),
+        aliasName: complex?.aliasName == null ? null : safeString(complex?.aliasName),
+        city: complex?.city == null ? null : safeString(complex?.city),
+        state: complex?.state == null ? null : safeString(complex?.state),
+        status: complex?.status == null ? null : safeString(complex?.status),
+        telephone: complex?.telephone == null ? null : safeString(complex?.telephone),
+        cell: complex?.cell == null ? null : safeString(complex?.cell),
+        company: complex?.company
+            ? {
+                ...complex.company,
+                name: safeString(complex.company?.name ?? complex.company?.socialName),
+                socialName: safeString(complex.company?.socialName ?? complex.company?.name),
+            }
+            : undefined,
+    }))
 
     if (!withBlocksCount && !withApartmentsCount && !withMetersCount) {
-        return { list: paginated, totalCount: filtered.length }
+        return { list: safePaginated, totalCount: filtered.length }
     }
 
-    const complexIds = paginated.map((c: any) => c.id)
+    const complexIds = safePaginated.map((c: any) => c.id)
     if (complexIds.length === 0) {
-        return { list: paginated, totalCount: filtered.length }
+        return { list: safePaginated, totalCount: filtered.length }
     }
 
     const blocks = await prisma.block.findMany({
@@ -265,7 +292,7 @@ async function listComplexesFallback(params: {
         meterCountByApartment.set(key, (meterCountByApartment.get(key) || 0) + 1)
     })
 
-    const enriched = paginated.map((complex: any) => {
+    const enriched = safePaginated.map((complex: any) => {
         const result: any = { ...complex }
         const cBlocks = blocksByComplex.get(complex.id) || []
         result._count = result._count || {}
@@ -276,14 +303,14 @@ async function listComplexesFallback(params: {
                 const bApts = apartmentsByBlock.get(block.id) || []
                 const blockResult: any = {
                     id: block.id,
-                    name: block.name,
+                    name: safeString(block.name),
                     complexId: block.complexId,
                     _count: { apartments: withApartmentsCount ? bApts.length : 0 },
                 }
                 if (withMetersCount) {
                     blockResult.apartments = bApts.map((apt: any) => ({
                         id: apt.id,
-                        name: apt.name,
+                        name: safeString(apt.name),
                         blockId: apt.blockId,
                         _count: { meters: meterCountByApartment.get(apt.id) || 0 },
                     }))

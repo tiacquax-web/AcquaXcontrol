@@ -222,7 +222,7 @@ export default function ApuracaoPage() {
                                     <p className="font-semibold">{data[0].lastReading || 'Sem leitura'}</p>
                                 </div>
                                 <div className="rounded-md border p-3">
-                                    <p className="text-xs text-muted-foreground">Usuários cadastrados</p>
+                                    <p className="text-xs text-muted-foreground">Usuários vinculados</p>
                                     <p className="font-semibold">{(data[0].usersRegistered ?? 0).toLocaleString('pt-BR')}</p>
                                 </div>
                                 <div className="rounded-md border p-3">
@@ -247,7 +247,7 @@ export default function ApuracaoPage() {
                                             <TableHead className="text-center"><DoorClosed className="h-4 w-4 inline mr-1" />Aptos</TableHead>
                                             <TableHead className="text-center"><Gauge className="h-4 w-4 inline mr-1" />Medidores</TableHead>
                                             <TableHead className="text-center"><CalendarCheck className="h-4 w-4 inline mr-1" />Última Leitura</TableHead>
-                                            <TableHead className="text-center">Usuários cad.</TableHead>
+                                            <TableHead className="text-center">Usuários vinculados</TableHead>
                                             <TableHead className="text-center"><Activity className="h-4 w-4 inline mr-1" />Logins 30d</TableHead>
                                             <TableHead>Apt. mais ativo</TableHead>
                                             <TableHead>Status</TableHead>

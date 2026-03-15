@@ -96,19 +96,50 @@ export async function GET(req: NextRequest): Promise<Response> {
             }
         });
 
-        // Usuários por condomínio (modo leve para listagem geral)
+        // Usuários por condomínio
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        const complexAssignments = await prisma.roleAssignment.findMany({
-            where: {
-                contextType: 'complex',
-                contextId: { in: complexIds },
-                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
-            },
-            select: { userId: true, contextId: true },
-            take: 20000,
+        const [complexAssignments, apartmentsInPage] = await Promise.all([
+            prisma.roleAssignment.findMany({
+                where: {
+                    contextType: 'complex',
+                    contextId: { in: complexIds },
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                select: { userId: true, contextId: true },
+                take: 20000,
+            }),
+            prisma.apartment.findMany({
+                where: {
+                    complexId: { in: complexIds },
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                select: { id: true, complexId: true, name: true },
+                take: 60000,
+            }),
+        ]);
+
+        const aptToComplex = new Map<string, string>();
+        const aptNameMap = new Map<string, string>();
+        apartmentsInPage.forEach((apt) => {
+            if (apt.complexId) aptToComplex.set(apt.id, apt.complexId);
+            aptNameMap.set(apt.id, String(apt.name || apt.id));
         });
 
+        const apartmentIds = apartmentsInPage.map((apt) => apt.id);
+        const apartmentAssignments = apartmentIds.length > 0
+            ? await prisma.roleAssignment.findMany({
+                where: {
+                    contextType: 'apartment',
+                    contextId: { in: apartmentIds },
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                select: { userId: true, contextId: true },
+                take: 100000,
+            })
+            : [];
+
         const registeredUsersByComplex: Record<string, Set<string>> = {};
+        const aptUserSets: Record<string, Set<string>> = {};
         complexIds.forEach(id => {
             registeredUsersByComplex[id] = new Set<string>();
         });
@@ -117,14 +148,25 @@ export async function GET(req: NextRequest): Promise<Response> {
             if (!registeredUsersByComplex[ra.contextId]) registeredUsersByComplex[ra.contextId] = new Set<string>();
             registeredUsersByComplex[ra.contextId].add(ra.userId);
         });
+        apartmentAssignments.forEach((ra) => {
+            const cxId = aptToComplex.get(ra.contextId);
+            if (!cxId) return;
+            if (!registeredUsersByComplex[cxId]) registeredUsersByComplex[cxId] = new Set<string>();
+            registeredUsersByComplex[cxId].add(ra.userId);
+            if (!aptUserSets[ra.contextId]) aptUserSets[ra.contextId] = new Set<string>();
+            aptUserSets[ra.contextId].add(ra.userId);
+        });
 
-        const allUserIds = [...new Set(complexAssignments.map(a => a.userId))];
+        const allUserIds = [...new Set([
+            ...complexAssignments.map((a) => a.userId),
+            ...apartmentAssignments.map((a) => a.userId),
+        ])];
         const recentSessions = allUserIds.length > 0
             ? await prisma.session.findMany({
                 where: { userId: { in: allUserIds }, createdAt: { gte: thirtyDaysAgo } },
                 select: { userId: true },
                 distinct: ['userId'],
-                take: 5000,
+                take: 20000,
             })
             : [];
         const recentUserSet = new Set(recentSessions.map(s => s.userId));
@@ -139,68 +181,27 @@ export async function GET(req: NextRequest): Promise<Response> {
         }
 
         const topAptPerComplex: Record<string, { name: string; logins: number }> = {};
-        // Modo detalhado apenas quando um condomínio específico foi selecionado.
-        // Isso evita varreduras globais de roleAssignment (principal causa de CPU alta).
+        // Top apartamento só é necessário no modo de detalhe de 1 condomínio.
         if (complexId && complexIds.length === 1) {
             const targetComplexId = complexIds[0];
-            const apartments = await prisma.apartment.findMany({
-                where: {
-                    complexId: targetComplexId,
-                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
-                },
-                select: { id: true, name: true },
-                take: 20000,
-            });
-            const apartmentIds = apartments.map((a) => a.id);
-            const aptNameMap = new Map(apartments.map((a) => [a.id, a.name]));
-
-            if (apartmentIds.length > 0) {
-                const apartmentAssignments = await prisma.roleAssignment.findMany({
-                    where: {
-                        contextType: 'apartment',
-                        contextId: { in: apartmentIds },
-                        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
-                    },
-                    select: { userId: true, contextId: true },
-                    take: 50000,
-                });
-
-                const aptUsers: Record<string, Set<string>> = {};
-                apartmentAssignments.forEach((ra) => {
-                    registeredUsersByComplex[targetComplexId].add(ra.userId);
-                    if (!aptUsers[ra.contextId]) aptUsers[ra.contextId] = new Set<string>();
-                    aptUsers[ra.contextId].add(ra.userId);
-                });
-
-                const registeredUsers = [...registeredUsersByComplex[targetComplexId]];
-                const recentForComplex = registeredUsers.length > 0
-                    ? await prisma.session.findMany({
-                        where: { userId: { in: registeredUsers }, createdAt: { gte: thirtyDaysAgo } },
-                        select: { userId: true },
-                        distinct: ['userId'],
-                        take: 10000,
-                    })
-                    : [];
-                const recentForComplexSet = new Set(recentForComplex.map((s) => s.userId));
-                usersAccessedByComplex[targetComplexId] = registeredUsers.filter((uid) => recentForComplexSet.has(uid)).length;
-
-                for (const [aptId, usersSet] of Object.entries(aptUsers)) {
-                    let activeUsers = 0;
-                    usersSet.forEach((uid) => { if (recentForComplexSet.has(uid)) activeUsers++; });
-                    if (!topAptPerComplex[targetComplexId] || activeUsers > topAptPerComplex[targetComplexId].logins) {
-                        topAptPerComplex[targetComplexId] = { name: aptNameMap.get(aptId) || aptId, logins: activeUsers };
-                    }
+            for (const [aptId, usersSet] of Object.entries(aptUserSets)) {
+                const cxId = aptToComplex.get(aptId);
+                if (!cxId || cxId !== targetComplexId) continue;
+                let activeUsers = 0;
+                usersSet.forEach((uid) => { if (recentUserSet.has(uid)) activeUsers++; });
+                if (!topAptPerComplex[targetComplexId] || activeUsers > topAptPerComplex[targetComplexId].logins) {
+                    topAptPerComplex[targetComplexId] = { name: aptNameMap.get(aptId) || aptId, logins: activeUsers };
                 }
             }
         }
 
         const result = complexes.map(cx => ({
             id: cx.id,
-            socialName: cx.socialName,
-            aliasName: cx.aliasName,
-            city: cx.city,
-            state: cx.state,
-            status: cx.status,
+            socialName: String(cx.socialName || ''),
+            aliasName: cx.aliasName ? String(cx.aliasName) : null,
+            city: cx.city ? String(cx.city) : null,
+            state: cx.state ? String(cx.state) : null,
+            status: String(cx.status || 'Ativo'),
             totalBlocks: cx._count.blocks,
             totalApartments: aptCountMap[cx.id] || 0,
             totalMeters: meterCountMap[cx.id] || 0,

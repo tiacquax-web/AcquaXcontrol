@@ -30,6 +30,7 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
     const { companies, loading, error } = useCompanies({ nameQuery: search, getAvailableForEntity })
     const [selectedId, setSelectedId] = useState<string | undefined>(company?.id)
     const [autoSelected, setAutoSelected] = useState(false)
+    const getCompanyLabel = (value: any) => String(value?.name ?? value?.socialName ?? 'Empresa')
 
     useEffect(() => {
       if (company) {
@@ -69,7 +70,7 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
     }
 
     const selectedCompanyName = selectedId
-      ? companies.find((c) => c.id === selectedId)?.name || company?.name || "Empresa selecionada"
+      ? getCompanyLabel(companies.find((c) => c.id === selectedId) || company)
       : ""
 
     if (error) {
@@ -140,7 +141,7 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
                         <Check
                           className={cn("mr-2 h-4 w-4", selectedId === company.id ? "opacity-100" : "opacity-0")}
                         />
-                        {company.name}
+                        {getCompanyLabel(company)}
                       </CommandItem>
                     ))}
                   </CommandList>

@@ -1226,7 +1226,7 @@ export default function Dashboard() {
     systemRoles.map((r) =>
       String(r || '')
         .normalize('NFD')
-        .replace(/\p{Diacritic}/gu, '')
+        .replace(/[\u0300-\u036f]/g, '')
         .trim()
         .toLowerCase()
     )
