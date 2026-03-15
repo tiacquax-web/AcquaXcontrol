@@ -42,7 +42,53 @@ export const getComplexes = async ({ id, getAvailableForEntity, complexId, compa
     return response.data;
   } catch (error) {
     console.error('Error fetching complexes:', error);
-    throw error;
+    const status = (error as any)?.response?.status;
+    // Fallback resiliente: em caso de 5xx no endpoint de complexos, usa /api/apuracao
+    // para manter comboboxes e filtros operacionais.
+    if (status && status < 500) {
+      throw error;
+    }
+    try {
+      const fallback = await axios.get(`${NEXT_PUBLIC_API_URL}/apuracao`, {
+        params: {
+          search: nameQuery,
+          complexId: complexId || id,
+          take,
+          skip,
+        }
+      });
+      const list = (fallback.data?.list || []).map((item: any) => ({
+        id: item.id,
+        socialName: item.socialName,
+        aliasName: item.aliasName ?? null,
+        status: item.status ?? 'Ativo',
+        city: item.city ?? null,
+        state: item.state ?? null,
+        companyId: companyId ?? null,
+        _count: { blocks: item.totalBlocks ?? 0 },
+        blocks: (withApartmentsCount || withMetersCount)
+          ? [{
+              id: `virtual-${item.id}`,
+              name: 'Resumo',
+              complexId: item.id,
+              _count: { apartments: item.totalApartments ?? 0 },
+              apartments: withMetersCount ? [{
+                id: `virtual-apt-${item.id}`,
+                name: 'Resumo',
+                blockId: `virtual-${item.id}`,
+                _count: { meters: item.totalMeters ?? 0 }
+              }] : []
+            }]
+          : [],
+      }));
+      return {
+        list,
+        totalCount: fallback.data?.totalCount ?? list.length,
+      };
+    } catch (fallbackError) {
+      console.error('Fallback /api/apuracao for complexes also failed:', fallbackError);
+      throw error;
+    }
   }
 };
 

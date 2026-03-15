@@ -10,6 +10,8 @@ import { Loader2, Search, Download, Printer, ChevronLeft, ChevronRight, Building
 import { useToast } from "@/hooks/use-toast"
 import { useDebounce } from "@/hooks/use-debounce"
 import axios from "axios"
+import SelectComplex from "@/components/ComboboxComplex"
+import type { Complex } from "@prisma/client"
 
 interface ApuracaoItem {
     id: string
@@ -22,6 +24,8 @@ interface ApuracaoItem {
     totalApartments: number
     totalMeters: number
     lastReading: string | null
+    usersRegistered: number
+    usersAccessed: number
     loginsLast30Days: number
     topApartment: { name: string; logins: number } | null
 }
@@ -33,6 +37,7 @@ export default function ApuracaoPage() {
     const [loading, setLoading] = useState(true)
     const [exportLoading, setExportLoading] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
+    const [selectedComplex, setSelectedComplex] = useState<Complex | undefined>(undefined)
     const take = 50
     const { toast } = useToast()
 
@@ -43,7 +48,7 @@ export default function ApuracaoPage() {
         try {
             const skip = (page - 1) * take
             const res = await axios.get('/api/apuracao', {
-                params: { search: debouncedSearch, take, skip }
+                params: { search: debouncedSearch, complexId: selectedComplex?.id, take, skip }
             })
             setData(res.data.list || [])
             setTotalCount(res.data.totalCount || 0)
@@ -52,12 +57,12 @@ export default function ApuracaoPage() {
         } finally {
             setLoading(false)
         }
-    }, [debouncedSearch, toast])
+    }, [debouncedSearch, selectedComplex?.id, toast])
 
     useEffect(() => {
         setCurrentPage(1)
         fetchData(1)
-    }, [debouncedSearch])
+    }, [debouncedSearch, selectedComplex?.id])
 
     const handlePageChange = (page: number) => {
         setCurrentPage(page)
@@ -90,7 +95,8 @@ export default function ApuracaoPage() {
                 'Apartamentos': item.totalApartments,
                 'Medidores': item.totalMeters,
                 'Última Leitura': item.lastReading || 'Sem leitura',
-                'Logins (30 dias)': item.loginsLast30Days,
+                'Usuários cadastrados': item.usersRegistered ?? 0,
+                'Usuários que acessaram (30 dias)': item.usersAccessed ?? item.loginsLast30Days,
                 'Apt. mais ativo': item.topApartment ? `${item.topApartment.name} (${item.topApartment.logins} logins)` : '-',
             }))
 
@@ -182,16 +188,49 @@ export default function ApuracaoPage() {
                         )}
 
                         {/* Search */}
-                        <div className="relative flex-1 mb-2">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                type="text"
-                                placeholder="Buscar por nome do condomínio..."
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                className="pl-8"
-                            />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    type="text"
+                                    placeholder="Buscar por nome do condomínio..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="pl-8"
+                                />
+                            </div>
+                            <div>
+                                <SelectComplex
+                                    complex={selectedComplex}
+                                    setSelectedComplex={(complex) => {
+                                        setSelectedComplex(complex as Complex | undefined)
+                                        setCurrentPage(1)
+                                    }}
+                                    autoSelectSingle={false}
+                                />
+                            </div>
                         </div>
+
+                        {selectedComplex && !loading && data.length > 0 && (
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+                                <div className="rounded-md border p-3">
+                                    <p className="text-xs text-muted-foreground">Status</p>
+                                    <p className="font-semibold">{data[0].status || '—'}</p>
+                                </div>
+                                <div className="rounded-md border p-3">
+                                    <p className="text-xs text-muted-foreground">Última leitura</p>
+                                    <p className="font-semibold">{data[0].lastReading || 'Sem leitura'}</p>
+                                </div>
+                                <div className="rounded-md border p-3">
+                                    <p className="text-xs text-muted-foreground">Usuários cadastrados</p>
+                                    <p className="font-semibold">{(data[0].usersRegistered ?? 0).toLocaleString('pt-BR')}</p>
+                                </div>
+                                <div className="rounded-md border p-3">
+                                    <p className="text-xs text-muted-foreground">Usuários que acessaram (30d)</p>
+                                    <p className="font-semibold">{(data[0].usersAccessed ?? data[0].loginsLast30Days ?? 0).toLocaleString('pt-BR')}</p>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Table */}
                         {loading ? (
@@ -208,6 +247,7 @@ export default function ApuracaoPage() {
                                             <TableHead className="text-center"><DoorClosed className="h-4 w-4 inline mr-1" />Aptos</TableHead>
                                             <TableHead className="text-center"><Gauge className="h-4 w-4 inline mr-1" />Medidores</TableHead>
                                             <TableHead className="text-center"><CalendarCheck className="h-4 w-4 inline mr-1" />Última Leitura</TableHead>
+                                            <TableHead className="text-center">Usuários cad.</TableHead>
                                             <TableHead className="text-center"><Activity className="h-4 w-4 inline mr-1" />Logins 30d</TableHead>
                                             <TableHead>Apt. mais ativo</TableHead>
                                             <TableHead>Status</TableHead>
@@ -216,7 +256,7 @@ export default function ApuracaoPage() {
                                     <TableBody>
                                         {data.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
+                                                <TableCell colSpan={9} className="text-center py-6 text-muted-foreground">
                                                     Nenhum condomínio encontrado
                                                 </TableCell>
                                             </TableRow>
@@ -247,8 +287,13 @@ export default function ApuracaoPage() {
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-center">
-                                                        <span className={`font-mono text-sm ${item.loginsLast30Days > 0 ? 'text-green-600 font-semibold' : 'text-muted-foreground'}`}>
-                                                            {item.loginsLast30Days}
+                                                        <span className={`font-mono text-sm ${(item.usersRegistered ?? 0) > 0 ? 'text-blue-600 font-semibold' : 'text-muted-foreground'}`}>
+                                                            {item.usersRegistered ?? 0}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <span className={`font-mono text-sm ${(item.usersAccessed ?? item.loginsLast30Days) > 0 ? 'text-green-600 font-semibold' : 'text-muted-foreground'}`}>
+                                                            {item.usersAccessed ?? item.loginsLast30Days}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="text-sm">
