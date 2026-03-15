@@ -27,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useComplexes } from "@/hooks/useComplexes"
+import { getRoleOptionsForUI, normalizeRoleDisplayName } from "@/lib/roleDisplay"
 
 interface UserModalProps {
     isOpen: boolean
@@ -282,7 +283,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
                             <TableRow key={assignment.roleId}>
                                 <TableCell>{mapContextType[assignment.contextType]}</TableCell>
                                 <TableCell title={assignment.contextId || undefined}>{assignment.contextName || (assignment.contextType === ContextType.system ? 'Sistema' : assignment.contextId || '—')}</TableCell>
-                                <TableCell>{assignment.Role.name}</TableCell>
+                                <TableCell>{normalizeRoleDisplayName(assignment.Role.name)}</TableCell>
                                 <TableCell className="text-right">
                                     <Button
                                         variant="outline"
@@ -329,6 +330,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     const { complexes: allComplexes, loading: complexesLoading } = useComplexes({ nameQuery: complexSearch, take: 50 });
     const [bulkAdding, setBulkAdding] = useState(false);
     const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
+    const roleOptions = getRoleOptionsForUI(availableRoles);
 
     const [cascateContextSearching, setCascateContextSearching] = useState<{
         company: Company | null;
@@ -564,9 +566,9 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                                 <SelectValue placeholder="Selecione um papel" />
                             </SelectTrigger>
                             <SelectContent>
-                                {availableRoles.map((role) => (
+                                {roleOptions.map((role) => (
                                     <SelectItem key={role.id} value={role.id}>
-                                        {role.name}
+                                        {normalizeRoleDisplayName(role.name)}
                                     </SelectItem>
                                 ))}
                             </SelectContent>

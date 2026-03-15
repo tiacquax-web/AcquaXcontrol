@@ -23,6 +23,7 @@ import BlocksCombobox from "@/components/ComboboxBlock"
 import { useRoles } from "@/hooks/useRoles"
 import { exportUsers } from "@/services/usersService"
 import type { Complex, Block } from "@prisma/client"
+import { getRoleOptionsForUI, normalizeRoleDisplayName } from "@/lib/roleDisplay"
 
 export default function UsersPage() {
     const [searchQuery, setSearchQuery] = useState("")
@@ -61,6 +62,7 @@ export default function UsersPage() {
     const { createUser, updateUser, deleteUser, error: mutationError } = useUserMutations()
     const { deleteRoleAssignment, error: errorDeleteRoleAssignment, loading: loadingDeleteRoleAssignment } = useRoleAssignmentMutations()
     const { roles } = useRoles({})
+    const roleOptions = getRoleOptionsForUI(roles)
     const [currentUser, setCurrentUser] = useState<Partial<User> | undefined>(undefined)
     const [exportLoading, setExportLoading] = useState(false)
     const [showExportModal, setShowExportModal] = useState(false)
@@ -334,8 +336,8 @@ export default function UsersPage() {
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="all">Todos os papéis</SelectItem>
-                                                    {roles.map(r => (
-                                                        <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                                                    {roleOptions.map(r => (
+                                                        <SelectItem key={r.id} value={r.id}>{normalizeRoleDisplayName(r.name)}</SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
@@ -343,7 +345,7 @@ export default function UsersPage() {
                                     </div>
                                     {hasActiveFilters && (
                                         <p className="text-xs text-muted-foreground">
-                                            Filtros ativos: {[filterComplex?.socialName, filterBlock?.name, roles.find(r => r.id === filterRoleId)?.name].filter(Boolean).join(' › ')}
+                                            Filtros ativos: {[filterComplex?.socialName, filterBlock?.name, normalizeRoleDisplayName(roles.find(r => r.id === filterRoleId)?.name || '')].filter(Boolean).join(' › ')}
                                         </p>
                                     )}
                                 </div>
@@ -520,8 +522,8 @@ export default function UsersPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">Todos os papéis</SelectItem>
-                                    {roles.map(r => (
-                                        <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                                    {roleOptions.map(r => (
+                                        <SelectItem key={r.id} value={r.id}>{normalizeRoleDisplayName(r.name)}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
