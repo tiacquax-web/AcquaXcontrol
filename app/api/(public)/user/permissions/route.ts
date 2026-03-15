@@ -1,14 +1,24 @@
 import { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma";
 import {
     createEntity,
-    deleteEntity,
-    getAvailableComplexesForEntity,
     getEntityListData,
-    updateEntityData,
 } from "@/lib/userData";
-import { isSessionValid, validateUserSession } from "@/lib/users";
-import { ContextType } from "@prisma/client";
+import { validateUserSession } from "@/lib/users";
+import { ContextType, PermissionAction, PermissionableEntity } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+
+function getAllPermissions() {
+    const actions = Object.values(PermissionAction);
+    const entities = Object.values(PermissionableEntity);
+    const result: { entity: PermissionableEntity; action: PermissionAction }[] = [];
+    for (const entity of entities) {
+        for (const action of actions) {
+            result.push({ entity, action });
+        }
+    }
+    return result;
+}
 
 function getQueryParams(req: NextRequest) {
     // query params - custom
@@ -28,14 +38,11 @@ function getQueryParams(req: NextRequest) {
 
 export async function GET(req: NextRequest): Promise<Response> {
     try {
-        // validate user session
-        const session = req.cookies.get("session")?.value;
-        const validSession = session ? await isSessionValid(session) : false;
-        if (!validSession)
-            return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-
-        // get userId from session
-        const userId = validSession.userId;
+        // validate user session (cookie or JWT)
+        const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
+        if (sessionError || !userId) {
+            return NextResponse.json({ error: "Não autorizado" }, { status: sessionStatus || 401 });
+        }
 
         // get query params
         const { roleId, action, entity, search, take, skip, orderBy, orderDirection } =
@@ -54,6 +61,28 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         console.log("######### Where:", where);
         console.log("######### Context Type:", contextType);
+
+        // Programador/Administrador com qualquer contexto recebe todas as permissões no UI
+        const privilegedAssignment = await prisma.roleAssignment.findFirst({
+            where: {
+                userId,
+                AND: [
+                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                    {
+                        OR: [
+                            { contextType: ContextType.system },
+                            { Role: { name: 'Programador' } },
+                            { Role: { name: 'Administrador' } },
+                        ]
+                    }
+                ]
+            },
+            select: { id: true }
+        });
+        if (privilegedAssignment) {
+            const allPermissions = getAllPermissions();
+            return NextResponse.json({ list: allPermissions, totalCount: allPermissions.length });
+        }
 
         // get permissions
         const { entity: permissions, error, status, totalCount } = await getEntityListData( userId, "permission", contextType, contextId, search, where, take, {}, skip, orderBy, orderDirection as 'asc' | 'desc' );

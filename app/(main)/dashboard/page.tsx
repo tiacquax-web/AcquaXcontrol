@@ -1217,13 +1217,14 @@ export default function Dashboard() {
 
   // ── Role detection ──────────────────────────────────────────────────────────
   // Administrador (isSystem + role='Administrador') → AdminKPIDashboard (panorama KPI)
-  // Programador (isSystem + não-Administrador)       → ProgramadorDashboard (atalhos)
-  // Síndico / Administradora de empresa              → SindicoDashboard
-  // Morador (só apartments)                          → MoradorDashboard
-  const isSystem      = context?.isSystem ?? false;
-  const isAdministrador = isSystem && (context?.systemRoles ?? []).includes('Administrador');
-  // Programador = qualquer usuário system que NÃO seja Administrador (inclui 'Programador', roles sem nome específico, etc.)
-  const isProgramador = isSystem && !isAdministrador;
+  // Programador (role='Programador')                → ProgramadorDashboard (atalhos)
+  // Síndico / Administradora de empresa             → SindicoDashboard
+  // Morador (só apartments)                         → MoradorDashboard
+  const isSystem = context?.isSystem ?? false;
+  const systemRoles = context?.systemRoles ?? [];
+  // Prioriza dashboard de Programador quando este papel estiver presente
+  const isProgramador = systemRoles.includes('Programador');
+  const isAdministrador = isSystem && systemRoles.includes('Administrador') && !isProgramador;
   const isMorador = useMemo(() => {
     if (!context) return false;
     return !context.isSystem

@@ -1,6 +1,6 @@
 import { cleanEntityBody } from "@/lib/prisma"
 import { getEntityListData } from "@/lib/userData"
-import { isSessionValid, validateUserSession } from "@/lib/users"
+import { validateUserSession } from "@/lib/users"
 import { ContextType, Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
@@ -28,12 +28,8 @@ function getQueryParams(req: NextRequest) {
 export async function GET(req: NextRequest): Promise<Response> {
     try {
         // validate user session
-        const session = req.cookies.get('session')?.value
-        const validSession = session ? await isSessionValid(session) : false
-        if (!validSession) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-
-        // get userId from session
-        const userId = validSession.userId
+        const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
+        if (sessionError || !userId) return NextResponse.json({ error: 'Não autorizado' }, { status: sessionStatus || 401 });
         
         // get query params
         const { withRole, withUser, withContext, userId: filterUserId, roleId, userName, roleName, search, take, skip, orderBy, orderDirection } = getQueryParams(req)
@@ -149,16 +145,24 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (sessionError) return NextResponse.json({ sessionError }, { status: sessionStatus });
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-        // Check if user is a system-level user (can manage role assignments)
-        const systemAssignment = await prisma.roleAssignment.findFirst({
+        // Check if user is a system-level user (or Programador/Administrador role anywhere)
+        const privilegedAssignment = await prisma.roleAssignment.findFirst({
             where: {
                 userId,
-                contextType: ContextType.system,
+                AND: [
+                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                    {
+                        OR: [
+                            { contextType: ContextType.system },
+                            { Role: { name: 'Programador' } },
+                            { Role: { name: 'Administrador' } },
+                        ]
+                    }
+                ]
             },
-            select: { id: true, deletedAt: true },
+            select: { id: true },
         });
-        const isSystemUser = !!systemAssignment && (systemAssignment.deletedAt === null || systemAssignment.deletedAt === undefined);
-        if (!isSystemUser) {
+        if (!privilegedAssignment) {
             return NextResponse.json({ error: 'Não autorizado: apenas usuários do sistema podem gerenciar papéis.' }, { status: 401 });
         }
 

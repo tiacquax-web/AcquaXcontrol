@@ -29,10 +29,18 @@ export async function GET(req: NextRequest): Promise<Response> {
             },
         });
 
-        const isSystem = assignments.some(a => a.contextType === 'system');
+        const isSystem = assignments.some(a =>
+            a.contextType === 'system' ||
+            a.Role?.name === 'Programador' ||
+            a.Role?.name === 'Administrador'
+        );
         // Nomes dos papéis com contextType=system ex: ['Administrador'] ou ['Programador']
         const systemRoles = assignments
-            .filter(a => a.contextType === 'system')
+            .filter(a =>
+                a.contextType === 'system' ||
+                a.Role?.name === 'Programador' ||
+                a.Role?.name === 'Administrador'
+            )
             .map(a => a.Role?.name)
             .filter(Boolean) as string[];
         const apartmentIds = assignments.filter(a => a.contextType === 'apartment').map(a => a.contextId).filter(Boolean) as string[];
