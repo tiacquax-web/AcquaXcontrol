@@ -332,6 +332,14 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
     const roleOptions = getRoleOptionsForUI(availableRoles);
     const getComplexLabel = (cx: any) => String(cx?.socialName ?? cx?.aliasName ?? 'Condomínio');
+    const safeComplexes = allComplexes
+        .map((cx) => ({
+            ...cx,
+            id: typeof cx?.id === 'string' ? cx.id : String(cx?.id ?? ''),
+            socialName: String(cx?.socialName ?? ''),
+            aliasName: cx?.aliasName == null ? null : String(cx.aliasName),
+        }))
+        .filter((cx) => cx.id.trim().length > 0);
 
     const [cascateContextSearching, setCascateContextSearching] = useState<{
         company: Company | null;
@@ -384,6 +392,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     }
 
     const toggleComplexSelection = (id: string) => {
+        if (!id || typeof id !== 'string') return;
         const updated = new Set(selectedComplexIds);
         if (updated.has(id)) updated.delete(id);
         else updated.add(id);
@@ -395,7 +404,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
 
     const selectAllComplexes = (checked: boolean) => {
         if (checked) {
-            const ids = new Set(allComplexes.map(c => c.id));
+            const ids = new Set(safeComplexes.map(c => c.id));
             setSelectedComplexIds(ids);
         } else {
             setSelectedComplexIds(new Set());
@@ -425,12 +434,12 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                             <div className="p-1">
                                 <div className="flex items-center gap-2 p-2 border-b">
                                     <Checkbox
-                                        checked={allComplexes.length > 0 && selectedComplexIds.size === allComplexes.length}
-                                        onCheckedChange={selectAllComplexes}
+                                        checked={safeComplexes.length > 0 && selectedComplexIds.size === safeComplexes.length}
+                                        onCheckedChange={(value) => selectAllComplexes(value === true)}
                                     />
-                                    <span className="text-xs font-medium">Selecionar todos ({allComplexes.length})</span>
+                                    <span className="text-xs font-medium">Selecionar todos ({safeComplexes.length})</span>
                                 </div>
-                                {allComplexes.map(cx => (
+                                {safeComplexes.map(cx => (
                                     <div key={cx.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer" onClick={() => toggleComplexSelection(cx.id)}>
                                         <Checkbox
                                             checked={selectedComplexIds.has(cx.id)}
@@ -439,15 +448,15 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                                         <span className="text-sm">{getComplexLabel(cx)}</span>
                                     </div>
                                 ))}
-                                {allComplexes.length === 0 && <p className="text-center text-sm text-muted-foreground p-4">Nenhum condomínio encontrado</p>}
+                                {safeComplexes.length === 0 && <p className="text-center text-sm text-muted-foreground p-4">Nenhum condomínio encontrado</p>}
                             </div>
                         )}
                     </div>
                     {selectedComplexIds.size > 0 && (
                         <div className="flex flex-wrap gap-1">
                             {[...selectedComplexIds].slice(0, 5).map(id => {
-                                const cx = allComplexes.find(c => c.id === id);
-                                return <Badge key={id} variant="secondary" className="text-xs">{cx ? getComplexLabel(cx) : id.slice(0,8)}</Badge>;
+                                const cx = safeComplexes.find(c => c.id === id);
+                                return <Badge key={id} variant="secondary" className="text-xs">{cx ? getComplexLabel(cx) : String(id).slice(0,8)}</Badge>;
                             })}
                             {selectedComplexIds.size > 5 && <Badge variant="outline" className="text-xs">+{selectedComplexIds.size - 5} mais</Badge>}
                         </div>
