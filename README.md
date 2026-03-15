@@ -1,5 +1,12 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Mobile (iPhone e Android)
+
+O AcquaxControl está preparado para uso como aplicativo mobile via PWA.
+
+- Página com instruções de instalação: `/instalar-app`
+- Guia técnico de publicação em loja: `docs/mobile-ios-android.md`
+
 ## Getting Started
 
 First, run the development server:

@@ -138,7 +138,7 @@ export async function middleware(req: NextRequest) {
   // ── 5. Static & public paths ──
   const publicPaths = [
     '/_next', '/favicon.ico', '/recover', '/politica-de-privacidade',
-    '/logo-acquax.png', '/manifest.webmanifest', '/sw.js', '/offline',
+    '/logo-acquax.png', '/manifest.webmanifest', '/sw.js', '/offline', '/instalar-app',
     '/icons', '/.well-known', '/screenshots', '/logo-quadrada',
     '/news/', '/services/', '/public/',
   ];
