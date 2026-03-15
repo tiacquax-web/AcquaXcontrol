@@ -1102,56 +1102,56 @@ function ProgramadorDashboard() {
       href: '/users',
       icon: Users,
       label: 'Usuários',
-      description: 'Cadastrar / gerenciar usuários',
-      color: 'bg-purple-50 border-purple-200 hover:bg-purple-100',
+      description: 'Usuários',
+      color: 'border-purple-200',
       iconColor: 'text-purple-600',
     },
     {
       href: '/complexes',
       icon: Building2,
       label: 'Condomínios',
-      description: 'Cadastrar / gerenciar condomínios',
-      color: 'bg-blue-50 border-blue-200 hover:bg-blue-100',
+      description: 'Condomínios',
+      color: 'border-blue-200',
       iconColor: 'text-blue-600',
     },
     {
       href: '/blocks',
       icon: Home,
       label: 'Blocos',
-      description: 'Cadastrar / gerenciar blocos',
-      color: 'bg-sky-50 border-sky-200 hover:bg-sky-100',
+      description: 'Blocos',
+      color: 'border-sky-200',
       iconColor: 'text-sky-600',
     },
     {
       href: '/apartments',
       icon: DoorClosed,
       label: 'Apartamentos',
-      description: 'Cadastrar / gerenciar unidades',
-      color: 'bg-teal-50 border-teal-200 hover:bg-teal-100',
+      description: 'Apartamentos',
+      color: 'border-teal-200',
       iconColor: 'text-teal-600',
     },
     {
       href: '/meters',
       icon: GaugeCircle,
       label: 'Medidores',
-      description: 'Cadastrar / gerenciar medidores',
-      color: 'bg-orange-50 border-orange-200 hover:bg-orange-100',
+      description: 'Medidores',
+      color: 'border-orange-200',
       iconColor: 'text-orange-600',
     },
     {
       href: '/readings/create',
       icon: Droplets,
       label: 'Subir Leitura',
-      description: 'Registrar nova leitura de medidor',
-      color: 'bg-cyan-50 border-cyan-200 hover:bg-cyan-100',
+      description: 'Subir Leitura',
+      color: 'border-cyan-200',
       iconColor: 'text-cyan-600',
     },
     {
       href: '/dealership-readings/new',
       icon: Receipt,
       label: 'Cadastrar Conta',
-      description: 'Lançar conta da concessionária',
-      color: 'bg-green-50 border-green-200 hover:bg-green-100',
+      description: 'Cadastrar Conta',
+      color: 'border-green-200',
       iconColor: 'text-green-600',
     },
   ];
@@ -1163,20 +1163,19 @@ function ProgramadorDashboard() {
         <h2 className="text-lg font-semibold text-foreground">Acesso Rápido</h2>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {shortcuts.map(({ href, icon: Icon, label, description, color, iconColor }) => (
           <Link key={href} href={href}>
-            <div
-              className={`flex flex-col items-center justify-center gap-3 rounded-2xl border p-5 text-center cursor-pointer transition-all active:scale-95 ${color}`}
+            <Button
+              variant="outline"
+              className={`h-16 w-full justify-start gap-3 text-left ${color}`}
             >
-              <div className={`w-12 h-12 rounded-full bg-white/70 flex items-center justify-center shadow-sm`}>
-                <Icon className={`w-6 h-6 ${iconColor}`} />
+              <Icon className={`w-5 h-5 ${iconColor}`} />
+              <div className="leading-tight">
+                <p className="font-semibold text-sm">{label}</p>
+                <p className="text-[11px] text-muted-foreground">{description}</p>
               </div>
-              <div>
-                <p className="font-semibold text-sm text-foreground leading-tight">{label}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight hidden sm:block">{description}</p>
-              </div>
-            </div>
+            </Button>
           </Link>
         ))}
       </div>
