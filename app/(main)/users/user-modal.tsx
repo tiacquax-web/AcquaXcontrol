@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { User, Company, Complex, Block, Apartment, RoleAssignment } from "@prisma/client"
 import { useRoleAssignmentMutations, useRoleAssignments } from "@/hooks/useRoleAssignments"
-import { Loader2, X, CheckCircle2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { useRoles } from "@/hooks/useRoles"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ContextType, Role } from "@prisma/client"
@@ -24,9 +24,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
-import { useComplexes } from "@/hooks/useComplexes"
 import { getRoleOptionsForUI, normalizeRoleDisplayName } from "@/lib/roleDisplay"
 
 interface UserModalProps {
@@ -323,24 +320,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     const [selectedRole, setSelectedRole] = useState<Role>();
     const { createRoleAssignment, loading, error } = useRoleAssignmentMutations();
     const { toast } = useToast();
-
-    // Multi-complex selection
-    const [selectedComplexIds, setSelectedComplexIds] = useState<Set<string>>(new Set());
-    const [complexSearch, setComplexSearch] = useState("");
-    const { complexes: allComplexes, loading: complexesLoading } = useComplexes({ nameQuery: complexSearch, take: 50 });
-    const [bulkAdding, setBulkAdding] = useState(false);
-    const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
     const roleOptions = getRoleOptionsForUI(availableRoles);
-    const getComplexLabel = (cx: any) => String(cx?.socialName ?? cx?.aliasName ?? 'Condomínio');
-    const safeComplexes = (Array.isArray(allComplexes) ? allComplexes : [])
-        .filter((cx): cx is any => !!cx && typeof cx === 'object')
-        .map((cx) => ({
-            ...cx,
-            id: typeof cx.id === 'string' ? cx.id : String(cx.id ?? ''),
-            socialName: String(cx.socialName ?? ''),
-            aliasName: cx.aliasName == null ? null : String(cx.aliasName),
-        }))
-        .filter((cx) => cx.id.trim().length > 0);
 
     const [cascateContextSearching, setCascateContextSearching] = useState<{
         company: Company | null;
@@ -384,7 +364,12 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
 
     const handleSelectContextType = (value: ContextType) => {
         setContextType(value);
-        setSelectedComplexIds(new Set());
+        setCascateContextSearching({
+            company: null,
+            complex: null,
+            block: null,
+            apartment: null,
+        });
         if (value === ContextType.system) {
             setContextId(ContextType.system);
         } else {
@@ -392,77 +377,16 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
         }
     }
 
-    const toggleComplexSelection = (id: string) => {
-        if (!id || typeof id !== 'string') return;
-        const updated = new Set(selectedComplexIds);
-        if (updated.has(id)) updated.delete(id);
-        else updated.add(id);
-        setSelectedComplexIds(updated);
-        // contextId: use first selected for single mode
-        if (updated.size === 1) setContextId([...updated][0]);
-        else setContextId(null);
-    };
-
-    const selectAllComplexes = (checked: boolean) => {
-        if (checked) {
-            const ids = new Set(safeComplexes.map(c => c.id));
-            setSelectedComplexIds(ids);
-        } else {
-            setSelectedComplexIds(new Set());
-            setContextId(null);
-        }
-    };
-
     const renderContextSearchFields = () => {
-        // For complex context: show multi-select
         if (contextType === ContextType.complex) {
             return (
-                <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                        <Label className="text-sm font-semibold">Selecionar Condomínios:</Label>
-                        <span className="text-xs text-muted-foreground">{selectedComplexIds.size} selecionado(s)</span>
-                    </div>
-                    <Input
-                        placeholder="Buscar condomínio..."
-                        value={complexSearch}
-                        onChange={(e) => setComplexSearch(e.target.value)}
-                        className="h-8 text-sm"
-                    />
-                    <div className="border rounded-md max-h-48 overflow-y-auto">
-                        {complexesLoading ? (
-                            <div className="flex justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>
-                        ) : (
-                            <div className="p-1">
-                                <div className="flex items-center gap-2 p-2 border-b">
-                                    <Checkbox
-                                        checked={safeComplexes.length > 0 && selectedComplexIds.size === safeComplexes.length}
-                                        onCheckedChange={(value) => selectAllComplexes(value === true)}
-                                    />
-                                    <span className="text-xs font-medium">Selecionar todos ({safeComplexes.length})</span>
-                                </div>
-                                {safeComplexes.map(cx => (
-                                    <div key={cx.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer" onClick={() => toggleComplexSelection(cx.id)}>
-                                        <Checkbox
-                                            checked={selectedComplexIds.has(cx.id)}
-                                            onCheckedChange={() => toggleComplexSelection(cx.id)}
-                                        />
-                                        <span className="text-sm">{getComplexLabel(cx)}</span>
-                                    </div>
-                                ))}
-                                {safeComplexes.length === 0 && <p className="text-center text-sm text-muted-foreground p-4">Nenhum condomínio encontrado</p>}
-                            </div>
-                        )}
-                    </div>
-                    {selectedComplexIds.size > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                            {[...selectedComplexIds].slice(0, 5).map(id => {
-                                const cx = safeComplexes.find(c => c.id === id);
-                                return <Badge key={id} variant="secondary" className="text-xs">{cx ? getComplexLabel(cx) : String(id).slice(0,8)}</Badge>;
-                            })}
-                            {selectedComplexIds.size > 5 && <Badge variant="outline" className="text-xs">+{selectedComplexIds.size - 5} mais</Badge>}
-                        </div>
-                    )}
-                </div>
+                <ComplexesCombobox
+                    modal
+                    complex={cascateContextSearching.complex as Complex}
+                    setSelectedComplex={(complex) => {
+                        handleCasacteContextSelect(ContextType.complex, complex as Complex);
+                    }}
+                />
             );
         }
 
@@ -515,53 +439,24 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
 
     const handleAddRole = async () => {
         if (!user || !selectedRole || !contextType) return;
-
-        // Multi-complex bulk assignment
-        if (contextType === ContextType.complex && selectedComplexIds.size > 0) {
-            setBulkAdding(true);
-            const complexList = [...selectedComplexIds];
-            setBulkProgress({ done: 0, total: complexList.length, errors: [] });
-            let done = 0;
-            const errors: string[] = [];
-            for (const cxId of complexList) {
-                try {
-                    await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId: cxId });
-                    done++;
-                    setBulkProgress({ done, total: complexList.length, errors });
-                } catch (err: any) {
-                    const msg = err?.message || cxId;
-                    errors.push(msg);
-                    done++;
-                    setBulkProgress({ done, total: complexList.length, errors });
-                }
-            }
-            setBulkAdding(false);
-            if (errors.length === 0) {
-                toast({ title: "Sucesso", description: `${complexList.length} papel(éis) adicionado(s) com sucesso!` });
-            } else {
-                toast({ title: "Concluído com erros", description: `${done - errors.length} adicionados, ${errors.length} erros.`, variant: "destructive" });
-            }
-            onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId: 'bulk' });
-            return;
-        }
-
-        if (!contextId) return;
+        if (contextType !== ContextType.system && !contextId) return;
         try {
-            const createdRoleAssignment = await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId });
+            const createdRoleAssignment = await createRoleAssignment({
+                userId: user.id,
+                roleId: selectedRole.id,
+                contextType,
+                contextId: contextId || ContextType.system,
+            });
             if (createdRoleAssignment?.id) {
                 toast({ title: "Sucesso", description: "Papel adicionado com sucesso!", variant: "default" });
-                onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId });
+                onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId: contextId || ContextType.system });
             }
         } catch (error) {
             console.error("Error adding role:", error);
         }
     };
 
-    const isAddDisabled = !selectedRole || !contextType || (
-        contextType === ContextType.complex
-            ? selectedComplexIds.size === 0
-            : !contextId
-    ) || bulkAdding;
+    const isAddDisabled = !selectedRole || !contextType || (contextType !== ContextType.system && !contextId) || loading;
 
     return (
         <Card>
@@ -615,23 +510,10 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                         </div>
                     )}
 
-                    {/* Bulk progress */}
-                    {bulkProgress && (
-                        <div className="text-sm text-muted-foreground bg-muted/50 rounded p-2">
-                            {bulkAdding
-                                ? `Adicionando... ${bulkProgress.done}/${bulkProgress.total}`
-                                : <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4 text-green-500" /> Concluído: {bulkProgress.done - bulkProgress.errors.length} de {bulkProgress.total} adicionados.</span>
-                            }
-                        </div>
-                    )}
-
                     <div className="flex space-x-2">
                         <Button type="button" onClick={handleAddRole} disabled={isAddDisabled} size="sm">
-                            {bulkAdding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                            {contextType === ContextType.complex && selectedComplexIds.size > 1
-                                ? `Adicionar em ${selectedComplexIds.size} condomínios`
-                                : "Adicionar"
-                            }
+                            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                            Adicionar
                         </Button>
                         <Button variant="outline" onClick={() => setAddingRole(false)} size="sm">
                             Cancelar

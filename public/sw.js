@@ -1,6 +1,9 @@
-// Minimal Service Worker for installability and basic offline fallback
+// Service Worker mínimo: apenas fallback offline de navegação.
+// IMPORTANTE: não fazer cache de assets/_next nem APIs para evitar bundle stale.
+const OFFLINE_CACHE = 'offline-v2';
+const OFFLINE_URLS = ['/offline'];
+
 self.addEventListener('install', (event) => {
-  // Precache minimal offline assets
   event.waitUntil(
     (async () => {
       const cache = await caches.open(OFFLINE_CACHE);
@@ -11,11 +14,18 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(
+        names
+          .filter((name) => name !== OFFLINE_CACHE)
+          .map((name) => caches.delete(name))
+      );
+      await self.clients.claim();
+    })()
+  );
 });
-
-const OFFLINE_CACHE = 'offline-v1';
-const OFFLINE_URLS = ['/', '/offline'];
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
@@ -41,36 +51,5 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // API requests: network-first, cache-fallback
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      (async () => {
-        const cache = await caches.open(OFFLINE_CACHE);
-        try {
-          const fresh = await fetch(req);
-          cache.put(req, fresh.clone()); // Update cache with fresh response
-          return fresh;
-        } catch (_e) {
-          const cached = await cache.match(req);
-          return cached || Response.error();
-        }
-      })()
-    );
-    return;
-  }
-
-  // For static assets (all other GET requests): cache-first with revalidate
-  event.respondWith(
-    (async () => {
-      const cache = await caches.open(OFFLINE_CACHE);
-      const cached = await cache.match(req);
-      if (cached) return cached;
-      try {
-        const fresh = await fetch(req);
-        cache.put(req, fresh.clone());
-        return fresh;
-      } catch (_e) {
-        return cached || Response.error();
-      }
-    })()
-  );});
+  // Para assets e APIs: deixa o navegador/rede cuidar (sem cache SW).
+});
