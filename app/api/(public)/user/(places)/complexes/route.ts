@@ -1,5 +1,6 @@
 import { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
 import { createEntity } from "@/lib/userData"
+import { getUserContexts } from "@/lib/userContexts"
 import { validateUserSession } from "@/lib/users"
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
@@ -43,6 +44,7 @@ async function listComplexesFromMongoRaw(params: {
     skip: number
     companyId?: string
     complexId?: string
+    allowedComplexIds?: string[]
     socialNamesParam?: string[]
     withCompany?: boolean
 }) {
@@ -57,6 +59,12 @@ async function listComplexesFromMongoRaw(params: {
         $and: [
             { $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] }
         ]
+    }
+    if (params.allowedComplexIds) {
+        if (params.allowedComplexIds.length === 0) {
+            return { list: [], totalCount: 0 }
+        }
+        filter.$and.push({ _id: { $in: params.allowedComplexIds } })
     }
     if (params.companyId) filter.$and.push({ companyId: params.companyId })
     if (params.complexId) filter.$and.push({ _id: params.complexId })
@@ -133,6 +141,7 @@ async function listComplexesFallback(params: {
     skip: number
     companyId?: string
     complexId?: string
+    allowedComplexIds?: string[]
     socialNamesParam?: string[]
     withCompany?: boolean
     withBlocksCount?: boolean
@@ -146,6 +155,7 @@ async function listComplexesFallback(params: {
         skip,
         companyId,
         complexId,
+        allowedComplexIds,
         socialNamesParam,
         withCompany,
         withBlocksCount,
@@ -156,7 +166,14 @@ async function listComplexesFallback(params: {
 
     const where: any = {}
     if (companyId) where.companyId = companyId
-    if (complexId) where.id = complexId
+    if (allowedComplexIds) {
+        if (allowedComplexIds.length === 0) {
+            return { list: [], totalCount: 0 }
+        }
+        where.id = complexId ? complexId : { in: allowedComplexIds }
+    } else if (complexId) {
+        where.id = complexId
+    }
     if (socialNamesParam && socialNamesParam.length > 0) where.socialName = { in: socialNamesParam }
     if (onlyWithReservoirs) where.reservoirs = { some: { deletedAt: null } }
 
@@ -207,6 +224,7 @@ async function listComplexesFallback(params: {
                 skip,
                 companyId,
                 complexId,
+                allowedComplexIds,
                 socialNamesParam,
                 withCompany,
             })
@@ -353,6 +371,52 @@ function getQueryParams(req: NextRequest) {
     return { socialNames, withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection }
 }
 
+async function resolveAllowedComplexIdsForUser(userId: string): Promise<string[] | undefined> {
+    const contexts = await getUserContexts(userId)
+    if (contexts.system) return undefined
+
+    const allowedSet = new Set<string>()
+    contexts.complexIds.forEach((id) => id && allowedSet.add(id))
+
+    if (contexts.companyIds.length > 0) {
+        const companyComplexes = await prisma.complex.findMany({
+            where: {
+                companyId: { in: contexts.companyIds },
+                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+            },
+            select: { id: true },
+            take: 5000,
+        })
+        companyComplexes.forEach((cx) => cx.id && allowedSet.add(cx.id))
+    }
+
+    if (contexts.blockIds.length > 0) {
+        const blocks = await prisma.block.findMany({
+            where: {
+                id: { in: contexts.blockIds },
+                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+            },
+            select: { complexId: true },
+            take: 5000,
+        })
+        blocks.forEach((b) => b.complexId && allowedSet.add(b.complexId))
+    }
+
+    if (contexts.apartmentIds.length > 0) {
+        const apartments = await prisma.apartment.findMany({
+            where: {
+                id: { in: contexts.apartmentIds },
+                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+            },
+            select: { complexId: true },
+            take: 20000,
+        })
+        apartments.forEach((a) => a.complexId && allowedSet.add(a.complexId))
+    }
+
+    return [...allowedSet]
+}
+
 export async function GET(req: NextRequest): Promise<Response> {
     try {
         console.log("######### Requisição GET de Complexos recebida")
@@ -376,6 +440,17 @@ export async function GET(req: NextRequest): Promise<Response> {
             socialNames
         } = getQueryParams(req)
 
+        // Aplica escopo de acesso para perfis não-sistema
+        const allowedComplexIds = await resolveAllowedComplexIdsForUser(userId)
+        if (allowedComplexIds) {
+            if (allowedComplexIds.length === 0) {
+                return NextResponse.json({ list: [], totalCount: 0 })
+            }
+            if (complexId && !allowedComplexIds.includes(complexId)) {
+                return NextResponse.json({ error: 'Não autorizado para este condomínio.' }, { status: 403 })
+            }
+        }
+
         // Novo: busca por múltiplos socialNames (parse resiliente para evitar 500 em query inválida)
         let socialNamesParam: string[] | undefined;
         if (socialNames) {
@@ -394,6 +469,7 @@ export async function GET(req: NextRequest): Promise<Response> {
             skip,
             companyId,
             complexId,
+            allowedComplexIds,
             socialNamesParam,
             withCompany,
             withBlocksCount,
@@ -406,6 +482,9 @@ export async function GET(req: NextRequest): Promise<Response> {
     } catch (error: any) {
         console.error("Erro ao buscar complexos:", error)
         try {
+            const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req)
+            if (sessionError || !userId) return NextResponse.json({ error: 'Não autorizado' }, { status: sessionStatus || 401 })
+            const allowedComplexIds = await resolveAllowedComplexIdsForUser(userId)
             const { withCompany, companyId, complexId, search, take, skip, socialNames } = getQueryParams(req)
             let socialNamesParam: string[] | undefined
             if (socialNames) {
@@ -422,6 +501,7 @@ export async function GET(req: NextRequest): Promise<Response> {
                 skip,
                 companyId,
                 complexId,
+                allowedComplexIds,
                 socialNamesParam,
                 withCompany,
             })

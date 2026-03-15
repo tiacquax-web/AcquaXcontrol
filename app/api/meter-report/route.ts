@@ -34,10 +34,59 @@ export async function GET(req: NextRequest): Promise<Response> {
       return NextResponse.json({ error: 'month and year are required' }, { status: 400 });
     }
 
-    // Determinar contexto do usuário (morador vs admin)
+    // Determinar contexto do usuário e restringir escopo por vínculo
     const contexts = await getUserContextsForActionOnEntity(userId, 'apartmentConsumptionReport', 'read');
-    const isSystem = contexts.system || contexts.companyIds.length > 0 || contexts.complexIds.length > 0 || contexts.blockIds.length > 0;
+    const isSystem = !!contexts.system;
     const userApartmentIds = contexts.apartmentIds;
+    const allowedComplexSet = new Set<string>();
+
+    if (!isSystem) {
+      contexts.complexIds.forEach((id) => id && allowedComplexSet.add(id));
+
+      if (contexts.companyIds.length > 0) {
+        const companyComplexes = await prisma.complex.findMany({
+          where: {
+            companyId: { in: contexts.companyIds },
+            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+          },
+          select: { id: true },
+          take: 5000,
+        });
+        companyComplexes.forEach((cx) => cx.id && allowedComplexSet.add(cx.id));
+      }
+
+      if (contexts.blockIds.length > 0) {
+        const blocks = await prisma.block.findMany({
+          where: {
+            id: { in: contexts.blockIds },
+            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+          },
+          select: { complexId: true },
+          take: 5000,
+        });
+        blocks.forEach((b) => b.complexId && allowedComplexSet.add(b.complexId));
+      }
+
+      if (userApartmentIds.length > 0) {
+        const apartments = await prisma.apartment.findMany({
+          where: {
+            id: { in: userApartmentIds },
+            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+          },
+          select: { complexId: true },
+          take: 20000,
+        });
+        apartments.forEach((a) => a.complexId && allowedComplexSet.add(a.complexId));
+      }
+    }
+
+    if (!isSystem && userApartmentIds.length === 0 && allowedComplexSet.size === 0) {
+      return NextResponse.json({ list: [], totalCount: 0, dealershipReadings: [] });
+    }
+
+    if (complexId && !isSystem && !allowedComplexSet.has(complexId)) {
+      return NextResponse.json({ error: 'Não autorizado para este condomínio.' }, { status: 403 });
+    }
 
     // Build where clause for reports
     const where: any = {
@@ -48,15 +97,28 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     if (complexId) {
       where.complexId = complexId;
+    } else if (!isSystem && allowedComplexSet.size > 0) {
+      where.complexId = { in: [...allowedComplexSet] };
     }
 
     if (apartmentId) {
+      if (!isSystem) {
+        const apt = await prisma.apartment.findFirst({
+          where: { id: apartmentId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+          select: { id: true, complexId: true },
+        });
+        const canAccessApartment = !!apt && (
+          userApartmentIds.includes(apartmentId) ||
+          (!!apt.complexId && allowedComplexSet.has(apt.complexId))
+        );
+        if (!canAccessApartment) {
+          return NextResponse.json({ error: 'Não autorizado para esta unidade.' }, { status: 403 });
+        }
+      }
       where.apartmentId = apartmentId;
-    } else if (!isSystem && userApartmentIds.length > 0) {
+    } else if (!isSystem && userApartmentIds.length > 0 && allowedComplexSet.size === 0) {
       // Morador: filtra apenas seus apartamentos
       where.apartmentId = { in: userApartmentIds };
-    } else if (!isSystem && userApartmentIds.length === 0) {
-      return NextResponse.json({ list: [], totalCount: 0, dealershipReadings: [] });
     }
 
     const currentReports = await prisma.apartmentConsumptionReport.findMany({
@@ -98,6 +160,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
     };
     if (complexId) drWhere.complexId = complexId;
+    else if (!isSystem && allowedComplexSet.size > 0) drWhere.complexId = { in: [...allowedComplexSet] };
 
     const dealershipReadings = await prisma.dealershipReading.findMany({
       where: drWhere,
