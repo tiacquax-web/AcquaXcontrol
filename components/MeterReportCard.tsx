@@ -115,8 +115,10 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
   const periodStartFormatted = periodStartDate ? format(periodStartDate, 'dd/MM/yyyy') : '—';
   const periodEndFormatted = periodEndDate ? format(periodEndDate, 'dd/MM/yyyy') : '—';
 
-  const nextReadingDateFormatted = lastReading?.nextReadingDate
-    ? format(parseDateYmd(lastReading.nextReadingDate) ?? new Date(lastReading.nextReadingDate), 'dd/MM/yyyy')
+  const parsedNextReadingDate =
+    parseDateYmd(lastReading?.nextReadingDate) || parseReadAtDate(lastReading?.nextReadingDate);
+  const nextReadingDateFormatted = parsedNextReadingDate
+    ? format(parsedNextReadingDate, 'dd/MM/yyyy')
     : '—';
 
   const emissionDate = format(new Date(), "dd/MM/yyyy 'às' HH:mm");

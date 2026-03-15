@@ -5,6 +5,16 @@ import { ContextType, Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
 
+const PRIVILEGED_ROLE_NAMES = new Set(['programador', 'administrador']);
+
+function normalizeRoleName(name?: string | null): string {
+    return String(name || '')
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .trim()
+        .toLowerCase();
+}
+
 function getQueryParams(req: NextRequest) {
     // query params - custom
     const userId = req.nextUrl.searchParams.get('user_id') || undefined
@@ -146,23 +156,26 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         // Check if user is a system-level user (or Programador/Administrador role anywhere)
-        const privilegedAssignment = await prisma.roleAssignment.findFirst({
+        const assignments = await prisma.roleAssignment.findMany({
             where: {
                 userId,
-                AND: [
-                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
-                    {
-                        OR: [
-                            { contextType: ContextType.system },
-                            { Role: { name: 'Programador' } },
-                            { Role: { name: 'Administrador' } },
-                        ]
-                    }
-                ]
+                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
             },
-            select: { id: true },
+            select: { contextType: true, roleId: true },
         });
-        if (!privilegedAssignment) {
+        const roleIds = [...new Set(assignments.map((a) => a.roleId).filter(Boolean))];
+        const roles = roleIds.length > 0
+            ? await prisma.role.findMany({
+                where: { id: { in: roleIds } },
+                select: { id: true, name: true },
+            })
+            : [];
+        const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
+        const isPrivileged = assignments.some((a) =>
+            a.contextType === ContextType.system ||
+            PRIVILEGED_ROLE_NAMES.has(normalizeRoleName(roleNameById.get(a.roleId)))
+        );
+        if (!isPrivileged) {
             return NextResponse.json({ error: 'Não autorizado: apenas usuários do sistema podem gerenciar papéis.' }, { status: 401 });
         }
 

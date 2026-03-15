@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { validateUserSession } from '@/lib/users';
 
+const PRIVILEGED_ROLE_NAMES = new Set(['programador', 'administrador']);
+
+function normalizeRoleName(name?: string | null): string {
+    return String(name || '')
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .trim()
+        .toLowerCase();
+}
+
 /**
  * GET /api/auth/my-context
  * Retorna os contextos do usuário logado com dados completos:
@@ -25,24 +35,31 @@ export async function GET(req: NextRequest): Promise<Response> {
             select: {
                 contextId: true,
                 contextType: true,
-                Role: { select: { name: true } },
+                roleId: true,
             },
         });
 
-        const isSystem = assignments.some(a =>
-            a.contextType === 'system' ||
-            a.Role?.name === 'Programador' ||
-            a.Role?.name === 'Administrador'
-        );
-        // Nomes dos papéis com contextType=system ex: ['Administrador'] ou ['Programador']
-        const systemRoles = assignments
-            .filter(a =>
-                a.contextType === 'system' ||
-                a.Role?.name === 'Programador' ||
-                a.Role?.name === 'Administrador'
-            )
-            .map(a => a.Role?.name)
-            .filter(Boolean) as string[];
+        const roleIds = [...new Set(assignments.map((a) => a.roleId).filter(Boolean))];
+        const roles = roleIds.length > 0
+            ? await prisma.role.findMany({
+                where: { id: { in: roleIds } },
+                select: { id: true, name: true },
+            })
+            : [];
+        const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
+
+        const isSystem = assignments.some((a) => {
+            if (a.contextType === 'system') return true;
+            const roleName = roleNameById.get(a.roleId);
+            return PRIVILEGED_ROLE_NAMES.has(normalizeRoleName(roleName));
+        });
+        const systemRoles = [
+            ...new Set(
+                assignments
+                    .map((a) => roleNameById.get(a.roleId))
+                    .filter((name) => PRIVILEGED_ROLE_NAMES.has(normalizeRoleName(name))) as string[]
+            ),
+        ];
         const apartmentIds = assignments.filter(a => a.contextType === 'apartment').map(a => a.contextId).filter(Boolean) as string[];
         const blockIds = assignments.filter(a => a.contextType === 'block').map(a => a.contextId).filter(Boolean) as string[];
         const complexIds = assignments.filter(a => a.contextType === 'complex').map(a => a.contextId).filter(Boolean) as string[];

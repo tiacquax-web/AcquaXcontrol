@@ -1222,9 +1222,18 @@ export default function Dashboard() {
   // Morador (só apartments)                         → MoradorDashboard
   const isSystem = context?.isSystem ?? false;
   const systemRoles = context?.systemRoles ?? [];
+  const normalizedSystemRoles = new Set(
+    systemRoles.map((r) =>
+      String(r || '')
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .trim()
+        .toLowerCase()
+    )
+  );
   // Prioriza dashboard de Programador quando este papel estiver presente
-  const isProgramador = systemRoles.includes('Programador');
-  const isAdministrador = isSystem && systemRoles.includes('Administrador') && !isProgramador;
+  const isProgramador = normalizedSystemRoles.has('programador');
+  const isAdministrador = isSystem && normalizedSystemRoles.has('administrador') && !isProgramador;
   const isMorador = useMemo(() => {
     if (!context) return false;
     return !context.isSystem

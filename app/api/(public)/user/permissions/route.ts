@@ -8,6 +8,16 @@ import { ContextType, PermissionAction, PermissionableEntity } from "@prisma/cli
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
+const PRIVILEGED_ROLE_NAMES = new Set(['programador', 'administrador']);
+
+function normalizeRoleName(name?: string | null): string {
+    return String(name || '')
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .trim()
+        .toLowerCase();
+}
+
 function getAllPermissions() {
     const actions = Object.values(PermissionAction);
     const entities = Object.values(PermissionableEntity);
@@ -63,23 +73,27 @@ export async function GET(req: NextRequest): Promise<Response> {
         console.log("######### Context Type:", contextType);
 
         // Programador/Administrador com qualquer contexto recebe todas as permissões no UI
-        const privilegedAssignment = await prisma.roleAssignment.findFirst({
+        const assignments = await prisma.roleAssignment.findMany({
             where: {
                 userId,
-                AND: [
-                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
-                    {
-                        OR: [
-                            { contextType: ContextType.system },
-                            { Role: { name: 'Programador' } },
-                            { Role: { name: 'Administrador' } },
-                        ]
-                    }
-                ]
+                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
             },
-            select: { id: true }
+            select: { contextType: true, roleId: true },
         });
-        if (privilegedAssignment) {
+        const roleIds = [...new Set(assignments.map((a) => a.roleId).filter(Boolean))];
+        const roles = roleIds.length > 0
+            ? await prisma.role.findMany({
+                where: { id: { in: roleIds } },
+                select: { id: true, name: true },
+            })
+            : [];
+        const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
+        const isPrivileged = assignments.some((a) =>
+            a.contextType === ContextType.system ||
+            PRIVILEGED_ROLE_NAMES.has(normalizeRoleName(roleNameById.get(a.roleId)))
+        );
+
+        if (isPrivileged) {
             const allPermissions = getAllPermissions();
             return NextResponse.json({ list: allPermissions, totalCount: allPermissions.length });
         }
