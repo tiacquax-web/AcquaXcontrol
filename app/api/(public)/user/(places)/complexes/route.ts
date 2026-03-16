@@ -42,8 +42,18 @@ export async function GET(req: NextRequest): Promise<Response> {
         // obtém parâmetros de consulta
         const { withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection, socialNames } = getQueryParams(req)
 
-        // Novo: busca por múltiplos socialNames
-        const socialNamesParam: string[] | undefined = socialNames ? JSON.parse(socialNames) : undefined;
+        // Novo: busca por múltiplos socialNames (com parse seguro)
+        let socialNamesParam: string[] | undefined = undefined;
+        if (socialNames) {
+            try {
+                const parsed = JSON.parse(socialNames);
+                if (Array.isArray(parsed)) {
+                    socialNamesParam = parsed.filter((item) => typeof item === "string");
+                }
+            } catch {
+                return NextResponse.json({ error: 'Parâmetro "socialNames" inválido.' }, { status: 400 });
+            }
+        }
         
         // identifica contexto
         const contextType: ContextType | undefined = companyId ? 'company' : undefined

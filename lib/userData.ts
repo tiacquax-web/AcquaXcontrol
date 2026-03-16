@@ -333,6 +333,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     ...(contexts.complexIds.length > 0 ? [{ id: { in: contexts.complexIds } }] : []),
                     ...(contexts.companyIds.length > 0 ? [{ companyId: { in: contexts.companyIds } }] : []),
                 ];
+                const complexInclude = include && Object.keys(include).length > 0 ? include : undefined;
                 const complexesQuery = {
                     where: cleanWhere({
                         AND: [
@@ -345,7 +346,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             extraWhere,
                         ]
                     }),
-                    include: include ? include : undefined,
+                    include: complexInclude,
                     take: take < 200 ? take : 200,
                     skip: skip ? skip : 0,
                 };
