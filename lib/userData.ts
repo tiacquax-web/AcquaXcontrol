@@ -1321,6 +1321,26 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
     }
     catch (error) {
         console.error("Error creating entity:", error);
+
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            // Unique constraint violation (e.g. duplicated user e-mail)
+            if (error.code === 'P2002') {
+                const target = error.meta?.target;
+                const targetFields = Array.isArray(target) ? target.join(', ') : String(target || '');
+
+                if (entityType === PermissionableEntity.user && targetFields.includes('email')) {
+                    return { error: 'Este e-mail já está em uso por outra conta.', status: 409, entity: null };
+                }
+
+                return { error: 'Já existe um registro com os dados informados.', status: 409, entity: null };
+            }
+
+            // Invalid reference/foreign key or relation target not found
+            if (error.code === 'P2003') {
+                return { error: 'Referência inválida para criação do registro.', status: 400, entity: null };
+            }
+        }
+
         return { error: 'Internal Server Error', status: 500, entity: null };
     }
 }
