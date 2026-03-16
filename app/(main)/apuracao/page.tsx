@@ -43,12 +43,16 @@ export default function ApuracaoPage() {
         try {
             const skip = (page - 1) * take
             const res = await axios.get('/api/apuracao', {
-                params: { search: debouncedSearch, take, skip }
+                params: { search: debouncedSearch, take, skip },
+                timeout: 30000,
             })
             setData(res.data.list || [])
             setTotalCount(res.data.totalCount || 0)
-        } catch (err: any) {
-            toast({ title: "Erro ao carregar", description: err.response?.data?.error || err.message, variant: "destructive" })
+        } catch (err: unknown) {
+            const message = axios.isAxiosError(err)
+                ? (err.response?.data?.error || err.message)
+                : 'Erro inesperado ao carregar apuração';
+            toast({ title: "Erro ao carregar", description: message, variant: "destructive" })
         } finally {
             setLoading(false)
         }
@@ -57,7 +61,7 @@ export default function ApuracaoPage() {
     useEffect(() => {
         setCurrentPage(1)
         fetchData(1)
-    }, [debouncedSearch])
+    }, [fetchData])
 
     const handlePageChange = (page: number) => {
         setCurrentPage(page)
@@ -74,7 +78,10 @@ export default function ApuracaoPage() {
             let page = 1
             let hasMore = true
             while (hasMore) {
-                const res = await axios.get('/api/apuracao', { params: { search: debouncedSearch, take: 200, skip: (page - 1) * 200 } })
+                const res = await axios.get('/api/apuracao', {
+                    params: { search: debouncedSearch, take: 200, skip: (page - 1) * 200 },
+                    timeout: 30000,
+                })
                 allPages.push(...(res.data.list || []))
                 if (allPages.length >= (res.data.totalCount || 0)) hasMore = false
                 else page++
@@ -96,8 +103,11 @@ export default function ApuracaoPage() {
 
             const XLSX = await import('xlsx')
             const worksheet = XLSX.utils.json_to_sheet(exportData)
-            const colWidths = Object.keys(exportData[0] || {}).map(k => ({
-                wch: Math.max(k.length, ...exportData.map(r => String((r as any)[k] || '').length)) + 2
+            const colWidths = Object.keys(exportData[0] || {}).map((key) => ({
+                wch: Math.max(
+                    key.length,
+                    ...exportData.map((row) => String((row as Record<string, string | number>)[key] || '').length)
+                ) + 2
             }))
             worksheet['!cols'] = colWidths
             const workbook = XLSX.utils.book_new()
@@ -113,8 +123,9 @@ export default function ApuracaoPage() {
             document.body.removeChild(link)
             window.URL.revokeObjectURL(url)
             toast({ title: 'Exportação concluída!', description: `${allPages.length} condomínios exportados.` })
-        } catch (err: any) {
-            toast({ title: 'Erro na exportação', description: err.message, variant: 'destructive' })
+        } catch (err: unknown) {
+            const message = axios.isAxiosError(err) ? err.message : 'Erro inesperado na exportação';
+            toast({ title: 'Erro na exportação', description: message, variant: 'destructive' })
         } finally {
             setExportLoading(false)
         }

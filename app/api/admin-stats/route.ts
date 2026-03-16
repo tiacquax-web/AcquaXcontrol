@@ -89,6 +89,38 @@ export async function GET(req: NextRequest): Promise<Response> {
       }),
     ]);
 
+    const topComplexIds = topComplexes.map((cx) => cx.id);
+    const [apartmentsByComplex, metersByComplex] = topComplexIds.length > 0
+      ? await Promise.all([
+          prisma.apartment.groupBy({
+            by: ['complexId'],
+            where: {
+              complexId: { in: topComplexIds },
+              OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+            },
+            _count: { id: true },
+          }),
+          prisma.meter.groupBy({
+            by: ['complexId'],
+            where: {
+              complexId: { in: topComplexIds },
+              OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+            },
+            _count: { id: true },
+          }),
+        ])
+      : [[], []];
+
+    const apartmentCountMap = new Map<string, number>();
+    apartmentsByComplex.forEach((row) => {
+      if (row.complexId) apartmentCountMap.set(row.complexId, row._count.id);
+    });
+
+    const meterCountMap = new Map<string, number>();
+    metersByComplex.forEach((row) => {
+      if (row.complexId) meterCountMap.set(row.complexId, row._count.id);
+    });
+
     // ─── Conjuntos de usuários por tipo ───────────────────────────────────────
     const systemUsers    = new Set(roleAssignments.filter(r => r.contextType === 'system').map(r => r.userId));
     const companyUsers   = new Set(roleAssignments.filter(r => r.contextType === 'company').map(r => r.userId));
@@ -141,8 +173,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         aliasName: cx.aliasName,
         lastReadingDate,
         lastReadingLabel: latest ? `${String(latest.month).padStart(2, '0')}/${latest.year}` : null,
-        totalApartments: 0,
-        totalMeters: 0,
+        totalApartments: apartmentCountMap.get(cx.id) ?? 0,
+        totalMeters: meterCountMap.get(cx.id) ?? 0,
       };
     });
 
@@ -210,7 +242,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       leastAccessed,
       complexes: complexesWithDates,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return serverError('admin-stats', e);
   }
 }

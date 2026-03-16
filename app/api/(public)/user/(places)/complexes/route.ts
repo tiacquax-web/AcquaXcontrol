@@ -1,8 +1,26 @@
 import { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
-import { createEntity, deleteEntity, getAvailableComplexesForEntity, getEntityListData, updateEntityData } from "@/lib/userData"
-import { isSessionValid, validateUserSession } from "@/lib/users"
+import { createEntity, getAvailableComplexesForEntity, getEntityListData } from "@/lib/userData"
+import { validateUserSession } from "@/lib/users"
 import { Complex, ContextType } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
+
+function normalizeText(value: string): string {
+    return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+}
+
+function filterComplexesBySearch<T extends { socialName?: string | null; aliasName?: string | null }>(list: T[], search: string): T[] {
+    const normalizedSearch = normalizeText(search);
+    if (!normalizedSearch) return list;
+    return list.filter((complex) => {
+        const social = normalizeText(complex.socialName || '');
+        const alias = normalizeText(complex.aliasName || '');
+        return social.includes(normalizedSearch) || alias.includes(normalizedSearch);
+    });
+}
 
 function getQueryParams(req: NextRequest) {
     // parâmetros de consulta - customizados
@@ -40,7 +58,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         // obtém parâmetros de consulta
-        const { withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection, socialNames } = getQueryParams(req)
+        const { withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, search, take, skip, socialNames } = getQueryParams(req)
 
         // Novo: busca por múltiplos socialNames
         const socialNamesParam: string[] | undefined = socialNames ? JSON.parse(socialNames) : undefined;
@@ -64,6 +82,12 @@ export async function GET(req: NextRequest): Promise<Response> {
         if (getAvailableForEntity) {
             console.log("######### Buscando complexos disponíveis para entidade:", getAvailableForEntity)
             const { list, totalCount } = await getAvailableComplexesForEntity(userId, getAvailableForEntity, search, companyId, where, !!withBlocksCount, !!withApartmentsCount, !!withMetersCount, false, onlyWithReservoirs, take, skip)
+            if (search && list.length === 0) {
+                const fallback = await getAvailableComplexesForEntity(userId, getAvailableForEntity, '', companyId, where, !!withBlocksCount, !!withApartmentsCount, !!withMetersCount, false, onlyWithReservoirs, 3000, 0)
+                const filtered = filterComplexesBySearch(fallback.list, search)
+                const paged = filtered.slice(skip, skip + take)
+                return NextResponse.json({ list: paged, totalCount: filtered.length })
+            }
             return NextResponse.json({ list, totalCount })
         }
         
@@ -71,11 +95,41 @@ export async function GET(req: NextRequest): Promise<Response> {
         if (error) return NextResponse.json({ error }, { status })
         if (!entity) return NextResponse.json({ error: 'Erro interno do servidor - Entidade não encontrada' }, { status: 500 })
 
+        if (search && entity.length === 0) {
+            // Fallback para busca tolerante a acentos/diacríticos.
+            const fallbackBatchSize = 200;
+            let currentSkip = 0;
+            const allComplexes: Complex[] = [];
+
+            while (true) {
+                const fallbackResult = await getEntityListData(
+                    userId,
+                    'complex',
+                    contextType,
+                    contextId,
+                    '',
+                    where,
+                    fallbackBatchSize,
+                    include,
+                    currentSkip
+                );
+                if (fallbackResult.error || !fallbackResult.entity || fallbackResult.entity.length === 0) break;
+                allComplexes.push(...(fallbackResult.entity as Complex[]));
+                if (fallbackResult.entity.length < fallbackBatchSize) break;
+                currentSkip += fallbackBatchSize;
+                if (currentSkip > 6000) break;
+            }
+
+            const filtered = filterComplexesBySearch(allComplexes, search);
+            const paged = filtered.slice(skip, skip + take);
+            return NextResponse.json({ list: paged, totalCount: filtered.length });
+        }
+
         console.log("######### Complexos encontrados:", entity.length)
 
         return NextResponse.json({ list: entity, totalCount: totalCount ?? entity.length })
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Erro ao buscar complexos:", error)
         return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
     }
@@ -106,7 +160,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         // Retorna os dados da entidade criada
         return NextResponse.json(entity);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Loga e trata erros inesperados
         console.error("Erro ao criar complexo:", error);
         return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
