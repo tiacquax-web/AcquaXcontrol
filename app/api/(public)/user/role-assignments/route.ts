@@ -169,6 +169,68 @@ export async function POST(req: NextRequest): Promise<Response> {
         // Validate request body
         if (!body) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
         if (Object.keys(body).length === 0) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
+        if (!body.userId || !body.roleId || !body.contextType) {
+            return NextResponse.json({ error: 'Campos obrigatórios não informados (userId, roleId, contextType).' }, { status: 400 });
+        }
+
+        const validContextTypes = Object.values(ContextType);
+        if (!validContextTypes.includes(body.contextType)) {
+            return NextResponse.json({ error: 'Tipo de contexto inválido.' }, { status: 400 });
+        }
+
+        // Para contexto system, o contextId padrão é "system"
+        if (body.contextType === ContextType.system && !body.contextId) {
+            body.contextId = ContextType.system;
+        }
+        if (!body.contextId) {
+            return NextResponse.json({ error: 'Selecione um contexto válido para atribuir o papel.' }, { status: 400 });
+        }
+
+        // Validação de existência de usuário e papel
+        const [targetUser, targetRole] = await Promise.all([
+            prisma.user.findFirst({
+                where: {
+                    id: body.userId,
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                select: { id: true },
+            }),
+            prisma.role.findFirst({
+                where: {
+                    id: body.roleId,
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                select: { id: true },
+            }),
+        ]);
+
+        if (!targetUser) return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 });
+        if (!targetRole) return NextResponse.json({ error: 'Papel não encontrado.' }, { status: 404 });
+
+        // Valida existência do contexto escolhido (exceto system)
+        if (body.contextType !== ContextType.system) {
+            const notDeleted = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] };
+            let contextExists = false;
+
+            switch (body.contextType) {
+                case ContextType.company:
+                    contextExists = !!await prisma.company.findFirst({ where: { id: body.contextId, ...notDeleted }, select: { id: true } });
+                    break;
+                case ContextType.complex:
+                    contextExists = !!await prisma.complex.findFirst({ where: { id: body.contextId, ...notDeleted }, select: { id: true } });
+                    break;
+                case ContextType.block:
+                    contextExists = !!await prisma.block.findFirst({ where: { id: body.contextId, ...notDeleted }, select: { id: true } });
+                    break;
+                case ContextType.apartment:
+                    contextExists = !!await prisma.apartment.findFirst({ where: { id: body.contextId, ...notDeleted }, select: { id: true } });
+                    break;
+            }
+
+            if (!contextExists) {
+                return NextResponse.json({ error: 'Contexto informado não encontrado.' }, { status: 404 });
+            }
+        }
 
         // Check for duplicate assignment (active - not deleted)
         const alreadyCreated = await prisma.roleAssignment.findFirst({
@@ -205,6 +267,14 @@ export async function POST(req: NextRequest): Promise<Response> {
     } catch (error: any) {
         // Log and handle unexpected errors
         console.error("Error creating role assignment:", error);
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            if (error.code === 'P2002') {
+                return NextResponse.json({ error: 'Esta função já está atribuída ao usuário no contexto informado.' }, { status: 409 });
+            }
+            if (error.code === 'P2003') {
+                return NextResponse.json({ error: 'Referência inválida para criar a atribuição.' }, { status: 400 });
+            }
+        }
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 }
