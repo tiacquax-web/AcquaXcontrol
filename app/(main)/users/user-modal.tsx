@@ -459,6 +459,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                 {(contextType == ContextType.company || contextType == ContextType.block || contextType == ContextType.apartment) && (
                     <SelectCompany
                         modal
+                        autoSelectSingle={false}
                         company={cascateContextSearching.company as Company}
                         setSelectedCompany={(company) => {
                             handleCasacteContextSelect(ContextType.company, company as Company);
