@@ -12,7 +12,7 @@ import { useRoleAssignmentMutations, useRoleAssignments } from "@/hooks/useRoleA
 import { Loader2, CheckCircle2 } from "lucide-react"
 import { useRoles } from "@/hooks/useRoles"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ContextType, Role } from "@prisma/client"
+import { ContextType, PermissionableEntity, Role } from "@prisma/client"
 import ComplexesCombobox from "@/components/ComboboxComplex"
 import BlocksCombobox from "@/components/ComboboxBlock"
 import SelectApartment from "@/components/ComboboxApartment"
@@ -324,10 +324,12 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     const { toast } = useToast();
 
     // Multi-complex selection
+    const roleAssignmentEntity = PermissionableEntity.roleAssignment;
     const [selectedComplexIds, setSelectedComplexIds] = useState<Set<string>>(new Set());
     const [complexSearch, setComplexSearch] = useState("");
     const { complexes: allComplexesSource, loading: complexesLoading } = useComplexes({
         // Busca ampla e filtro local para tolerar acentos/variações de digitação.
+        getAvailableForEntity: roleAssignmentEntity,
         take: 500,
         enabled: contextType === ContextType.complex,
     });
@@ -485,6 +487,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                 {(contextType == ContextType.company || contextType == ContextType.block || contextType == ContextType.apartment) && (
                     <SelectCompany
                         modal
+                        getAvailableForEntity={roleAssignmentEntity}
                         company={cascateContextSearching.company as Company}
                         setSelectedCompany={(company) => {
                             handleCasacteContextSelect(ContextType.company, company as Company);
@@ -496,6 +499,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                     <ComplexesCombobox
                         modal
                         companyId={cascateContextSearching.company.id}
+                        getAvailableForEntity={roleAssignmentEntity}
                         complex={cascateContextSearching.complex as Complex}
                         setSelectedComplex={(complex) => {
                             handleCasacteContextSelect(ContextType.complex, complex as Complex);
@@ -505,6 +509,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                 {(contextType == ContextType.block || contextType == ContextType.apartment) && cascateContextSearching.complex && (
                     <BlocksCombobox
                         modal
+                        getAvailableForEntity={roleAssignmentEntity}
                         complexId={cascateContextSearching.complex.id}
                         block={cascateContextSearching.block as Block}
                         setSelectedBlock={(block) => {
@@ -516,6 +521,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                 {(contextType == ContextType.apartment) && cascateContextSearching.block && (
                     <SelectApartment
                         modal
+                        getAvailableForEntity={roleAssignmentEntity}
                         apartment={cascateContextSearching.apartment as Apartment}
                         blockId={cascateContextSearching.block.id}
                         setSelectedApartment={(apartment) => {
