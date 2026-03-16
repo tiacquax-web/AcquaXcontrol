@@ -1,8 +1,10 @@
 import { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
-import { createEntity, deleteEntity, getAvailableComplexesForEntity, getEntityListData, updateEntityData } from "@/lib/userData"
-import { isSessionValid, validateUserSession } from "@/lib/users"
-import { Complex, ContextType } from "@prisma/client"
+import { createEntity, getAvailableComplexesForEntity } from "@/lib/userData"
+import { validateUserSession } from "@/lib/users"
 import { NextRequest, NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
+import { getUserContextsForActionOnEntity } from "@/lib/userContexts"
+import { cleanWhere } from "@/lib/utils"
 
 function getQueryParams(req: NextRequest) {
     // parâmetros de consulta - customizados
@@ -10,12 +12,12 @@ function getQueryParams(req: NextRequest) {
     const complexId = req.nextUrl.searchParams.get('id') || undefined
     const blockId = req.nextUrl.searchParams.get('block_id') || undefined
     const apartmentId = req.nextUrl.searchParams.get('apartment_id') || undefined
-    const withCompany = req.nextUrl.searchParams.get('with_company') || undefined
-    const withBlocksCount = req.nextUrl.searchParams.get('with_blocks_count') || false
-    const withApartmentsCount = req.nextUrl.searchParams.get('with_apartments_count') || false
-    const withMetersCount = req.nextUrl.searchParams.get('with_meters_count') || false
+    const withCompany = req.nextUrl.searchParams.get('with_company') === 'true'
+    const withBlocksCount = req.nextUrl.searchParams.get('with_blocks_count') === 'true'
+    const withApartmentsCount = req.nextUrl.searchParams.get('with_apartments_count') === 'true'
+    const withMetersCount = req.nextUrl.searchParams.get('with_meters_count') === 'true'
     const onlyWithReservoirs = req.nextUrl.searchParams.get('onlyWithReservoirs') === 'true'
-    const socialNames = req.nextUrl.searchParams.get('socialNames') || '[]'
+    const socialNames = req.nextUrl.searchParams.get('socialNames') || undefined
 
     // opção - getAvailable...
     const availableForEntity = req.nextUrl.searchParams.get('getAvailableForEntity')
@@ -40,7 +42,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         // obtém parâmetros de consulta
-        const { withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection, socialNames } = getQueryParams(req)
+        const { withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, search, take, skip, socialNames } = getQueryParams(req)
 
         // Novo: busca por múltiplos socialNames (com parse seguro)
         let socialNamesParam: string[] | undefined = undefined;
@@ -55,12 +57,6 @@ export async function GET(req: NextRequest): Promise<Response> {
             }
         }
         
-        // identifica contexto
-        const contextType: ContextType | undefined = companyId ? 'company' : undefined
-        const contextId = companyId ? companyId : undefined
-
-        const where = complexId ? { id: complexId } : (socialNamesParam && Array.isArray(socialNamesParam) && socialNamesParam.length > 0 ? { socialName: { in: socialNamesParam } } : undefined);
-
         const include = withCompany ? {
             company: {
                 select: {
@@ -73,19 +69,54 @@ export async function GET(req: NextRequest): Promise<Response> {
         // retorna complexos disponíveis para entidade se solicitado
         if (getAvailableForEntity) {
             console.log("######### Buscando complexos disponíveis para entidade:", getAvailableForEntity)
+            const where = complexId
+                ? { id: complexId }
+                : (socialNamesParam && socialNamesParam.length > 0 ? { socialName: { in: socialNamesParam } } : undefined)
             const { list, totalCount } = await getAvailableComplexesForEntity(userId, getAvailableForEntity, search, companyId, where, !!withBlocksCount, !!withApartmentsCount, !!withMetersCount, false, onlyWithReservoirs, take, skip)
             return NextResponse.json({ list, totalCount })
         }
-        
-        const { entity, error, status, totalCount } = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)
-        if (error) return NextResponse.json({ error }, { status })
-        if (!entity) return NextResponse.json({ error: 'Erro interno do servidor - Entidade não encontrada' }, { status: 500 })
 
-        console.log("######### Complexos encontrados:", entity.length)
+        // Consulta direta para evitar 500 no filtro de condomínio da tela de apartamentos
+        const contexts = await getUserContextsForActionOnEntity(userId, 'complex', 'read');
+        const hasSystemPermission = !!contexts.system;
+        const permissionOr = [
+            ...(contexts.complexIds.length > 0 ? [{ id: { in: contexts.complexIds } }] : []),
+            ...(contexts.companyIds.length > 0 ? [{ companyId: { in: contexts.companyIds } }] : []),
+        ];
+        const accessFilter = hasSystemPermission
+            ? undefined
+            : (permissionOr.length > 0 ? { OR: permissionOr } : { id: '__no_access__' });
 
-        return NextResponse.json({ list: entity, totalCount: totalCount ?? entity.length })
+        const where = cleanWhere({
+            AND: [
+                {
+                    OR: [
+                        { deletedAt: null },
+                        { deletedAt: { isSet: false } },
+                    ]
+                },
+                search ? { socialName: { contains: search } } : undefined,
+                complexId ? { id: complexId } : undefined,
+                companyId ? { companyId } : undefined,
+                socialNamesParam && socialNamesParam.length > 0 ? { socialName: { in: socialNamesParam } } : undefined,
+                accessFilter,
+            ]
+        });
 
-    } catch (error: any) {
+        const list = await prisma.complex.findMany({
+            where,
+            include,
+            take: take < 200 ? take : 200,
+            skip: skip > 0 ? skip : 0,
+            orderBy: { socialName: 'asc' },
+        });
+        const totalCount = await prisma.complex.count({ where });
+
+        console.log("######### Complexos encontrados:", list.length)
+
+        return NextResponse.json({ list, totalCount })
+
+    } catch (error: unknown) {
         console.error("Erro ao buscar complexos:", error)
         return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
     }
@@ -116,7 +147,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         // Retorna os dados da entidade criada
         return NextResponse.json(entity);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Loga e trata erros inesperados
         console.error("Erro ao criar complexo:", error);
         return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
