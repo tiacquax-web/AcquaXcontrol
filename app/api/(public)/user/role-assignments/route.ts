@@ -4,6 +4,7 @@ import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ContextType, Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
+import { getUserContextsForActionOnEntity } from "@/lib/userContexts"
 
 function getQueryParams(req: NextRequest) {
     // query params - custom
@@ -150,14 +151,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         // Check if user is a system-level user (can manage role assignments)
-        const systemAssignment = await prisma.roleAssignment.findFirst({
-            where: {
-                userId,
-                contextType: ContextType.system,
-            },
-            select: { id: true, deletedAt: true },
-        });
-        const isSystemUser = !!systemAssignment && (systemAssignment.deletedAt === null || systemAssignment.deletedAt === undefined);
+        const contexts = await getUserContextsForActionOnEntity(userId, 'roleAssignment', 'create');
+        const isSystemUser = !!contexts.system;
         if (!isSystemUser) {
             return NextResponse.json({ error: 'Não autorizado: apenas usuários do sistema podem gerenciar papéis.' }, { status: 401 });
         }
@@ -275,6 +270,6 @@ export async function POST(req: NextRequest): Promise<Response> {
                 return NextResponse.json({ error: 'Referência inválida para criar a atribuição.' }, { status: 400 });
             }
         }
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error?.message || 'Internal Server Error' }, { status: 500 });
     }
 }
