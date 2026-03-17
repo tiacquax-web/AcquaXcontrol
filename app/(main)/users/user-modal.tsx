@@ -25,8 +25,6 @@ import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
-import { useComplexes } from "@/hooks/useComplexes"
 
 interface UserModalProps {
     isOpen: boolean
@@ -307,7 +305,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
                     setAddingRole={setAddingRole}
                 />
             ) : (
-                <Button onClick={() => setAddingRole(true)} className="mt-4">
+                <Button type="button" onClick={() => setAddingRole(true)} className="mt-4">
                     Adicionar Novo Papel
                 </Button>
             )}
@@ -325,8 +323,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
 
     // Multi-complex selection
     const [selectedComplexIds, setSelectedComplexIds] = useState<Set<string>>(new Set());
-    const [complexSearch, setComplexSearch] = useState("");
-    const { complexes: allComplexes, loading: complexesLoading } = useComplexes({ nameQuery: complexSearch, take: 50 });
+    const [selectedComplexes, setSelectedComplexes] = useState<Array<Pick<Complex, "id" | "socialName" | "aliasName">>>([]);
     const [bulkAdding, setBulkAdding] = useState(false);
     const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
 
@@ -373,6 +370,9 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     const handleSelectContextType = (value: ContextType) => {
         setContextType(value);
         setSelectedComplexIds(new Set());
+        setSelectedComplexes([]);
+        setBulkProgress(null);
+        setCascateContextSearching((prev) => ({ ...prev, complex: null, block: null, apartment: null }));
         if (value === ContextType.system) {
             setContextId(ContextType.system);
         } else {
@@ -380,24 +380,54 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
         }
     }
 
-    const toggleComplexSelection = (id: string) => {
-        const updated = new Set(selectedComplexIds);
-        if (updated.has(id)) updated.delete(id);
-        else updated.add(id);
-        setSelectedComplexIds(updated);
-        // contextId: use first selected for single mode
-        if (updated.size === 1) setContextId([...updated][0]);
-        else setContextId(null);
+    const syncSelectedComplexContext = (ids: Set<string>) => {
+        if (ids.size === 1) {
+            setContextId([...ids][0]);
+            return;
+        }
+
+        setContextId(null);
     };
 
-    const selectAllComplexes = (checked: boolean) => {
-        if (checked) {
-            const ids = new Set(allComplexes.map(c => c.id));
-            setSelectedComplexIds(ids);
-        } else {
-            setSelectedComplexIds(new Set());
-            setContextId(null);
-        }
+    const addSelectedComplex = () => {
+        const complex = cascateContextSearching.complex;
+        if (!complex?.id) return;
+
+        setSelectedComplexIds((prev) => {
+            const updated = new Set(prev);
+            updated.add(complex.id);
+            syncSelectedComplexContext(updated);
+            return updated;
+        });
+
+        setSelectedComplexes((prev) => {
+            if (prev.some((item) => item.id === complex.id)) {
+                return prev;
+            }
+
+            return [...prev, {
+                id: complex.id,
+                socialName: complex.socialName,
+                aliasName: complex.aliasName,
+            }];
+        });
+    };
+
+    const removeSelectedComplex = (complexId: string) => {
+        setSelectedComplexIds((prev) => {
+            const updated = new Set(prev);
+            updated.delete(complexId);
+            syncSelectedComplexContext(updated);
+            return updated;
+        });
+
+        setSelectedComplexes((prev) => prev.filter((item) => item.id !== complexId));
+    };
+
+    const clearSelectedComplexes = () => {
+        setSelectedComplexIds(new Set());
+        setSelectedComplexes([]);
+        setContextId(null);
     };
 
     const renderContextSearchFields = () => {
@@ -409,45 +439,56 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                         <Label className="text-sm font-semibold">Selecionar Condomínios:</Label>
                         <span className="text-xs text-muted-foreground">{selectedComplexIds.size} selecionado(s)</span>
                     </div>
-                    <Input
-                        placeholder="Buscar condomínio..."
-                        value={complexSearch}
-                        onChange={(e) => setComplexSearch(e.target.value)}
-                        className="h-8 text-sm"
+                    <ComplexesCombobox
+                        autoSelectSingle={false}
+                        modal
+                        complex={cascateContextSearching.complex as Complex}
+                        setSelectedComplex={(complex) => {
+                            handleCasacteContextSelect(ContextType.complex, complex as Complex);
+                        }}
                     />
-                    <div className="border rounded-md max-h-48 overflow-y-auto">
-                        {complexesLoading ? (
-                            <div className="flex justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>
-                        ) : (
-                            <div className="p-1">
-                                <div className="flex items-center gap-2 p-2 border-b">
-                                    <Checkbox
-                                        checked={allComplexes.length > 0 && selectedComplexIds.size === allComplexes.length}
-                                        onCheckedChange={selectAllComplexes}
-                                    />
-                                    <span className="text-xs font-medium">Selecionar todos ({allComplexes.length})</span>
-                                </div>
-                                {allComplexes.map(cx => (
-                                    <div key={cx.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer" onClick={() => toggleComplexSelection(cx.id)}>
-                                        <Checkbox
-                                            checked={selectedComplexIds.has(cx.id)}
-                                            onCheckedChange={() => toggleComplexSelection(cx.id)}
-                                        />
-                                        <span className="text-sm">{cx.socialName || cx.aliasName}</span>
-                                    </div>
-                                ))}
-                                {allComplexes.length === 0 && <p className="text-center text-sm text-muted-foreground p-4">Nenhum condomínio encontrado</p>}
-                            </div>
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={addSelectedComplex}
+                            disabled={!cascateContextSearching.complex?.id}
+                        >
+                            Adicionar condomínio selecionado
+                        </Button>
+                        {selectedComplexIds.size > 0 && (
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={clearSelectedComplexes}
+                            >
+                                Limpar lista
+                            </Button>
                         )}
                     </div>
                     {selectedComplexIds.size > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                            {[...selectedComplexIds].slice(0, 5).map(id => {
-                                const cx = allComplexes.find(c => c.id === id);
-                                return <Badge key={id} variant="secondary" className="text-xs">{cx?.socialName || id.slice(0,8)}</Badge>;
-                            })}
-                            {selectedComplexIds.size > 5 && <Badge variant="outline" className="text-xs">+{selectedComplexIds.size - 5} mais</Badge>}
+                        <div className="flex flex-wrap gap-1 rounded-md border p-2">
+                            {selectedComplexes.map((complex) => (
+                                <Badge key={complex.id} variant="secondary" className="text-xs gap-1">
+                                    {complex.socialName || complex.aliasName || complex.id.slice(0, 8)}
+                                    <button
+                                        type="button"
+                                        className="inline-flex"
+                                        onClick={() => removeSelectedComplex(complex.id)}
+                                        aria-label={`Remover ${complex.socialName || complex.aliasName || "condomínio"}`}
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </Badge>
+                            ))}
                         </div>
+                    )}
+                    {selectedComplexIds.size === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                            Pesquise um condomínio, selecione e clique em "Adicionar condomínio selecionado".
+                        </p>
                     )}
                 </div>
             );
@@ -620,7 +661,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                                 : "Adicionar"
                             }
                         </Button>
-                        <Button variant="outline" onClick={() => setAddingRole(false)} size="sm">
+                        <Button type="button" variant="outline" onClick={() => setAddingRole(false)} size="sm">
                             Cancelar
                         </Button>
                     </div>
