@@ -5,6 +5,7 @@ import { getUserContextsForActionOnEntity } from "@/lib/userContexts"
 import { cleanWhere } from "@/lib/utils"
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { Complex, ContextType } from "@prisma/client"
+import { MongoClient } from "mongodb"
 import { NextRequest, NextResponse } from "next/server"
 
 function getQueryParams(req: NextRequest) {
@@ -126,17 +127,151 @@ export async function GET(req: NextRequest): Promise<Response> {
             ],
         })
 
-        const entity = await prisma.complex.findMany({
-            where: complexWhere,
-            select: baseSelect,
-            take,
-            skip,
-            orderBy: { [orderBy]: orderDirection as "asc" | "desc" },
-        })
+        const databaseUrl = process.env.DATABASE_URL
+        if (!databaseUrl) {
+            throw new Error("DATABASE_URL não configurada.")
+        }
 
-        console.log("######### Complexos encontrados:", entity.length)
+        const client = new MongoClient(databaseUrl)
+        await client.connect()
 
-        return NextResponse.json({ list: entity, totalCount: entity.length })
+        try {
+            const db = client.db()
+            const complexesCollection = db.collection("Complexes")
+
+            const mongoQuery: any = {
+                $and: [
+                    { $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] },
+                ],
+            }
+
+            if (search) {
+                mongoQuery.$and.push({
+                    socialName: { $regex: search, $options: "i" },
+                })
+            }
+
+            if (documentCompany) {
+                mongoQuery.$and.push({
+                    documentCompany: { $regex: documentCompany },
+                })
+            }
+
+            if (companyId) {
+                mongoQuery.$and.push({ companyId })
+            }
+
+            if (complexId) {
+                mongoQuery.$and.push({ _id: complexId })
+            }
+
+            if (socialNamesParam && socialNamesParam.length > 0) {
+                mongoQuery.$and.push({ socialName: { $in: socialNamesParam } })
+            }
+
+            if (!hasSystemPermission && accessOr.length > 0) {
+                mongoQuery.$and.push({
+                    $or: accessOr.map((condition: any) => {
+                        if (condition.id?.in) {
+                            return { _id: { $in: condition.id.in } }
+                        }
+                        if (condition.companyId?.in) {
+                            return { companyId: { $in: condition.companyId.in } }
+                        }
+                        return condition
+                    }),
+                })
+            }
+
+            const sortField = orderBy === "id" ? "_id" : orderBy
+            const projection: any = {
+                _id: 1,
+                companyId: 1,
+                socialName: 1,
+                aliasName: 1,
+                documentCompany: 1,
+                documentCompanySecondary: 1,
+                email: 1,
+                telephone: 1,
+                cell: 1,
+                zipcode: 1,
+                street: 1,
+                number: 1,
+                complement: 1,
+                neighborhood: 1,
+                state: 1,
+                city: 1,
+                photo: 1,
+                facebook: 1,
+                instagram: 1,
+                twitter: 1,
+                apportionment: 1,
+                status: 1,
+            }
+
+            const complexesRaw = await complexesCollection
+                .find(mongoQuery, { projection })
+                .sort({ [sortField]: orderDirection === "asc" ? 1 : -1 })
+                .skip(skip)
+                .limit(take)
+                .toArray()
+
+            let companyMap = new Map<string, { id: string; name?: string; socialName?: string }>()
+            if (withCompany) {
+                const companyIds = [...new Set(complexesRaw.map((complex: any) => complex.companyId).filter(Boolean))]
+                if (companyIds.length > 0) {
+                    const companies = await db.collection("Companies")
+                        .find(
+                            {
+                                _id: { $in: companyIds },
+                                $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+                            },
+                            { projection: { _id: 1, name: 1, socialName: 1 } }
+                        )
+                        .toArray()
+                    companyMap = new Map(companies.map((company: any) => [
+                        String(company._id),
+                        {
+                            id: String(company._id),
+                            name: company.name,
+                            socialName: company.socialName,
+                        },
+                    ]))
+                }
+            }
+
+            const entity = complexesRaw.map((complex: any) => ({
+                id: String(complex._id),
+                companyId: complex.companyId ?? null,
+                socialName: complex.socialName ?? "",
+                aliasName: complex.aliasName ?? null,
+                documentCompany: complex.documentCompany ?? null,
+                documentCompanySecondary: complex.documentCompanySecondary ?? null,
+                email: complex.email ?? null,
+                telephone: complex.telephone ?? null,
+                cell: complex.cell ?? null,
+                zipcode: complex.zipcode ?? null,
+                street: complex.street ?? null,
+                number: complex.number ?? null,
+                complement: complex.complement ?? null,
+                neighborhood: complex.neighborhood ?? null,
+                state: complex.state ?? null,
+                city: complex.city ?? null,
+                photo: complex.photo ?? null,
+                facebook: complex.facebook ?? null,
+                instagram: complex.instagram ?? null,
+                twitter: complex.twitter ?? null,
+                apportionment: complex.apportionment ?? "Simples",
+                status: complex.status ?? "Ativo",
+                company: withCompany && complex.companyId ? companyMap.get(String(complex.companyId)) ?? null : undefined,
+            }))
+
+            console.log("######### Complexos encontrados:", entity.length)
+
+            return NextResponse.json({ list: entity, totalCount: entity.length })
+        } finally {
+            await client.close()
+        }
 
     } catch (error: any) {
         console.error("Erro ao buscar complexos:", error)
