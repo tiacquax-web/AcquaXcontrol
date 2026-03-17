@@ -279,7 +279,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
                     </TableHeader>
                     <TableBody>
                         {roleAssignments.map((assignment) => (
-                            <TableRow key={assignment.roleId}>
+                            <TableRow key={assignment.id}>
                                 <TableCell>{mapContextType[assignment.contextType]}</TableCell>
                                 <TableCell title={assignment.contextId || undefined}>{assignment.contextName || (assignment.contextType === ContextType.system ? 'Sistema' : assignment.contextId || '—')}</TableCell>
                                 <TableCell>{assignment.Role.name}</TableCell>
@@ -307,7 +307,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
                     setAddingRole={setAddingRole}
                 />
             ) : (
-                <Button onClick={() => setAddingRole(true)} className="mt-4">
+                <Button type="button" onClick={() => setAddingRole(true)} className="mt-4">
                     Adicionar Novo Papel
                 </Button>
             )}
@@ -373,6 +373,8 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     const handleSelectContextType = (value: ContextType) => {
         setContextType(value);
         setSelectedComplexIds(new Set());
+        setBulkProgress(null);
+        setComplexSearch("");
         if (value === ContextType.system) {
             setContextId(ContextType.system);
         } else {
@@ -381,19 +383,23 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     }
 
     const toggleComplexSelection = (id: string) => {
-        const updated = new Set(selectedComplexIds);
-        if (updated.has(id)) updated.delete(id);
-        else updated.add(id);
-        setSelectedComplexIds(updated);
-        // contextId: use first selected for single mode
-        if (updated.size === 1) setContextId([...updated][0]);
-        else setContextId(null);
+        setSelectedComplexIds((previousSelection) => {
+            const updatedSelection = new Set(previousSelection);
+
+            if (updatedSelection.has(id)) updatedSelection.delete(id);
+            else updatedSelection.add(id);
+
+            setContextId(updatedSelection.size === 1 ? [...updatedSelection][0] : null);
+
+            return updatedSelection;
+        });
     };
 
     const selectAllComplexes = (checked: boolean) => {
         if (checked) {
             const ids = new Set(allComplexes.map(c => c.id));
             setSelectedComplexIds(ids);
+            setContextId(ids.size === 1 ? [...ids][0] : null);
         } else {
             setSelectedComplexIds(new Set());
             setContextId(null);
@@ -422,15 +428,19 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                             <div className="p-1">
                                 <div className="flex items-center gap-2 p-2 border-b">
                                     <Checkbox
+                                        type="button"
                                         checked={allComplexes.length > 0 && selectedComplexIds.size === allComplexes.length}
-                                        onCheckedChange={selectAllComplexes}
+                                        onClick={(event) => event.stopPropagation()}
+                                        onCheckedChange={(checked) => selectAllComplexes(checked === true)}
                                     />
                                     <span className="text-xs font-medium">Selecionar todos ({allComplexes.length})</span>
                                 </div>
                                 {allComplexes.map(cx => (
                                     <div key={cx.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer" onClick={() => toggleComplexSelection(cx.id)}>
                                         <Checkbox
+                                            type="button"
                                             checked={selectedComplexIds.has(cx.id)}
+                                            onClick={(event) => event.stopPropagation()}
                                             onCheckedChange={() => toggleComplexSelection(cx.id)}
                                         />
                                         <span className="text-sm">{cx.socialName || cx.aliasName}</span>
@@ -444,7 +454,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                         <div className="flex flex-wrap gap-1">
                             {[...selectedComplexIds].slice(0, 5).map(id => {
                                 const cx = allComplexes.find(c => c.id === id);
-                                return <Badge key={id} variant="secondary" className="text-xs">{cx?.socialName || id.slice(0,8)}</Badge>;
+                                return <Badge key={id} variant="secondary" className="text-xs">{cx?.socialName || cx?.aliasName || String(id).slice(0, 8)}</Badge>;
                             })}
                             {selectedComplexIds.size > 5 && <Badge variant="outline" className="text-xs">+{selectedComplexIds.size - 5} mais</Badge>}
                         </div>
@@ -620,7 +630,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                                 : "Adicionar"
                             }
                         </Button>
-                        <Button variant="outline" onClick={() => setAddingRole(false)} size="sm">
+                        <Button type="button" variant="outline" onClick={() => setAddingRole(false)} size="sm">
                             Cancelar
                         </Button>
                     </div>
