@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { User, Company, Complex, Block, Apartment, RoleAssignment } from "@prisma/client"
 import { useRoleAssignmentMutations, useRoleAssignments } from "@/hooks/useRoleAssignments"
-import { Loader2, X, CheckCircle2 } from "lucide-react"
+import { Loader2, CheckCircle2 } from "lucide-react"
 import { useRoles } from "@/hooks/useRoles"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ContextType, Role } from "@prisma/client"
@@ -326,9 +326,14 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     // Multi-complex selection
     const [selectedComplexIds, setSelectedComplexIds] = useState<Set<string>>(new Set());
     const [complexSearch, setComplexSearch] = useState("");
-    const { complexes: allComplexes, loading: complexesLoading } = useComplexes({ nameQuery: complexSearch, take: 50 });
+    const { complexes: allComplexes, loading: complexesLoading, error: complexesError } = useComplexes({
+        nameQuery: complexSearch,
+        take: 50,
+        enabled: contextType === ContextType.complex,
+    });
     const [bulkAdding, setBulkAdding] = useState(false);
     const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
+    const [selectedComplexLabels, setSelectedComplexLabels] = useState<Record<string, string>>({});
 
     const [cascateContextSearching, setCascateContextSearching] = useState<{
         company: Company | null;
@@ -373,6 +378,9 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     const handleSelectContextType = (value: ContextType) => {
         setContextType(value);
         setSelectedComplexIds(new Set());
+        setSelectedComplexLabels({});
+        setComplexSearch("");
+        setBulkProgress(null);
         if (value === ContextType.system) {
             setContextId(ContextType.system);
         } else {
@@ -380,22 +388,55 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
         }
     }
 
-    const toggleComplexSelection = (id: string) => {
+    const getComplexLabel = (complex: Partial<Complex> | undefined, fallbackId?: string) => {
+        if (complex?.socialName) return complex.socialName;
+        if (complex?.aliasName) return complex.aliasName;
+        if (fallbackId) return `ID ${fallbackId.slice(0, 8)}`;
+        return "Condomínio";
+    };
+
+    const toggleComplexSelection = (complex: Partial<Complex>) => {
+        const id = complex?.id;
+        if (!id) return;
         const updated = new Set(selectedComplexIds);
         if (updated.has(id)) updated.delete(id);
         else updated.add(id);
+
+        setSelectedComplexLabels((prev) => {
+            const next = { ...prev };
+            if (updated.has(id)) {
+                next[id] = getComplexLabel(complex, id);
+            } else {
+                delete next[id];
+            }
+            return next;
+        });
+
         setSelectedComplexIds(updated);
         // contextId: use first selected for single mode
         if (updated.size === 1) setContextId([...updated][0]);
         else setContextId(null);
     };
 
-    const selectAllComplexes = (checked: boolean) => {
-        if (checked) {
-            const ids = new Set(allComplexes.map(c => c.id));
+    const selectAllComplexes = (checked: boolean | "indeterminate") => {
+        if (checked === true) {
+            const validComplexes = allComplexes.filter((complex) => typeof complex?.id === "string");
+            const ids = new Set(validComplexes.map((complex) => complex.id));
             setSelectedComplexIds(ids);
+            setSelectedComplexLabels(
+                validComplexes.reduce<Record<string, string>>((acc, complex) => {
+                    acc[complex.id] = getComplexLabel(complex, complex.id);
+                    return acc;
+                }, {})
+            );
+            if (ids.size === 1) {
+                setContextId([...ids][0]);
+            } else {
+                setContextId(null);
+            }
         } else {
             setSelectedComplexIds(new Set());
+            setSelectedComplexLabels({});
             setContextId(null);
         }
     };
@@ -415,6 +456,9 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                         onChange={(e) => setComplexSearch(e.target.value)}
                         className="h-8 text-sm"
                     />
+                    {complexesError && (
+                        <p className="text-xs text-destructive">Erro ao carregar condomínios: {complexesError}</p>
+                    )}
                     <div className="border rounded-md max-h-48 overflow-y-auto">
                         {complexesLoading ? (
                             <div className="flex justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>
@@ -423,17 +467,18 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                                 <div className="flex items-center gap-2 p-2 border-b">
                                     <Checkbox
                                         checked={allComplexes.length > 0 && selectedComplexIds.size === allComplexes.length}
-                                        onCheckedChange={selectAllComplexes}
+                                        onCheckedChange={(checked) => selectAllComplexes(checked)}
                                     />
                                     <span className="text-xs font-medium">Selecionar todos ({allComplexes.length})</span>
                                 </div>
-                                {allComplexes.map(cx => (
-                                    <div key={cx.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer" onClick={() => toggleComplexSelection(cx.id)}>
+                                {allComplexes.filter((complex) => typeof complex?.id === "string").map((cx) => (
+                                    <div key={cx.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer" onClick={() => toggleComplexSelection(cx)}>
                                         <Checkbox
                                             checked={selectedComplexIds.has(cx.id)}
-                                            onCheckedChange={() => toggleComplexSelection(cx.id)}
+                                            onClick={(event) => event.stopPropagation()}
+                                            onCheckedChange={() => toggleComplexSelection(cx)}
                                         />
-                                        <span className="text-sm">{cx.socialName || cx.aliasName}</span>
+                                        <span className="text-sm">{getComplexLabel(cx, cx.id)}</span>
                                     </div>
                                 ))}
                                 {allComplexes.length === 0 && <p className="text-center text-sm text-muted-foreground p-4">Nenhum condomínio encontrado</p>}
@@ -444,7 +489,8 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                         <div className="flex flex-wrap gap-1">
                             {[...selectedComplexIds].slice(0, 5).map(id => {
                                 const cx = allComplexes.find(c => c.id === id);
-                                return <Badge key={id} variant="secondary" className="text-xs">{cx?.socialName || id.slice(0,8)}</Badge>;
+                                const label = selectedComplexLabels[id] || getComplexLabel(cx, id);
+                                return <Badge key={id} variant="secondary" className="text-xs">{label}</Badge>;
                             })}
                             {selectedComplexIds.size > 5 && <Badge variant="outline" className="text-xs">+{selectedComplexIds.size - 5} mais</Badge>}
                         </div>
