@@ -512,7 +512,10 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
             const errors: string[] = [];
             for (const cxId of complexList) {
                 try {
-                    await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId: cxId });
+                    const created = await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId: cxId });
+                    if (!created?.id) {
+                        errors.push(`Falha ao atribuir no condomínio ${cxId}`);
+                    }
                     done++;
                     setBulkProgress({ done, total: complexList.length, errors });
                 } catch (err: any) {
@@ -538,9 +541,12 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
             if (createdRoleAssignment?.id) {
                 toast({ title: "Sucesso", description: "Papel adicionado com sucesso!", variant: "default" });
                 onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId });
+            } else {
+                toast({ title: "Erro", description: "Não foi possível adicionar o papel. Verifique se já existe ou se você tem permissão.", variant: "destructive" });
             }
         } catch (error) {
             console.error("Error adding role:", error);
+            toast({ title: "Erro", description: "Falha ao adicionar papel.", variant: "destructive" });
         }
     };
 

@@ -21,6 +21,8 @@ export async function GET(req: NextRequest): Promise<Response> {
     const thirtyDaysAgo = startOfDay(subDays(today, 29));
 
     // ─── Todas queries em paralelo ────────────────────────────────────────────
+    const activeFilter = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] };
+
     const [
       totalComplexes,
       totalApartments,
@@ -33,14 +35,14 @@ export async function GET(req: NextRequest): Promise<Response> {
       latestReportsRaw,
       topComplexes,
     ] = await Promise.all([
-      prisma.complex.count({ where: { deletedAt: null } }),
-      prisma.apartment.count({ where: { deletedAt: null } }),
-      prisma.user.count({ where: { deletedAt: null } }),
-      prisma.meter.count({ where: { deletedAt: null } }),
+      prisma.complex.count({ where: activeFilter }),
+      prisma.apartment.count({ where: activeFilter }),
+      prisma.user.count({ where: activeFilter }),
+      prisma.meter.count({ where: activeFilter }),
 
       // Apenas ids e tipos de contexto — sem detalhes pesados
       prisma.roleAssignment.findMany({
-        where: { deletedAt: null },
+        where: activeFilter,
         select: { userId: true, contextType: true, contextId: true },
       }),
 
@@ -67,7 +69,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
       // Última filipeta por condomínio (usando distinct para pegar apenas uma por complexId)
       prisma.apartmentConsumptionReport.findMany({
-        where: { deletedAt: null },
+        where: activeFilter,
         select: { complexId: true, yearRef: true, monthRef: true },
         orderBy: [{ yearRef: 'desc' }, { monthRef: 'desc' }],
         distinct: ['complexId'],
@@ -75,7 +77,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
       // Top 10 condomínios com contagens básicas (MUITO mais rápido que buscar todos)
       prisma.complex.findMany({
-        where: { deletedAt: null },
+        where: activeFilter,
         select: {
           id: true,
           socialName: true,
@@ -88,6 +90,32 @@ export async function GET(req: NextRequest): Promise<Response> {
         orderBy: { socialName: 'asc' },
       }),
     ]);
+
+    const topComplexIds = topComplexes.map((cx) => cx.id);
+    const [apartmentsByComplex, metersByComplex] = topComplexIds.length > 0
+      ? await Promise.all([
+          prisma.apartment.groupBy({
+            by: ['complexId'],
+            where: { complexId: { in: topComplexIds }, ...activeFilter },
+            _count: { id: true },
+          }),
+          prisma.meter.groupBy({
+            by: ['complexId'],
+            where: { complexId: { in: topComplexIds }, ...activeFilter },
+            _count: { id: true },
+          }),
+        ])
+      : [[], []];
+
+    const apartmentsMap: Record<string, number> = {};
+    apartmentsByComplex.forEach((row) => {
+      if (row.complexId) apartmentsMap[row.complexId] = row._count.id;
+    });
+
+    const metersMap: Record<string, number> = {};
+    metersByComplex.forEach((row) => {
+      if (row.complexId) metersMap[row.complexId] = row._count.id;
+    });
 
     // ─── Conjuntos de usuários por tipo ───────────────────────────────────────
     const systemUsers    = new Set(roleAssignments.filter(r => r.contextType === 'system').map(r => r.userId));
@@ -141,8 +169,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         aliasName: cx.aliasName,
         lastReadingDate,
         lastReadingLabel: latest ? `${String(latest.month).padStart(2, '0')}/${latest.year}` : null,
-        totalApartments: 0,
-        totalMeters: 0,
+        totalApartments: apartmentsMap[cx.id] ?? 0,
+        totalMeters: metersMap[cx.id] ?? 0,
       };
     });
 

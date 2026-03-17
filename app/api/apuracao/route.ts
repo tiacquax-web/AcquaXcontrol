@@ -40,12 +40,6 @@ export async function GET(req: NextRequest): Promise<Response> {
                     city: true,
                     state: true,
                     status: true,
-                    // Count blocks via relation (Complex HAS blocks[])
-                    _count: {
-                        select: {
-                            blocks: { where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } },
-                        }
-                    }
                 },
                 orderBy: { socialName: 'asc' },
                 take,
@@ -60,7 +54,12 @@ export async function GET(req: NextRequest): Promise<Response> {
         }
 
         // Count apartments and meters per complex via denormalized complexId field
-        const [aptCounts, meterCounts] = await Promise.all([
+        const [blockCounts, aptCounts, meterCounts] = await Promise.all([
+            prisma.block.groupBy({
+                by: ['complexId'],
+                where: { complexId: { in: complexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                _count: { id: true },
+            }),
             prisma.apartment.groupBy({
                 by: ['complexId'],
                 where: { complexId: { in: complexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
@@ -72,6 +71,9 @@ export async function GET(req: NextRequest): Promise<Response> {
                 _count: { id: true },
             }),
         ]);
+
+        const blockCountMap: Record<string, number> = {};
+        blockCounts.forEach(b => { if (b.complexId) blockCountMap[b.complexId] = b._count.id; });
 
         const aptCountMap: Record<string, number> = {};
         aptCounts.forEach(a => { if (a.complexId) aptCountMap[a.complexId] = a._count.id; });
@@ -184,7 +186,7 @@ export async function GET(req: NextRequest): Promise<Response> {
             city: cx.city,
             state: cx.state,
             status: cx.status,
-            totalBlocks: cx._count.blocks,
+            totalBlocks: blockCountMap[cx.id] || 0,
             totalApartments: aptCountMap[cx.id] || 0,
             totalMeters: meterCountMap[cx.id] || 0,
             lastReading: lastReadingMap[cx.id] || null,

@@ -10,10 +10,10 @@ function getQueryParams(req: NextRequest) {
     const complexId = req.nextUrl.searchParams.get('id') || undefined
     const blockId = req.nextUrl.searchParams.get('block_id') || undefined
     const apartmentId = req.nextUrl.searchParams.get('apartment_id') || undefined
-    const withCompany = req.nextUrl.searchParams.get('with_company') || undefined
-    const withBlocksCount = req.nextUrl.searchParams.get('with_blocks_count') || false
-    const withApartmentsCount = req.nextUrl.searchParams.get('with_apartments_count') || false
-    const withMetersCount = req.nextUrl.searchParams.get('with_meters_count') || false
+    const withCompany = req.nextUrl.searchParams.get('with_company') === 'true'
+    const withBlocksCount = req.nextUrl.searchParams.get('with_blocks_count') === 'true'
+    const withApartmentsCount = req.nextUrl.searchParams.get('with_apartments_count') === 'true'
+    const withMetersCount = req.nextUrl.searchParams.get('with_meters_count') === 'true'
     const onlyWithReservoirs = req.nextUrl.searchParams.get('onlyWithReservoirs') === 'true'
     const socialNames = req.nextUrl.searchParams.get('socialNames') || '[]'
 
@@ -43,7 +43,13 @@ export async function GET(req: NextRequest): Promise<Response> {
         const { withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection, socialNames } = getQueryParams(req)
 
         // Novo: busca por múltiplos socialNames
-        const socialNamesParam: string[] | undefined = socialNames ? JSON.parse(socialNames) : undefined;
+        let socialNamesParam: string[] | undefined = undefined;
+        try {
+            const parsed = socialNames ? JSON.parse(socialNames) : undefined;
+            socialNamesParam = Array.isArray(parsed) ? parsed : undefined;
+        } catch {
+            socialNamesParam = undefined;
+        }
         
         // identifica contexto
         const contextType: ContextType | undefined = companyId ? 'company' : undefined
@@ -63,7 +69,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         // retorna complexos disponíveis para entidade se solicitado
         if (getAvailableForEntity) {
             console.log("######### Buscando complexos disponíveis para entidade:", getAvailableForEntity)
-            const { list, totalCount } = await getAvailableComplexesForEntity(userId, getAvailableForEntity, search, companyId, where, !!withBlocksCount, !!withApartmentsCount, !!withMetersCount, false, onlyWithReservoirs, take, skip)
+            const { list, totalCount } = await getAvailableComplexesForEntity(userId, getAvailableForEntity, search, companyId, where, withBlocksCount, withApartmentsCount, withMetersCount, false, onlyWithReservoirs, take, skip)
             return NextResponse.json({ list, totalCount })
         }
         

@@ -69,7 +69,21 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
         };
 
         fetchComplexes();
-    }, [debouncedNameQuery, debouncedDocumentCompany, companyId, withCompany, take, skip, enabled])
+    }, [
+        id,
+        debouncedNameQuery,
+        debouncedDocumentCompany,
+        companyId,
+        withCompany,
+        getAvailableForEntity,
+        withBlocksCount,
+        withApartmentsCount,
+        withMetersCount,
+        onlyWithReservoirs,
+        take,
+        skip,
+        enabled,
+    ])
 
     return { 
         complexes, 
