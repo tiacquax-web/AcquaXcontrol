@@ -1,5 +1,7 @@
 import { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
-import { createEntity, deleteEntity, getAvailableComplexesForEntity, getEntityListData, updateEntityData } from "@/lib/userData"
+import prisma from "@/lib/prisma"
+import { createEntity, deleteEntity, getAvailableComplexesForEntity, updateEntityData } from "@/lib/userData"
+import { getUserContextsForActionOnEntity } from "@/lib/userContexts"
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { Complex, ContextType } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
@@ -66,14 +68,52 @@ export async function GET(req: NextRequest): Promise<Response> {
             const { list, totalCount } = await getAvailableComplexesForEntity(userId, getAvailableForEntity, search, companyId, where, !!withBlocksCount, !!withApartmentsCount, !!withMetersCount, false, onlyWithReservoirs, take, skip)
             return NextResponse.json({ list, totalCount })
         }
-        
-        const { entity, error, status, totalCount } = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)
-        if (error) return NextResponse.json({ error }, { status })
-        if (!entity) return NextResponse.json({ error: 'Erro interno do servidor - Entidade não encontrada' }, { status: 500 })
+
+        const contexts = await getUserContextsForActionOnEntity(userId, 'complex', 'read')
+        const hasSystemPermission = !!contexts.system
+
+        // Sem contexto e sem permissão de sistema, não retorna nada.
+        if (!hasSystemPermission && contexts.complexIds.length === 0 && contexts.companyIds.length === 0) {
+            return NextResponse.json({ list: [], totalCount: 0 })
+        }
+
+        const notDeleted = {
+            OR: [
+                { deletedAt: null },
+                { deletedAt: { isSet: false } },
+            ],
+        }
+
+        const accessOr = hasSystemPermission ? [] : [
+            ...(contexts.complexIds.length > 0 ? [{ id: { in: contexts.complexIds } }] : []),
+            ...(contexts.companyIds.length > 0 ? [{ companyId: { in: contexts.companyIds } }] : []),
+        ]
+
+        const complexWhere: any = {
+            AND: [
+                notDeleted,
+                search ? { socialName: { contains: search, mode: "insensitive" } } : {},
+                companyId ? { companyId } : {},
+                complexId ? { id: complexId } : {},
+                socialNamesParam && socialNamesParam.length > 0 ? { socialName: { in: socialNamesParam } } : {},
+                !hasSystemPermission && accessOr.length > 0 ? { OR: accessOr } : {},
+            ],
+        }
+
+        const [entity, totalCount] = await Promise.all([
+            prisma.complex.findMany({
+                where: complexWhere,
+                include: include ? include : undefined,
+                take,
+                skip,
+                orderBy: { [orderBy]: orderDirection as "asc" | "desc" },
+            }),
+            prisma.complex.count({ where: complexWhere }),
+        ])
 
         console.log("######### Complexos encontrados:", entity.length)
 
-        return NextResponse.json({ list: entity, totalCount: totalCount ?? entity.length })
+        return NextResponse.json({ list: entity, totalCount })
 
     } catch (error: any) {
         console.error("Erro ao buscar complexos:", error)
