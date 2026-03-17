@@ -240,7 +240,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
         refetch();
     };
 
-    const onAddedRole = (_roleAssignment: Partial<RoleAssignment> & { name: string }) => {
+    const onAddedRole = () => {
         setAddingRole(false);
         refetch();
     }
