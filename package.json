@@ -4,8 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "NODE_OPTIONS='--max-old-space-size=512' next dev",
+    "dev:staging": "NODE_OPTIONS='--max-old-space-size=512' node scripts/run-with-env.js .env.staging -- next dev",
     "build": "next build",
+    "build:staging": "node scripts/run-with-env.js .env.staging -- next build",
     "start": "next start",
+    "start:staging": "node scripts/run-with-env.js .env.staging -- next start",
     "lint": "next lint",
     "icons": "node scripts/generate-icons.js"
   },
