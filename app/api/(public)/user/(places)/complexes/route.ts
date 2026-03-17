@@ -103,20 +103,17 @@ export async function GET(req: NextRequest): Promise<Response> {
             ],
         })
 
-        const [entity, totalCount] = await Promise.all([
-            prisma.complex.findMany({
-                where: complexWhere,
-                include: include ? include : undefined,
-                take,
-                skip,
-                orderBy: { [orderBy]: orderDirection as "asc" | "desc" },
-            }),
-            prisma.complex.count({ where: complexWhere }),
-        ])
+        const entity = await prisma.complex.findMany({
+            where: complexWhere,
+            include: include ? include : undefined,
+            take,
+            skip,
+            orderBy: { [orderBy]: orderDirection as "asc" | "desc" },
+        })
 
         console.log("######### Complexos encontrados:", entity.length)
 
-        return NextResponse.json({ list: entity, totalCount })
+        return NextResponse.json({ list: entity, totalCount: entity.length })
 
     } catch (error: any) {
         console.error("Erro ao buscar complexos:", error)
