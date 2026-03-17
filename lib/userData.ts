@@ -50,6 +50,74 @@ async function restoreSoftDeletedEntity(
     });
 }
 
+type UserAssignmentContexts = {
+    apartmentIds: string[];
+    blockIds: string[];
+    complexIds: string[];
+    companyIds: string[];
+    system: boolean;
+};
+
+async function canManageRoleAssignmentInContext(
+    contexts: UserAssignmentContexts,
+    contextType: ContextType,
+    contextId: string,
+): Promise<boolean> {
+    if (contexts.system) return true;
+
+    switch (contextType) {
+        case ContextType.system:
+            return false;
+        case ContextType.company:
+            return contexts.companyIds.includes(contextId);
+        case ContextType.complex: {
+            if (contexts.complexIds.includes(contextId)) return true;
+            const complex = await prisma.complex.findFirst({
+                where: cleanWhere({
+                    AND: [
+                        { id: contextId },
+                        notDeleted,
+                    ],
+                }),
+                select: { companyId: true },
+            });
+            return !!complex?.companyId && contexts.companyIds.includes(complex.companyId);
+        }
+        case ContextType.block: {
+            if (contexts.blockIds.includes(contextId)) return true;
+            const block = await prisma.block.findFirst({
+                where: cleanWhere({
+                    AND: [
+                        { id: contextId },
+                        notDeleted,
+                    ],
+                }),
+                select: { complexId: true, companyId: true },
+            });
+            if (!block) return false;
+            return contexts.complexIds.includes(block.complexId) || (!!block.companyId && contexts.companyIds.includes(block.companyId));
+        }
+        case ContextType.apartment: {
+            if (contexts.apartmentIds.includes(contextId)) return true;
+            const apartment = await prisma.apartment.findFirst({
+                where: cleanWhere({
+                    AND: [
+                        { id: contextId },
+                        notDeleted,
+                    ],
+                }),
+                select: { blockId: true, complexId: true, companyId: true },
+            });
+            if (!apartment) return false;
+            return contexts.blockIds.includes(apartment.blockId)
+                || contexts.complexIds.includes(apartment.complexId)
+                || (!!apartment.companyId && contexts.companyIds.includes(apartment.companyId));
+        }
+        default:
+            return false;
+    }
+}
+
 // Função para normalizar email removendo acentos e caracteres especiais
 function normalizeEmail(email: string): string {
     // Mapa de caracteres acentuados para normais
@@ -793,8 +861,16 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
 
                 return { entity: roles, totalCount: rolesCount, error: null, status: 200 };
             case PermissionableEntity.roleAssignment:
-                if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
-                const roleAssignments = await prisma.roleAssignment.findMany({
+                if (!hasSystemPermission
+                    && contexts.companyIds.length === 0
+                    && contexts.complexIds.length === 0
+                    && contexts.blockIds.length === 0
+                    && contexts.apartmentIds.length === 0
+                ) {
+                    return { entity: null, error: 'Não autorizado', status: 401 };
+                }
+
+                const rawRoleAssignments = await prisma.roleAssignment.findMany({
                     where: {
                         AND: [
                             {
@@ -809,7 +885,19 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     include: include ? include : undefined,
                     take: take < 200 ? take : 200,
                 });
-                return { entity: roleAssignments, error: null, status: 200 };
+
+                if (hasSystemPermission) {
+                    return { entity: rawRoleAssignments, error: null, status: 200 };
+                }
+
+                const accessibleRoleAssignments: any[] = [];
+                for (const assignment of rawRoleAssignments) {
+                    if (await canManageRoleAssignmentInContext(contexts, assignment.contextType, assignment.contextId)) {
+                        accessibleRoleAssignments.push(assignment);
+                    }
+                }
+
+                return { entity: accessibleRoleAssignments, error: null, status: 200 };
             case PermissionableEntity.permission:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 
@@ -1400,7 +1488,9 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 const role = await prisma.role.create({ data: { ...data } });
                 return { entity: role, status: 201, error: null };
             case PermissionableEntity.roleAssignment:
-                if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
+                if (!(await canManageRoleAssignmentInContext(contexts, data.contextType, data.contextId))) {
+                    return { entity: null, error: 'Não autorizado', status: 401 };
+                }
                 const alreadyCreated = await prisma.roleAssignment.findFirst({
                     where: cleanWhere({
                         AND: [
@@ -2676,7 +2766,19 @@ async function updateEntityData(userId: string, entityType: PermissionableEntity
                 const role = await prisma.role.update({ where: { id: entityId }, data });
                 return { entity: role, status: 200, error: null };
             case PermissionableEntity.roleAssignment:
-                if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
+                const existingRoleAssignment = await prisma.roleAssignment.findFirst({
+                    where: cleanWhere({
+                        AND: [
+                            { id: entityId },
+                            notDeleted,
+                        ],
+                    }),
+                    select: { id: true, contextId: true, contextType: true },
+                });
+                if (!existingRoleAssignment) return { entity: null, error: 'Atribuição de função não encontrada.', status: 404 };
+                if (!(await canManageRoleAssignmentInContext(contexts, existingRoleAssignment.contextType, existingRoleAssignment.contextId))) {
+                    return { entity: null, error: 'Não autorizado', status: 401 };
+                }
                 const roleAssignment = await prisma.roleAssignment.update({ where: { id: entityId }, data });
                 return { entity: roleAssignment, status: 200, error: null };
             case PermissionableEntity.permission:
@@ -2911,7 +3013,21 @@ async function deleteEntity(userId: string, entityType: PermissionableEntity, en
                 const role = await prisma.role.delete({ where: { id: entityId } });
                 return { error: null, status: 200, entity: role }
             case PermissionableEntity.roleAssignment:
-                if (!hasSystemPermission) return { error: 'Não autorizado', status: 401, entity: null }
+                const existingRoleAssignment = await prisma.roleAssignment.findFirst({
+                    where: cleanWhere({
+                        AND: [
+                            { id: entityId },
+                            notDeleted,
+                        ],
+                    }),
+                    select: { id: true, contextId: true, contextType: true },
+                });
+                if (!existingRoleAssignment) {
+                    return { error: 'Atribuição de função não encontrada.', status: 404, entity: null }
+                }
+                if (!(await canManageRoleAssignmentInContext(contexts, existingRoleAssignment.contextType, existingRoleAssignment.contextId))) {
+                    return { error: 'Não autorizado', status: 401, entity: null }
+                }
                 const roleAssignment = await prisma.roleAssignment.delete({ where: { id: entityId } });
                 return { error: null, status: 200, entity: roleAssignment }
             case PermissionableEntity.permission:
