@@ -231,7 +231,7 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
 
 function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, handleDeleteRoleAssignment: (roleAssignmentId: string) => Promise<void> }) {
     const { roleAssignments, error, loading, refetch } = useRoleAssignments({ userId: user.id });
-    const { roles, error: rolesError, loading: rolesLoading } = useRoles({});
+    const { roles } = useRoles({});
     const [addingRole, setAddingRole] = useState(false);
 
     const handleDeleteRoleAssignmentClick = async (roleAssignmentId: string) => {
