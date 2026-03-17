@@ -233,7 +233,7 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
 
 function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, handleDeleteRoleAssignment: (roleAssignmentId: string) => Promise<void> }) {
     const { roleAssignments, error, loading, refetch } = useRoleAssignments({ userId: user.id });
-    const { roles, error: rolesError, loading: rolesLoading } = useRoles({});
+    const { roles } = useRoles({});
     const [addingRole, setAddingRole] = useState(false);
 
     const handleDeleteRoleAssignmentClick = async (roleAssignmentId: string) => {
@@ -243,6 +243,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
     };
 
     const onAddedRole = (roleAssignment: Partial<RoleAssignment> & { name: string }) => {
+        void roleAssignment;
         setAddingRole(false);
         refetch();
     }
@@ -442,9 +443,9 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                     <ComplexesCombobox
                         autoSelectSingle={false}
                         modal
-                        complex={cascateContextSearching.complex as Complex}
+                        complex={cascateContextSearching.complex ?? undefined}
                         setSelectedComplex={(complex) => {
-                            handleCasacteContextSelect(ContextType.complex, complex as Complex);
+                            handleCasacteContextSelect(ContextType.complex, complex ?? null);
                         }}
                     />
                     <div className="flex flex-wrap gap-2">
@@ -487,7 +488,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                     )}
                     {selectedComplexIds.size === 0 && (
                         <p className="text-sm text-muted-foreground">
-                            Pesquise um condomínio, selecione e clique em "Adicionar condomínio selecionado".
+                            Pesquise um condomínio, selecione e clique no botão Adicionar condomínio selecionado.
                         </p>
                     )}
                 </div>
@@ -510,9 +511,9 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                 {(contextType == ContextType.block || contextType == ContextType.apartment) && cascateContextSearching.company && (
                     <ComplexesCombobox
                         modal
-                        complex={cascateContextSearching.complex as Complex}
+                        complex={cascateContextSearching.complex ?? undefined}
                         setSelectedComplex={(complex) => {
-                            handleCasacteContextSelect(ContextType.complex, complex as Complex);
+                            handleCasacteContextSelect(ContextType.complex, complex ?? null);
                         }}
                     />
                 )}
@@ -556,8 +557,8 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                     await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId: cxId });
                     done++;
                     setBulkProgress({ done, total: complexList.length, errors });
-                } catch (err: any) {
-                    const msg = err?.message || cxId;
+                } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : cxId;
                     errors.push(msg);
                     done++;
                     setBulkProgress({ done, total: complexList.length, errors });
