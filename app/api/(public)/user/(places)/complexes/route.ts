@@ -3,6 +3,9 @@ import { createEntity, deleteEntity, getAvailableComplexesForEntity, getEntityLi
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { Complex, ContextType } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
+import { getUserContextsForEntity } from "@/lib/userContexts"
+import { cleanWhere } from "@/lib/utils"
 
 function getQueryParams(req: NextRequest) {
     // parâmetros de consulta - customizados
@@ -29,6 +32,139 @@ function getQueryParams(req: NextRequest) {
     const orderDirection = req.nextUrl.searchParams.get('orderDirection') || 'desc'
 
     return { socialNames, withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection }
+}
+
+const activeWhere = {
+    OR: [
+        { deletedAt: null },
+        { deletedAt: { isSet: false } },
+    ],
+}
+
+async function fallbackFetchComplexes({
+    userId,
+    search,
+    companyId,
+    complexId,
+    socialNames,
+    withCompany,
+    withBlocksCount,
+    withApartmentsCount,
+    withMetersCount,
+    take,
+    skip,
+}: {
+    userId: string
+    search?: string
+    companyId?: string
+    complexId?: string
+    socialNames?: string[]
+    withCompany?: boolean
+    withBlocksCount?: boolean
+    withApartmentsCount?: boolean
+    withMetersCount?: boolean
+    take?: number
+    skip?: number
+}) {
+    const contexts = await getUserContextsForEntity(userId, 'complex')
+    const accessOr = contexts.system ? undefined : [
+        ...(contexts.complexIds.length > 0 ? [{ id: { in: contexts.complexIds } }] : []),
+        ...(contexts.companyIds.length > 0 ? [{ companyId: { in: contexts.companyIds } }] : []),
+        ...(contexts.blockIds.length > 0 ? [{ blocks: { some: { id: { in: contexts.blockIds } } } }] : []),
+        ...(contexts.apartmentIds.length > 0 ? [{ blocks: { some: { apartments: { some: { id: { in: contexts.apartmentIds } } } } } }] : []),
+    ]
+
+    if (!contexts.system && (!accessOr || accessOr.length === 0)) {
+        return { list: [], totalCount: 0 }
+    }
+
+    const where = cleanWhere({
+        AND: [
+            activeWhere,
+            complexId ? { id: complexId } : undefined,
+            companyId ? { companyId } : undefined,
+            socialNames && socialNames.length > 0 ? { socialName: { in: socialNames } } : undefined,
+            search ? {
+                OR: [
+                    { socialName: { contains: search, mode: 'insensitive' } },
+                    { aliasName: { contains: search, mode: 'insensitive' } },
+                ]
+            } : undefined,
+            !contexts.system ? { OR: accessOr } : undefined,
+        ]
+    })
+
+    const include = withCompany ? {
+        company: {
+            select: {
+                id: true,
+                name: true,
+            },
+        }
+    } : undefined
+
+    const [list, totalCount] = await Promise.all([
+        prisma.complex.findMany({
+            where,
+            include,
+            take,
+            skip,
+            orderBy: { socialName: 'asc' },
+        }),
+        prisma.complex.count({ where }),
+    ])
+
+    if (!withBlocksCount && !withApartmentsCount && !withMetersCount) {
+        return { list, totalCount }
+    }
+
+    const ids = list.map((c) => c.id)
+    if (ids.length === 0) {
+        return { list, totalCount }
+    }
+
+    const [blocksGrouped, apartmentsGrouped, metersGrouped] = await Promise.all([
+        withBlocksCount
+            ? prisma.block.groupBy({
+                by: ['complexId'],
+                where: { complexId: { in: ids }, ...activeWhere },
+                _count: { id: true },
+            })
+            : Promise.resolve([] as Array<{ complexId: string | null; _count: { id: number } }>),
+        withApartmentsCount
+            ? prisma.apartment.groupBy({
+                by: ['complexId'],
+                where: { complexId: { in: ids }, ...activeWhere },
+                _count: { id: true },
+            })
+            : Promise.resolve([] as Array<{ complexId: string | null; _count: { id: number } }>),
+        withMetersCount
+            ? prisma.meter.groupBy({
+                by: ['complexId'],
+                where: { complexId: { in: ids }, ...activeWhere },
+                _count: { id: true },
+            })
+            : Promise.resolve([] as Array<{ complexId: string | null; _count: { id: number } }>),
+    ])
+
+    const blocksMap: Record<string, number> = {}
+    const apartmentsMap: Record<string, number> = {}
+    const metersMap: Record<string, number> = {}
+    blocksGrouped.forEach((r) => { if (r.complexId) blocksMap[r.complexId] = r._count.id })
+    apartmentsGrouped.forEach((r) => { if (r.complexId) apartmentsMap[r.complexId] = r._count.id })
+    metersGrouped.forEach((r) => { if (r.complexId) metersMap[r.complexId] = r._count.id })
+
+    const enriched = list.map((complex: any) => ({
+        ...complex,
+        _count: {
+            ...(complex._count || {}),
+            blocks: blocksMap[complex.id] ?? 0,
+        },
+        totalApartments: apartmentsMap[complex.id] ?? 0,
+        totalMeters: metersMap[complex.id] ?? 0,
+    }))
+
+    return { list: enriched, totalCount }
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -69,21 +205,57 @@ export async function GET(req: NextRequest): Promise<Response> {
         // retorna complexos disponíveis para entidade se solicitado
         if (getAvailableForEntity) {
             console.log("######### Buscando complexos disponíveis para entidade:", getAvailableForEntity)
-            const { list, totalCount } = await getAvailableComplexesForEntity(userId, getAvailableForEntity, search, companyId, where, withBlocksCount, withApartmentsCount, withMetersCount, false, onlyWithReservoirs, take, skip)
+            try {
+                const { list, totalCount } = await getAvailableComplexesForEntity(userId, getAvailableForEntity, search, companyId, where, withBlocksCount, withApartmentsCount, withMetersCount, false, onlyWithReservoirs, take, skip)
+                return NextResponse.json({ list, totalCount })
+            } catch (fallbackError: any) {
+                console.error("Erro em getAvailableComplexesForEntity, usando fallback:", fallbackError)
+                const { list, totalCount } = await fallbackFetchComplexes({
+                    userId,
+                    search,
+                    companyId,
+                    complexId,
+                    socialNames: socialNamesParam,
+                    withCompany,
+                    withBlocksCount,
+                    withApartmentsCount,
+                    withMetersCount,
+                    take,
+                    skip,
+                })
+                return NextResponse.json({ list, totalCount })
+            }
+        }
+
+        try {
+            const { entity, error, status, totalCount } = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)
+            if (error) return NextResponse.json({ error }, { status })
+            if (!entity) return NextResponse.json({ error: 'Erro interno do servidor - Entidade não encontrada' }, { status: 500 })
+
+            console.log("######### Complexos encontrados:", entity.length)
+
+            return NextResponse.json({ list: entity, totalCount: totalCount ?? entity.length })
+        } catch (fallbackError: any) {
+            console.error("Erro em getEntityListData(complex), usando fallback:", fallbackError)
+            const { list, totalCount } = await fallbackFetchComplexes({
+                userId,
+                search,
+                companyId,
+                complexId,
+                socialNames: socialNamesParam,
+                withCompany,
+                withBlocksCount,
+                withApartmentsCount,
+                withMetersCount,
+                take,
+                skip,
+            })
             return NextResponse.json({ list, totalCount })
         }
-        
-        const { entity, error, status, totalCount } = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)
-        if (error) return NextResponse.json({ error }, { status })
-        if (!entity) return NextResponse.json({ error: 'Erro interno do servidor - Entidade não encontrada' }, { status: 500 })
-
-        console.log("######### Complexos encontrados:", entity.length)
-
-        return NextResponse.json({ list: entity, totalCount: totalCount ?? entity.length })
 
     } catch (error: any) {
         console.error("Erro ao buscar complexos:", error)
-        return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
+        return NextResponse.json({ error: error?.message || 'Erro interno do servidor' }, { status: 500 })
     }
 }
 
