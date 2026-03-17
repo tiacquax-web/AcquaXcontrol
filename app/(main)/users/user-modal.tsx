@@ -235,7 +235,7 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
 
 function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, handleDeleteRoleAssignment: (roleAssignmentId: string) => Promise<void> }) {
     const { roleAssignments, error, loading, refetch } = useRoleAssignments({ userId: user.id });
-    const { roles, error: rolesError, loading: rolesLoading } = useRoles({});
+    const { roles } = useRoles({});
     const [addingRole, setAddingRole] = useState(false);
 
     const handleDeleteRoleAssignmentClick = async (roleAssignmentId: string) => {
@@ -244,7 +244,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
         refetch();
     };
 
-    const onAddedRole = (roleAssignment: Partial<RoleAssignment> & { name: string }) => {
+    const onAddedRole = () => {
         setAddingRole(false);
         refetch();
     }
@@ -561,8 +561,8 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                     await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId: cxId });
                     done++;
                     setBulkProgress({ done, total: complexList.length, errors });
-                } catch (err: any) {
-                    const msg = err?.message || cxId;
+                } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : cxId;
                     errors.push(msg);
                     done++;
                     setBulkProgress({ done, total: complexList.length, errors });
