@@ -1,9 +1,16 @@
 import { cleanEntityBody } from "@/lib/prisma"
-import { getEntityListData } from "@/lib/userData"
+import { createEntity, getEntityListData } from "@/lib/userData"
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ContextType, Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
+
+const activeRecordFilter = {
+    OR: [
+        { deletedAt: null },
+        { deletedAt: { isSet: false } },
+    ],
+} as const
 
 function getQueryParams(req: NextRequest) {
     // query params - custom
@@ -110,10 +117,10 @@ export async function GET(req: NextRequest): Promise<Response> {
             }
 
             const [companies, complexes, blocks, apartments] = await Promise.all([
-                companyIds.size ? prisma.company.findMany({ where: { id: { in: [...companyIds] } }, select: { id: true, socialName: true, name: true } }) : Promise.resolve([]),
-                complexIds.size ? prisma.complex.findMany({ where: { id: { in: [...complexIds] } }, select: { id: true, socialName: true, aliasName: true } }) : Promise.resolve([]),
-                blockIds.size ? prisma.block.findMany({ where: { id: { in: [...blockIds] } }, select: { id: true, name: true } }) : Promise.resolve([]),
-                apartmentIds.size ? prisma.apartment.findMany({ where: { id: { in: [...apartmentIds] } }, select: { id: true, name: true } }) : Promise.resolve([]),
+                companyIds.size ? prisma.company.findMany({ where: { AND: [{ id: { in: [...companyIds] } }, activeRecordFilter] }, select: { id: true, socialName: true, name: true } }) : Promise.resolve([]),
+                complexIds.size ? prisma.complex.findMany({ where: { AND: [{ id: { in: [...complexIds] } }, activeRecordFilter] }, select: { id: true, socialName: true, aliasName: true } }) : Promise.resolve([]),
+                blockIds.size ? prisma.block.findMany({ where: { AND: [{ id: { in: [...blockIds] } }, activeRecordFilter] }, select: { id: true, name: true } }) : Promise.resolve([]),
+                apartmentIds.size ? prisma.apartment.findMany({ where: { AND: [{ id: { in: [...apartmentIds] } }, activeRecordFilter] }, select: { id: true, name: true } }) : Promise.resolve([]),
             ])
 
             const companyMap = new Map((companies as any[]).map((c: any) => [c.id, c.socialName || c.name || c.id]))
@@ -149,58 +156,19 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (sessionError) return NextResponse.json({ sessionError }, { status: sessionStatus });
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-        // Check if user is a system-level user (can manage role assignments)
-        const systemAssignment = await prisma.roleAssignment.findFirst({
-            where: {
-                userId,
-                contextType: ContextType.system,
-            },
-            select: { id: true, deletedAt: true },
-        });
-        const isSystemUser = !!systemAssignment && (systemAssignment.deletedAt === null || systemAssignment.deletedAt === undefined);
-        if (!isSystemUser) {
-            return NextResponse.json({ error: 'Não autorizado: apenas usuários do sistema podem gerenciar papéis.' }, { status: 401 });
-        }
-
         // Parse request body
         const reqBody = await req.json();
-        const body = cleanEntityBody(reqBody); // Clean the body to remove unwanted fields
+        const body = cleanEntityBody({ ...reqBody }); // Clean the body to remove unwanted fields
 
         // Validate request body
         if (!body) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
         if (Object.keys(body).length === 0) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
 
-        // Check for duplicate assignment (active - not deleted)
-        const alreadyCreated = await prisma.roleAssignment.findFirst({
-            where: {
-                userId: body.userId,
-                roleId: body.roleId,
-                contextId: body.contextId,
-                contextType: body.contextType,
-                OR: [
-                    { deletedAt: null },
-                    { deletedAt: { isSet: false } },
-                ],
-            }
-        });
-        if (alreadyCreated) {
-            return NextResponse.json({ error: 'Esta função já está atribuída ao usuário no contexto informado.' }, { status: 409 });
-        }
+        const { entity: roleAssignment, error: creationError, status: creationStatus } = await createEntity(userId, 'roleAssignment', body)
+        if (creationError) return NextResponse.json({ error: creationError }, { status: creationStatus })
+        if (!roleAssignment) return NextResponse.json({ error: 'Internal Server Error - Entity not created' }, { status: 500 })
 
-        // Create role assignment
-        const roleAssignment = await prisma.roleAssignment.create({
-            data: {
-                userId: body.userId,
-                roleId: body.roleId,
-                contextId: body.contextId,
-                contextType: body.contextType,
-                createdByUserId: userId,
-                deletedAt: null,
-            }
-        });
-
-        // Return the created entity data
-        return NextResponse.json(roleAssignment, { status: 201 });
+        return NextResponse.json(roleAssignment, { status: creationStatus })
 
     } catch (error: any) {
         // Log and handle unexpected errors

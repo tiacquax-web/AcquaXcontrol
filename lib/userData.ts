@@ -12,6 +12,44 @@ const notDeleted = {
     ],
 } as const;
 
+const deletedOnly = {
+    NOT: notDeleted,
+} as const;
+
+async function restoreSoftDeletedEntity(
+    model: {
+        findFirst: (args: any) => Promise<any>;
+        update: (args: any) => Promise<any>;
+    },
+    uniqueWhere: Record<string, any>,
+    data: Record<string, any>,
+    userId: string,
+) {
+    const { createdByUserId: _createdByUserId, ...restoredData } = data;
+
+    const deletedEntity = await model.findFirst({
+        where: cleanWhere({
+            AND: [
+                uniqueWhere,
+                deletedOnly,
+            ],
+        }),
+    });
+
+    if (!deletedEntity?.id) {
+        return null;
+    }
+
+    return model.update({
+        where: { id: deletedEntity.id },
+        data: {
+            ...restoredData,
+            deletedAt: null,
+            updatedByUserId: userId,
+        },
+    });
+}
+
 // Função para normalizar email removendo acentos e caracteres especiais
 function normalizeEmail(email: string): string {
     // Mapa de caracteres acentuados para normais
@@ -1022,15 +1060,39 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                     }
                 });
                 if (meterPermissionInContext) {
+                    const meterStatus = data.status || 'Ativo';
                     
                     // Adiciona os campos desnormalizados do apartment
                     data.blockId = meterPermissionInContext.blockId;
                     data.complexId = meterPermissionInContext.complexId;
                     data.companyId = meterPermissionInContext.companyId;
+                    data.status = meterStatus;
 
                     if (!data.initialReading) delete data.initialReading;
 
                     console.warn('Creating meter with data:', data);
+
+                    const activeMeter = await prisma.meter.findFirst({
+                        where: cleanWhere({
+                            AND: [
+                                { register: data.register, status: meterStatus },
+                                notDeleted,
+                            ],
+                        }),
+                    });
+                    if (activeMeter) {
+                        return { entity: null, error: 'Já existe um hidrômetro ativo com este registro.', status: 409 };
+                    }
+
+                    const restoredMeter = await restoreSoftDeletedEntity(
+                        prisma.meter,
+                        { register: data.register, status: meterStatus },
+                        { ...data },
+                        userId,
+                    );
+                    if (restoredMeter) {
+                        return { entity: restoredMeter, status: 200, error: null };
+                    }
                     
                     const meter = await prisma.meter.create({ data: { ...data } });
                     return { entity: meter, status: 201, error: null };
@@ -1044,6 +1106,29 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 return { entity: typeMeter, status: 201, error: null };
             case PermissionableEntity.iotDevice:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
+
+                const activeIotDevice = await prisma.iotDevice.findFirst({
+                    where: cleanWhere({
+                        AND: [
+                            { deviceId: data.deviceId },
+                            notDeleted,
+                        ],
+                    }),
+                });
+                if (activeIotDevice) {
+                    return { entity: null, error: 'Já existe um dispositivo com este identificador.', status: 409 };
+                }
+
+                const restoredIotDevice = await restoreSoftDeletedEntity(
+                    prisma.iotDevice,
+                    { deviceId: data.deviceId },
+                    { ...data },
+                    userId,
+                );
+                if (restoredIotDevice) {
+                    return { entity: restoredIotDevice, status: 200, error: null };
+                }
+
                 const iotDevice = await prisma.iotDevice.create({ data: { ...data } });
                 return { entity: iotDevice, status: 201, error: null };
 
@@ -1173,6 +1258,38 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                     companyId: aptCompanyId,
                 };
 
+                const activeApartmentConsumptionReport = await prisma.apartmentConsumptionReport.findFirst({
+                    where: cleanWhere({
+                        AND: [
+                            {
+                                yearRef: finalApartmentConsumptionReportData.yearRef,
+                                monthRef: finalApartmentConsumptionReportData.monthRef,
+                                apartmentId: finalApartmentConsumptionReportData.apartmentId,
+                                utilityType: finalApartmentConsumptionReportData.utilityType,
+                            },
+                            notDeleted,
+                        ],
+                    }),
+                });
+                if (activeApartmentConsumptionReport) {
+                    return { entity: null, error: 'Já existe uma apuração ativa para esta unidade e competência.', status: 409 };
+                }
+
+                const restoredApartmentConsumptionReport = await restoreSoftDeletedEntity(
+                    prisma.apartmentConsumptionReport,
+                    {
+                        yearRef: finalApartmentConsumptionReportData.yearRef,
+                        monthRef: finalApartmentConsumptionReportData.monthRef,
+                        apartmentId: finalApartmentConsumptionReportData.apartmentId,
+                        utilityType: finalApartmentConsumptionReportData.utilityType,
+                    },
+                    finalApartmentConsumptionReportData,
+                    userId,
+                );
+                if (restoredApartmentConsumptionReport) {
+                    return { entity: restoredApartmentConsumptionReport, status: 200, error: null };
+                }
+
                 const apartmentConsumptionReport = await prisma.apartmentConsumptionReport.create({ data: { ...finalApartmentConsumptionReportData } });
                 return { entity: apartmentConsumptionReport, status: 201, error: null };
             case PermissionableEntity.reading:
@@ -1230,29 +1347,125 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 if (data.email) {
                     data.email = normalizeEmail(data.email);
                 }
+
+                const activeUser = await prisma.user.findFirst({
+                    where: cleanWhere({
+                        AND: [
+                            { email: data.email },
+                            notDeleted,
+                        ],
+                    }),
+                });
+                if (activeUser) {
+                    return { entity: null, error: 'Já existe um usuário ativo com este e-mail.', status: 409 };
+                }
+
+                const restoredUser = await restoreSoftDeletedEntity(
+                    prisma.user,
+                    { email: data.email },
+                    { ...data },
+                    userId,
+                );
+                if (restoredUser) {
+                    return { entity: restoredUser, status: 200, error: null };
+                }
                 
                 const user = await prisma.user.create({ data: { ...data } });
                 return { entity: user, status: 201, error: null };
             case PermissionableEntity.role:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
+
+                const activeRole = await prisma.role.findFirst({
+                    where: cleanWhere({
+                        AND: [
+                            { name: data.name },
+                            notDeleted,
+                        ],
+                    }),
+                });
+                if (activeRole) {
+                    return { entity: null, error: 'Já existe um papel ativo com este nome.', status: 409 };
+                }
+
+                const restoredRole = await restoreSoftDeletedEntity(
+                    prisma.role,
+                    { name: data.name },
+                    { ...data },
+                    userId,
+                );
+                if (restoredRole) {
+                    return { entity: restoredRole, status: 200, error: null };
+                }
+
                 const role = await prisma.role.create({ data: { ...data } });
                 return { entity: role, status: 201, error: null };
             case PermissionableEntity.roleAssignment:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 const alreadyCreated = await prisma.roleAssignment.findFirst({
                     where: cleanWhere({
+                        AND: [
+                            {
+                                userId: data.userId,
+                                roleId: data.roleId,
+                                contextId: data.contextId,
+                                contextType: data.contextType,
+                            },
+                            notDeleted,
+                        ],
+                    })
+                });
+                if (alreadyCreated) return { entity: null, error: 'Esta função já está atribuída ao usuário no contexto informado.', status: 409 };
+
+                const restoredRoleAssignment = await restoreSoftDeletedEntity(
+                    prisma.roleAssignment,
+                    {
                         userId: data.userId,
                         roleId: data.roleId,
                         contextId: data.contextId,
                         contextType: data.contextType,
-                        deletedAt: null, // Verifica se não está deletado
-                    })
-                });
-                if (alreadyCreated) return { entity: null, error: 'Esta função já está atribuída ao usuário no contexto informado.', status: 409 };
+                    },
+                    { ...data },
+                    userId,
+                );
+                if (restoredRoleAssignment) {
+                    return { entity: restoredRoleAssignment, status: 200, error: null };
+                }
+
                 const roleAssignment = await prisma.roleAssignment.create({ data: { ...data } });
                 return { entity: roleAssignment, status: 201, error: null };
             case PermissionableEntity.permission:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
+
+                const activePermission = await prisma.permission.findFirst({
+                    where: cleanWhere({
+                        AND: [
+                            {
+                                roleId: data.roleId,
+                                action: data.action,
+                                entity: data.entity,
+                            },
+                            notDeleted,
+                        ],
+                    }),
+                });
+                if (activePermission) {
+                    return { entity: null, error: 'Esta permissão já está ativa para o papel informado.', status: 409 };
+                }
+
+                const restoredPermission = await restoreSoftDeletedEntity(
+                    prisma.permission,
+                    {
+                        roleId: data.roleId,
+                        action: data.action,
+                        entity: data.entity,
+                    },
+                    { ...data },
+                    userId,
+                );
+                if (restoredPermission) {
+                    return { entity: restoredPermission, status: 200, error: null };
+                }
+
                 const permission = await prisma.permission.create({ data: { ...data } });
                 return { entity: permission, status: 201, error: null };
 

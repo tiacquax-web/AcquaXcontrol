@@ -34,10 +34,11 @@ interface UserModalProps {
     onSave: (user: Partial<User>) => void
     user: User | undefined
     handleDeleteRoleAssignment: (roleAssignmentId: string) => Promise<void>
+    onRoleAssignmentsChanged?: () => void | Promise<void>
     openTab?: string
 }
 
-export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteRoleAssignment, openTab = 'basic' }: UserModalProps) {
+export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteRoleAssignment, onRoleAssignmentsChanged, openTab = 'basic' }: UserModalProps) {
     const [formData, setFormData] = useState<Partial<User>>({
         name: "",
         email: "",
@@ -188,7 +189,13 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
                             <TabsContent value="roles" className="space-y-4 mt-4">
                                 <div className="grid grid-cols-1 gap-4">
                                     <div className="space-y-2">
-                                        {user?.id && <ManageUserRoles user={user} handleDeleteRoleAssignment={handleDeleteRoleAssignment} />}
+                                        {user?.id && (
+                                            <ManageUserRoles
+                                                user={user}
+                                                handleDeleteRoleAssignment={handleDeleteRoleAssignment}
+                                                onRoleAssignmentsChanged={onRoleAssignmentsChanged}
+                                            />
+                                        )}
                                     </div>
                                 </div>
                             </TabsContent>
@@ -233,7 +240,15 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
     )
 }
 
-function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, handleDeleteRoleAssignment: (roleAssignmentId: string) => Promise<void> }) {
+function ManageUserRoles({
+    user,
+    handleDeleteRoleAssignment,
+    onRoleAssignmentsChanged,
+}: {
+    user: User,
+    handleDeleteRoleAssignment: (roleAssignmentId: string) => Promise<void>,
+    onRoleAssignmentsChanged?: () => void | Promise<void>
+}) {
     const { roleAssignments, error, loading, refetch } = useRoleAssignments({ userId: user.id });
     const { roles, error: rolesError, loading: rolesLoading } = useRoles({});
     const [addingRole, setAddingRole] = useState(false);
@@ -242,11 +257,13 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
         setAddingRole(false);
         await handleDeleteRoleAssignment(roleAssignmentId);
         refetch();
+        await onRoleAssignmentsChanged?.();
     };
 
-    const onAddedRole = (roleAssignment: Partial<RoleAssignment> & { name: string }) => {
+    const onAddedRole = async (_roleAssignment: Partial<RoleAssignment> & { name: string }) => {
         setAddingRole(false);
         refetch();
+        await onRoleAssignmentsChanged?.();
     }
 
     return (
@@ -279,7 +296,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
                     </TableHeader>
                     <TableBody>
                         {roleAssignments.map((assignment) => (
-                            <TableRow key={assignment.roleId}>
+                            <TableRow key={assignment.id}>
                                 <TableCell>{mapContextType[assignment.contextType]}</TableCell>
                                 <TableCell title={assignment.contextId || undefined}>{assignment.contextName || (assignment.contextType === ContextType.system ? 'Sistema' : assignment.contextId || '—')}</TableCell>
                                 <TableCell>{assignment.Role.name}</TableCell>
@@ -316,7 +333,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
 }
 
 
-function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAddedRole }: { user: User, availableRoles: Role[], onAddedRole: (roleAssignment: Partial<RoleAssignment> & { name: string }) => void, setAddingRole: (value: boolean) => void }) {
+function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAddedRole }: { user: User, availableRoles: Role[], onAddedRole: (roleAssignment: Partial<RoleAssignment> & { name: string }) => void | Promise<void>, setAddingRole: (value: boolean) => void }) {
     const [contextType, setContextType] = useState<ContextType>();
     const [contextId, setContextId] = useState<string | null>(null);
     const [selectedRole, setSelectedRole] = useState<Role>();
@@ -509,10 +526,15 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
             const complexList = [...selectedComplexIds];
             setBulkProgress({ done: 0, total: complexList.length, errors: [] });
             let done = 0;
+            let successCount = 0;
             const errors: string[] = [];
             for (const cxId of complexList) {
                 try {
-                    await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId: cxId });
+                    const createdAssignment = await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId: cxId });
+                    if (!createdAssignment?.id) {
+                        throw new Error("A atribuição não retornou um identificador válido.");
+                    }
+                    successCount++;
                     done++;
                     setBulkProgress({ done, total: complexList.length, errors });
                 } catch (err: any) {
@@ -528,7 +550,9 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
             } else {
                 toast({ title: "Concluído com erros", description: `${done - errors.length} adicionados, ${errors.length} erros.`, variant: "destructive" });
             }
-            onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId: 'bulk' });
+            if (successCount > 0) {
+                await onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId: 'bulk' });
+            }
             return;
         }
 
@@ -537,7 +561,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
             const createdRoleAssignment = await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId });
             if (createdRoleAssignment?.id) {
                 toast({ title: "Sucesso", description: "Papel adicionado com sucesso!", variant: "default" });
-                onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId });
+                await onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId });
             }
         } catch (error) {
             console.error("Error adding role:", error);

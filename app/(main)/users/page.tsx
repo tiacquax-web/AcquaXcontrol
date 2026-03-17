@@ -133,6 +133,11 @@ export default function UsersPage() {
         if (window.confirm("Tem certeza de que deseja excluir esta atribuição de função?")) {
             try {
                 await deleteRoleAssignment(roleAssignmentId)
+                toast({
+                    title: "Atribuição removida com sucesso",
+                    description: "O papel foi removido do usuário.",
+                })
+                refetch()
             } catch (error) {
                 console.error("Erro ao excluir atribuição de função:", error)
             }
@@ -487,6 +492,7 @@ export default function UsersPage() {
                 onClose={handleCloseForm}
                 onSave={handleSaveUser}
                 handleDeleteRoleAssignment={handleDeleteRoleAssignment}
+                onRoleAssignmentsChanged={refetch}
                 user={currentUser as User}
             />
 

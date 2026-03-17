@@ -49,7 +49,7 @@ export const useRoleAssignments = ({ searchQuery, userName, roleName, userId, ro
         };
 
         fetchRoleAssignments();
-    }, [searchQuery, userName, roleName, sequence]);
+    }, [searchQuery, userName, roleName, userId, roleId, sequence]);
 
     return { roleAssignments, loading, error, refetch };
 };
@@ -68,7 +68,7 @@ export const useRoleAssignmentMutations = () => {
         } catch (error: any) {
             const message = error.response?.data?.error || error.message || "Unknown error";
             setError(message);
-            return null;
+            throw error;
         } finally {
             setLoading(false);
         }
@@ -78,10 +78,11 @@ export const useRoleAssignmentMutations = () => {
         setLoading(true);
         setError(null);
         try {
-            await updateRoleAssignmentService(roleAssignmentId, roleAssignmentData);
+            return await updateRoleAssignmentService(roleAssignmentId, roleAssignmentData);
         } catch (error: any) {
             const message = error.response?.data?.error || error.message || "Unknown error";
             setError(message);
+            throw error;
         } finally {
             setLoading(false);
         }
@@ -91,10 +92,11 @@ export const useRoleAssignmentMutations = () => {
         setLoading(true);
         setError(null);
         try {
-            await deleteRoleAssignmentService(roleAssignmentId);
+            return await deleteRoleAssignmentService(roleAssignmentId);
         } catch (error: any) {
             const message = error.response?.data?.error || error.message || "Unknown error";
             setError(message);
+            throw error;
         } finally {
             setLoading(false);
         }

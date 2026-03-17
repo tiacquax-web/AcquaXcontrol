@@ -3,17 +3,23 @@ import { ContextType } from "@prisma/client"
 import prisma from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
 
+const activeRecordFilter = {
+    OR: [
+        { deletedAt: null },
+        { deletedAt: { isSet: false } },
+    ],
+} as const
+
 async function isSystemUser(userId: string): Promise<boolean> {
-    // Busca qualquer assignment de sistema (ativo = sem deletedAt, ou com deletedAt null)
     const assignment = await prisma.roleAssignment.findFirst({
         where: {
             userId,
             contextType: ContextType.system,
+            ...activeRecordFilter,
         },
-        select: { id: true, deletedAt: true },
+        select: { id: true },
     });
-    // Considera ativo se não tem deletedAt ou se deletedAt é null
-    return !!assignment && (assignment.deletedAt === null || assignment.deletedAt === undefined);
+    return !!assignment;
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ entityId: string }> }): Promise<Response> {
@@ -29,13 +35,23 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
         const isSystem = await isSystemUser(userId);
         if (!isSystem) return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
 
-        // Soft delete
-        const roleAssignment = await prisma.roleAssignment.update({
-            where: { id: entityId },
-            data: { deletedAt: new Date() },
+        const deletionDate = new Date()
+        const deletedRoleAssignment = await prisma.roleAssignment.updateMany({
+            where: {
+                id: entityId,
+                ...activeRecordFilter,
+            },
+            data: {
+                deletedAt: deletionDate,
+                updatedByUserId: userId,
+            },
         });
 
-        return NextResponse.json(roleAssignment);
+        if (deletedRoleAssignment.count === 0) {
+            return NextResponse.json({ error: 'Atribuição de função não encontrada ou já removida.' }, { status: 404 });
+        }
+
+        return NextResponse.json({ id: entityId, deletedAt: deletionDate.toISOString() });
     } catch (error: any) {
         console.error("Error deleting Role Assignment:", error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
