@@ -55,14 +55,37 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         const where = complexId ? { id: complexId } : (socialNamesParam && Array.isArray(socialNamesParam) && socialNamesParam.length > 0 ? { socialName: { in: socialNamesParam } } : undefined);
 
-        const include = withCompany ? {
-            company: {
+        const baseSelect = {
+            id: true,
+            companyId: true,
+            socialName: true,
+            aliasName: true,
+            documentCompany: true,
+            documentCompanySecondary: true,
+            email: true,
+            telephone: true,
+            cell: true,
+            zipcode: true,
+            street: true,
+            number: true,
+            complement: true,
+            neighborhood: true,
+            state: true,
+            city: true,
+            photo: true,
+            facebook: true,
+            instagram: true,
+            twitter: true,
+            apportionment: true,
+            status: true,
+            company: withCompany ? {
                 select: {
                     id: true,
                     name: true,
+                    socialName: true,
                 },
-            }
-        } : undefined
+            } : false,
+        } as const
 
         // retorna complexos disponíveis para entidade se solicitado
         if (getAvailableForEntity) {
@@ -105,7 +128,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         const entity = await prisma.complex.findMany({
             where: complexWhere,
-            include: include ? include : undefined,
+            select: baseSelect,
             take,
             skip,
             orderBy: { [orderBy]: orderDirection as "asc" | "desc" },
