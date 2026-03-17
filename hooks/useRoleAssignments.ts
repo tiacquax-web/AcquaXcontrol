@@ -38,11 +38,13 @@ export const useRoleAssignments = ({ searchQuery, userName, roleName, userId, ro
         const fetchRoleAssignments = async () => {
             try {
                 const data = await getRoleAssignments({ searchQuery, userName, roleName, userId, roleId, withUser: false, withRole: true, withContext: true });
-                setRoleAssignments(data);
+                const parsed = Array.isArray(data?.list) ? data.list : (Array.isArray(data) ? data : []);
+                setRoleAssignments(parsed);
                 setError(null);
             } catch (error: any) {
                 const message = error.response?.data?.error || error.message || "Unknown error";
                 setError(message);
+                setRoleAssignments([]);
             } finally {
                 setLoading(false);
             }

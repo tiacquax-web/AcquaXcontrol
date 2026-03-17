@@ -237,6 +237,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
     const { roleAssignments, error, loading, refetch } = useRoleAssignments({ userId: user.id });
     const { roles, error: rolesError, loading: rolesLoading } = useRoles({});
     const [addingRole, setAddingRole] = useState(false);
+    const safeRoleAssignments = Array.isArray(roleAssignments) ? roleAssignments : [];
 
     const handleDeleteRoleAssignmentClick = async (roleAssignmentId: string) => {
         setAddingRole(false);
@@ -252,7 +253,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
     return (
         <div className="space-y-4 mt-4">
             <h3 className="text-lg font-semibold">Atribuições de Papéis</h3>
-            {loading && !roleAssignments.length ? (
+            {loading && !safeRoleAssignments.length ? (
                 <div className="flex flex-col gap-2 py-8">
                     {[...Array(3)].map((_, i) => (
                         <div key={i} className="flex gap-2">
@@ -263,9 +264,9 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
                         </div>
                     ))}
                 </div>
-            ) : error ? (
+            ) : (error || rolesError) ? (
                 <div className="text-center py-8 text-red-500">
-                    Erro ao carregar papéis: {error}
+                    Erro ao carregar papéis: {error || rolesError}
                 </div>
             ) : (
                 <Table>
@@ -278,7 +279,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {roleAssignments.map((assignment) => (
+                        {safeRoleAssignments.map((assignment) => (
                             <TableRow key={assignment.id}>
                                 <TableCell>{mapContextType[assignment.contextType] || assignment.contextType}</TableCell>
                                 <TableCell title={assignment.contextId || undefined}>{assignment.contextName || (assignment.contextType === ContextType.system ? 'Sistema' : assignment.contextId || '—')}</TableCell>
@@ -302,7 +303,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
             {addingRole ? (
                 <RoleAssignmentCreationForm
                     user={user}
-                    availableRoles={roles}
+                    availableRoles={Array.isArray(roles) ? roles : []}
                     onAddedRole={onAddedRole}
                     setAddingRole={setAddingRole}
                 />
@@ -326,7 +327,8 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     // Multi-complex selection
     const [selectedComplexIds, setSelectedComplexIds] = useState<Set<string>>(new Set());
     const [complexSearch, setComplexSearch] = useState("");
-    const { complexes: allComplexes, loading: complexesLoading } = useComplexes({ nameQuery: complexSearch, take: 50 });
+    const { complexes: allComplexes, loading: complexesLoading, error: complexesError } = useComplexes({ nameQuery: complexSearch, take: 50 });
+    const safeComplexes = Array.isArray(allComplexes) ? allComplexes : [];
     const [bulkAdding, setBulkAdding] = useState(false);
     const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
 
@@ -392,7 +394,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
 
     const selectAllComplexes = (checked: boolean) => {
         if (checked) {
-            const ids = new Set(allComplexes.map(c => c.id));
+            const ids = new Set(safeComplexes.map(c => c.id));
             setSelectedComplexIds(ids);
         } else {
             setSelectedComplexIds(new Set());
@@ -422,12 +424,12 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                             <div className="p-1">
                                 <div className="flex items-center gap-2 p-2 border-b">
                                     <Checkbox
-                                        checked={allComplexes.length > 0 && selectedComplexIds.size === allComplexes.length}
+                                        checked={safeComplexes.length > 0 && selectedComplexIds.size === safeComplexes.length}
                                         onCheckedChange={selectAllComplexes}
                                     />
-                                    <span className="text-xs font-medium">Selecionar todos ({allComplexes.length})</span>
+                                    <span className="text-xs font-medium">Selecionar todos ({safeComplexes.length})</span>
                                 </div>
-                                {allComplexes.map(cx => (
+                                {safeComplexes.map(cx => (
                                     <div key={cx.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer" onClick={() => toggleComplexSelection(cx.id)}>
                                         <Checkbox
                                             checked={selectedComplexIds.has(cx.id)}
@@ -436,14 +438,15 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                                         <span className="text-sm">{cx.socialName || cx.aliasName}</span>
                                     </div>
                                 ))}
-                                {allComplexes.length === 0 && <p className="text-center text-sm text-muted-foreground p-4">Nenhum condomínio encontrado</p>}
+                                {safeComplexes.length === 0 && <p className="text-center text-sm text-muted-foreground p-4">Nenhum condomínio encontrado</p>}
                             </div>
                         )}
                     </div>
+                    {complexesError && <p className="text-xs text-red-500">Erro ao carregar condomínios: {complexesError}</p>}
                     {selectedComplexIds.size > 0 && (
                         <div className="flex flex-wrap gap-1">
                             {[...selectedComplexIds].slice(0, 5).map(id => {
-                                const cx = allComplexes.find(c => c.id === id);
+                                const cx = safeComplexes.find(c => c.id === id);
                                 return <Badge key={id} variant="secondary" className="text-xs">{cx?.socialName || id.slice(0,8)}</Badge>;
                             })}
                             {selectedComplexIds.size > 5 && <Badge variant="outline" className="text-xs">+{selectedComplexIds.size - 5} mais</Badge>}

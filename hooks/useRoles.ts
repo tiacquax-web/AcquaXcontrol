@@ -35,12 +35,15 @@ export const useRoles = ({ searchQuery, take, skip, orderBy }: useRolesProps) =>
             setLoading(true);
             try {
                 const data = await getRoles({ searchQuery: debouncedSearchQuery, take, skip, orderBy });
-                setRoles(data.list || data);
-                setTotalCount(data.totalCount || data.length);
+                const list = Array.isArray(data?.list) ? data.list : (Array.isArray(data) ? data : []);
+                setRoles(list);
+                setTotalCount(typeof data?.totalCount === 'number' ? data.totalCount : list.length);
                 setError(null);
             } catch (error: any) {
                 const message = error.response?.data?.error || error.message || "Unknown error";
                 setError(message);
+                setRoles([]);
+                setTotalCount(0);
             } finally {
                 setLoading(false);
             }
