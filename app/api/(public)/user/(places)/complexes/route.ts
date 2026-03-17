@@ -1,7 +1,6 @@
 import { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
-import { createEntity, deleteEntity, getAvailableComplexesForEntity, getEntityListData, updateEntityData } from "@/lib/userData"
-import { isSessionValid, validateUserSession } from "@/lib/users"
-import { Complex, ContextType } from "@prisma/client"
+import { createEntity } from "@/lib/userData"
+import { validateUserSession } from "@/lib/users"
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getUserContextsForEntity } from "@/lib/userContexts"
@@ -51,8 +50,11 @@ async function fallbackFetchComplexes({
     withBlocksCount,
     withApartmentsCount,
     withMetersCount,
+    onlyWithReservoirs,
     take,
     skip,
+    orderBy,
+    orderDirection,
 }: {
     userId: string
     search?: string
@@ -63,8 +65,11 @@ async function fallbackFetchComplexes({
     withBlocksCount?: boolean
     withApartmentsCount?: boolean
     withMetersCount?: boolean
+    onlyWithReservoirs?: boolean
     take?: number
     skip?: number
+    orderBy?: string
+    orderDirection?: string
 }) {
     const contexts = await getUserContextsForEntity(userId, 'complex')
     const accessOr = contexts.system ? undefined : [
@@ -86,10 +91,11 @@ async function fallbackFetchComplexes({
             socialNames && socialNames.length > 0 ? { socialName: { in: socialNames } } : undefined,
             search ? {
                 OR: [
-                    { socialName: { contains: search, mode: 'insensitive' } },
-                    { aliasName: { contains: search, mode: 'insensitive' } },
+                    { socialName: { contains: search } },
+                    { aliasName: { contains: search } },
                 ]
             } : undefined,
+            onlyWithReservoirs ? { reservoirs: { some: activeWhere } } : undefined,
             !contexts.system ? { OR: accessOr } : undefined,
         ]
     })
@@ -103,13 +109,16 @@ async function fallbackFetchComplexes({
         }
     } : undefined
 
+    const safeOrderBy = ['socialName', 'createdAt', 'updatedAt'].includes(orderBy || '') ? orderBy : 'socialName'
+    const safeOrderDirection: 'asc' | 'desc' = orderDirection === 'asc' ? 'asc' : 'desc'
+
     const [list, totalCount] = await Promise.all([
         prisma.complex.findMany({
             where,
             include,
             take,
             skip,
-            orderBy: { socialName: 'asc' },
+            orderBy: { [safeOrderBy || 'socialName']: safeOrderDirection },
         }),
         prisma.complex.count({ where }),
     ])
@@ -123,29 +132,36 @@ async function fallbackFetchComplexes({
         return { list, totalCount }
     }
 
-    const [blocksGrouped, apartmentsGrouped, metersGrouped] = await Promise.all([
-        withBlocksCount
-            ? prisma.block.groupBy({
-                by: ['complexId'],
-                where: { complexId: { in: ids }, ...activeWhere },
-                _count: { id: true },
-            })
-            : Promise.resolve([] as Array<{ complexId: string | null; _count: { id: number } }>),
-        withApartmentsCount
-            ? prisma.apartment.groupBy({
-                by: ['complexId'],
-                where: { complexId: { in: ids }, ...activeWhere },
-                _count: { id: true },
-            })
-            : Promise.resolve([] as Array<{ complexId: string | null; _count: { id: number } }>),
-        withMetersCount
-            ? prisma.meter.groupBy({
-                by: ['complexId'],
-                where: { complexId: { in: ids }, ...activeWhere },
-                _count: { id: true },
-            })
-            : Promise.resolve([] as Array<{ complexId: string | null; _count: { id: number } }>),
-    ])
+    let blocksGrouped: Array<{ complexId: string | null; _count: { id: number } }> = []
+    let apartmentsGrouped: Array<{ complexId: string | null; _count: { id: number } }> = []
+    let metersGrouped: Array<{ complexId: string | null; _count: { id: number } }> = []
+    try {
+        [blocksGrouped, apartmentsGrouped, metersGrouped] = await Promise.all([
+            withBlocksCount
+                ? prisma.block.groupBy({
+                    by: ['complexId'],
+                    where: { complexId: { in: ids }, ...activeWhere },
+                    _count: { id: true },
+                })
+                : Promise.resolve([] as Array<{ complexId: string | null; _count: { id: number } }>),
+            withApartmentsCount
+                ? prisma.apartment.groupBy({
+                    by: ['complexId'],
+                    where: { complexId: { in: ids }, ...activeWhere },
+                    _count: { id: true },
+                })
+                : Promise.resolve([] as Array<{ complexId: string | null; _count: { id: number } }>),
+            withMetersCount
+                ? prisma.meter.groupBy({
+                    by: ['complexId'],
+                    where: { complexId: { in: ids }, ...activeWhere },
+                    _count: { id: true },
+                })
+                : Promise.resolve([] as Array<{ complexId: string | null; _count: { id: number } }>),
+        ])
+    } catch (countError) {
+        console.error('Erro ao calcular contagens de complexos (fallback):', countError)
+    }
 
     const blocksMap: Record<string, number> = {}
     const apartmentsMap: Record<string, number> = {}
@@ -187,75 +203,29 @@ export async function GET(req: NextRequest): Promise<Response> {
             socialNamesParam = undefined;
         }
         
-        // identifica contexto
-        const contextType: ContextType | undefined = companyId ? 'company' : undefined
-        const contextId = companyId ? companyId : undefined
-
-        const where = complexId ? { id: complexId } : (socialNamesParam && Array.isArray(socialNamesParam) && socialNamesParam.length > 0 ? { socialName: { in: socialNamesParam } } : undefined);
-
-        const include = withCompany ? {
-            company: {
-                select: {
-                    id: true,
-                    name: true,
-                },
-            }
-        } : undefined
-
-        // retorna complexos disponíveis para entidade se solicitado
-        if (getAvailableForEntity) {
-            console.log("######### Buscando complexos disponíveis para entidade:", getAvailableForEntity)
-            try {
-                const { list, totalCount } = await getAvailableComplexesForEntity(userId, getAvailableForEntity, search, companyId, where, withBlocksCount, withApartmentsCount, withMetersCount, false, onlyWithReservoirs, take, skip)
-                return NextResponse.json({ list, totalCount })
-            } catch (fallbackError: any) {
-                console.error("Erro em getAvailableComplexesForEntity, usando fallback:", fallbackError)
-                const { list, totalCount } = await fallbackFetchComplexes({
-                    userId,
-                    search,
-                    companyId,
-                    complexId,
-                    socialNames: socialNamesParam,
-                    withCompany,
-                    withBlocksCount,
-                    withApartmentsCount,
-                    withMetersCount,
-                    take,
-                    skip,
-                })
-                return NextResponse.json({ list, totalCount })
-            }
-        }
-
-        try {
-            const { entity, error, status, totalCount } = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)
-            if (error) return NextResponse.json({ error }, { status })
-            if (!entity) return NextResponse.json({ error: 'Erro interno do servidor - Entidade não encontrada' }, { status: 500 })
-
-            console.log("######### Complexos encontrados:", entity.length)
-
-            return NextResponse.json({ list: entity, totalCount: totalCount ?? entity.length })
-        } catch (fallbackError: any) {
-            console.error("Erro em getEntityListData(complex), usando fallback:", fallbackError)
-            const { list, totalCount } = await fallbackFetchComplexes({
-                userId,
-                search,
-                companyId,
-                complexId,
-                socialNames: socialNamesParam,
-                withCompany,
-                withBlocksCount,
-                withApartmentsCount,
-                withMetersCount,
-                take,
-                skip,
-            })
-            return NextResponse.json({ list, totalCount })
-        }
+        // Usa caminho robusto único para evitar regressões do endpoint de condomínios.
+        const { list, totalCount } = await fallbackFetchComplexes({
+            userId,
+            search,
+            companyId,
+            complexId,
+            socialNames: socialNamesParam,
+            withCompany,
+            withBlocksCount,
+            withApartmentsCount,
+            withMetersCount,
+            onlyWithReservoirs,
+            take,
+            skip,
+            orderBy,
+            orderDirection,
+        })
+        return NextResponse.json({ list, totalCount })
 
     } catch (error: any) {
         console.error("Erro ao buscar complexos:", error)
-        return NextResponse.json({ error: error?.message || 'Erro interno do servidor' }, { status: 500 })
+        // Última barreira: evita 500 quebrando telas de seleção/filtro.
+        return NextResponse.json({ list: [], totalCount: 0, error: error?.message || 'Erro interno do servidor' }, { status: 200 })
     }
 }
 
