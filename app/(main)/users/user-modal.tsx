@@ -2,17 +2,17 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { User, Company, Complex, Block, Apartment, RoleAssignment } from "@prisma/client"
+import type { User, Company, Complex, Block, Apartment } from "@prisma/client"
 import { useRoleAssignmentMutations, useRoleAssignments } from "@/hooks/useRoleAssignments"
-import { Loader2, X, CheckCircle2 } from "lucide-react"
+import { Loader2, CheckCircle2 } from "lucide-react"
 import { useRoles } from "@/hooks/useRoles"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ContextType, Role } from "@prisma/client"
+import { ContextType, PermissionableEntity, Role } from "@prisma/client"
 import ComplexesCombobox from "@/components/ComboboxComplex"
 import BlocksCombobox from "@/components/ComboboxBlock"
 import SelectApartment from "@/components/ComboboxApartment"
@@ -235,7 +235,7 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
 
 function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, handleDeleteRoleAssignment: (roleAssignmentId: string) => Promise<void> }) {
     const { roleAssignments, error, loading, refetch } = useRoleAssignments({ userId: user.id });
-    const { roles, error: rolesError, loading: rolesLoading } = useRoles({});
+    const { roles } = useRoles({});
     const [addingRole, setAddingRole] = useState(false);
 
     const handleDeleteRoleAssignmentClick = async (roleAssignmentId: string) => {
@@ -244,7 +244,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
         refetch();
     };
 
-    const onAddedRole = (roleAssignment: Partial<RoleAssignment> & { name: string }) => {
+    const onAddedRole = () => {
         setAddingRole(false);
         refetch();
     }
@@ -316,7 +316,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
 }
 
 
-function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAddedRole }: { user: User, availableRoles: Role[], onAddedRole: (roleAssignment: Partial<RoleAssignment> & { name: string }) => void, setAddingRole: (value: boolean) => void }) {
+function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAddedRole }: { user: User, availableRoles: Role[], onAddedRole: () => void, setAddingRole: (value: boolean) => void }) {
     const [contextType, setContextType] = useState<ContextType>();
     const [contextId, setContextId] = useState<string | null>(null);
     const [selectedRole, setSelectedRole] = useState<Role>();
@@ -324,11 +324,33 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     const { toast } = useToast();
 
     // Multi-complex selection
+    const roleAssignmentEntity = PermissionableEntity.roleAssignment;
     const [selectedComplexIds, setSelectedComplexIds] = useState<Set<string>>(new Set());
     const [complexSearch, setComplexSearch] = useState("");
-    const { complexes: allComplexes, loading: complexesLoading } = useComplexes({ nameQuery: complexSearch, take: 50 });
+    const { complexes: allComplexesSource, loading: complexesLoading } = useComplexes({
+        getAvailableForEntity: roleAssignmentEntity,
+        take: 500,
+        enabled: contextType === ContextType.complex,
+    });
     const [bulkAdding, setBulkAdding] = useState(false);
     const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
+
+    const normalizeText = (value: string) =>
+        value
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+
+    const allComplexes = useMemo(() => {
+        const normalizedSearch = normalizeText(complexSearch || '');
+        if (!normalizedSearch) return allComplexesSource;
+        return allComplexesSource.filter((cx) => {
+            const social = normalizeText(cx.socialName || '');
+            const alias = normalizeText(cx.aliasName || '');
+            return social.includes(normalizedSearch) || alias.includes(normalizedSearch);
+        });
+    }, [allComplexesSource, complexSearch]);
 
     const [cascateContextSearching, setCascateContextSearching] = useState<{
         company: Company | null;
@@ -423,7 +445,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                                 <div className="flex items-center gap-2 p-2 border-b">
                                     <Checkbox
                                         checked={allComplexes.length > 0 && selectedComplexIds.size === allComplexes.length}
-                                        onCheckedChange={selectAllComplexes}
+                                        onCheckedChange={(checked) => selectAllComplexes(checked === true)}
                                     />
                                     <span className="text-xs font-medium">Selecionar todos ({allComplexes.length})</span>
                                 </div>
@@ -431,7 +453,12 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                                     <div key={cx.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer" onClick={() => toggleComplexSelection(cx.id)}>
                                         <Checkbox
                                             checked={selectedComplexIds.has(cx.id)}
-                                            onCheckedChange={() => toggleComplexSelection(cx.id)}
+                                            onClick={(event) => event.stopPropagation()}
+                                            onCheckedChange={(checked) => {
+                                                const isSelected = selectedComplexIds.has(cx.id);
+                                                if (checked === true && !isSelected) toggleComplexSelection(cx.id);
+                                                if (checked === false && isSelected) toggleComplexSelection(cx.id);
+                                            }}
                                         />
                                         <span className="text-sm">{cx.socialName || cx.aliasName}</span>
                                     </div>
@@ -443,7 +470,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                     {selectedComplexIds.size > 0 && (
                         <div className="flex flex-wrap gap-1">
                             {[...selectedComplexIds].slice(0, 5).map(id => {
-                                const cx = allComplexes.find(c => c.id === id);
+                                const cx = allComplexesSource.find(c => c.id === id);
                                 return <Badge key={id} variant="secondary" className="text-xs">{cx?.socialName || id.slice(0,8)}</Badge>;
                             })}
                             {selectedComplexIds.size > 5 && <Badge variant="outline" className="text-xs">+{selectedComplexIds.size - 5} mais</Badge>}
@@ -459,6 +486,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                 {(contextType == ContextType.company || contextType == ContextType.block || contextType == ContextType.apartment) && (
                     <SelectCompany
                         modal
+                        getAvailableForEntity={roleAssignmentEntity}
                         company={cascateContextSearching.company as Company}
                         setSelectedCompany={(company) => {
                             handleCasacteContextSelect(ContextType.company, company as Company);
@@ -469,6 +497,8 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                 {(contextType == ContextType.block || contextType == ContextType.apartment) && cascateContextSearching.company && (
                     <ComplexesCombobox
                         modal
+                        companyId={cascateContextSearching.company.id}
+                        getAvailableForEntity={roleAssignmentEntity}
                         complex={cascateContextSearching.complex as Complex}
                         setSelectedComplex={(complex) => {
                             handleCasacteContextSelect(ContextType.complex, complex as Complex);
@@ -478,6 +508,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                 {(contextType == ContextType.block || contextType == ContextType.apartment) && cascateContextSearching.complex && (
                     <BlocksCombobox
                         modal
+                        getAvailableForEntity={roleAssignmentEntity}
                         complexId={cascateContextSearching.complex.id}
                         block={cascateContextSearching.block as Block}
                         setSelectedBlock={(block) => {
@@ -489,6 +520,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                 {(contextType == ContextType.apartment) && cascateContextSearching.block && (
                     <SelectApartment
                         modal
+                        getAvailableForEntity={roleAssignmentEntity}
                         apartment={cascateContextSearching.apartment as Apartment}
                         blockId={cascateContextSearching.block.id}
                         setSelectedApartment={(apartment) => {
@@ -515,8 +547,8 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                     await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId: cxId });
                     done++;
                     setBulkProgress({ done, total: complexList.length, errors });
-                } catch (err: any) {
-                    const msg = err?.message || cxId;
+                } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : cxId;
                     errors.push(msg);
                     done++;
                     setBulkProgress({ done, total: complexList.length, errors });
@@ -528,7 +560,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
             } else {
                 toast({ title: "Concluído com erros", description: `${done - errors.length} adicionados, ${errors.length} erros.`, variant: "destructive" });
             }
-            onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId: 'bulk' });
+            onAddedRole();
             return;
         }
 
@@ -537,7 +569,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
             const createdRoleAssignment = await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId });
             if (createdRoleAssignment?.id) {
                 toast({ title: "Sucesso", description: "Papel adicionado com sucesso!", variant: "default" });
-                onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId });
+                onAddedRole();
             }
         } catch (error) {
             console.error("Error adding role:", error);
