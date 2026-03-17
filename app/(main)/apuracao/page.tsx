@@ -57,7 +57,7 @@ export default function ApuracaoPage() {
     useEffect(() => {
         setCurrentPage(1)
         fetchData(1)
-    }, [debouncedSearch])
+    }, [debouncedSearch, fetchData])
 
     const handlePageChange = (page: number) => {
         setCurrentPage(page)

@@ -18,14 +18,17 @@ export async function GET(req: NextRequest): Promise<Response> {
         const skip = parseInt(req.nextUrl.searchParams.get('skip') || '0');
 
         // Base query for complexes (MongoDB-safe: deletedAt null OR not set)
-        const where: any = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] };
+        const activeFilter = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] };
+        const where: any = { AND: [activeFilter] };
         if (search) {
-            where.OR = [
-                { socialName: { contains: search, mode: 'insensitive' } },
-                { aliasName: { contains: search, mode: 'insensitive' } },
-            ];
+            where.AND.push({
+                OR: [
+                    { socialName: { contains: search, mode: 'insensitive' } },
+                    { aliasName: { contains: search, mode: 'insensitive' } },
+                ],
+            });
         }
-        if (complexId) where.id = complexId;
+        if (complexId) where.AND.push({ id: complexId });
 
         const [complexes, totalCount] = await Promise.all([
             prisma.complex.findMany({
@@ -52,6 +55,9 @@ export async function GET(req: NextRequest): Promise<Response> {
         ]);
 
         const complexIds = complexes.map(c => c.id);
+        if (complexIds.length === 0) {
+            return NextResponse.json({ list: [], totalCount });
+        }
 
         // Count apartments and meters per complex via denormalized complexId field
         const [aptCounts, meterCounts] = await Promise.all([
@@ -96,26 +102,26 @@ export async function GET(req: NextRequest): Promise<Response> {
             select: { userId: true, contextId: true },
         });
 
-        // Apartment-level role assignments (using denormalized complexId)
-        const aptRoleAssignments = await prisma.roleAssignment.findMany({
+        // Build apt→complex map only for apartments on current page complexes
+        const aptComplexMap: Record<string, string> = {};
+        const apartmentsInPageComplexes = await prisma.apartment.findMany({
+            where: { complexId: { in: complexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+            select: { id: true, complexId: true },
+        });
+        apartmentsInPageComplexes.forEach((apt) => {
+            if (apt.complexId) aptComplexMap[apt.id] = apt.complexId;
+        });
+
+        // Apartment-level role assignments, restricted to apartments from current complexes
+        const aptIds = apartmentsInPageComplexes.map((apt) => apt.id);
+        const aptRoleAssignments = aptIds.length > 0 ? await prisma.roleAssignment.findMany({
             where: {
                 contextType: 'apartment',
+                contextId: { in: aptIds },
                 OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
             },
             select: { userId: true, contextId: true },
-            take: 10000,
-        });
-
-        // Build apt→complex map for apt role assignments
-        const aptIds = [...new Set(aptRoleAssignments.map(ra => ra.contextId))];
-        const aptComplexMap: Record<string, string> = {};
-        if (aptIds.length > 0) {
-            const apts = await prisma.apartment.findMany({
-                where: { id: { in: aptIds }, complexId: { in: complexIds } },
-                select: { id: true, complexId: true },
-            });
-            apts.forEach(a => { if (a.complexId) aptComplexMap[a.id] = a.complexId; });
-        }
+        }) : [];
 
         // Get recent sessions for those users
         const allUserIds = [...new Set([...roleAssignments, ...aptRoleAssignments].map(ra => ra.userId))];

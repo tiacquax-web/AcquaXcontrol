@@ -49,7 +49,7 @@ export const useRoleAssignments = ({ searchQuery, userName, roleName, userId, ro
         };
 
         fetchRoleAssignments();
-    }, [searchQuery, userName, roleName, sequence]);
+    }, [searchQuery, userName, roleName, userId, roleId, sequence]);
 
     return { roleAssignments, loading, error, refetch };
 };

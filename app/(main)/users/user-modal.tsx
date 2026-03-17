@@ -279,10 +279,10 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
                     </TableHeader>
                     <TableBody>
                         {roleAssignments.map((assignment) => (
-                            <TableRow key={assignment.roleId}>
-                                <TableCell>{mapContextType[assignment.contextType]}</TableCell>
+                            <TableRow key={assignment.id}>
+                                <TableCell>{mapContextType[assignment.contextType] || assignment.contextType}</TableCell>
                                 <TableCell title={assignment.contextId || undefined}>{assignment.contextName || (assignment.contextType === ContextType.system ? 'Sistema' : assignment.contextId || '—')}</TableCell>
-                                <TableCell>{assignment.Role.name}</TableCell>
+                                <TableCell>{assignment.Role?.name || 'Papel não encontrado'}</TableCell>
                                 <TableCell className="text-right">
                                     <Button
                                         variant="outline"

@@ -11,9 +11,9 @@ function getQueryParams(req: NextRequest) {
     const roleId = req.nextUrl.searchParams.get('role_id') || undefined
     const userName = req.nextUrl.searchParams.get('user_name') || undefined
     const roleName = req.nextUrl.searchParams.get('role_name') || undefined
-    const withRole = req.nextUrl.searchParams.get('with_role') || undefined
-    const withUser = req.nextUrl.searchParams.get('with_user') || undefined
-    const withContext = req.nextUrl.searchParams.get('with_context') || undefined
+    const withRole = req.nextUrl.searchParams.get('with_role') === 'true'
+    const withUser = req.nextUrl.searchParams.get('with_user') === 'true'
+    const withContext = req.nextUrl.searchParams.get('with_context') === 'true'
 
     // query params - default
     const search = req.nextUrl.searchParams.get('search') || ''
@@ -52,6 +52,10 @@ export async function GET(req: NextRequest): Promise<Response> {
             role: roleName ? {
                 name: roleName,
             } : undefined,
+            OR: [
+                { deletedAt: null },
+                { deletedAt: { isSet: false } },
+            ],
         }
 
         // add withRole and withUser to where if they are defined
