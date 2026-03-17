@@ -2,6 +2,7 @@ import { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
 import prisma from "@/lib/prisma"
 import { createEntity, deleteEntity, getAvailableComplexesForEntity, updateEntityData } from "@/lib/userData"
 import { getUserContextsForActionOnEntity } from "@/lib/userContexts"
+import { cleanWhere } from "@/lib/utils"
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { Complex, ContextType } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
@@ -12,6 +13,7 @@ function getQueryParams(req: NextRequest) {
     const complexId = req.nextUrl.searchParams.get('id') || undefined
     const blockId = req.nextUrl.searchParams.get('block_id') || undefined
     const apartmentId = req.nextUrl.searchParams.get('apartment_id') || undefined
+    const documentCompany = req.nextUrl.searchParams.get('document_company') || req.nextUrl.searchParams.get('documentCompany') || undefined
     const withCompany = req.nextUrl.searchParams.get('with_company') || undefined
     const withBlocksCount = req.nextUrl.searchParams.get('with_blocks_count') || false
     const withApartmentsCount = req.nextUrl.searchParams.get('with_apartments_count') || false
@@ -30,7 +32,7 @@ function getQueryParams(req: NextRequest) {
     const orderBy = req.nextUrl.searchParams.get('orderBy') || 'createdAt'
     const orderDirection = req.nextUrl.searchParams.get('orderDirection') || 'desc'
 
-    return { socialNames, withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection }
+    return { socialNames, withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, documentCompany, search, take, skip, orderBy, orderDirection }
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -42,7 +44,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         // obtém parâmetros de consulta
-        const { withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection, socialNames } = getQueryParams(req)
+        const { withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, documentCompany, search, take, skip, orderBy, orderDirection, socialNames } = getQueryParams(req)
 
         // Novo: busca por múltiplos socialNames
         const socialNamesParam: string[] | undefined = socialNames ? JSON.parse(socialNames) : undefined;
@@ -89,16 +91,17 @@ export async function GET(req: NextRequest): Promise<Response> {
             ...(contexts.companyIds.length > 0 ? [{ companyId: { in: contexts.companyIds } }] : []),
         ]
 
-        const complexWhere: any = {
+        const complexWhere = cleanWhere({
             AND: [
                 notDeleted,
                 search ? { socialName: { contains: search, mode: "insensitive" } } : {},
+                documentCompany ? { documentCompany: { contains: documentCompany } } : {},
                 companyId ? { companyId } : {},
                 complexId ? { id: complexId } : {},
                 socialNamesParam && socialNamesParam.length > 0 ? { socialName: { in: socialNamesParam } } : {},
                 !hasSystemPermission && accessOr.length > 0 ? { OR: accessOr } : {},
             ],
-        }
+        })
 
         const [entity, totalCount] = await Promise.all([
             prisma.complex.findMany({
