@@ -36,8 +36,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         const where: any = {
             OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
         };
-        if (complexId) where.complexId = complexId;
         if (blockId) where.blockId = blockId;
+        if (complexId) where.block = { complexId };
 
         const apartments = await prisma.apartment.findMany({
             where,
@@ -47,13 +47,21 @@ export async function POST(req: NextRequest): Promise<Response> {
                 blockId: true,
                 complexId: true,
                 createdAt: true,
+                block: {
+                    select: {
+                        name: true,
+                        complexId: true,
+                    },
+                },
             },
             orderBy: { createdAt: 'asc' },
         });
 
         const groups = new Map<string, typeof apartments>();
         for (const apartment of apartments) {
-            const key = `${apartment.blockId}::${normalizeString(apartment.name)}`;
+            const normalizedBlockName = normalizeString(apartment.block?.name || apartment.blockId || "");
+            const apartmentComplexId = apartment.block?.complexId || apartment.complexId || "";
+            const key = `${apartmentComplexId}::${normalizedBlockName}::${normalizeString(apartment.name)}`;
             const existing = groups.get(key) || [];
             existing.push(apartment);
             groups.set(key, existing);

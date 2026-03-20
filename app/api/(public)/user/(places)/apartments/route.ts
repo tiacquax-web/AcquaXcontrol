@@ -29,17 +29,38 @@ function normalizeString(str: string): string {
 }
 
 async function findActiveApartmentDuplicate(blockId: string, name: string, excludeId?: string) {
-    const normalized = normalizeString(name);
-    const activeInBlock = await prisma.apartment.findMany({
+    const normalizedApartmentName = normalizeString(name);
+    const currentBlock = await prisma.block.findUnique({
+        where: { id: blockId },
+        select: { id: true, name: true, complexId: true },
+    });
+    if (!currentBlock) return null;
+
+    const normalizedBlockName = normalizeString(currentBlock.name);
+    const siblingBlocks = await prisma.block.findMany({
         where: {
-            blockId,
             OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
-            ...(excludeId ? { id: { not: excludeId } } : {}),
+            complexId: currentBlock.complexId,
         },
         select: { id: true, name: true },
     });
 
-    return activeInBlock.find((apt) => normalizeString(apt.name) === normalized) || null;
+    const candidateBlockIds = siblingBlocks
+        .filter((block) => normalizeString(block.name) === normalizedBlockName)
+        .map((block) => block.id);
+
+    if (candidateBlockIds.length === 0) return null;
+
+    const candidates = await prisma.apartment.findMany({
+        where: {
+            blockId: { in: candidateBlockIds },
+            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+            ...(excludeId ? { id: { not: excludeId } } : {}),
+        },
+        select: { id: true, name: true, blockId: true },
+    });
+
+    return candidates.find((apt) => normalizeString(apt.name) === normalizedApartmentName) || null;
 }
 
 async function validateApartmentsBatch(reqBody: any[]): Promise<ValidationResult> {
@@ -414,7 +435,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
         const duplicate = await findActiveApartmentDuplicate(body.blockId, body.name);
         if (duplicate) {
-            return NextResponse.json({ error: `Já existe um apartamento com este nome no bloco selecionado.` }, { status: 409 });
+            return NextResponse.json({ error: `Já existe um apartamento com este nome no mesmo condomínio e bloco.` }, { status: 409 });
         }
 
         // Attempt to create the entity
