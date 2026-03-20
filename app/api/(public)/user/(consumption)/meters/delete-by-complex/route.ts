@@ -32,46 +32,36 @@ export async function POST(req: NextRequest): Promise<Response> {
             return NextResponse.json({ error: "Sem permissão para excluir medidores." }, { status: 403 });
         }
 
+        const accessOr: any[] = [];
         if (!contexts.system) {
-            const accessOr: any[] = [];
-            if (contexts.complexIds.length > 0) accessOr.push({ id: { in: contexts.complexIds } });
             if (contexts.companyIds.length > 0) accessOr.push({ companyId: { in: contexts.companyIds } });
-            if (contexts.blockIds.length > 0) accessOr.push({ blocks: { some: { id: { in: contexts.blockIds } } } });
-            if (contexts.apartmentIds.length > 0) {
-                accessOr.push({ blocks: { some: { apartments: { some: { id: { in: contexts.apartmentIds } } } } } });
-            }
-
-            const allowedComplex = await prisma.complex.findFirst({
-                where: {
-                    id: complexId,
-                    ...activeFilter,
-                    OR: accessOr.length > 0 ? accessOr : undefined,
-                },
-                select: { id: true },
-            });
-            if (!allowedComplex) {
+            if (contexts.complexIds.length > 0) accessOr.push({ complexId: { in: contexts.complexIds } });
+            if (contexts.blockIds.length > 0) accessOr.push({ blockId: { in: contexts.blockIds } });
+            if (contexts.apartmentIds.length > 0) accessOr.push({ apartmentId: { in: contexts.apartmentIds } });
+            if (accessOr.length === 0) {
                 return NextResponse.json({ error: "Sem acesso ao condomínio selecionado." }, { status: 403 });
             }
         }
 
-        const metersCount = await prisma.meter.count({
+        const allowedMeters = await prisma.meter.findMany({
             where: {
                 complexId,
                 ...activeFilter,
+                OR: contexts.system ? undefined : accessOr,
             },
+            select: { id: true },
         });
 
-        if (metersCount === 0) {
+        if (allowedMeters.length === 0) {
             return NextResponse.json({
-                message: "Nenhum medidor ativo encontrado para o condomínio.",
+                message: "Nenhum medidor ativo encontrado para o condomínio (ou sem acesso ao contexto).",
                 deletedCount: 0,
             });
         }
 
         const deleted = await prisma.meter.updateMany({
             where: {
-                complexId,
-                ...activeFilter,
+                id: { in: allowedMeters.map((m) => m.id) },
             },
             data: {
                 deletedAt: new Date(),
