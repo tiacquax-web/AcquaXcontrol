@@ -4,16 +4,25 @@ import prisma from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
 
 async function isSystemUser(userId: string): Promise<boolean> {
-    // Busca qualquer assignment de sistema (ativo = sem deletedAt, ou com deletedAt null)
-    const assignment = await prisma.roleAssignment.findFirst({
+    const assignments = await prisma.roleAssignment.findMany({
         where: {
             userId,
-            contextType: ContextType.system,
+            OR: [
+                { deletedAt: null },
+                { deletedAt: { isSet: false } },
+            ],
         },
-        select: { id: true, deletedAt: true },
-    });
-    // Considera ativo se não tem deletedAt ou se deletedAt é null
-    return !!assignment && (assignment.deletedAt === null || assignment.deletedAt === undefined);
+        select: {
+            contextType: true,
+            Role: { select: { name: true } },
+        },
+    })
+
+    return assignments.some((assignment) => {
+        if (assignment.contextType === ContextType.system) return true
+        const roleName = (assignment.Role?.name || "").trim().toLowerCase()
+        return roleName === "administrador" || roleName === "programador"
+    })
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ entityId: string }> }): Promise<Response> {

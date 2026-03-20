@@ -5,6 +5,28 @@ import { ContextType, Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
 
+async function canManageRoleAssignments(userId: string): Promise<boolean> {
+    const assignments = await prisma.roleAssignment.findMany({
+        where: {
+            userId,
+            OR: [
+                { deletedAt: null },
+                { deletedAt: { isSet: false } },
+            ],
+        },
+        select: {
+            contextType: true,
+            Role: { select: { name: true } },
+        },
+    })
+
+    return assignments.some((assignment) => {
+        if (assignment.contextType === ContextType.system) return true
+        const roleName = (assignment.Role?.name || "").trim().toLowerCase()
+        return roleName === "administrador" || roleName === "programador"
+    })
+}
+
 function getQueryParams(req: NextRequest) {
     // query params - custom
     const userId = req.nextUrl.searchParams.get('user_id') || undefined
@@ -150,20 +172,13 @@ export async function POST(req: NextRequest): Promise<Response> {
     try {
         // Validate user session
         const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
-        if (sessionError) return NextResponse.json({ sessionError }, { status: sessionStatus });
+        if (sessionError) return NextResponse.json({ error: sessionError }, { status: sessionStatus });
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-        // Check if user is a system-level user (can manage role assignments)
-        const systemAssignment = await prisma.roleAssignment.findFirst({
-            where: {
-                userId,
-                contextType: ContextType.system,
-            },
-            select: { id: true, deletedAt: true },
-        });
-        const isSystemUser = !!systemAssignment && (systemAssignment.deletedAt === null || systemAssignment.deletedAt === undefined);
-        if (!isSystemUser) {
-            return NextResponse.json({ error: 'Não autorizado: apenas usuários do sistema podem gerenciar papéis.' }, { status: 401 });
+        // Allow active system users and admin/programmer roles to manage assignments.
+        const hasPermission = await canManageRoleAssignments(userId);
+        if (!hasPermission) {
+            return NextResponse.json({ error: 'Não autorizado para gerenciar papéis.' }, { status: 401 });
         }
 
         // Parse request body

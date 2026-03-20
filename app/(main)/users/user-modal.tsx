@@ -441,8 +441,6 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
             if (createdRoleAssignment?.id) {
                 toast({ title: "Sucesso", description: "Papel adicionado com sucesso!", variant: "default" });
                 onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId });
-            } else {
-                toast({ title: "Erro", description: "Não foi possível adicionar o papel. Verifique se já existe ou se você tem permissão.", variant: "destructive" });
             }
         } catch (error) {
             console.error("Error adding role:", error);
