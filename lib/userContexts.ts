@@ -106,18 +106,69 @@ async function getUserContextsForActionOnEntity(userId: string, entityType: Perm
 }
 
 async function getUserPermissions(userId: string) {
-    const permissions = await prisma.permission.findMany({
-        where: {
-            role: {
-                RoleAssignments: {
-                    some: { userId },
+    const [permissions, assignments] = await Promise.all([
+        prisma.permission.findMany({
+            where: {
+                role: {
+                    RoleAssignments: {
+                        some: {
+                            userId,
+                            OR: [
+                                { deletedAt: null },
+                                { deletedAt: { isSet: false } },
+                            ],
+                        },
+                    },
                 },
             },
-        },
-        select: { action: true, entity: true },
-    });
+            select: { action: true, entity: true },
+        }),
+        prisma.roleAssignment.findMany({
+            where: {
+                userId,
+                OR: [
+                    { deletedAt: null },
+                    { deletedAt: { isSet: false } },
+                ],
+            },
+            select: {
+                Role: { select: { name: true } },
+                contextType: true,
+            },
+        }),
+    ]);
 
-    return { permissions: permissions.map((p) => ({ action: p.action, entity: p.entity })) };
+    const isProgrammer = assignments.some((a) => normalizeRoleName(a.Role?.name) === 'programador');
+    const isAdministrator = assignments.some((a) =>
+        normalizeRoleName(a.Role?.name) === 'administrador' || a.contextType === ContextType.system
+    );
+
+    const permissionMap = new Map<string, { action: PermissionAction; entity: PermissionableEntity }>();
+    for (const p of permissions) {
+        permissionMap.set(`${p.entity}::${p.action}`, { action: p.action, entity: p.entity });
+    }
+
+    // Programador/Admin devem ter acesso operacional completo no produto.
+    if (isProgrammer || isAdministrator) {
+        const allEntities = Object.values(PermissionableEntity) as PermissionableEntity[];
+        const allActions: PermissionAction[] = ['create', 'read', 'update', 'delete', 'do'];
+
+        for (const entity of allEntities) {
+            for (const action of allActions) {
+                // Exceção: Programador não pode editar funções/permissões dos papéis.
+                if (
+                    isProgrammer &&
+                    (entity === PermissionableEntity.role || entity === PermissionableEntity.permission) &&
+                    action !== 'read'
+                ) {
+                    continue;
+                }
+                permissionMap.set(`${entity}::${action}`, { entity, action });
+            }
+        }
+    }
+
+    return { permissions: Array.from(permissionMap.values()) };
 }
 
 async function getUserEntityPermissions(userId: string, entityType: PermissionableEntity) {

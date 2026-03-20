@@ -20,6 +20,16 @@ import { randomUUID } from 'crypto';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    const activeFilter = {
+      OR: [
+        { deletedAt: null },
+        { deletedAt: { isSet: false } },
+      ],
+    } as const;
+
+    const normalizeLookupPart = (value: unknown) => (value ?? '').toString().trim().toLowerCase();
+    const normalizeRegister = (value: unknown) => (value ?? '').toString().trim().toLowerCase();
+
     // Verificar autenticação
     const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
     if (sessionError) {
@@ -72,7 +82,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const dealershipReading = await prisma.dealershipReading.findFirst({
       where: {
         id: dealershipReadingId,
-        deletedAt: null
+        ...activeFilter,
       },
       include: {
         complex: true
@@ -90,10 +100,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Buscar apartamentos + meters do complexo (já era feito – mantém include para evitar nova query por meter)
     console.time("⏱️ Fetch apartments and meters");
     const apartments = await prisma.apartment.findMany({
-      where: { complexId: dealershipReading.complexId, deletedAt: null },
+      where: { complexId: dealershipReading.complexId, ...activeFilter },
       include: {
         block: { include: { complex: true } },
-        meters: { where: { deletedAt: null }, include: { typeMeter: true } as any }
+        meters: { where: activeFilter, include: { typeMeter: true } as any }
       }
     });
     console.timeEnd("⏱️ Fetch apartments and meters");
@@ -103,7 +113,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Map para lookup mais rápido de apartamento (bloco+apartamento) evitando busca linear O(n) * linhas
     const apartmentLookup = new Map<string, typeof apartments[number]>();
     for (const apt of apartments) {
-      const key = `${apt.block?.name?.toString() || ''}::${apt.name?.toString()}`.toLowerCase();
+      const key = `${normalizeLookupPart(apt.block?.name)}::${normalizeLookupPart(apt.name)}`;
       apartmentLookup.set(key, apt);
     }
 
@@ -215,7 +225,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
 
         // Lookup rápido de apartamento
-        const aptKey = `${row.bloco?.toString() || ''}::${row.apartamento?.toString()}`.toLowerCase();
+        const aptKey = `${normalizeLookupPart(row.bloco)}::${normalizeLookupPart(row.apartamento)}`;
         const apartment = apartmentLookup.get(aptKey);
         if (!apartment) {
           result.errors.push({
@@ -236,8 +246,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         let lastReadingKey: string | undefined;
         if (processed.hasReadingData && processed.readings.length > 0) {
           for (const r of processed.readings) {
+            const targetRegister = normalizeRegister(r.registerName);
             // Encontrar meter (chassi/register)
-            const meter = apartment.meters.find(m => isMeterOfUtility(m, dealershipReading.type as any) && m.register?.toLowerCase() === r.registerName?.toLowerCase());
+            let meter = apartment.meters.find(
+              (m) => isMeterOfUtility(m, dealershipReading.type as any) && normalizeRegister(m.register) === targetRegister
+            );
+            // Fallback resiliente: se não encontrou por utilitário, tenta por chassi apenas.
+            if (!meter) {
+              meter = apartment.meters.find((m) => normalizeRegister(m.register) === targetRegister);
+            }
             if (!meter) {
               result.warnings.push({
                 row: lineNumber,
@@ -349,7 +366,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const orFilters = Array.from(meterToDates.entries()).map(([meterId, dateSet]) => ({
         meterId,
         readAtDate: { in: Array.from(dateSet) },
-        deletedAt: null
+        ...activeFilter,
       }));
 
       console.time("⏱️ Fetch existing readings");
@@ -419,7 +436,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             apartmentId: { in: apartmentsTouched },
             monthRef: { in: monthFilters },
             yearRef: { in: yearFilters },
-            deletedAt: null
+            ...activeFilter,
           } as any),
           select: { id: true, apartmentId: true, monthRef: true, yearRef: true, utilityType: true }
         })
