@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building, Building2, DoorClosed, Download, Gauge, HousePlus, Plus, Search, Upload } from "lucide-react"
+import { Building, Building2, DoorClosed, Download, Gauge, HousePlus, Plus, Search, Trash2, Upload } from "lucide-react"
 import { useMeters, useMeterMutations } from "@/hooks/useMeters"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -74,6 +74,7 @@ export default function MetersPage() {
   const [currentMeter, setCurrentMeter] = useState<Partial<Meter> | undefined>(undefined)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
+  const [deleteComplexMetersLoading, setDeleteComplexMetersLoading] = useState(false)
   const { toast } = useToast()
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -110,6 +111,50 @@ export default function MetersPage() {
   const handleAddMeter = () => {
     setCurrentMeter({})
     setIsModalOpen(true)
+  }
+
+  const handleDeleteAllMetersFromComplex = async () => {
+    if (!filters.complex?.id) {
+      toast({
+        title: "Selecione um condomínio",
+        description: "Escolha um condomínio antes de excluir medidores em lote.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const complexName = (filters.complex as any)?.socialName || (filters.complex as any)?.aliasName || "condomínio selecionado"
+    const confirmDelete = window.confirm(
+      `Deseja excluir TODOS os medidores ativos do condomínio "${complexName}"?\n\nEsta ação será aplicada em lote.`
+    )
+    if (!confirmDelete) return
+
+    setDeleteComplexMetersLoading(true)
+    try {
+      const response = await fetch("/api/user/meters/delete-by-complex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ complexId: filters.complex.id }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data?.error || "Erro ao excluir medidores do condomínio.")
+      }
+
+      toast({
+        title: "Exclusão concluída",
+        description: `${data?.deletedCount || 0} medidor(es) removido(s) do condomínio.`,
+      })
+      refetch()
+    } catch (error: any) {
+      toast({
+        title: "Erro ao excluir medidores",
+        description: error?.message || "Falha ao executar exclusão em lote.",
+        variant: "destructive",
+      })
+    } finally {
+      setDeleteComplexMetersLoading(false)
+    }
   }
 
   const handleEditMeter = (meter: MeterFull) => {
@@ -196,6 +241,18 @@ export default function MetersPage() {
               </Button>
               <Button variant="secondary" onClick={() => setIsImportDialogOpen(true)}>
                 <Upload className="mr-2 h-4 w-4" /> Importar Medidores
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteAllMetersFromComplex}
+                disabled={!filters.complex?.id || deleteComplexMetersLoading}
+              >
+                {deleteComplexMetersLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="mr-2 h-4 w-4" />
+                )}
+                Excluir do Condomínio
               </Button>
             </div>
           </CardHeader>

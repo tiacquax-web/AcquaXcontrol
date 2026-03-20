@@ -1103,7 +1103,7 @@ function ProgramadorDashboard() {
       icon: Users,
       label: 'Usuários',
       description: 'Cadastrar / gerenciar usuários',
-      color: 'bg-purple-50 border-purple-200 hover:bg-purple-100',
+      color: 'bg-purple-50 border-purple-200 hover:bg-purple-100 dark:bg-purple-950/35 dark:border-purple-900 dark:hover:bg-purple-950/55',
       iconColor: 'text-purple-600',
     },
     {
@@ -1111,7 +1111,7 @@ function ProgramadorDashboard() {
       icon: Building2,
       label: 'Condomínios',
       description: 'Cadastrar / gerenciar condomínios',
-      color: 'bg-blue-50 border-blue-200 hover:bg-blue-100',
+      color: 'bg-blue-50 border-blue-200 hover:bg-blue-100 dark:bg-blue-950/35 dark:border-blue-900 dark:hover:bg-blue-950/55',
       iconColor: 'text-blue-600',
     },
     {
@@ -1119,7 +1119,7 @@ function ProgramadorDashboard() {
       icon: Home,
       label: 'Blocos',
       description: 'Cadastrar / gerenciar blocos',
-      color: 'bg-sky-50 border-sky-200 hover:bg-sky-100',
+      color: 'bg-sky-50 border-sky-200 hover:bg-sky-100 dark:bg-sky-950/35 dark:border-sky-900 dark:hover:bg-sky-950/55',
       iconColor: 'text-sky-600',
     },
     {
@@ -1127,7 +1127,7 @@ function ProgramadorDashboard() {
       icon: DoorClosed,
       label: 'Apartamentos',
       description: 'Cadastrar / gerenciar unidades',
-      color: 'bg-teal-50 border-teal-200 hover:bg-teal-100',
+      color: 'bg-teal-50 border-teal-200 hover:bg-teal-100 dark:bg-teal-950/35 dark:border-teal-900 dark:hover:bg-teal-950/55',
       iconColor: 'text-teal-600',
     },
     {
@@ -1135,7 +1135,7 @@ function ProgramadorDashboard() {
       icon: GaugeCircle,
       label: 'Medidores',
       description: 'Cadastrar / gerenciar medidores',
-      color: 'bg-orange-50 border-orange-200 hover:bg-orange-100',
+      color: 'bg-orange-50 border-orange-200 hover:bg-orange-100 dark:bg-orange-950/35 dark:border-orange-900 dark:hover:bg-orange-950/55',
       iconColor: 'text-orange-600',
     },
     {
@@ -1143,7 +1143,7 @@ function ProgramadorDashboard() {
       icon: Droplets,
       label: 'Subir Leitura',
       description: 'Registrar nova leitura de medidor',
-      color: 'bg-cyan-50 border-cyan-200 hover:bg-cyan-100',
+      color: 'bg-cyan-50 border-cyan-200 hover:bg-cyan-100 dark:bg-cyan-950/35 dark:border-cyan-900 dark:hover:bg-cyan-950/55',
       iconColor: 'text-cyan-600',
     },
     {
@@ -1151,7 +1151,7 @@ function ProgramadorDashboard() {
       icon: Receipt,
       label: 'Cadastrar Conta',
       description: 'Lançar conta da concessionária',
-      color: 'bg-green-50 border-green-200 hover:bg-green-100',
+      color: 'bg-green-50 border-green-200 hover:bg-green-100 dark:bg-green-950/35 dark:border-green-900 dark:hover:bg-green-950/55',
       iconColor: 'text-green-600',
     },
   ];
@@ -1169,12 +1169,12 @@ function ProgramadorDashboard() {
             <div
               className={`flex flex-col items-center justify-center gap-3 rounded-2xl border p-5 text-center cursor-pointer transition-all active:scale-95 ${color}`}
             >
-              <div className={`w-12 h-12 rounded-full bg-white/70 flex items-center justify-center shadow-sm`}>
+              <div className={`w-12 h-12 rounded-full bg-white/80 dark:bg-white/10 flex items-center justify-center shadow-sm`}>
                 <Icon className={`w-6 h-6 ${iconColor}`} />
               </div>
               <div>
-                <p className="font-semibold text-sm text-foreground leading-tight">{label}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight hidden sm:block">{description}</p>
+                <p className="font-semibold text-sm text-foreground dark:text-slate-100 leading-tight">{label}</p>
+                <p className="text-[11px] text-muted-foreground dark:text-slate-300 mt-0.5 leading-tight hidden sm:block">{description}</p>
               </div>
             </div>
           </Link>

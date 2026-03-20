@@ -475,12 +475,13 @@ export default function LevantamentoPage() {
   }, [aptRows, selectedBlockFilter]);
 
   useEffect(() => {
+    if (!allLoaded || isAnyLoading) return;
     if (selectedApartmentFilter === 'all') return;
     const stillExists = apartmentOptions.some(opt => opt.id === selectedApartmentFilter);
     if (!stillExists) {
       setSelectedApartmentFilter('all');
     }
-  }, [selectedApartmentFilter, apartmentOptions]);
+  }, [selectedApartmentFilter, apartmentOptions, allLoaded, isAnyLoading]);
 
   // Filtro por texto
   const filteredRows = useMemo(() => {
