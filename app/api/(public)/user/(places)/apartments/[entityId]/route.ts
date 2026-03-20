@@ -2,6 +2,30 @@ import { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
 import { deleteEntity, updateEntityData } from "@/lib/userData"
 import { validateUserSession } from "@/lib/users"
 import { NextRequest, NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
+
+function normalizeString(str: string): string {
+    return str
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+async function findActiveApartmentDuplicate(blockId: string, name: string, excludeId?: string) {
+    const normalized = normalizeString(name);
+    const activeInBlock = await prisma.apartment.findMany({
+        where: {
+            blockId,
+            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+            ...(excludeId ? { id: { not: excludeId } } : {}),
+        },
+        select: { id: true, name: true },
+    });
+
+    return activeInBlock.find((apt) => normalizeString(apt.name) === normalized) || null;
+}
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ entityId: string }> } ): Promise<Response> {
     try {
@@ -21,6 +45,26 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
         // Extract entity ID from query parameters
         const { entityId } = await params;
         if (!entityId) return NextResponse.json({ error: 'No entity id was informed. Set "entity_id" in the query params.' }, { status: 400 });
+
+        const currentApartment = await prisma.apartment.findUnique({
+            where: { id: entityId },
+            select: { id: true, name: true, blockId: true },
+        });
+        if (!currentApartment) {
+            return NextResponse.json({ error: 'Apartamento não encontrado.' }, { status: 404 });
+        }
+
+        const nextName = body.name !== undefined ? String(body.name).trim() : currentApartment.name;
+        const nextBlockId = body.blockId !== undefined ? String(body.blockId).trim() : currentApartment.blockId;
+
+        if (!nextName || !nextBlockId) {
+            return NextResponse.json({ error: 'Nome e bloco são obrigatórios.' }, { status: 400 });
+        }
+
+        const duplicate = await findActiveApartmentDuplicate(nextBlockId, nextName, entityId);
+        if (duplicate) {
+            return NextResponse.json({ error: 'Já existe um apartamento com este nome no bloco selecionado.' }, { status: 409 });
+        }
 
         // Attempt to update the entity
         const { entity, error: updateError, status: updateStatus } = await updateEntityData(userId, 'apartment', entityId, body);

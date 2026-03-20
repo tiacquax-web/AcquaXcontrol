@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building2, Download, Loader2, MapPin, Plus, Search } from "lucide-react"
+import { Building2, Download, Loader2, Plus, Search, Trash2 } from "lucide-react"
 import { useApartments, useApartmentMutations } from "@/hooks/useApartments"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,6 +28,7 @@ export default function ApartmentsPage() {
     const { apartments, error, loading, totalCount = 0, refetch } = useApartments({ ...filters, take, skip, withComplex: true, withBlock: true });
     const { createApartment, updateApartment, deleteApartment, error: mutationError } = useApartmentMutations()
     const [exportLoading, setExportLoading] = useState(false)
+    const [dedupeLoading, setDedupeLoading] = useState(false)
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [currentApartment, setCurrentApartment] = useState<Apartment | null>(null)
     const { toast } = useToast()
@@ -65,6 +66,38 @@ export default function ApartmentsPage() {
             toast({ title: 'Erro', description: error.response?.data?.error || error.message, variant: 'destructive' })
         } finally {
             setExportLoading(false)
+        }
+    }
+
+    const handleDeleteDuplicates = async () => {
+        const scopeText = filters.blockId
+            ? "do bloco filtrado"
+            : filters.complexId
+                ? "do condomínio filtrado"
+                : "de todos os condomínios visíveis ao seu acesso";
+        if (!window.confirm(`Deseja remover apartamentos duplicados ${scopeText}?\n\nA operação mantém apenas 1 registro por nome+bloco e exclui os demais.`)) {
+            return;
+        }
+
+        setDedupeLoading(true);
+        try {
+            const response = await axios.post('/api/user/apartments/deduplicate', {
+                complexId: filters.complexId || undefined,
+                blockId: filters.blockId || undefined,
+            });
+            toast({
+                title: "Deduplicação concluída",
+                description: `${response.data.deletedCount || 0} apartamento(s) duplicado(s) removido(s).`,
+            });
+            refetch();
+        } catch (error: any) {
+            toast({
+                title: "Erro ao remover duplicados",
+                description: error.response?.data?.error || error.message,
+                variant: "destructive",
+            });
+        } finally {
+            setDedupeLoading(false);
         }
     }
 
@@ -174,6 +207,10 @@ export default function ApartmentsPage() {
                         <Button variant="outline" onClick={handleExportApartments} disabled={exportLoading}>
                             {exportLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                             Exportar
+                        </Button>
+                        <Button variant="outline" onClick={handleDeleteDuplicates} disabled={dedupeLoading}>
+                            {dedupeLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                            Excluir Duplicados
                         </Button>
                         <Button onClick={handleAddApartment}>
                             <Plus className="mr-2 h-4 w-4" /> Adicionar Apartamento
