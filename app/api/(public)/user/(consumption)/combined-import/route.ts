@@ -117,6 +117,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       apartmentLookup.set(key, apt);
     }
 
+    const meterByRegister = new Map<string, { meter: any; apartment: typeof apartments[number] }>();
+    for (const apt of apartments) {
+      for (const meter of apt.meters || []) {
+        const registerKey = normalizeRegister(meter.register);
+        if (!registerKey) continue;
+        if (!meterByRegister.has(registerKey)) {
+          meterByRegister.set(registerKey, { meter, apartment: apt });
+        }
+      }
+    }
+
     const result: CombinedImportResult = {
       success: false,
       readingsCreated: 0,
@@ -175,6 +186,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const rowContexts: RowContext[] = [];
+    type RelinkCandidate = {
+      meterId: string;
+      register: string;
+      fromApartmentName: string;
+      fromBlockName: string;
+      toApartmentId: string;
+      toApartmentName: string;
+      toBlockId: string;
+      toBlockName: string;
+      toComplexId: string | null | undefined;
+      toCompanyId: string | null | undefined;
+      lineNumber: number;
+    };
+    const relinkByMeterId = new Map<string, RelinkCandidate>();
 
     type ReadingCandidate = {
       id: string;
@@ -254,6 +279,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             // Fallback resiliente: se não encontrou por utilitário, tenta por chassi apenas.
             if (!meter) {
               meter = apartment.meters.find((m) => normalizeRegister(m.register) === targetRegister);
+            }
+            // Fallback global: medidor existe no condomínio mas está vinculado em unidade incorreta.
+            if (!meter) {
+              const globalMatch = meterByRegister.get(targetRegister);
+              if (globalMatch) {
+                meter = globalMatch.meter;
+                if (globalMatch.apartment.id !== apartment.id) {
+                  relinkByMeterId.set(meter.id, {
+                    meterId: meter.id,
+                    register: meter.register,
+                    fromApartmentName: globalMatch.apartment.name,
+                    fromBlockName: globalMatch.apartment.block?.name || '',
+                    toApartmentId: apartment.id,
+                    toApartmentName: apartment.name,
+                    toBlockId: apartment.blockId,
+                    toBlockName: apartment.block?.name || '',
+                    toComplexId: apartment.block?.complexId,
+                    toCompanyId: apartment.block?.complex?.companyId,
+                    lineNumber,
+                  });
+                  result.warnings.push({
+                    row: lineNumber,
+                    type: 'reading',
+                    message: `Medidor "${meter.register}" estava em ${globalMatch.apartment.block?.name}/${globalMatch.apartment.name} e será re-vinculado para ${apartment.block?.name}/${apartment.name}.`
+                  });
+                }
+              }
             }
             if (!meter) {
               result.warnings.push({
@@ -567,6 +619,34 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // ===== EXECUTAR ESCRITAS =====
+    // Re-vincular medidores detectados em unidade incorreta no mesmo condomínio.
+    const relinks = Array.from(relinkByMeterId.values());
+    if (relinks.length > 0) {
+      try {
+        await prisma.$transaction(
+          relinks.map((relink) =>
+            prisma.meter.update({
+              where: { id: relink.meterId },
+              data: {
+                apartmentId: relink.toApartmentId,
+                blockId: relink.toBlockId,
+                complexId: relink.toComplexId || undefined,
+                companyId: relink.toCompanyId || undefined,
+                updatedByUserId: userId,
+                updatedAt: new Date(),
+              },
+            })
+          )
+        );
+      } catch (error) {
+        result.errors.push({
+          row: 0,
+          type: 'reading',
+          message: `Falha ao re-vincular medidores do condomínio: ${error instanceof Error ? error.message : 'Erro desconhecido'}`
+        });
+      }
+    }
+
     // Soft-delete existentes quando policy = replace
     if (toSoftDeleteReadingIds.length > 0) {
       try {

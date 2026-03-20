@@ -273,6 +273,8 @@ export default function LevantamentoPage() {
   const [selectedComplexObj, setSelectedComplexObj] = useState<any>(null);
   const [searchText, setSearchText] = useState('');
   const [expandedApt, setExpandedApt] = useState<string | null>(null);
+  const [selectedBlockFilter, setSelectedBlockFilter] = useState<string>('all');
+  const [selectedApartmentFilter, setSelectedApartmentFilter] = useState<string>('all');
 
   // ── Helpers de contexto ──────────────────────────────────────────────────────
   const isMorador = useMemo(() => {
@@ -306,6 +308,13 @@ export default function LevantamentoPage() {
     }
   }, [ctxLoading, isMorador, userComplexes, selectedComplexId]);
 
+  // Ao trocar condomínio, limpa filtros de bloco/unidade.
+  useEffect(() => {
+    setSelectedBlockFilter('all');
+    setSelectedApartmentFilter('all');
+    setExpandedApt(null);
+  }, [selectedComplexId]);
+
   // ── Montar lista de meses selecionados ───────────────────────────────────────
   const selectedMonths = useMemo(() => {
     const from = ALL_MONTHS.findIndex(o => o.value === fromMonth.value);
@@ -320,11 +329,16 @@ export default function LevantamentoPage() {
   // ── Buscar dados de cada mês ─────────────────────────────────────────────────
   const [monthsData, setMonthsData] = useState<MonthData[]>([]);
 
+  const selectedApartmentId = useMemo(() => {
+    return selectedApartmentFilter !== 'all' ? selectedApartmentFilter : undefined;
+  }, [selectedApartmentFilter]);
+
   const apartmentIdFilter = useMemo(() => {
+    if (selectedApartmentId) return selectedApartmentId;
     if (!isMorador) return undefined;
     if (userApartments.length === 1) return userApartments[0].id;
     return undefined;
-  }, [isMorador, userApartments]);
+  }, [isMorador, userApartments, selectedApartmentId]);
 
   const fetchMonth = useCallback(async (month: string, year: string, complexId: string, aptId?: string) => {
     const params: Record<string, string> = { month, year };
@@ -445,17 +459,45 @@ export default function LevantamentoPage() {
     });
   }, [allLoaded, monthsData]);
 
+  const blockOptions = useMemo(() => {
+    const options = Array.from(new Set(aptRows.map(r => r.blockName).filter(Boolean)));
+    return options.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  }, [aptRows]);
+
+  const apartmentOptions = useMemo(() => {
+    return aptRows
+      .filter(r => selectedBlockFilter === 'all' || r.blockName === selectedBlockFilter)
+      .map(r => ({
+        id: r.apartmentId,
+        label: `Bl.${r.blockName} / Ap.${r.aptName}`,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' }));
+  }, [aptRows, selectedBlockFilter]);
+
+  useEffect(() => {
+    if (selectedApartmentFilter === 'all') return;
+    const stillExists = apartmentOptions.some(opt => opt.id === selectedApartmentFilter);
+    if (!stillExists) {
+      setSelectedApartmentFilter('all');
+    }
+  }, [selectedApartmentFilter, apartmentOptions]);
+
   // Filtro por texto
   const filteredRows = useMemo(() => {
-    if (!searchText.trim()) return aptRows;
+    const baseRows = aptRows.filter(r =>
+      (selectedBlockFilter === 'all' || r.blockName === selectedBlockFilter) &&
+      (!selectedApartmentId || r.apartmentId === selectedApartmentId)
+    );
+
+    if (!searchText.trim()) return baseRows;
     const q = searchText.toLowerCase();
-    return aptRows.filter(r =>
+    return baseRows.filter(r =>
       r.aptName.toLowerCase().includes(q) ||
       r.blockName.toLowerCase().includes(q) ||
       `bloco ${r.blockName}`.toLowerCase().includes(q) ||
       `apto ${r.aptName}`.toLowerCase().includes(q)
     );
-  }, [aptRows, searchText]);
+  }, [aptRows, searchText, selectedBlockFilter, selectedApartmentId]);
 
   // ── Dados para gráfico geral (consumo médio por mês) ─────────────────────────
   const chartData = useMemo(() => {
@@ -478,9 +520,16 @@ export default function LevantamentoPage() {
   // ── Para morador: dados da sua unidade ──────────────────────────────────────
   // Cada mês tem: foto, leituras, consumo, valores
   const moradorRow = useMemo(() => {
-    if (!isMorador || aptRows.length === 0) return null;
-    return aptRows[0]; // morador sempre tem 1 unidade
-  }, [isMorador, aptRows]);
+    if (isMorador) {
+      return aptRows[0] ?? null;
+    }
+    if (selectedApartmentId) {
+      return aptRows.find(r => r.apartmentId === selectedApartmentId) ?? null;
+    }
+    return null;
+  }, [isMorador, aptRows, selectedApartmentId]);
+
+  const showUnitPhotoView = allLoaded && !!moradorRow && (isMorador || !!selectedApartmentId);
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -581,6 +630,45 @@ export default function LevantamentoPage() {
           </div>
         )}
 
+        {/* Bloco e Unidade para perfis administrativos */}
+        {!isMorador && allLoaded && aptRows.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Bloco</label>
+            <Select value={selectedBlockFilter} onValueChange={setSelectedBlockFilter}>
+              <SelectTrigger className="w-44">
+                <SelectValue placeholder="Todos os blocos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os blocos</SelectItem>
+                {blockOptions.map(blockName => (
+                  <SelectItem key={blockName} value={blockName}>
+                    Bloco {blockName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {!isMorador && allLoaded && aptRows.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Unidade</label>
+            <Select value={selectedApartmentFilter} onValueChange={setSelectedApartmentFilter}>
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="Todas as unidades" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as unidades</SelectItem>
+                {apartmentOptions.map(opt => (
+                  <SelectItem key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {/* Busca — só para não moradores */}
         {!isMorador && allLoaded && aptRows.length > 0 && (
           <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
@@ -637,7 +725,7 @@ export default function LevantamentoPage() {
       {/* ═══════════════════════════════════════════════════════════════════════
           VISTA DO MORADOR: fotos em destaque, uma por mês
           ═══════════════════════════════════════════════════════════════════════ */}
-      {allLoaded && isMorador && moradorRow && (
+      {showUnitPhotoView && moradorRow && (
         <>
           {/* Cabeçalho print */}
           <div className="hidden print:block mb-4">
@@ -720,7 +808,7 @@ export default function LevantamentoPage() {
       {/* ═══════════════════════════════════════════════════════════════════════
           VISTA DE ADMIN/SÍNDICO: tabela comparativa de todas as unidades
           ═══════════════════════════════════════════════════════════════════════ */}
-      {allLoaded && !isMorador && aptRows.length > 0 && (
+      {allLoaded && !showUnitPhotoView && !isMorador && aptRows.length > 0 && (
         <>
           {/* ── Cabeçalho do relatório (visível no print) ── */}
           <div className="hidden print:block mb-4">

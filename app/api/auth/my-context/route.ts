@@ -29,12 +29,22 @@ export async function GET(req: NextRequest): Promise<Response> {
             },
         });
 
-        const isSystem = assignments.some(a => a.contextType === 'system');
-        // Nomes dos papéis com contextType=system ex: ['Administrador'] ou ['Programador']
-        const systemRoles = assignments
-            .filter(a => a.contextType === 'system')
-            .map(a => a.Role?.name)
-            .filter(Boolean) as string[];
+        const normalizeRole = (value: string | null | undefined) => (value || '').trim().toLowerCase();
+        const isPrivilegedRole = (value: string | null | undefined) => {
+            const normalized = normalizeRole(value);
+            return normalized === 'administrador' || normalized === 'programador';
+        };
+
+        // Considera usuário de sistema quando possui contexto system OU papel privilegiado.
+        const isSystem = assignments.some(a => a.contextType === 'system' || isPrivilegedRole(a.Role?.name));
+        const systemRoles = [
+            ...new Set(
+                assignments
+                    .filter(a => a.contextType === 'system' || isPrivilegedRole(a.Role?.name))
+                    .map(a => a.Role?.name)
+                    .filter(Boolean) as string[]
+            )
+        ];
         const apartmentIds = assignments.filter(a => a.contextType === 'apartment').map(a => a.contextId).filter(Boolean) as string[];
         const blockIds = assignments.filter(a => a.contextType === 'block').map(a => a.contextId).filter(Boolean) as string[];
         const complexIds = assignments.filter(a => a.contextType === 'complex').map(a => a.contextId).filter(Boolean) as string[];
