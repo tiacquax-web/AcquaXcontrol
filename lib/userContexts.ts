@@ -11,6 +11,35 @@ function notDeleted() {
     };
 }
 
+type ActiveRoleAssignment = {
+    contextId: string;
+    contextType: ContextType;
+    Role?: { name: string | null } | null;
+};
+
+function normalizeRoleName(value: string | null | undefined): string {
+    return (value || '').trim().toLowerCase();
+}
+
+function mapContextsFromAssignments(assignments: ActiveRoleAssignment[]) {
+    const hasSystemAssignment = assignments.some((a) => a.contextType === ContextType.system);
+    const isProgrammer = assignments.some((a) => normalizeRoleName(a.Role?.name) === 'programador');
+    const isAdministrator = assignments.some((a) => normalizeRoleName(a.Role?.name) === 'administrador');
+    const hasPrivilegedRole = isProgrammer || isAdministrator;
+
+    return {
+        apartmentIds: assignments.filter((a) => a.contextType === ContextType.apartment).map((a) => a.contextId),
+        blockIds: assignments.filter((a) => a.contextType === ContextType.block).map((a) => a.contextId),
+        complexIds: assignments.filter((a) => a.contextType === ContextType.complex).map((a) => a.contextId),
+        companyIds: assignments.filter((a) => a.contextType === ContextType.company).map((a) => a.contextId),
+        // Programador/Administrador precisam de acesso operacional completo.
+        system: hasSystemAssignment || hasPrivilegedRole,
+        hasSystemAssignment,
+        isProgrammer,
+        isAdministrator,
+    };
+}
+
 // Retorna todos os roleAssignments ATIVOS do usuário (sem deletedAt ou com deletedAt null)
 async function getUserContexts(userId: string) {
     const assignments = await prisma.roleAssignment.findMany({
@@ -21,16 +50,14 @@ async function getUserContexts(userId: string) {
                 { deletedAt: { isSet: false } },
             ],
         },
-        select: { contextId: true, contextType: true },
+        select: {
+            contextId: true,
+            contextType: true,
+            Role: { select: { name: true } },
+        },
     });
 
-    return {
-        apartmentIds: assignments.filter((a) => a.contextType === ContextType.apartment).map((a) => a.contextId),
-        blockIds: assignments.filter((a) => a.contextType === ContextType.block).map((a) => a.contextId),
-        complexIds: assignments.filter((a) => a.contextType === ContextType.complex).map((a) => a.contextId),
-        companyIds: assignments.filter((a) => a.contextType === ContextType.company).map((a) => a.contextId),
-        system: assignments.some((a) => a.contextType === ContextType.system),
-    };
+    return mapContextsFromAssignments(assignments as ActiveRoleAssignment[]);
 }
 
 // Retorna os roleAssignments ATIVOS do usuário — sem filtrar por permissão de entidade.
@@ -45,16 +72,14 @@ async function getUserContextsForEntity(userId: string, entityType: Permissionab
                 { deletedAt: { isSet: false } },
             ],
         },
-        select: { contextId: true, contextType: true },
+        select: {
+            contextId: true,
+            contextType: true,
+            Role: { select: { name: true } },
+        },
     });
 
-    return {
-        apartmentIds: assignments.filter((a) => a.contextType === ContextType.apartment).map((a) => a.contextId),
-        blockIds: assignments.filter((a) => a.contextType === ContextType.block).map((a) => a.contextId),
-        complexIds: assignments.filter((a) => a.contextType === ContextType.complex).map((a) => a.contextId),
-        companyIds: assignments.filter((a) => a.contextType === ContextType.company).map((a) => a.contextId),
-        system: assignments.some((a) => a.contextType === ContextType.system),
-    };
+    return mapContextsFromAssignments(assignments as ActiveRoleAssignment[]);
 }
 
 // Retorna os roleAssignments ATIVOS do usuário — sem filtrar por ação específica.
@@ -70,16 +95,14 @@ async function getUserContextsForActionOnEntity(userId: string, entityType: Perm
                 { deletedAt: { isSet: false } },
             ],
         },
-        select: { contextId: true, contextType: true },
+        select: {
+            contextId: true,
+            contextType: true,
+            Role: { select: { name: true } },
+        },
     });
 
-    return {
-        apartmentIds: assignments.filter((a) => a.contextType === ContextType.apartment).map((a) => a.contextId),
-        blockIds: assignments.filter((a) => a.contextType === ContextType.block).map((a) => a.contextId),
-        complexIds: assignments.filter((a) => a.contextType === ContextType.complex).map((a) => a.contextId),
-        companyIds: assignments.filter((a) => a.contextType === ContextType.company).map((a) => a.contextId),
-        system: assignments.some((a) => a.contextType === ContextType.system),
-    };
+    return mapContextsFromAssignments(assignments as ActiveRoleAssignment[]);
 }
 
 async function getUserPermissions(userId: string) {

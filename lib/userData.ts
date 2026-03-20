@@ -46,6 +46,31 @@ function normalizeEmail(email: string): string {
     return normalized;
 }
 
+function normalizeRoleName(value: string | null | undefined): string {
+    return (value || '').trim().toLowerCase();
+}
+
+async function isProtectedAdministratorUser(targetUserId: string): Promise<boolean> {
+    const assignments = await prisma.roleAssignment.findMany({
+        where: {
+            userId: targetUserId,
+            OR: [
+                { deletedAt: null },
+                { deletedAt: { isSet: false } },
+            ],
+        },
+        select: {
+            contextType: true,
+            Role: { select: { name: true } },
+        },
+    });
+
+    return assignments.some((assignment) => {
+        const roleName = normalizeRoleName(assignment.Role?.name);
+        return roleName === 'administrador' || assignment.contextType === ContextType.system;
+    });
+}
+
 // Getters
 async function getUserData(userId: string) {
     const { apartmentIds, blockIds, complexIds } = await getUserContexts(userId);
@@ -904,6 +929,7 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
 
         const contexts = await getUserContextsForActionOnEntity(userId, entityType, 'create');
         const hasSystemPermission = !!contexts.system;
+        const isProgrammer = !!contexts.isProgrammer;
 
         console.log("### Contexts ###", contexts);
 
@@ -1234,6 +1260,7 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 const user = await prisma.user.create({ data: { ...data } });
                 return { entity: user, status: 201, error: null };
             case PermissionableEntity.role:
+                if (isProgrammer) return { entity: null, error: 'Programador não pode editar papéis/permissões.', status: 403 };
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 const role = await prisma.role.create({ data: { ...data } });
                 return { entity: role, status: 201, error: null };
@@ -1252,6 +1279,7 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 const roleAssignment = await prisma.roleAssignment.create({ data: { ...data } });
                 return { entity: roleAssignment, status: 201, error: null };
             case PermissionableEntity.permission:
+                if (isProgrammer) return { entity: null, error: 'Programador não pode editar papéis/permissões.', status: 403 };
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 const permission = await prisma.permission.create({ data: { ...data } });
                 return { entity: permission, status: 201, error: null };
@@ -1923,6 +1951,7 @@ async function updateEntityData(userId: string, entityType: PermissionableEntity
     try {
         const contexts = await getUserContextsForActionOnEntity(userId, entityType, 'update');
         const hasSystemPermission = !!contexts.system;
+        const isProgrammer = !!contexts.isProgrammer;
 
         console.log("######### updateEntityData - contexts:", contexts)
         console.log("######### updateEntityData - entityId:", entityId)
@@ -2459,6 +2488,7 @@ async function updateEntityData(userId: string, entityType: PermissionableEntity
                 const user = await prisma.user.update({ where: { id: entityId }, data });
                 return { entity: user, status: 200, error: null };
             case PermissionableEntity.role:
+                if (isProgrammer) return { entity: null, error: 'Programador não pode editar papéis/permissões.', status: 403 };
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 const role = await prisma.role.update({ where: { id: entityId }, data });
                 return { entity: role, status: 200, error: null };
@@ -2467,6 +2497,7 @@ async function updateEntityData(userId: string, entityType: PermissionableEntity
                 const roleAssignment = await prisma.roleAssignment.update({ where: { id: entityId }, data });
                 return { entity: roleAssignment, status: 200, error: null };
             case PermissionableEntity.permission:
+                if (isProgrammer) return { entity: null, error: 'Programador não pode editar papéis/permissões.', status: 403 };
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 const permission = await prisma.permission.update({ where: { id: entityId }, data });
                 return { entity: permission, status: 200, error: null };
@@ -2485,6 +2516,7 @@ async function deleteEntity(userId: string, entityType: PermissionableEntity, en
     try {
         const contexts = await getUserContextsForActionOnEntity(userId, entityType, 'delete');
         const hasSystemPermission = !!contexts.system;
+        const isProgrammer = !!contexts.isProgrammer;
 
         switch (entityType) {
             // Contexts
@@ -2690,10 +2722,16 @@ async function deleteEntity(userId: string, entityType: PermissionableEntity, en
                                                contexts.apartmentIds.length > 0;
                 
                 if (!hasUserDeletePermission) return { error: 'Não autorizado', status: 401, entity: null }
+
+                const deletingProtectedAdmin = await isProtectedAdministratorUser(entityId);
+                if (deletingProtectedAdmin) {
+                    return { error: 'Logins de Administrador com acesso total não podem ser excluídos.', status: 403, entity: null }
+                }
                 
                 const user = await prisma.user.delete({ where: { id: entityId } });
                 return { error: null, status: 200, entity: user }
             case PermissionableEntity.role:
+                if (isProgrammer) return { error: 'Programador não pode editar papéis/permissões.', status: 403, entity: null }
                 if (!hasSystemPermission) return { error: 'Não autorizado', status: 401, entity: null }
                 const role = await prisma.role.delete({ where: { id: entityId } });
                 return { error: null, status: 200, entity: role }
@@ -2702,6 +2740,7 @@ async function deleteEntity(userId: string, entityType: PermissionableEntity, en
                 const roleAssignment = await prisma.roleAssignment.delete({ where: { id: entityId } });
                 return { error: null, status: 200, entity: roleAssignment }
             case PermissionableEntity.permission:
+                if (isProgrammer) return { error: 'Programador não pode editar papéis/permissões.', status: 403, entity: null }
                 if (!hasSystemPermission) return { error: 'Não autorizado', status: 401, entity: null }
                 const permission = await prisma.permission.delete({ where: { id: entityId } });
                 return { error: null, status: 200, entity: permission }
