@@ -104,8 +104,8 @@ async function fallbackFetchComplexes({
             socialNames && socialNames.length > 0 ? { socialName: { in: socialNames } } : undefined,
             search ? {
                 OR: [
-                    { socialName: { contains: search } },
-                    { aliasName: { contains: search } },
+                    { socialName: { contains: search, mode: 'insensitive' } },
+                    { aliasName: { contains: search, mode: 'insensitive' } },
                 ]
             } : undefined,
             onlyWithReservoirs ? { reservoirs: { some: activeWhere } } : undefined,

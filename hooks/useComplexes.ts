@@ -27,9 +27,15 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
     const [totalCount, setTotalCount] = useState(0);
     const [hasNextPage, setHasNextPage] = useState(false);
     const [hasPreviousPage, setHasPreviousPage] = useState(false);
-
+    const [sequence, setSequence] = useState(0);
     const debouncedNameQuery = useDebounce(nameQuery, 350);
     const debouncedDocumentCompany = useDebounce(documentCompany, 350);
+
+    const refetch = () => {
+        setLoading(true);
+        setError(null);
+        setSequence((prev) => prev + 1);
+    };
 
     useEffect(() => {
     // Só busca apartamentos se enabled for true
@@ -89,6 +95,7 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
         take,
         skip,
         enabled,
+        sequence,
     ])
 
     return { 
@@ -100,7 +107,8 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
         hasPreviousPage,
         currentPage: Math.floor(skip / take) + 1,
         take,
-        skip
+        skip,
+        refetch
     }
 }
 
@@ -137,11 +145,11 @@ export const useComplexMutations = () => {
         }
     }
 
-    const deleteComplex = async (complexId: string) => {
+    const deleteComplex = async (complexId: string, options?: { deleteChildren?: boolean }) => {
         setLoading(true)
         setError(null)
         try {
-            const deleted = await deleteComplexService(complexId)
+            const deleted = await deleteComplexService(complexId, options)
             return deleted
         } catch (error: any) {
             const message = error.response?.data?.error || error.message || "Unknown error"

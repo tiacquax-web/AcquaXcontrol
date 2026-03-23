@@ -2519,7 +2519,12 @@ async function updateEntityData(userId: string, entityType: PermissionableEntity
     }
 }
 
-async function deleteEntity(userId: string, entityType: PermissionableEntity, entityId: string): Promise<{ error: string | null, status: number, entity: any | null }> {
+async function deleteEntity(
+    userId: string,
+    entityType: PermissionableEntity,
+    entityId: string,
+    options?: { deleteChildren?: boolean }
+): Promise<{ error: string | null, status: number, entity: any | null }> {
     // Prisma's middleware makes soft delete (mark as deleted) instead of hard delete (remove from database)
     try {
         const contexts = await getUserContextsForActionOnEntity(userId, entityType, 'delete');
@@ -2554,6 +2559,48 @@ async function deleteEntity(userId: string, entityType: PermissionableEntity, en
                 });
                 if (!complexPermissionInContext) {
                     return { error: 'Não autorizado', status: 401, entity: null }
+                }
+                if (options?.deleteChildren) {
+                    const now = new Date();
+                    await prisma.$transaction(async (tx) => {
+                        await tx.reading.updateMany({
+                            where: { complexId: entityId, ...notDeleted },
+                            data: { deletedAt: now, updatedAt: now, updatedByUserId: userId },
+                        });
+                        await tx.apartmentConsumptionReport.updateMany({
+                            where: { complexId: entityId, ...notDeleted },
+                            data: { deletedAt: now, updatedAt: now, updatedByUserId: userId },
+                        });
+                        await tx.dealershipReading.updateMany({
+                            where: { complexId: entityId, ...notDeleted },
+                            data: { deletedAt: now, updatedAt: now, updatedByUserId: userId },
+                        });
+                        await tx.reservoirReading.updateMany({
+                            where: { reservoir: { complexId: entityId }, ...notDeleted },
+                            data: { deletedAt: now, updatedAt: now, updatedByUserId: userId },
+                        });
+                        await tx.reservoir.updateMany({
+                            where: { complexId: entityId, ...notDeleted },
+                            data: { deletedAt: now, updatedAt: now, updatedByUserId: userId },
+                        });
+                        await tx.meter.updateMany({
+                            where: { complexId: entityId, ...notDeleted },
+                            data: {
+                                status: `EXCLUIDO_${Date.now()}`,
+                                deletedAt: now,
+                                updatedAt: now,
+                                updatedByUserId: userId,
+                            },
+                        });
+                        await tx.apartment.updateMany({
+                            where: { complexId: entityId, ...notDeleted },
+                            data: { deletedAt: now, updatedAt: now, updatedByUserId: userId },
+                        });
+                        await tx.block.updateMany({
+                            where: { complexId: entityId, ...notDeleted },
+                            data: { deletedAt: now, updatedAt: now, updatedByUserId: userId },
+                        });
+                    });
                 }
                 const complex = await prisma.complex.delete({ where: { id: entityId } });
                 return { error: null, status: 200, entity: complex }

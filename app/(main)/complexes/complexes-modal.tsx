@@ -9,13 +9,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import CompaniesCombobox from "@/components/ComboboxCompany"
-import type { Company, Complex } from "@prisma/client"
+import type { Complex } from "@prisma/client"
 import { useUserMutations } from '@/hooks/useUsers';
 import { useToast } from '@/hooks/use-toast';
 import * as XLSX from 'xlsx';
 import { useApartments } from '@/hooks/useApartments';
 import { Progress } from '@/components/ui/progress';
+import { useCompanies } from "@/hooks/useCompanies"
 
 interface ComplexModalProps {
   isOpen: boolean
@@ -70,6 +70,7 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
   console.warn(isBulkRunning, "isBulkRunning")
 
   const { createBulkUsersForComplex, loading: loadingBulk, error: errorBulk } = useUserMutations();
+  const { companies, loading: loadingCompanies } = useCompanies({});
   const { toast } = useToast();
   useEffect(() => {
     if (complex) {
@@ -113,6 +114,13 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
     setCreatedUsers([]);
   }, [complex, isOpen])
 
+  useEffect(() => {
+    if (!isOpen || !!complex || !!formData.companyId || loadingCompanies) return
+    if (companies.length > 0) {
+      setFormData((prev) => ({ ...prev, companyId: companies[0].id }))
+    }
+  }, [isOpen, complex, formData.companyId, loadingCompanies, companies])
+
   // Busca total de apartamentos ao abrir o modal usando o hook
   const { totalCount: apartmentsCount } = useApartments({ complexId: complex?.id, take: 1, skip: 0 });
 
@@ -133,16 +141,18 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
     
     // Remove os campos específicos para criação em massa antes de enviar
     const { userNamePrefix, userPasswordPrefix, userEmailPrefix, userEmailDomain, ...complexData } = formData
-    
-    onSave(complexData)
-  }
 
-  const handleSelectCompany = (company: Company | undefined) => {
-    if (!company) {
-      setFormData((prev) => ({ ...prev, companyId: "" }))
-    } else {
-      setFormData((prev) => ({ ...prev, companyId: company.id }))
+    const fallbackCompanyId = complexData.companyId || companies[0]?.id
+    if (!fallbackCompanyId) {
+      toast({
+        title: "Não foi possível identificar a empresa",
+        description: "Nenhuma empresa disponível para vincular ao condomínio.",
+        variant: "destructive",
+      })
+      return
     }
+
+    onSave({ ...complexData, companyId: fallbackCompanyId })
   }
 
   // Função para criar usuários em lotes
@@ -437,11 +447,22 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="companyId">Administradora</Label>
-                    <CompaniesCombobox setSelectedCompany={handleSelectCompany} name="companyId" modal required />
+                    <Input
+                      id="companyId"
+                      value={
+                        loadingCompanies
+                          ? "Carregando..."
+                          : companies.find((c) => c.id === formData.companyId)?.name || companies[0]?.name || "Empresa padrão"
+                      }
+                      readOnly
+                      disabled
+                    />
                   </div>
                 </div>
               </div>
-            </TabsContent>            <TabsContent value="users-bulk" className="space-y-4 mt-4">
+            </TabsContent>
+
+            <TabsContent value="users-bulk" className="space-y-4 mt-4">
               <div className="space-y-2">
                 <Label>Prefixo Nome</Label>
                 <Input name="userNamePrefix" value={formData.userNamePrefix || ''} onChange={handleChange} />

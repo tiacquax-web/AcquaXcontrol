@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Building2, Download, Loader2, MapPin, Phone, Plus, Search, Upload } from "lucide-react"
 import { useComplexes, useComplexMutations } from "@/hooks/useComplexes"
+import { useCompanies } from "@/hooks/useCompanies"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -19,7 +20,8 @@ import { useRef } from "react"
 
 export default function ComplexesPage() {
     const [filters, setFilters] = useState({ nameQuery: "", documentCompany: "" })
-    const { complexes, error, loading } = useComplexes(filters)
+    const { complexes, error, loading, refetch } = useComplexes(filters)
+    const { companies } = useCompanies({})
     const { createComplex, updateComplex, deleteComplex, error: mutationError } = useComplexMutations()
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [currentComplex, setCurrentComplex] = useState<Complex | null>(null)
@@ -65,6 +67,7 @@ export default function ComplexesPage() {
                     setLocalComplexes((prev) => [created, ...prev])
                 }
             }
+            refetch()
             setIsModalOpen(false)
         } catch (error) {
             console.error("Erro ao salvar condomínio:", error)
@@ -108,6 +111,7 @@ export default function ComplexesPage() {
                     const sheet = workbook.Sheets[workbook.SheetNames[0]]
                     const rows: any[] = XLSX.utils.sheet_to_json(sheet)
                     const importedComplexes: any[] = []
+                    const defaultCompanyId = companies[0]?.id || ''
                     for (const row of rows) {
                         const complexData = {
                             socialName: row['Nome'] || row['socialName'] || row['name'] || '',
@@ -119,12 +123,17 @@ export default function ComplexesPage() {
                             telephone: row['Telefone'] || row['telephone'] || '',
                             cell: row['Celular'] || row['cell'] || '',
                             status: row['Status'] || row['status'] || 'Ativo',
+                            companyId: row['companyId'] || row['EmpresaId'] || defaultCompanyId || '',
                         }
                         if (!complexData.socialName) continue
+                        if (!complexData.companyId) {
+                            throw new Error("Nenhuma empresa disponível para vincular aos condomínios importados.")
+                        }
                         const created = await createComplex(complexData as any)
                         if (created?.id) importedComplexes.push(created)
                     }
                     setLocalComplexes((prev) => [...importedComplexes, ...prev])
+                    refetch()
                     toast({ title: `${importedComplexes.length} condomínio(s) importado(s)!`, description: 'Importação concluída com sucesso.' })
                 } catch (err: any) {
                     toast({ title: 'Erro na importação', description: err.message, variant: 'destructive' })
@@ -184,15 +193,18 @@ export default function ComplexesPage() {
     }
 
     const handleDeleteComplex = async (id: string) => {
-        if (window.confirm("Tem certeza que deseja excluir este condomínio?")) {
-            try {
-                const deletedComplex = await deleteComplex(id)
-                if (deletedComplex) {
-                    setLocalComplexes((prev) => prev.filter((c) => c.id !== id))
-                }
-            } catch (error) {
-                console.error("Erro ao excluir condomínio:", error)
+        if (!window.confirm("Tem certeza que deseja excluir este condomínio?")) return
+        const deleteChildren = window.confirm(
+            "Deseja apagar também os dados vinculados deste condomínio (blocos, apartamentos, medidores, leituras e relatórios)?"
+        )
+        try {
+            const deletedComplex = await deleteComplex(id, { deleteChildren })
+            if (deletedComplex) {
+                setLocalComplexes((prev) => prev.filter((c) => c.id !== id))
+                refetch()
             }
+        } catch (error) {
+            console.error("Erro ao excluir condomínio:", error)
         }
     }
 

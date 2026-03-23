@@ -20,6 +20,10 @@ interface getComplexesProps {
     skip?: number;
 }
 
+interface DeleteComplexOptions {
+  deleteChildren?: boolean;
+}
+
 export const getComplexes = async ({ id, getAvailableForEntity, complexId, companyId, nameQuery, documentCompany, withCompany = false, withBlocksCount = false, withApartmentsCount = false, withMetersCount = false, onlyWithReservoirs = false, socialNames, take = 12, skip = 0 }: getComplexesProps & { socialNames?: string[] }) => {
   try {
     const params: any = {};
@@ -66,9 +70,13 @@ export const updateComplex = async (complexId: string, complexData: any) => {
   }
 }
 
-export const deleteComplex = async (complexId: string) => {
+export const deleteComplex = async (complexId: string, options: DeleteComplexOptions = {}) => {
   try {
-    const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/complexes/${complexId}`);
+    const params: Record<string, string> = {};
+    if (options.deleteChildren) {
+      params.deleteChildren = "true";
+    }
+    const response = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/complexes/${complexId}`, { params });
     return response.data;
   } catch (error) {
     console.error('Error deleting complex:', error);

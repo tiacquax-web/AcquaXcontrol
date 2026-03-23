@@ -50,12 +50,14 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
         if (sessionError) return NextResponse.json({ sessionError }, { status: sessionStatus });
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
+        const deleteChildren = req.nextUrl.searchParams.get('deleteChildren') === 'true';
+
         // Extrair ID da entidade dos parâmetros
         const { entityId } = await params;
         if (!entityId) return NextResponse.json({ error: 'Nenhum ID de entidade foi informado. Defina "entity_id" nos parâmetros da query.' }, { status: 400 });
 
         // Tentar deletar a entidade
-        const { entity, error: deletionError, status: deletionStatus } = await deleteEntity(userId, 'complex', entityId);
+        const { entity, error: deletionError, status: deletionStatus } = await deleteEntity(userId, 'complex', entityId, { deleteChildren });
         if (deletionError) return NextResponse.json({ error: deletionError }, { status: deletionStatus });
         if (!entity) return NextResponse.json({ error: 'Erro interno do servidor - Entidade não deletada' }, { status: 500 });
 
