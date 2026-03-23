@@ -41,8 +41,9 @@ const activeWhere = {
 }
 
 function normalizeText(value: string | null | undefined): string {
-    if (!value) return ''
-    return value
+    if (value === null || value === undefined) return ''
+    const text = String(value)
+    return text
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
@@ -94,18 +95,14 @@ async function fallbackFetchComplexes({
 
     const requestedTake = typeof take === 'number' && take > 0 ? take : 12
     const requestedSkip = typeof skip === 'number' && skip >= 0 ? skip : 0
-    const normalizedSearch = normalizeText(search)
-    const normalizedSocialNames = (socialNames || []).map(normalizeText).filter(Boolean)
-    const useNormalizedFiltering = normalizedSearch.length > 0 || normalizedSocialNames.length > 0
 
     const where = cleanWhere({
         AND: [
             activeWhere,
             complexId ? { id: complexId } : undefined,
             companyId ? { companyId } : undefined,
-            // Quando há busca tolerante (acentos/caracteres), filtramos em memória para evitar perdas.
-            !useNormalizedFiltering && socialNames && socialNames.length > 0 ? { socialName: { in: socialNames } } : undefined,
-            !useNormalizedFiltering && search ? {
+            socialNames && socialNames.length > 0 ? { socialName: { in: socialNames } } : undefined,
+            search ? {
                 OR: [
                     { socialName: { contains: search } },
                     { aliasName: { contains: search } },
@@ -132,30 +129,49 @@ async function fallbackFetchComplexes({
         prisma.complex.findMany({
             where,
             include,
-            take: useNormalizedFiltering ? 2000 : requestedTake,
-            skip: useNormalizedFiltering ? 0 : requestedSkip,
+            take: requestedTake,
+            skip: requestedSkip,
             orderBy: { [safeOrderBy || 'socialName']: safeOrderDirection },
         }),
-        useNormalizedFiltering ? Promise.resolve(0) : prisma.complex.count({ where }),
+        prisma.complex.count({ where }),
     ])
 
-    const filteredList = useNormalizedFiltering
-        ? baseList.filter((complex: any) => {
+    let list = baseList
+    let totalCount = baseTotalCount
+
+    // Fallback tolerante a acentos/caracteres:
+    // só ativa quando a busca contém caracteres não ASCII e não houver resultado.
+    const hasNonAsciiSearch = /[^\x00-\x7F]/.test(search || '')
+    if (search && hasNonAsciiSearch && baseList.length === 0) {
+        const normalizedSearch = normalizeText(search)
+        const broadWhere = cleanWhere({
+            AND: [
+                activeWhere,
+                complexId ? { id: complexId } : undefined,
+                companyId ? { companyId } : undefined,
+                socialNames && socialNames.length > 0 ? { socialName: { in: socialNames } } : undefined,
+                onlyWithReservoirs ? { reservoirs: { some: activeWhere } } : undefined,
+                !contexts.system ? { OR: accessOr } : undefined,
+            ]
+        })
+
+        const broadList = await prisma.complex.findMany({
+            where: broadWhere,
+            include,
+            take: 4000,
+            skip: 0,
+            orderBy: { [safeOrderBy || 'socialName']: safeOrderDirection },
+        })
+
+        const normalizedFiltered = broadList.filter((complex: any) => {
             const socialNameNorm = normalizeText(complex?.socialName)
             const aliasNameNorm = normalizeText(complex?.aliasName)
-            const matchesNames = normalizedSocialNames.length === 0 || normalizedSocialNames.includes(socialNameNorm)
-            const matchesSearch = normalizedSearch.length === 0
-                || socialNameNorm.includes(normalizedSearch)
-                || aliasNameNorm.includes(normalizedSearch)
-            return matchesNames && matchesSearch
+            return socialNameNorm.includes(normalizedSearch) || aliasNameNorm.includes(normalizedSearch)
         })
-        : baseList
 
-    const list = useNormalizedFiltering
-        ? filteredList.slice(requestedSkip, requestedSkip + requestedTake)
-        : filteredList
-
-    const totalCount = useNormalizedFiltering ? filteredList.length : baseTotalCount
+        totalCount = normalizedFiltered.length
+        list = normalizedFiltered.slice(requestedSkip, requestedSkip + requestedTake)
+    }
 
     if (!withBlocksCount && !withApartmentsCount && !withMetersCount) {
         return { list, totalCount }
