@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useReadingMutations, useReadings } from '@/hooks/useReadings';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DatePickerComponent } from '@/components/date-picker';
+import { sanitizeImageUrl } from '@/lib/utils';
 
 export default function ReadingViewPage() {
   const { id } = useParams();
@@ -204,7 +205,7 @@ export default function ReadingViewPage() {
               )}
               {formState.urlCover && (
                 <img
-                  src={formState.urlCover}
+                  src={sanitizeImageUrl(formState.urlCover)}
                   alt="Foto da leitura"
                   className="rounded-xl border mt-2 w-full"
                   style={{ maxHeight: 300, objectFit: 'contain' }}

@@ -2,6 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Table, TableBody, TableRow, TableCell } from "@/components/ui/table";
 import { Camera } from "lucide-react";
 import React, { useState, useEffect } from "react";
+import { sanitizeImageUrl } from "@/lib/utils";
 
 interface ReadingDetailsModalProps {
   open: boolean;
@@ -20,6 +21,7 @@ export default function ReadingDetailsModal({ open, onOpenChange, reading }: Rea
   if (!reading) return null;
 
   const hasPhoto = !!reading.urlCover && !imageError;
+  const imageUrl = sanitizeImageUrl(reading.urlCover);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -33,9 +35,10 @@ export default function ReadingDetailsModal({ open, onOpenChange, reading }: Rea
             <div className="w-80 h-80 rounded-lg border shadow-lg overflow-hidden relative bg-muted/50">
               {reading.urlCover && (
                 <img
-                  src={reading.urlCover}
+                  src={imageUrl}
                   alt="Foto do medidor"
                   className={`w-full h-full object-cover transition-opacity duration-300 ${hasPhoto ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
+                  loading="lazy"
                   onError={() => setImageError(true)}
                 />
               )}

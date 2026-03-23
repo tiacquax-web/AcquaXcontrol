@@ -10,6 +10,22 @@ interface ModelClient {
 }
 
 const prismaClientSingleton = () => {
+  const notDeletedFilter = {
+    OR: [
+      { deletedAt: null },
+      { deletedAt: { isSet: false } },
+    ],
+  };
+
+  const hasDeletedAtCondition = (where: unknown): boolean => {
+    if (!where || typeof where !== 'object') return false;
+    try {
+      return JSON.stringify(where).includes('"deletedAt"');
+    } catch {
+      return false;
+    }
+  };
+
   const client = new PrismaClient().$extends({
     model: {
       $allModels: {
@@ -19,6 +35,19 @@ const prismaClientSingleton = () => {
           return extendedClient[modelName].update({
             where: { ...where },
             data: { deletedAt: new Date() },
+          });
+        },
+      },
+      meter: {
+        async delete({ where }: { where: { id: string } }) {
+          // unique_active_register considera [register, status].
+          // Ao soft-delete, mudamos status para valor único para liberar novo cadastro.
+          return client.meter.update({
+            where: { ...where },
+            data: {
+              deletedAt: new Date(),
+              status: `EXCLUIDO_${Date.now()}`,
+            },
           });
         },
       },
@@ -34,8 +63,15 @@ const prismaClientSingleton = () => {
     query: {
       $allModels: {
         async $allOperations({ operation, args, query }) {
-          if (operation === 'findUnique' || operation === 'findMany') {
+          if (operation === 'findUnique') {
             args.where = { ...args.where, deletedAt: null };
+          }
+          if (operation === 'findMany' || operation === 'findFirst' || operation === 'count') {
+            if (!hasDeletedAtCondition(args.where)) {
+              args.where = args.where
+                ? { AND: [args.where, notDeletedFilter] }
+                : notDeletedFilter;
+            }
           }
           return query(args);
         },

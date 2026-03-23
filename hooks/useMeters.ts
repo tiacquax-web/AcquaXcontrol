@@ -104,7 +104,23 @@ export const useMeters = ({ companyId, complexId, blockId, nameQuery, apartmentI
     };
 
     fetchMeters();
-  }, [companyId, complexId, blockId, apartmentId, debouncedNameQuery, debouncedSearch, take, skip, orderBy, enabled, sequence]);
+  }, [
+    companyId,
+    complexId,
+    blockId,
+    apartmentId,
+    debouncedNameQuery,
+    debouncedSearch,
+    take,
+    skip,
+    orderBy,
+    enabled,
+    withApartment,
+    withBlock,
+    withComplex,
+    withTypeMeter,
+    sequence
+  ]);
 
   return { totalCount, meters, loading, error, refetch };
 };

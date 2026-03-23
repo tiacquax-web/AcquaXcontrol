@@ -21,6 +21,7 @@ function getQueryParams(req: NextRequest) {
     const withComplex = req.nextUrl.searchParams.get('with_complex') || undefined
     const fromDate = req.nextUrl.searchParams.get('from_date') || undefined
     const toDate = req.nextUrl.searchParams.get('to_date') || undefined
+    const includeCoverBase64 = req.nextUrl.searchParams.get('include_cover_base64') === 'true'
 
     // query params - default
     const search = req.nextUrl.searchParams.get('search') || ''
@@ -29,7 +30,7 @@ function getQueryParams(req: NextRequest) {
     const orderBy = req.nextUrl.searchParams.get('order_by') || 'createdAt'
     const orderDirection: 'asc' | 'desc' = req.nextUrl.searchParams.get('order_direction') || req.nextUrl.searchParams.get('order_by') ? 'asc' : 'desc'
 
-    return { withApartment, withBlock, withComplex, fromDate, toDate, withDevice, withMeter, isPreReading, readingId, meterId, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection }
+    return { withApartment, withBlock, withComplex, fromDate, toDate, withDevice, withMeter, isPreReading, readingId, meterId, companyId, complexId, blockId, apartmentId, includeCoverBase64, search, take, skip, orderBy, orderDirection }
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         // get query params
-        const { withApartment, withBlock, withComplex, fromDate, toDate, withDevice, withMeter, isPreReading, readingId, meterId, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection } = getQueryParams(req)
+        const { withApartment, withBlock, withComplex, fromDate, toDate, withDevice, withMeter, isPreReading, readingId, meterId, companyId, complexId, blockId, apartmentId, includeCoverBase64, search, take, skip, orderBy, orderDirection } = getQueryParams(req)
 
         // identify context
         const contextType: ContextType | undefined = apartmentId ? 'apartment' : blockId ? 'block' : complexId ? 'complex' : companyId ? 'company' : undefined
@@ -101,7 +102,20 @@ export async function GET(req: NextRequest): Promise<Response> {
         if (error) return NextResponse.json({ error }, { status })
         if (!entity) return NextResponse.json({ error: 'No readings found.' }, { status: 404 })
 
-        return NextResponse.json({ list: entity, totalCount }, { status: 200 })
+        // Evita payloads gigantes em listagens (coverBase64 pode ser muito pesado).
+        // Mantemos coverBase64 apenas quando:
+        // - for busca de item específico (readingId), ou
+        // - solicitado explicitamente via include_cover_base64=true.
+        const shouldIncludeCoverBase64 = includeCoverBase64 || !!readingId;
+        const sanitizedList = shouldIncludeCoverBase64
+            ? entity
+            : entity.map((item: any) => {
+                if (!item || item.coverBase64 === undefined) return item;
+                const { coverBase64: _omit, ...rest } = item;
+                return rest;
+            });
+
+        return NextResponse.json({ list: sanitizedList, totalCount }, { status: 200 })
 
     } catch (error: any) {
         console.error("Error fetching readings:", error)
@@ -170,13 +184,16 @@ export async function POST(req: NextRequest): Promise<Response> {
         const currentYear = new Date().getFullYear();
 
         // validate coverBase64
-        const coverBase64 = body.coverBase64;
-        if (!coverBase64.match(/^data:?image\/(jpeg|jpg|png);?base64,?/)) {
+        const coverBase64 = String(body.coverBase64 || '');
+        if (!/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(coverBase64)) {
             return NextResponse.json({ error: 'Invalid coverBase64' }, { status: 400 });
         }
-
-        const base64Data = coverBase64.replace(/^.*(?=\/9j\/)/, ''); // Remove everything before "/9j/"
+        const base64Data = coverBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/i, '');
         const buffer = Buffer.from(base64Data, 'base64');
+        const maxBytes = 5 * 1024 * 1024; // 5MB por foto
+        if (buffer.length === 0 || buffer.length > maxBytes) {
+            return NextResponse.json({ error: 'Imagem inválida ou muito grande (máx. 5MB).' }, { status: 413 });
+        }
 
         const readingToSave: Partial<Reading> = {
             coverBase64: buffer,
@@ -238,7 +255,10 @@ async function validateReadingsRows(readings: any[], allowUpdates: boolean = fal
     if (prelim.length === 0) return { validRows, updateRows, errors };
 
     // Passo 2: buscar meters para os registers
-    const meterWhere: any = { register: { in: Array.from(registers) }, deletedAt: null };
+    const meterWhere: any = {
+        register: { in: Array.from(registers) },
+        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+    };
     if (context?.apartmentId) meterWhere.apartmentId = context.apartmentId;
     else if (context?.blockId) meterWhere.blockId = context.blockId;
     else if (context?.complexId) meterWhere.complexId = context.complexId;

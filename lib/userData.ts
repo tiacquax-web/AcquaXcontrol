@@ -575,7 +575,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 const readingsQuery: any = {
                     where: {
                         AND: [
-                            { deletedAt: null },
+                            notDeleted,
                         ]
                     },
                 }
@@ -951,11 +951,15 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 // Retorna erro se já houver com mesmo socialName ou CNPJ
                 const existingComplex = await prisma.complex.findFirst({
                     where: cleanWhere({
-                        OR: [
-                            { socialName: data.socialName },
-                            ...(data.documentCompany ? [{ documentCompany: data.documentCompany }] : [])
+                        AND: [
+                            notDeleted,
+                            {
+                                OR: [
+                                    { socialName: data.socialName },
+                                    ...(data.documentCompany ? [{ documentCompany: data.documentCompany }] : [])
+                                ],
+                            },
                         ],
-                        deletedAt: null
                     })
                 });
 
@@ -1996,13 +2000,17 @@ async function updateEntityData(userId: string, entityType: PermissionableEntity
 
                 // Retorna erro se já houver com mesmo socialName ou CNPJ
                 const existingComplex = await prisma.complex.findFirst({
-                    where: {
-                        OR: [
-                            { socialName: data.socialName },
-                            ...(data.documentCompany ? [{ documentCompany: data.documentCompany }] : [])
+                    where: cleanWhere({
+                        AND: [
+                            notDeleted,
+                            {
+                                OR: [
+                                    { socialName: data.socialName },
+                                    ...(data.documentCompany ? [{ documentCompany: data.documentCompany }] : [])
+                                ],
+                            },
                         ],
-                        deletedAt: null
-                    }
+                    }),
                 });
 
                 if (existingComplex && existingComplex.id !== entityId) {

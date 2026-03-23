@@ -58,7 +58,26 @@ export const useReadings = ({ enabled=true, withApartment, withBlock, withComple
         setLoading(false);
       }
     };    fetchReadings();
-  }, [ sequence, companyId, complexId, blockId, apartmentId, isPreReading, withDevice, debouncedTake, debouncedSkip, meterId, fromDate, toDate]);
+  }, [
+    sequence,
+    enabled,
+    readingId,
+    companyId,
+    complexId,
+    blockId,
+    apartmentId,
+    meterId,
+    isPreReading,
+    withDevice,
+    withMeter,
+    withApartment,
+    withBlock,
+    withComplex,
+    debouncedTake,
+    debouncedSkip,
+    fromDate?.getTime(),
+    toDate?.getTime(),
+  ]);
 
   return { totalCount, readings, loading, error, refetch };
 };

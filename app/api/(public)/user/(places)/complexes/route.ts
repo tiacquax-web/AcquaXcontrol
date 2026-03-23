@@ -40,6 +40,15 @@ const activeWhere = {
     ],
 }
 
+function normalizeText(value: string | null | undefined): string {
+    if (!value) return ''
+    return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim()
+}
+
 async function fallbackFetchComplexes({
     userId,
     search,
@@ -83,13 +92,20 @@ async function fallbackFetchComplexes({
         return { list: [], totalCount: 0 }
     }
 
+    const requestedTake = typeof take === 'number' && take > 0 ? take : 12
+    const requestedSkip = typeof skip === 'number' && skip >= 0 ? skip : 0
+    const normalizedSearch = normalizeText(search)
+    const normalizedSocialNames = (socialNames || []).map(normalizeText).filter(Boolean)
+    const useNormalizedFiltering = normalizedSearch.length > 0 || normalizedSocialNames.length > 0
+
     const where = cleanWhere({
         AND: [
             activeWhere,
             complexId ? { id: complexId } : undefined,
             companyId ? { companyId } : undefined,
-            socialNames && socialNames.length > 0 ? { socialName: { in: socialNames } } : undefined,
-            search ? {
+            // Quando há busca tolerante (acentos/caracteres), filtramos em memória para evitar perdas.
+            !useNormalizedFiltering && socialNames && socialNames.length > 0 ? { socialName: { in: socialNames } } : undefined,
+            !useNormalizedFiltering && search ? {
                 OR: [
                     { socialName: { contains: search } },
                     { aliasName: { contains: search } },
@@ -112,16 +128,34 @@ async function fallbackFetchComplexes({
     const safeOrderBy = ['socialName', 'createdAt', 'updatedAt'].includes(orderBy || '') ? orderBy : 'socialName'
     const safeOrderDirection: 'asc' | 'desc' = orderDirection === 'asc' ? 'asc' : 'desc'
 
-    const [list, totalCount] = await Promise.all([
+    const [baseList, baseTotalCount] = await Promise.all([
         prisma.complex.findMany({
             where,
             include,
-            take,
-            skip,
+            take: useNormalizedFiltering ? 2000 : requestedTake,
+            skip: useNormalizedFiltering ? 0 : requestedSkip,
             orderBy: { [safeOrderBy || 'socialName']: safeOrderDirection },
         }),
-        prisma.complex.count({ where }),
+        useNormalizedFiltering ? Promise.resolve(0) : prisma.complex.count({ where }),
     ])
+
+    const filteredList = useNormalizedFiltering
+        ? baseList.filter((complex: any) => {
+            const socialNameNorm = normalizeText(complex?.socialName)
+            const aliasNameNorm = normalizeText(complex?.aliasName)
+            const matchesNames = normalizedSocialNames.length === 0 || normalizedSocialNames.includes(socialNameNorm)
+            const matchesSearch = normalizedSearch.length === 0
+                || socialNameNorm.includes(normalizedSearch)
+                || aliasNameNorm.includes(normalizedSearch)
+            return matchesNames && matchesSearch
+        })
+        : baseList
+
+    const list = useNormalizedFiltering
+        ? filteredList.slice(requestedSkip, requestedSkip + requestedTake)
+        : filteredList
+
+    const totalCount = useNormalizedFiltering ? filteredList.length : baseTotalCount
 
     if (!withBlocksCount && !withApartmentsCount && !withMetersCount) {
         return { list, totalCount }

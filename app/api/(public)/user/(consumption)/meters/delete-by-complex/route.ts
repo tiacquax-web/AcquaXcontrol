@@ -64,8 +64,10 @@ export async function POST(req: NextRequest): Promise<Response> {
                 id: { in: allowedMeters.map((m) => m.id) },
             },
             data: {
+                status: `EXCLUIDO_${Date.now()}`,
                 deletedAt: new Date(),
                 updatedByUserId: userId,
+                updatedAt: new Date(),
             },
         });
 
