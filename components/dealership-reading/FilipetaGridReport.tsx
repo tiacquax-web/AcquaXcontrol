@@ -16,6 +16,7 @@ interface FilipetaGridReportProps {
 
 const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealershipReading, description }) => {
   const { apartment, lastReading, history } = report;
+  const isGas = dealershipReading?.type === 'gas';
   const complex = apartment?.block?.complex as any;
   const company = complex?.company as any;
   const block = apartment?.block as any;
@@ -39,6 +40,10 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
   
   const prevReport1 = history?.[0];
   const prevReport2 = history?.[1];
+  const reportConsumption = Number(isGas ? (report.consumptionGasValue ?? 0) : (report.consumption ?? 0));
+  const prevReport1Consumption = Number(isGas ? (prevReport1?.consumptionGasValue ?? 0) : (prevReport1?.consumption ?? 0));
+  const prevReport2Consumption = Number(isGas ? (prevReport2?.consumptionGasValue ?? 0) : (prevReport2?.consumption ?? 0));
+  const totalToPay = Number(isGas ? (report.totalGasValue ?? 0) : (report.totalUnit ?? 0));
   const hasHistory = Array.isArray(history) && history.length > 0;
   const historyMissingLabel = hasHistory ? 'ref. pend.' : '';
 
@@ -179,11 +184,11 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
                 <tbody>
                   <tr>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{prevReport2 ? `${String(prevReport2.monthRef).padStart(2, '0')}/${prevReport2.yearRef}`: historyMissingLabel}</td>
-                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{prevReport2 ? prevReport2.consumption?.toFixed(6) : historyMissingLabel}</td>
+                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{prevReport2 ? prevReport2Consumption.toFixed(6) : historyMissingLabel}</td>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{prevReport1 ? `${String(prevReport1.monthRef).padStart(2, '0')}/${prevReport1.yearRef}`: historyMissingLabel}</td>
-                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{prevReport1 ? prevReport1.consumption?.toFixed(6) : historyMissingLabel}</td>
+                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{prevReport1 ? prevReport1Consumption.toFixed(6) : historyMissingLabel}</td>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{monthRefStr}/{report.yearRef}</td>
-                    <td className="py-0.5 px-1 text-center text-xs">{report.consumption?.toFixed(6) || '0.000000'}</td>
+                    <td className="py-0.5 px-1 text-center text-xs">{reportConsumption.toFixed(6)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -230,10 +235,10 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
                   <tr>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{prevReport1?.lastReading?.reading?.toFixed(3) ?? 'ref. pend.'}</td>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{lastReading?.reading?.toFixed(3) ?? 'ref. pend.'}</td>
-                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{report.consumption?.toFixed(6) ?? 'ref. pend.'}</td>
+                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{reportConsumption.toFixed(6)}</td>
                     <td className="border-r border-black py-0.5 px-1 text-center text-xs leading-tight">{periodStartFormatted}<br/>a<br/>{periodEndFormatted}</td>
                     <td className="border-r border-black py-0.5 px-1 text-center text-xs">{nextReadingDateFormatted}</td>
-                    <td className="py-0.5 px-1 text-center text-xs font-bold">{report.totalUnit?.toFixed(2) ?? 'ref. pend.'}</td>
+                    <td className="py-0.5 px-1 text-center text-xs font-bold">{totalToPay.toFixed(2)}</td>
                   </tr>
                 </tbody>
               </table>

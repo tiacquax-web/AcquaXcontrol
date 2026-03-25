@@ -31,8 +31,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
 
         console.log("######### Entity ID:", entityId)
         // Attempt to update the entity
-        // const { entity: user, error: updateError, status: updateStatus } = await updateEntityData(userId, 'user', entityId, body);
-        const { user, error: updateError, status: updateStatus } = await updateUser(reqBody.id, body, userId);
+        const { user, error: updateError, status: updateStatus } = await updateUser(entityId, body, userId);
         if (updateError) return NextResponse.json({ error: updateError }, { status: updateStatus });
         if (!user) return NextResponse.json({ error: 'Internal Server Error - Entity not updated' }, { status: 500 });
 

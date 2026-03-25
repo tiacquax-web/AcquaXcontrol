@@ -16,6 +16,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         const search = req.nextUrl.searchParams.get('search') || '';
         const take = parseInt(req.nextUrl.searchParams.get('take') || '50');
         const skip = parseInt(req.nextUrl.searchParams.get('skip') || '0');
+        const includeAccessStats = req.nextUrl.searchParams.get('includeAccessStats') === 'true';
 
         // Base query for complexes (MongoDB-safe: deletedAt null OR not set)
         const activeFilter = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] };
@@ -95,87 +96,84 @@ export async function GET(req: NextRequest): Promise<Response> {
             }
         });
 
-        // Get login counts per complex (last 30 days via RoleAssignments)
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-        // Complex-level role assignments
-        const roleAssignments = await prisma.roleAssignment.findMany({
-            where: { contextId: { in: complexIds }, contextType: 'complex', OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
-            select: { userId: true, contextId: true },
-        });
-
-        // Build apt→complex map only for apartments on current page complexes
-        const aptComplexMap: Record<string, string> = {};
-        const apartmentsInPageComplexes = await prisma.apartment.findMany({
-            where: { complexId: { in: complexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
-            select: { id: true, complexId: true },
-        });
-        apartmentsInPageComplexes.forEach((apt) => {
-            if (apt.complexId) aptComplexMap[apt.id] = apt.complexId;
-        });
-
-        // Apartment-level role assignments, restricted to apartments from current complexes
-        const aptIds = apartmentsInPageComplexes.map((apt) => apt.id);
-        const aptRoleAssignments = aptIds.length > 0 ? await prisma.roleAssignment.findMany({
-            where: {
-                contextType: 'apartment',
-                contextId: { in: aptIds },
-                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
-            },
-            select: { userId: true, contextId: true },
-        }) : [];
-
-        // Get recent sessions for those users
-        const allUserIds = [...new Set([...roleAssignments, ...aptRoleAssignments].map(ra => ra.userId))];
-        const recentSessions = allUserIds.length > 0 ? await prisma.session.findMany({
-            where: { userId: { in: allUserIds }, createdAt: { gte: thirtyDaysAgo } },
-            select: { userId: true },
-            distinct: ['userId'],
-            take: 5000,
-        }) : [];
-        const recentUserSet = new Set(recentSessions.map(s => s.userId));
-
-        // Build access count per complex
+        // Estatísticas de acesso podem ficar pesadas; calcular sob demanda.
         const accessCountMap: Record<string, number> = {};
-        for (const ra of roleAssignments) {
-            if (recentUserSet.has(ra.userId)) {
-                accessCountMap[ra.contextId] = (accessCountMap[ra.contextId] || 0) + 1;
-            }
-        }
-        for (const ra of aptRoleAssignments) {
-            const cxId = aptComplexMap[ra.contextId];
-            if (cxId && recentUserSet.has(ra.userId)) {
-                accessCountMap[cxId] = (accessCountMap[cxId] || 0) + 1;
-            }
-        }
-
-        // Most active apartment per complex (login)
-        const userCountPerApt: Record<string, Set<string>> = {};
-        for (const ra of aptRoleAssignments) {
-            const cxId = aptComplexMap[ra.contextId];
-            if (cxId && recentUserSet.has(ra.userId)) {
-                if (!userCountPerApt[ra.contextId]) userCountPerApt[ra.contextId] = new Set();
-                userCountPerApt[ra.contextId].add(ra.userId);
-            }
-        }
-        // Get apt names
-        const activeAptIds = Object.keys(userCountPerApt);
-        const aptNameMap: Record<string, { name: string; complexId: string | null }> = {};
-        if (activeAptIds.length > 0) {
-            const aptNames = await prisma.apartment.findMany({
-                where: { id: { in: activeAptIds } },
-                select: { id: true, name: true, complexId: true }
-            });
-            aptNames.forEach(a => { aptNameMap[a.id] = { name: a.name, complexId: a.complexId }; });
-        }
-
         const topAptPerComplex: Record<string, { name: string; logins: number }> = {};
-        for (const [aptId, userSet] of Object.entries(userCountPerApt)) {
-            const aptInfo = aptNameMap[aptId];
-            if (!aptInfo?.complexId) continue;
-            const cxId = aptInfo.complexId;
-            if (!topAptPerComplex[cxId] || userSet.size > topAptPerComplex[cxId].logins) {
-                topAptPerComplex[cxId] = { name: aptInfo.name, logins: userSet.size };
+        const hasAccessStats = includeAccessStats;
+        if (includeAccessStats) {
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+            const roleAssignments = await prisma.roleAssignment.findMany({
+                where: { contextId: { in: complexIds }, contextType: 'complex', OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                select: { userId: true, contextId: true },
+            });
+
+            const aptComplexMap: Record<string, string> = {};
+            const apartmentsInPageComplexes = await prisma.apartment.findMany({
+                where: { complexId: { in: complexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                select: { id: true, complexId: true },
+            });
+            apartmentsInPageComplexes.forEach((apt) => {
+                if (apt.complexId) aptComplexMap[apt.id] = apt.complexId;
+            });
+
+            const aptIds = apartmentsInPageComplexes.map((apt) => apt.id);
+            const aptRoleAssignments = aptIds.length > 0 ? await prisma.roleAssignment.findMany({
+                where: {
+                    contextType: 'apartment',
+                    contextId: { in: aptIds },
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                select: { userId: true, contextId: true },
+            }) : [];
+
+            const allUserIds = [...new Set([...roleAssignments, ...aptRoleAssignments].map(ra => ra.userId))];
+            const recentSessions = allUserIds.length > 0 ? await prisma.session.findMany({
+                where: { userId: { in: allUserIds }, createdAt: { gte: thirtyDaysAgo } },
+                select: { userId: true },
+                distinct: ['userId'],
+                take: 5000,
+            }) : [];
+            const recentUserSet = new Set(recentSessions.map(s => s.userId));
+
+            for (const ra of roleAssignments) {
+                if (recentUserSet.has(ra.userId)) {
+                    accessCountMap[ra.contextId] = (accessCountMap[ra.contextId] || 0) + 1;
+                }
+            }
+            for (const ra of aptRoleAssignments) {
+                const cxId = aptComplexMap[ra.contextId];
+                if (cxId && recentUserSet.has(ra.userId)) {
+                    accessCountMap[cxId] = (accessCountMap[cxId] || 0) + 1;
+                }
+            }
+
+            const userCountPerApt: Record<string, Set<string>> = {};
+            for (const ra of aptRoleAssignments) {
+                const cxId = aptComplexMap[ra.contextId];
+                if (cxId && recentUserSet.has(ra.userId)) {
+                    if (!userCountPerApt[ra.contextId]) userCountPerApt[ra.contextId] = new Set();
+                    userCountPerApt[ra.contextId].add(ra.userId);
+                }
+            }
+
+            const activeAptIds = Object.keys(userCountPerApt);
+            const aptNameMap: Record<string, { name: string; complexId: string | null }> = {};
+            if (activeAptIds.length > 0) {
+                const aptNames = await prisma.apartment.findMany({
+                    where: { id: { in: activeAptIds } },
+                    select: { id: true, name: true, complexId: true }
+                });
+                aptNames.forEach(a => { aptNameMap[a.id] = { name: a.name, complexId: a.complexId }; });
+            }
+
+            for (const [aptId, userSet] of Object.entries(userCountPerApt)) {
+                const aptInfo = aptNameMap[aptId];
+                if (!aptInfo?.complexId) continue;
+                const cxId = aptInfo.complexId;
+                if (!topAptPerComplex[cxId] || userSet.size > topAptPerComplex[cxId].logins) {
+                    topAptPerComplex[cxId] = { name: aptInfo.name, logins: userSet.size };
+                }
             }
         }
 
@@ -190,8 +188,8 @@ export async function GET(req: NextRequest): Promise<Response> {
             totalApartments: aptCountMap[cx.id] || 0,
             totalMeters: meterCountMap[cx.id] || 0,
             lastReading: lastReadingMap[cx.id] || null,
-            loginsLast30Days: accessCountMap[cx.id] || 0,
-            topApartment: topAptPerComplex[cx.id] || null,
+            loginsLast30Days: hasAccessStats ? (accessCountMap[cx.id] || 0) : 0,
+            topApartment: hasAccessStats ? (topAptPerComplex[cx.id] || null) : null,
         }));
 
         return NextResponse.json({ list: result, totalCount });

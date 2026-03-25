@@ -1,6 +1,6 @@
 import { hash } from 'bcryptjs';
 import prisma from '@/lib/prisma';
-import { getUserContextsForActionOnEntity } from './userContexts';
+import { getUserContextsForActionOnEntity, getUserPermissions } from './userContexts';
 import { createEntity, updateEntityData } from './userData';
 import { User } from '@prisma/client';
 import { NextRequest } from "next/server"
@@ -98,6 +98,8 @@ export async function updateUserPassword(id: string, password: string) {
 export async function updateUser(id: string, data: User, userId:string) {
   try {
     const contexts = await getUserContextsForActionOnEntity(userId, 'user', 'update');
+    const permissions = await getUserPermissions(userId);
+    const canDeleteUsers = permissions.permissions.some((p) => p.entity === 'user' && p.action === 'delete');
     // TO-DO: O CERTO É COMPARAR O CONTEXTO (SE O USUÁRIO SENDO ATUALIZADO ESTÁ DENTRO DO CONTEXTO DO USUÁRIO QUE FAZ A REQUISIÇÃO)
     // if (!contexts.system) {
     //   throw new Error('Não autorizado');
@@ -106,6 +108,14 @@ export async function updateUser(id: string, data: User, userId:string) {
     if (data.password) {
       validateNewPassword(data.password);
       data.password = await hash(data.password, 10);
+    }
+
+    // Síndico/Administradora: pode editar dados/senha, mas não pode promover privilégios sistêmicos.
+    // Bloqueia alterações sensíveis de flags administrativas quando o perfil não possui delete de usuário.
+    if (!canDeleteUsers) {
+      delete (data as any).deletedAt;
+      delete (data as any).createdByUserId;
+      delete (data as any).updatedByUserId;
     }
 
     // Normalizar email se estiver sendo atualizado

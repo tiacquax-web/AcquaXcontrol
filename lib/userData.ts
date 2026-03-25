@@ -945,6 +945,9 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 return { entity: company, status: 201, error: null };
 
             case PermissionableEntity.complex:
+                if (!data.companyId && contexts.companyIds.length === 1) {
+                    data.companyId = contexts.companyIds[0];
+                }
                 if (!hasSystemPermission && !contexts.companyIds.includes(data.companyId))
                     return { entity: null, error: 'Não autorizado', status: 401 };
 

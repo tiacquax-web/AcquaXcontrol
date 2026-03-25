@@ -43,7 +43,7 @@ export default function ApuracaoPage() {
         try {
             const skip = (page - 1) * take
             const res = await axios.get('/api/apuracao', {
-                params: { search: debouncedSearch, take, skip }
+                params: { search: debouncedSearch, take, skip, includeAccessStats: false }
             })
             setData(res.data.list || [])
             setTotalCount(res.data.totalCount || 0)

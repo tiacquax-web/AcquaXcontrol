@@ -25,6 +25,11 @@ function mapContextsFromAssignments(assignments: ActiveRoleAssignment[]) {
     const hasSystemAssignment = assignments.some((a) => a.contextType === ContextType.system);
     const isProgrammer = assignments.some((a) => normalizeRoleName(a.Role?.name) === 'programador');
     const isAdministrator = assignments.some((a) => normalizeRoleName(a.Role?.name) === 'administrador');
+    const isSyndic = assignments.some((a) => {
+        const role = normalizeRoleName(a.Role?.name);
+        return role === 'síndico' || role === 'sindico';
+    });
+    const isAdministradora = assignments.some((a) => normalizeRoleName(a.Role?.name) === 'administradora');
     const hasPrivilegedRole = isProgrammer || isAdministrator;
 
     return {
@@ -37,6 +42,8 @@ function mapContextsFromAssignments(assignments: ActiveRoleAssignment[]) {
         hasSystemAssignment,
         isProgrammer,
         isAdministrator,
+        isSyndic,
+        isAdministradora,
     };
 }
 
@@ -142,6 +149,11 @@ async function getUserPermissions(userId: string) {
     const isAdministrator = assignments.some((a) =>
         normalizeRoleName(a.Role?.name) === 'administrador' || a.contextType === ContextType.system
     );
+    const isSyndic = assignments.some((a) => {
+        const role = normalizeRoleName(a.Role?.name);
+        return role === 'síndico' || role === 'sindico';
+    });
+    const isAdministradora = assignments.some((a) => normalizeRoleName(a.Role?.name) === 'administradora');
 
     const permissionMap = new Map<string, { action: PermissionAction; entity: PermissionableEntity }>();
     for (const p of permissions) {
@@ -164,6 +176,16 @@ async function getUserPermissions(userId: string) {
                     continue;
                 }
                 permissionMap.set(`${entity}::${action}`, { entity, action });
+            }
+        }
+    }
+
+    // Síndico/Administradora podem gerenciar dados, porém sem exclusões.
+    // Mantém exceção para perfis privilegiados (Administrador/Programador).
+    if ((isSyndic || isAdministradora) && !isProgrammer && !isAdministrator) {
+        for (const [key, value] of permissionMap.entries()) {
+            if (value.action === 'delete') {
+                permissionMap.delete(key);
             }
         }
     }
