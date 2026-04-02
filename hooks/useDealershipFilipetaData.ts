@@ -9,6 +9,7 @@ import { DealershipReadingFull } from "@/types/fullTypes";
 interface UseDealershipFilipetaDataProps {
   dealershipReadingId?: string;
   order?: 'block_apartment' | 'apartment_block';
+  searchText?: string;
 }
 
 // Define o tipo do relatório enriquecido para incluir o histórico
@@ -23,7 +24,7 @@ interface FilipetaData {
   dealershipReading: DealershipReadingFull; // Adiciona a propriedade que faltava
 }
 
-export const useDealershipFilipetaData = ({ dealershipReadingId, order }: UseDealershipFilipetaDataProps) => {
+export const useDealershipFilipetaData = ({ dealershipReadingId, order, searchText }: UseDealershipFilipetaDataProps) => {
   const [data, setData] = useState<FilipetaData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,8 +39,10 @@ export const useDealershipFilipetaData = ({ dealershipReadingId, order }: UseDea
       setLoading(true);
       setError(null);
       try {
-        const orderQuery = order ? `?order=${order}` : '';
-        const response = await axios.get<FilipetaData>(`/api/dealership-readings/${dealershipReadingId}/filipeta${orderQuery}`);
+        const params: Record<string, string> = {};
+        if (order) params.order = order;
+        if (searchText?.trim()) params.search = searchText.trim();
+        const response = await axios.get<FilipetaData>(`/api/dealership-readings/${dealershipReadingId}/filipeta`, { params });
         setData(response.data);
       } catch (err: any) {
         console.error("Error fetching filipeta data:", err);
@@ -51,7 +54,7 @@ export const useDealershipFilipetaData = ({ dealershipReadingId, order }: UseDea
     };
 
     fetchFilipetaData();
-  }, [dealershipReadingId, order]);
+  }, [dealershipReadingId, order, searchText]);
 
   return { data, loading, error };
 };

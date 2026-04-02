@@ -16,6 +16,7 @@ import type { Complex } from "@prisma/client"
 import type { ComplexFull } from "@/types/fullTypes"
 import axios from "axios"
 import { useRef } from "react"
+import { useUserContext } from "@/hooks/useUserContext"
 
 export default function ComplexesPage() {
     const [filters, setFilters] = useState({ nameQuery: "", documentCompany: "" })
@@ -29,6 +30,9 @@ export default function ComplexesPage() {
     const [exportLoading, setExportLoading] = useState(false)
     const [importLoading, setImportLoading] = useState(false)
     const importInputRef = useRef<HTMLInputElement>(null)
+    const { context: userContext, loading: contextLoading } = useUserContext()
+    const isRestrictedManager = !!userContext?.isRestrictedManager || ((userContext?.isSystem === false) && (userContext?.companyIds?.length || 0) > 0)
+    const canDeleteComplexes = !contextLoading && !isRestrictedManager
 
     useEffect(() => {
         setLocalComplexes(complexes)
@@ -219,9 +223,12 @@ export default function ComplexesPage() {
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <div>
                         <CardTitle className="text-2xl font-bold">Condomínios</CardTitle>
-                        <CardDescription>Gerencie condomínios e suas informações</CardDescription>
+                        <CardDescription>
+                            Gerencie condomínios e suas informações
+                            {isRestrictedManager ? " (síndico/administradora: sem permissão de exclusão)." : ""}
+                        </CardDescription>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                         <Button variant="outline" onClick={handleExportComplexes} disabled={exportLoading}>
                             {exportLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                             Exportar
@@ -343,9 +350,11 @@ export default function ComplexesPage() {
                                                             <Button variant="outline" size="sm" onClick={() => handleEditComplex(complex)}>
                                                                 Editar
                                                             </Button>
-                                                            <Button variant="destructive" size="sm" onClick={() => handleDeleteComplex(complex.id)}>
-                                                                Deletar
-                                                            </Button>
+                                                            {canDeleteComplexes && (
+                                                                <Button variant="destructive" size="sm" onClick={() => handleDeleteComplex(complex.id)}>
+                                                                    Deletar
+                                                                </Button>
+                                                            )}
                                                         </div>
                                                     </TableCell>
                                                 </TableRow>

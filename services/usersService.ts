@@ -106,6 +106,15 @@ interface ExportUsersProps {
   roleId?: string;
 }
 
+interface BulkUsersActionProps {
+  action: 'deleteAllUsers' | 'resetAllUsers';
+  search?: string;
+  userIds?: string[];
+  complexId?: string;
+  blockId?: string;
+  roleId?: string;
+}
+
 export const exportUsers = async ({ search, userIds = [], complexId, roleId }: ExportUsersProps) => {
   try {
     const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/users/export`, {
@@ -140,6 +149,30 @@ export const exportUsers = async ({ search, userIds = [], complexId, roleId }: E
     return { success: true };
   } catch (error) {
     console.error('Error exporting users:', error);
+    throw error;
+  }
+};
+
+export const bulkUsersAction = async ({
+  action,
+  search,
+  userIds = [],
+  complexId,
+  blockId,
+  roleId,
+}: BulkUsersActionProps) => {
+  try {
+    const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/users`, {
+      bulkAction: action,
+      search,
+      userIds,
+      complexId: complexId || undefined,
+      blockId: blockId || undefined,
+      roleId: roleId || undefined,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error executing bulk users action:', error);
     throw error;
   }
 };

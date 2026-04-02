@@ -3,12 +3,13 @@
 
 import React from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { Printer, AlertTriangle, LoaderCircle } from 'lucide-react';
+import { Printer, AlertTriangle, LoaderCircle, Search, X } from 'lucide-react';
 
 import { useDealershipFilipetaData } from '@/hooks/useDealershipFilipetaData';
 import { Button } from '@/components/ui/button';
 import FilipetaGridReport from '@/components/dealership-reading/FilipetaGridReport';
 import { usePermissionChecker } from '@/hooks/use-permission-checker';
+import { Input } from '@/components/ui/input';
 
 const FilipetaPage = () => {
   const params = useParams();
@@ -16,7 +17,8 @@ const FilipetaPage = () => {
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const description = searchParams.get('description');
   const order = (searchParams.get('order') as 'block_apartment' | 'apartment_block' | null) || 'block_apartment';
-  const { data, loading, error } = useDealershipFilipetaData({ dealershipReadingId: id, order });
+  const [searchText, setSearchText] = React.useState('');
+  const { data, loading, error } = useDealershipFilipetaData({ dealershipReadingId: id, order, searchText });
   const { hasPermission, loading: permissionsLoading } = usePermissionChecker();
 
   const handlePrint = () => {
@@ -60,11 +62,22 @@ const FilipetaPage = () => {
       );
     }
 
-    if (!data || data.list.length === 0) {
+    if (!data) {
       return (
         <div className="flex items-center justify-center p-10">
           <AlertTriangle className="h-8 w-8 mr-2" />
           Nenhum relatório de apartamento encontrado para esta leitura.
+        </div>
+      );
+    }
+
+    if (data.list.length === 0) {
+      return (
+        <div className="flex items-center justify-center p-10">
+          <AlertTriangle className="h-8 w-8 mr-2" />
+          {searchText.trim()
+            ? 'Nenhuma unidade encontrada com esse filtro.'
+            : 'Nenhum relatório de apartamento encontrado para esta leitura.'}
         </div>
       );
     }
@@ -85,12 +98,31 @@ const FilipetaPage = () => {
 
   return (
     <div className="p-4 sm:p-6 bg-gray-50 min-h-screen">
-      <div id="print-header" className="flex justify-between items-center mb-4 no-print">
-        <h1 className="text-2xl font-bold">Filipeta de Leitura</h1>
-        <Button onClick={handlePrint}>
-          <Printer className="mr-2 h-4 w-4" />
-          Imprimir
-        </Button>
+      <div id="print-header" className="flex flex-col gap-3 mb-4 no-print">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Filipeta de Leitura</h1>
+          <Button onClick={handlePrint}>
+            <Printer className="mr-2 h-4 w-4" />
+            Imprimir
+          </Button>
+        </div>
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <Input
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Filtrar por bloco ou apartamento..."
+            className="pl-9 pr-9 bg-white"
+          />
+          {searchText && (
+            <button
+              onClick={() => setSearchText('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
       {renderContent()}
     </div>

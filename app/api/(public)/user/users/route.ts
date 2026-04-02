@@ -1,8 +1,11 @@
-import prisma, { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
-import { createEntity, deleteEntity, getAvailableComplexesForEntity, getEntityListData, updateEntityData } from "@/lib/userData"
-import { createUser, createBulkResidentsUsers, isSessionValid, validateUserSession } from "@/lib/users"
+import prisma, { cleanEntityBody } from "@/lib/prisma"
+import { getEntityListData } from "@/lib/userData"
+import { createUser, createBulkResidentsUsers, validateUserSession } from "@/lib/users"
+import { getAccessibleUserIdsForAction, userHasRestrictedManagerProfile } from "@/lib/userAccess"
 import { ContextType } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
+import { hash } from "bcryptjs"
+import { randomBytes } from "crypto"
 
 // Função para normalizar email removendo acentos e caracteres especiais
 function normalizeEmail(email: string): string {
@@ -45,10 +48,6 @@ function getQueryParams(req: NextRequest) {
     const contextType = req.nextUrl.searchParams.get('role_context_type') || undefined
     const contextId = req.nextUrl.searchParams.get('role_context_id') || undefined
 
-    // option - getAvailable...
-    const availableForEntity = req.nextUrl.searchParams.get('getAvailableForEntity')
-    const getAvailableForEntity = isValidPermissionableEntity(availableForEntity) ? availableForEntity : undefined
-
     // query params - default
     const search = req.nextUrl.searchParams.get('search') || ''
     const take = parseInt(req.nextUrl.searchParams.get('take') || '10')
@@ -59,70 +58,125 @@ function getQueryParams(req: NextRequest) {
     const blockId = req.nextUrl.searchParams.get('block_id') || undefined
     const roleId = req.nextUrl.searchParams.get('role_id') || undefined
 
-    return { getAvailableForEntity, userId, roleName, contextType, contextId, search, take, skip, orderBy, orderDirection, complexId, blockId, roleId }
+    return { userId, roleName, contextType, contextId, search, take, skip, orderBy, orderDirection, complexId, blockId, roleId }
+}
+
+const NOT_DELETED = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } as const;
+
+type UserAction = 'read' | 'update' | 'delete' | 'create';
+
+function mergeUserIdScope(current: Set<string> | null, nextIds: string[]) {
+    if (current === null) return new Set(nextIds);
+    const nextSet = new Set(nextIds);
+    return new Set([...current].filter((id) => nextSet.has(id)));
+}
+
+async function getUserIdsByContextFilter(complexId?: string, blockId?: string): Promise<string[] | null> {
+    if (!complexId && !blockId) return null;
+
+    const blockIds = blockId
+        ? [blockId]
+        : (await prisma.block.findMany({
+            where: { ...NOT_DELETED, ...(complexId ? { complexId } : {}) },
+            select: { id: true }
+        })).map((b) => b.id);
+
+    const aptIds = (await prisma.apartment.findMany({
+        where: {
+            ...NOT_DELETED,
+            OR: [
+                ...(complexId ? [{ complexId }] : []),
+                ...(blockId ? [{ blockId }] : []),
+            ]
+        },
+        select: { id: true }
+    })).map((a) => a.id);
+
+    const assigns = await prisma.roleAssignment.findMany({
+        where: {
+            ...NOT_DELETED,
+            OR: [
+                ...(complexId ? [{ contextId: complexId, contextType: ContextType.complex }] : []),
+                ...(blockIds.length > 0 ? [{ contextId: { in: blockIds }, contextType: ContextType.block }] : []),
+                ...(aptIds.length > 0 ? [{ contextId: { in: aptIds }, contextType: ContextType.apartment }] : []),
+            ]
+        },
+        select: { userId: true }
+    });
+
+    return [...new Set(assigns.map((a) => a.userId))];
+}
+
+async function getUserIdsByRoleFilter(roleId?: string): Promise<string[] | null> {
+    if (!roleId) return null;
+    const assigns = await prisma.roleAssignment.findMany({
+        where: { ...NOT_DELETED, roleId },
+        select: { userId: true }
+    });
+    return [...new Set(assigns.map((a) => a.userId))];
+}
+
+async function getScopedUserIdsForAction(
+    actingUserId: string,
+    action: UserAction,
+    filters: { userIds?: string[]; complexId?: string; blockId?: string; roleId?: string; }
+) {
+    const access = await getAccessibleUserIdsForAction(actingUserId, action);
+    if (!access.hasPermission) {
+        return { error: 'Não autorizado', status: 401 as const, userIds: [] as string[] | null };
+    }
+
+    let scopedIds: Set<string> | null = access.isSystem ? null : new Set(access.userIds);
+
+    const idsByContext = await getUserIdsByContextFilter(filters.complexId, filters.blockId);
+    if (idsByContext) scopedIds = mergeUserIdScope(scopedIds, idsByContext);
+
+    const idsByRole = await getUserIdsByRoleFilter(filters.roleId);
+    if (idsByRole) scopedIds = mergeUserIdScope(scopedIds, idsByRole);
+
+    if (filters.userIds && filters.userIds.length > 0) {
+        scopedIds = mergeUserIdScope(scopedIds, filters.userIds);
+    }
+
+    return { error: null, status: 200 as const, userIds: scopedIds ? [...scopedIds] : null };
+}
+
+function generateTemporaryPassword(length = 12) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*';
+    const bytes = randomBytes(length * 2);
+    let password = '';
+    for (const b of bytes) {
+        password += chars[b % chars.length];
+        if (password.length >= length) break;
+    }
+    return password;
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
     try {
         // validate user session
-        const session = req.cookies.get('session')?.value
-        const validSession = session ? await isSessionValid(session) : false
-        if (!validSession) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-
-        // get userId from session
-        const userId = validSession.userId
+        const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
+        if (sessionError) return NextResponse.json({ error: sessionError }, { status: sessionStatus });
+        if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         // get query params
         const { userId: searchUserId, search, take, contextId: roleContextId, contextType: roleContextType, roleName, skip, orderBy, orderDirection, complexId, blockId, roleId } = getQueryParams(req)
 
-        // Filtrar por complexo/bloco via RoleAssignment
-        let userIdsByContext: string[] | undefined = undefined;
-        if (complexId || blockId) {
-            const blockIds = blockId ? [blockId] : (await prisma.block.findMany({
-                where: { complexId, deletedAt: null }, select: { id: true }
-            })).map(b => b.id);
-            const aptIds = (await prisma.apartment.findMany({
-                where: { OR: [
-                    ...(complexId ? [{ complexId, deletedAt: null }] : []),
-                    ...(blockId ? [{ blockId, deletedAt: null }] : []),
-                ]}, select: { id: true }
-            })).map(a => a.id);
-            const assigns = await prisma.roleAssignment.findMany({
-                where: {
-                    deletedAt: null,
-                    OR: [
-                        ...(complexId ? [{ contextId: complexId, contextType: ContextType.complex }] : []),
-                        ...(blockIds.length ? [{ contextId: { in: blockIds }, contextType: ContextType.block }] : []),
-                        ...(aptIds.length ? [{ contextId: { in: aptIds }, contextType: ContextType.apartment }] : []),
-                    ]
-                },
-                select: { userId: true }
-            });
-            userIdsByContext = [...new Set(assigns.map(a => a.userId))];
-        }
-
-        // Filtrar por papel
-        let userIdsByRole: string[] | undefined = undefined;
-        if (roleId) {
-            const assigns = await prisma.roleAssignment.findMany({
-                where: { roleId, deletedAt: null }, select: { userId: true }
-            });
-            userIdsByRole = [...new Set(assigns.map(a => a.userId))];
-        }
+        const scope = await getScopedUserIdsForAction(userId, 'read', {
+            userIds: searchUserId ? [searchUserId] : undefined,
+            complexId,
+            blockId,
+            roleId,
+        });
+        if (scope.error) return NextResponse.json({ error: scope.error }, { status: scope.status });
 
         // identify context
         const contextType: ContextType | undefined = undefined
         const contextId = undefined
 
-        // Build AND filters for userIds
-        const andFilters: any[] = [];
-        if (userIdsByContext !== undefined) andFilters.push({ id: { in: userIdsByContext } });
-        if (userIdsByRole !== undefined) andFilters.push({ id: { in: userIdsByRole } });
-
         // extra where
         const where: any = {
-            id: searchUserId ?? undefined,
-            ...(andFilters.length > 0 ? { AND: andFilters } : {}),
+            ...(scope.userIds ? { id: { in: scope.userIds } } : {}),
             Roles: !roleName ? undefined : {
                 some: {
                     Role: {
@@ -165,6 +219,118 @@ export async function POST(req: NextRequest): Promise<Response> {
 
         // Parse request body
         const reqBody = await req.json();
+        
+        if (reqBody.bulkAction === 'deleteAllUsers' || reqBody.bulkAction === 'resetAllUsers') {
+            const filters = {
+                search: reqBody.search || '',
+                userIds: Array.isArray(reqBody.userIds) ? reqBody.userIds : [],
+                complexId: reqBody.complexId || undefined,
+                blockId: reqBody.blockId || undefined,
+                roleId: reqBody.roleId || undefined,
+            };
+
+            const actionType: UserAction = reqBody.bulkAction === 'deleteAllUsers' ? 'delete' : 'update';
+            const scope = await getScopedUserIdsForAction(userId, actionType, {
+                userIds: filters.userIds,
+                complexId: filters.complexId,
+                blockId: filters.blockId,
+                roleId: filters.roleId,
+            });
+            if (scope.error) return NextResponse.json({ error: scope.error }, { status: scope.status });
+
+            if (reqBody.bulkAction === 'deleteAllUsers') {
+                const restrictedManager = await userHasRestrictedManagerProfile(userId);
+                if (restrictedManager) {
+                    return NextResponse.json({ error: 'Síndico e administradora não podem excluir usuários.' }, { status: 403 });
+                }
+            }
+
+            const targetUsers = await prisma.user.findMany({
+                where: {
+                    ...NOT_DELETED,
+                    ...(scope.userIds ? { id: { in: scope.userIds } } : {}),
+                    ...(filters.search ? {
+                        OR: [
+                            { name: { contains: filters.search, mode: 'insensitive' } },
+                            { email: { contains: filters.search, mode: 'insensitive' } },
+                        ]
+                    } : {}),
+                },
+                select: { id: true, email: true, preferences: true },
+            });
+
+            const filteredTargets = targetUsers.filter((u) => u.email !== 'admin@acquax.com' && u.id !== userId);
+            if (filteredTargets.length === 0) {
+                return NextResponse.json({ error: 'Nenhum usuário elegível encontrado para esta ação.' }, { status: 404 });
+            }
+
+            if (reqBody.bulkAction === 'deleteAllUsers') {
+                const now = new Date();
+                const targetIds = filteredTargets.map((u) => u.id);
+
+                const [usersUpdated, roleAssignmentsUpdated, sessionsUpdated] = await prisma.$transaction([
+                    prisma.user.updateMany({
+                        where: { id: { in: targetIds }, ...NOT_DELETED },
+                        data: { deletedAt: now, updatedByUserId: userId, updatedAt: now },
+                    }),
+                    prisma.roleAssignment.updateMany({
+                        where: { userId: { in: targetIds }, ...NOT_DELETED },
+                        data: { deletedAt: now, updatedByUserId: userId, updatedAt: now },
+                    }),
+                    prisma.session.updateMany({
+                        where: { userId: { in: targetIds }, ...NOT_DELETED },
+                        data: { deletedAt: now },
+                    }),
+                ]);
+
+                return NextResponse.json({
+                    message: 'Usuários excluídos com sucesso.',
+                    usersAffected: usersUpdated.count,
+                    roleAssignmentsAffected: roleAssignmentsUpdated.count,
+                    sessionsAffected: sessionsUpdated.count,
+                });
+            }
+
+            const updates = filteredTargets.map(async (targetUser) => {
+                const temporaryPassword = generateTemporaryPassword(12);
+                const hashedPassword = await hash(temporaryPassword, 10);
+                const basePreferences =
+                    targetUser.preferences &&
+                    typeof targetUser.preferences === 'object' &&
+                    !Array.isArray(targetUser.preferences)
+                        ? (targetUser.preferences as Record<string, unknown>)
+                        : {};
+
+                const preferences = {
+                    ...basePreferences,
+                    temporaryPassword,
+                    temporaryPasswordUpdatedAt: new Date().toISOString(),
+                };
+
+                await prisma.user.update({
+                    where: { id: targetUser.id },
+                    data: {
+                        password: hashedPassword,
+                        mustUpdateCredentials: true,
+                        resetToken: null,
+                        resetTokenExpiry: null,
+                        preferences,
+                        updatedByUserId: userId,
+                    },
+                });
+            });
+            await Promise.all(updates);
+            await prisma.session.updateMany({
+                where: { userId: { in: filteredTargets.map((u) => u.id) }, ...NOT_DELETED },
+                data: { deletedAt: new Date() },
+            });
+
+            return NextResponse.json({
+                message: 'Senhas redefinidas com sucesso.',
+                usersAffected: filteredTargets.length,
+            });
+        }
+
         // Suporte à criação em massa de usuários para um condomínio
         if (reqBody.createBulkUsersForComplex) {
             const { complexId, userNamePrefix, userPasswordPrefix, userEmailPrefix, userEmailDomain } = reqBody;

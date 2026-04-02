@@ -1,74 +1,87 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isSessionValid } from '@/lib/users';
-import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
+import { validateUserSession } from '@/lib/users';
 import prisma from '@/lib/prisma';
 import * as XLSX from 'xlsx';
+import { getAccessibleUserIdsForAction, getTemporaryPasswordFromPreferences } from '@/lib/userAccess';
+
+const NOT_DELETED = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } as const;
+
+function mergeUserIdScope(current: Set<string> | null, nextIds: string[]) {
+    if (current === null) return new Set(nextIds);
+    const nextSet = new Set(nextIds);
+    return new Set([...current].filter((id) => nextSet.has(id)));
+}
+
+async function getUserIdsByContextFilter(complexId?: string): Promise<string[] | null> {
+    if (!complexId) return null;
+
+    const blockIds = (await prisma.block.findMany({
+        where: { ...NOT_DELETED, complexId },
+        select: { id: true }
+    })).map((b) => b.id);
+
+    const aptIds = (await prisma.apartment.findMany({
+        where: { ...NOT_DELETED, complexId },
+        select: { id: true }
+    })).map((a) => a.id);
+
+    const assigns = await prisma.roleAssignment.findMany({
+        where: {
+            ...NOT_DELETED,
+            OR: [
+                { contextId: complexId, contextType: 'complex' },
+                ...(blockIds.length > 0 ? [{ contextId: { in: blockIds }, contextType: 'block' as const }] : []),
+                ...(aptIds.length > 0 ? [{ contextId: { in: aptIds }, contextType: 'apartment' as const }] : []),
+            ]
+        },
+        select: { userId: true }
+    });
+
+    return [...new Set(assigns.map((a) => a.userId))];
+}
+
+async function getUserIdsByRoleFilter(roleId?: string): Promise<string[] | null> {
+    if (!roleId) return null;
+    const assigns = await prisma.roleAssignment.findMany({
+        where: { ...NOT_DELETED, roleId },
+        select: { userId: true }
+    });
+    return [...new Set(assigns.map((a) => a.userId))];
+}
 
 export async function POST(req: NextRequest): Promise<Response> {
     try {
-        const session = req.cookies.get('session')?.value;
-        const validSession = session ? await isSessionValid(session) : false;
-        if (!validSession) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+        const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
+        if (sessionError) return NextResponse.json({ error: sessionError }, { status: sessionStatus });
+        if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-        const userId = validSession.userId;
-        const contexts = await getUserContextsForActionOnEntity(userId, 'user', 'update');
-        const hasPermission = contexts.system || contexts.companyIds.length > 0 ||
-            contexts.complexIds.length > 0 || contexts.blockIds.length > 0 || contexts.apartmentIds.length > 0;
-        if (!hasPermission) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+        const access = await getAccessibleUserIdsForAction(userId, 'read');
+        if (!access.hasPermission) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         const body = await req.json();
         const { search = '', userIds = [], complexId = '', roleId = '' } = body;
-
-        // Se filtro por condomínio: buscar os userId vinculados ao complexId via RoleAssignment
-        let filteredByComplexUserIds: string[] | null = null;
-        if (complexId) {
-            // Busca usuários com RoleAssignment no contexto do condomínio, bloco ou apt do condomínio
-            const blockIds = (await prisma.block.findMany({
-                where: { complexId, deletedAt: null }, select: { id: true }
-            })).map(b => b.id);
-            const aptIds = (await prisma.apartment.findMany({
-                where: { complexId, deletedAt: null }, select: { id: true }
-            })).map(a => a.id);
-
-            const assigns = await prisma.roleAssignment.findMany({
-                where: {
-                    deletedAt: null,
-                    OR: [
-                        { contextId: complexId, contextType: 'complex' },
-                        { contextId: { in: blockIds }, contextType: 'block' },
-                        { contextId: { in: aptIds }, contextType: 'apartment' },
-                    ]
-                },
-                select: { userId: true }
-            });
-            filteredByComplexUserIds = [...new Set(assigns.map(a => a.userId))];
-        }
-
-        // Se filtro por papel
-        let filteredByRoleUserIds: string[] | null = null;
-        if (roleId) {
-            const assigns = await prisma.roleAssignment.findMany({
-                where: { roleId, deletedAt: null },
-                select: { userId: true }
-            });
-            filteredByRoleUserIds = [...new Set(assigns.map(a => a.userId))];
+        let scopedIds: Set<string> | null = access.isSystem ? null : new Set(access.userIds);
+        const idsByContext = await getUserIdsByContextFilter(complexId || undefined);
+        if (idsByContext) scopedIds = mergeUserIdScope(scopedIds, idsByContext);
+        const idsByRole = await getUserIdsByRoleFilter(roleId || undefined);
+        if (idsByRole) scopedIds = mergeUserIdScope(scopedIds, idsByRole);
+        if (Array.isArray(userIds) && userIds.length > 0) {
+            scopedIds = mergeUserIdScope(scopedIds, userIds);
         }
 
         // Construir cláusula where
-        const andClauses: any[] = [{ deletedAt: null }];
+        const andClauses: any[] = [NOT_DELETED];
         if (search) {
             andClauses.push({ OR: [
                 { name: { contains: search, mode: 'insensitive' } },
                 { email: { contains: search, mode: 'insensitive' } },
             ]});
         }
-        if (userIds.length > 0) andClauses.push({ id: { in: userIds } });
-        if (filteredByComplexUserIds !== null) andClauses.push({ id: { in: filteredByComplexUserIds } });
-        if (filteredByRoleUserIds !== null) andClauses.push({ id: { in: filteredByRoleUserIds } });
+        if (scopedIds) andClauses.push({ id: { in: [...scopedIds] } });
 
         const users = await prisma.user.findMany({
             where: { AND: andClauses },
-            select: { id: true, name: true, email: true, documentPerson: true, telephone: true, cell: true, createdAt: true },
+            select: { id: true, name: true, email: true, documentPerson: true, telephone: true, cell: true, createdAt: true, preferences: true },
             orderBy: { name: 'asc' },
         });
 
@@ -95,9 +108,11 @@ export async function POST(req: NextRequest): Promise<Response> {
         const exportData = users.map(user => {
             const assigns = allAssigns.filter(a => a.userId === user.id);
             const papeis = assigns.map(a => roleMap[a.roleId] || a.roleId).join(', ');
+            const temporaryPassword = getTemporaryPasswordFromPreferences(user.preferences);
             return {
                 'Nome': user.name,
-                'Email': user.email,
+                'Login': user.email,
+                'Senha': temporaryPassword || '',
                 'Documento': user.documentPerson || '',
                 'Telefone': user.telephone || '',
                 'Celular': user.cell || '',

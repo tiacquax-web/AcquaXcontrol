@@ -30,6 +30,12 @@ export async function GET(req: NextRequest): Promise<Response> {
         });
 
         const isSystem = assignments.some(a => a.contextType === 'system');
+        const normalizeRole = (name?: string | null) =>
+            (name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        const isRestrictedManager = assignments.some((a) => {
+            const role = normalizeRole(a.Role?.name);
+            return role === 'sindico' || role === 'administradora';
+        }) && !isSystem;
         // Nomes dos papéis com contextType=system ex: ['Administrador'] ou ['Programador']
         const systemRoles = assignments
             .filter(a => a.contextType === 'system')
@@ -83,6 +89,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         return NextResponse.json({
             isSystem,
+            isRestrictedManager,
             systemRoles,
             apartments,
             blocks,

@@ -440,6 +440,10 @@ export async function createBulkResidentsUsers(
       email: normalizeEmail(user.email), // Normalizar email antes de salvar
       password: user.hashedPassword,
       mustUpdateCredentials: true,
+      preferences: {
+        temporaryPassword: user.password,
+        temporaryPasswordUpdatedAt: new Date().toISOString(),
+      },
       createdAt: new Date(),
       updatedAt: new Date(),
       createdByUserId: userId,

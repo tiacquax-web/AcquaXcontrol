@@ -919,8 +919,13 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 return { entity: company, status: 201, error: null };
 
             case PermissionableEntity.complex:
-                if (!hasSystemPermission && !contexts.companyIds.includes(data.companyId))
-                    return { entity: null, error: 'Não autorizado', status: 401 };
+                if (!hasSystemPermission) {
+                    const hasCompanyContext = !!data.companyId && contexts.companyIds.includes(data.companyId);
+                    const hasComplexContext = contexts.complexIds.length > 0;
+                    if (!hasCompanyContext && !hasComplexContext) {
+                        return { entity: null, error: 'Não autorizado', status: 401 };
+                    }
+                }
 
                 // Retorna erro se já houver com mesmo socialName ou CNPJ
                 const existingComplex = await prisma.complex.findFirst({

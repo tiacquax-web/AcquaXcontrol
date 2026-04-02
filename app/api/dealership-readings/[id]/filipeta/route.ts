@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateUserSession } from '@/lib/users';
 import prisma from '@/lib/prisma';
+import { userCanAccessComplex } from '@/lib/userAccess';
 
 // Helper function to get previous months
 const getPreviousMonths = (year: number, month: number, count: number) => {
@@ -41,6 +42,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Not Found: Dealership reading not found' }, { status: 404 });
     }
 
+    const canAccessComplex = await userCanAccessComplex(userId!, dealershipReading.complexId);
+    if (!canAccessComplex) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
     const currentReports = await prisma.apartmentConsumptionReport.findMany({
       where: { dealershipReadingId: dealershipReadingId, deletedAt: null },
       include: {
@@ -54,6 +60,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const order = req.nextUrl.searchParams.get('order') || 'block_apartment';
+    const search = (req.nextUrl.searchParams.get('search') || '').trim().toLowerCase();
 
     const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
     currentReports.sort((a, b) => {
@@ -77,7 +84,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return collator.compare(apartmentA, apartmentB);
     });
 
-    const apartmentIds = currentReports.map(r => r.apartmentId);
+    const scopedCurrentReports = search
+      ? currentReports.filter((report) => {
+          const blockName = report.apartment?.block?.name || '';
+          const apartmentName = report.apartment?.name || '';
+          return (
+            blockName.toLowerCase().includes(search) ||
+            apartmentName.toLowerCase().includes(search) ||
+            `bloco ${blockName}`.toLowerCase().includes(search) ||
+            `apto ${apartmentName}`.toLowerCase().includes(search)
+          );
+        })
+      : currentReports;
+
+    const apartmentIds = scopedCurrentReports.map(r => r.apartmentId);
     const firstReport = currentReports[0];
     const previousMonthRefs = getPreviousMonths(Number(firstReport.yearRef), Number(firstReport.monthRef), 6); // Fetch last 6 for safety
 
@@ -93,9 +113,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       include: {
         lastReading: true,
       },
-      orderBy: {
-        yearRef: 'desc',
-      },
+      orderBy: [
+        { yearRef: 'desc' },
+        { monthRef: 'desc' },
+      ],
     });
 
     const historicalReportsByApartment = historicalReports.reduce((acc, report) => {
@@ -106,7 +127,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return acc;
     }, {} as Record<string, any[]>);
 
-    const enrichedReports = currentReports.map(currentReport => {
+    const enrichedReports = scopedCurrentReports.map(currentReport => {
       const history = historicalReportsByApartment[currentReport.apartmentId] || [];
       // Sort history descending by date to easily find previous months
       history.sort((a, b) => {
