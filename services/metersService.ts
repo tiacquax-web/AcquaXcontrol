@@ -82,6 +82,12 @@ export const createMeter = async (meterData: any) => {
   try {
     meterData.initialReading = parseFloat(meterData.initialReading);
     meterData.yearManufacture = parseInt(meterData.yearManufacture);
+    if (Number.isNaN(meterData.yearManufacture)) {
+      delete meterData.yearManufacture;
+    }
+    if (meterData.groupLinkDeviceId) {
+      meterData.groupLinkDeviceId = String(meterData.groupLinkDeviceId).trim();
+    }
     const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/meters`, meterData);
     return response.data;
   } catch (error) {
@@ -94,6 +100,12 @@ export const updateMeter = async (meterId: string, meterData: any) => {
   try {
     meterData.initialReading = parseFloat(meterData.initialReading);
     meterData.yearManufacture = parseInt(meterData.yearManufacture);
+    if (Number.isNaN(meterData.yearManufacture)) {
+      delete meterData.yearManufacture;
+    }
+    if (meterData.groupLinkDeviceId) {
+      meterData.groupLinkDeviceId = String(meterData.groupLinkDeviceId).trim();
+    }
     const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/meters/${meterId}`, meterData);
     return response.data;
   } catch (error) {

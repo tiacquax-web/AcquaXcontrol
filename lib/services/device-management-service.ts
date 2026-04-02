@@ -361,6 +361,58 @@ export class DeviceManagementService {
     }
 
     /**
+     * Exclui dispositivos em lote respeitando filtros da tela.
+     */
+    static async bulkDeleteDevices(
+        userId: string,
+        filters: {
+            hasActiveLink?: boolean;
+            hasUnlinkedReadings?: boolean;
+        } = {}
+    ): Promise<{ success: boolean; deletedCount: number; error?: string }> {
+        try {
+            const { devices } = await this.findDevicesWithStatus(userId, {
+                hasActiveLink: filters.hasActiveLink,
+                hasUnlinkedReadings: filters.hasUnlinkedReadings,
+                take: 200000,
+                skip: 0,
+            });
+
+            if (devices.length === 0) {
+                return { success: true, deletedCount: 0 };
+            }
+
+            const ids = devices.map((d) => d.id);
+
+            // Remove vínculos ativos relacionados primeiro para evitar sujeira relacional.
+            await prisma.meterDeviceLink.updateMany({
+                where: {
+                    deviceId: { in: devices.map((d) => d.deviceId) },
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                data: {
+                    deletedAt: new Date(),
+                    updatedByUserId: userId,
+                },
+            });
+
+            const deleted = await prisma.iotDevice.deleteMany({
+                where: {
+                    id: { in: ids },
+                },
+            });
+
+            return { success: true, deletedCount: deleted.count };
+        } catch (error) {
+            return {
+                success: false,
+                deletedCount: 0,
+                error: error instanceof Error ? error.message : 'Erro desconhecido',
+            };
+        }
+    }
+
+    /**
      * Cria um novo link meter-device
      */
     static async createMeterDeviceLink(

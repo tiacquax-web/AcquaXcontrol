@@ -51,3 +51,12 @@ export async function deleteDeviceIot(id: string) {
     const { data } = await axios.delete(`${NEXT_PUBLIC_API_URL}/user/devices/${id}`);
     return data;
 }
+
+export async function deleteAllDevicesIot(filters: GetDevicesIotFilters) {
+    const { semLink, comLeiturasDesvinculadas } = filters || {};
+    const payload: Record<string, boolean> = {};
+    if (semLink) payload.semLink = true;
+    if (comLeiturasDesvinculadas) payload.comLeiturasDesvinculadas = true;
+    const { data } = await axios.post(`${NEXT_PUBLIC_API_URL}/user/devices/bulk-delete`, payload);
+    return data;
+}

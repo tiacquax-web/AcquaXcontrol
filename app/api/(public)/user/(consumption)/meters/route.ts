@@ -4,8 +4,53 @@ import { getUserContextsForActionOnEntity } from "@/lib/userContexts"
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ContextType, Meter } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
+import { DeviceManagementService } from "@/lib/services/device-management-service"
 // Aumenta o timeout para 60s (Vercel Hobby permite até 60s)
 export const maxDuration = 60;
+
+async function ensureGroupLinkLink(userId: string, meterId: string, groupLinkDeviceId?: string | null) {
+    const normalizedDeviceId = (groupLinkDeviceId || '').trim();
+    if (!normalizedDeviceId) return;
+
+    const device = await prisma.iotDevice.findFirst({
+        where: {
+            deviceId: normalizedDeviceId,
+            deletedAt: null,
+        },
+        select: {
+            deviceId: true,
+        }
+    });
+
+    if (!device) {
+        throw new Error(`ID Group Link '${normalizedDeviceId}' não encontrado em Dispositivos IoT.`);
+    }
+
+    const existingActiveLink = await prisma.meterDeviceLink.findFirst({
+        where: {
+            meterId,
+            deviceId: normalizedDeviceId,
+            deletedAt: null,
+            OR: [
+                { endDate: null },
+                { endDate: { gte: new Date() } }
+            ]
+        },
+        select: { id: true },
+    });
+
+    if (existingActiveLink) return;
+
+    const linkResult = await DeviceManagementService.createMeterDeviceLink(userId, {
+        meterId,
+        deviceId: normalizedDeviceId,
+        startDate: new Date(),
+    });
+
+    if (!linkResult.success) {
+        throw new Error(linkResult.error || 'Falha ao vincular medidor ao dispositivo Group Link.');
+    }
+}
 
 interface ValidationResult {
     errors: Array<{ row: number; message: string }>;
@@ -556,6 +601,14 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (body.register && typeof body.register === 'string') {
             body.register = body.register.toUpperCase();
         }
+        const groupLinkDeviceId = typeof body.groupLinkDeviceId === 'string'
+            ? body.groupLinkDeviceId.trim()
+            : '';
+        if (groupLinkDeviceId) {
+            body.groupLinkDeviceId = groupLinkDeviceId;
+        } else {
+            delete body.groupLinkDeviceId;
+        }
 
         // Attempt to create the entity
         const { entity, error: creationError, status: creationStatus } = await createEntity(userId, 'meter', body);
@@ -563,6 +616,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         // Error handling
         if (creationError) return NextResponse.json({ error: creationError }, { status: creationStatus });
         if (!entity) return NextResponse.json({ error: 'Internal Server Error - Entity not created' }, { status: 500 });
+
+        await ensureGroupLinkLink(userId, entity.id, groupLinkDeviceId);
 
         // Return the created entity data
         return NextResponse.json(entity);

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createDeviceIot, updateDeviceIot, deleteDeviceIot } from "@/services/devicesIotService";
+import { createDeviceIot, updateDeviceIot, deleteDeviceIot, deleteAllDevicesIot, GetDevicesIotFilters } from "@/services/devicesIotService";
 import type { IotDevice } from "@prisma/client";
 
 
@@ -46,5 +46,20 @@ export function useDeviceIotMutations(onChange?: () => void) {
     }
   }
 
-  return { createDevice, updateDevice, deleteDevice, isLoading, error };
+  async function deleteAllDevices(filters: GetDevicesIotFilters) {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await deleteAllDevicesIot(filters);
+      onChange?.();
+      return result;
+    } catch (err: any) {
+      setError(err);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return { createDevice, updateDevice, deleteDevice, deleteAllDevices, isLoading, error };
 }

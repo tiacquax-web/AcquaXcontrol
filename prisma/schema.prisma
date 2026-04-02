@@ -600,6 +600,7 @@ model Meter {
   yearManufacture           Int?        @db.Int
   main                      Boolean     @default(true)
   rotation                  String      @default("Crescente") // "Crescente" ou "Decrescente"
+  groupLinkDeviceId         String?     // ID do device na Group Link (device_id)
 
   apartmentId               String
   apartment                 Apartment   @relation(fields: [apartmentId], references: [id]) // Relacionamento com Apartment
@@ -643,6 +644,7 @@ model Meter {
   @@index([companyId])
   @@index([typeMeterId])
   @@index([register])
+  @@index([groupLinkDeviceId])
   @@index([status])
   
   // ÍNDICES COMPOSTOS PARA OTIMIZAÇÃO

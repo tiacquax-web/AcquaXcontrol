@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building, Building2, DoorClosed, Download, Gauge, HousePlus, Plus, Search, Upload } from "lucide-react"
+import { Building, Building2, DoorClosed, Download, Gauge, HousePlus, Plus, Search, Upload, Loader2 } from "lucide-react"
 import { useMeters, useMeterMutations } from "@/hooks/useMeters"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -308,6 +308,7 @@ export default function MetersPage() {
                         <TableHead>Local</TableHead>
                         <TableHead>Leitura Inicial</TableHead>
                         <TableHead>Ano de Fabricação</TableHead>
+                        <TableHead>ID Group Link</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -334,6 +335,9 @@ export default function MetersPage() {
                             <TableCell>
                               <Skeleton className="h-5 w-16" />
                             </TableCell>
+                            <TableCell>
+                              <Skeleton className="h-5 w-24" />
+                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
                                 <Skeleton className="h-8 w-16" />
@@ -358,6 +362,7 @@ export default function MetersPage() {
                         <TableHead>Local</TableHead>
                         <TableHead>Leitura Inicial</TableHead>
                         <TableHead>Ano de Fabricação</TableHead>
+                        <TableHead>ID Group Link</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -365,11 +370,11 @@ export default function MetersPage() {
                       {meters.length === 0 ? (
                         <TableRow>
                           {!filters.complex ? (
-                            <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+                            <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
                               Por favor, selecione um condomínio para visualizar os medidores
                             </TableCell>
                           ) : (
-                            <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+                            <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
                               Nenhum medidor encontrado
                             </TableCell>
                           )}
@@ -396,6 +401,9 @@ export default function MetersPage() {
                             <TableCell>{meter.location || "-"}</TableCell>
                             <TableCell>{meter.initialReading.toFixed(2)}</TableCell>
                             <TableCell>{meter.yearManufacture || "-"}</TableCell>
+                            <TableCell>
+                              {(meter as any).groupLinkDeviceId || "-"}
+                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
                                 <Button variant="outline" size="sm" onClick={() => handleEditMeter(meter)}>

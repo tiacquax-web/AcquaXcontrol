@@ -35,6 +35,7 @@ interface MeterModalProps {
 export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModalProps) {
     const [formData, setFormData] = useState<Partial<Meter>>({
         register: "",
+        groupLinkDeviceId: "",
         status: "Ativo",
         location: "",
         initialReading: 0,
@@ -164,6 +165,7 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
         } else {
             const defaultData = {
                 register: "",
+                groupLinkDeviceId: "",
                 status: "Ativo",
                 location: "",
                 initialReading: 0,
@@ -324,6 +326,16 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
                                                 value={formData.register || ""}
                                                 onChange={handleChange}
                                                 required
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="groupLinkDeviceId">ID Group Link (opcional)</Label>
+                                            <Input
+                                                id="groupLinkDeviceId"
+                                                name="groupLinkDeviceId"
+                                                value={(formData as any).groupLinkDeviceId || ""}
+                                                onChange={handleChange}
+                                                placeholder="Ex: 3617329729"
                                             />
                                         </div>
                                         <div className="space-y-2">

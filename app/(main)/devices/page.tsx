@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
-import { AlertCircle, Upload, FileSpreadsheet, CheckCircle, X } from "lucide-react";
+import { AlertCircle, Upload, FileSpreadsheet, CheckCircle, X, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import { Switch } from "@/components/ui/switch";
@@ -57,7 +57,7 @@ export default function DevicesPage() {
     const [pageSize, setPageSize] = useState(20);
 
     const { devices, isLoading, pagination, fetchDevices } = useDeviceIot(filters, currentPage, pageSize);
-    const { createDevice, updateDevice, deleteDevice } = useDeviceIotMutations();
+    const { createDevice, updateDevice, deleteDevice, deleteAllDevices, isLoading: mutationLoading } = useDeviceIotMutations();
 
     // Reset da página quando filtros mudarem
     useEffect(() => {
@@ -126,6 +126,36 @@ export default function DevicesPage() {
             await createDevice(device);
         }
         handleCloseModal();
+    };
+
+    const handleDeleteAllDevices = async () => {
+        const filterSummary = [
+            filters.semLink ? "sem vínculo ativo" : null,
+            filters.comLeiturasDesvinculadas ? "com leituras desvinculadas" : null,
+        ].filter(Boolean);
+        const filterText = filterSummary.length > 0 ? ` com filtro (${filterSummary.join(" + ")})` : "";
+
+        if (!window.confirm(`Tem certeza que deseja excluir TODOS os dispositivos${filterText}? Esta ação é irreversível.`)) {
+            return;
+        }
+
+        try {
+            const result = await deleteAllDevices({
+                semLink: filters.semLink,
+                comLeiturasDesvinculadas: filters.comLeiturasDesvinculadas,
+            });
+            toast({
+                title: "Exclusão em massa concluída",
+                description: `${result.deletedCount || 0} dispositivo(s) excluído(s).`,
+            });
+            await fetchDevices();
+        } catch (error: any) {
+            toast({
+                variant: "destructive",
+                title: "Erro ao excluir dispositivos",
+                description: error?.response?.data?.error || error?.message || "Erro desconhecido",
+            });
+        }
     };
 
     // Funções para importação
@@ -329,6 +359,14 @@ export default function DevicesPage() {
                                             </span>
                                         </div>
                                     )}
+                                    <Button
+                                        variant="destructive"
+                                        onClick={handleDeleteAllDevices}
+                                        disabled={isLoading || mutationLoading || pagination.total === 0}
+                                    >
+                                        {mutationLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                        Excluir Todos
+                                    </Button>
                                     <Button onClick={() => handleOpenModal()} className="w-auto">
                                         Novo Dispositivo
                                     </Button>
