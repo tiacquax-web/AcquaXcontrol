@@ -521,6 +521,15 @@ export default function LevantamentoPage() {
     return aptRows[0]; // morador sempre tem 1 unidade
   }, [isMorador, aptRows]);
 
+  // Quando um admin/síndico selecionar unidade específica, exibir a mesma visão detalhada
+  // usada para morador (fotos por mês + gráfico da unidade + resumo de média).
+  const selectedUnitRow = useMemo(() => {
+    if (selectedApartment === 'all') return null;
+    return filteredRows.find((row) => row.apartmentId === selectedApartment) || null;
+  }, [filteredRows, selectedApartment]);
+
+  const detailedUnitRow = isMorador ? moradorRow : selectedUnitRow;
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6 print:p-2">
@@ -817,7 +826,7 @@ export default function LevantamentoPage() {
       {/* ═══════════════════════════════════════════════════════════════════════
           VISTA DE ADMIN/SÍNDICO: tabela comparativa de todas as unidades
           ═══════════════════════════════════════════════════════════════════════ */}
-      {allLoaded && !isMorador && aptRows.length > 0 && (
+      {allLoaded && !isMorador && aptRows.length > 0 && !selectedRow && (
         <>
           {/* ── Cabeçalho do relatório (visível no print) ── */}
           <div className="hidden print:block mb-4">
@@ -1078,6 +1087,130 @@ export default function LevantamentoPage() {
           {/* Footer print */}
           <div className="hidden print:block text-xs text-gray-400 text-center mt-4">
             AcquaX Control — Levantamento de Consumo — {complexDisplayName} — Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}
+          </div>
+        </>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          VISTA DE UNIDADE SELECIONADA: filipetas + gráfico + média
+          ═══════════════════════════════════════════════════════════════════════ */}
+      {allLoaded && !isMorador && selectedRow && (
+        <>
+          <div className="hidden print:block mb-4">
+            <h2 className="text-lg font-bold">{complexDisplayName}</h2>
+            <p className="text-sm text-gray-600">
+              Bl. {selectedRow.blockName} — Ap. {selectedRow.aptName} — {selectedMonths[0]?.labelFull} a {selectedMonths[selectedMonths.length - 1]?.labelFull}
+            </p>
+            <p className="text-xs text-gray-400">Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}</p>
+          </div>
+
+          <div className="flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 print:hidden">
+            <div className="bg-teal-600 rounded-lg p-2">
+              <Building2 className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="font-bold text-teal-800 text-sm">
+                {complexDisplayName} — Bl. {selectedRow.blockName} / Ap. {selectedRow.aptName}
+              </p>
+              <p className="text-xs text-teal-600">
+                {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'} · Média {selectedRow.avgConsumption.toFixed(2)} m³/mês
+              </p>
+            </div>
+          </div>
+
+          {/* "Filipeta" da unidade para os meses selecionados */}
+          <div>
+            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2 print:text-base">
+              <Camera className="w-4 h-4 text-teal-500 print:hidden" />
+              Filipeta da Unidade por Mês
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 morador-cards-grid">
+              {selectedRow.months.map((m, mi) => (
+                <MeterPhotoCard
+                  key={mi}
+                  photoUrl={m.photoUrl}
+                  label={m.label}
+                  currReading={m.currReading}
+                  prevReading={m.prevReading}
+                  consumption={m.consumption}
+                  totalUnit={m.totalUnit}
+                  partial={m.partial}
+                  waterSewage={m.waterSewage}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Gráfico de consumo da unidade */}
+          <div className="bg-white border rounded-xl p-4 print:border-gray-400">
+            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-teal-500" />
+              Evolução do Consumo — {complexDisplayName} Bl.{selectedRow.blockName} Ap.{selectedRow.aptName}
+            </h3>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart
+                data={selectedRow.months.map((m) => ({ label: m.label, consumo: m.consumption ?? 0 }))}
+                margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} unit=" m³" width={60} />
+                <Tooltip formatter={(val: any) => [`${val} m³`, 'Consumo']} labelStyle={{ fontWeight: 'bold' }} />
+                <ReferenceLine
+                  y={selectedRow.avgConsumption}
+                  stroke="#94a3b8"
+                  strokeDasharray="4 4"
+                  label={{ value: 'Média', position: 'right', fontSize: 10, fill: '#94a3b8' }}
+                />
+                <Line type="monotone" dataKey="consumo" stroke="#0d9488" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Tabela de média e resumo da unidade */}
+          <div className="bg-white border rounded-xl overflow-hidden print:border-gray-400">
+            <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-blue-500" />
+                Média e Consumo da Unidade
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="px-3 py-2.5 text-left font-semibold text-gray-700 whitespace-nowrap">Unidade</th>
+                    {monthsData.map((m) => (
+                      <th key={m.label} className="px-3 py-2.5 text-center font-semibold text-gray-700 whitespace-nowrap min-w-[110px] border-l">
+                        {m.label}
+                      </th>
+                    ))}
+                    <th className="px-3 py-2.5 text-center font-semibold text-gray-700 whitespace-nowrap min-w-[90px] border-l bg-teal-50 text-teal-700">
+                      Média m³
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b bg-white">
+                    <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">
+                      Bl.{selectedRow.blockName} Ap.{selectedRow.aptName}
+                    </td>
+                    {selectedRow.months.map((m, mi) => (
+                      <td key={mi} className="px-3 py-2.5 text-center border-l">
+                        <span className={`font-semibold ${m.consumption != null ? 'text-gray-800' : 'text-gray-300'}`}>
+                          {fmt(m.consumption)}
+                        </span>
+                        <div className="text-gray-400 text-[10px]">m³</div>
+                      </td>
+                    ))}
+                    <td className="px-3 py-2.5 text-center border-l bg-teal-50">
+                      <span className="font-bold text-teal-700">{selectedRow.avgConsumption.toFixed(2)}</span>
+                      <div className="text-[10px] text-teal-400">m³/mês</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}
