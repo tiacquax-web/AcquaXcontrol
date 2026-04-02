@@ -55,12 +55,61 @@ Payload opcional:
 
 - `dryRun: true`: conecta/coleta/parseia, mas não grava no banco.
 
+## 3.1) Agendamento por condomínio (via Acquaxcontrol)
+
+Agora cada condomínio pode ter seu próprio agendamento da Group Link salvo no cadastro.
+
+Campos no condomínio:
+
+- `groupLinkEnabled` (liga/desliga)
+- `groupLinkScheduleTime` (HH:mm)
+- `groupLinkTimezone` (timezone IANA, ex.: `America/Sao_Paulo`)
+- `groupLinkTopic` (opcional; se vazio usa `GROUPLINK_MQTT_TOPIC`)
+
+No front:
+
+- Tela de **Condomínios** → editar condomínio → aba **Gestão** → seção **Integração Group Link**.
+
+Endpoints:
+
+- `GET /api/integrations/grouplink/schedules?complexId=<id>`
+- `PUT /api/integrations/grouplink/schedules` com body:
+
+```json
+{
+  "complexId": "uuid",
+  "enabled": true,
+  "scheduleTime": "03:10",
+  "timezone": "America/Sao_Paulo",
+  "topic": "message/seu-topico-opcional"
+}
+```
+
+Executar agendamentos vencidos:
+
+- `POST /api/integrations/grouplink/run-due`
+- requer header `x-grouplink-sync-secret`
+
+Esse endpoint varre condomínios habilitados e executa somente os que:
+
+- já chegaram no horário configurado do dia no timezone do condomínio
+- ainda **não** foram sincronizados hoje
+
 ## 4) Exemplo de agendamento 1x ao dia
 
 Exemplo usando `curl` (rodar em cron externo):
 
 ```bash
 curl -X POST "https://SEU_DOMINIO/api/integrations/grouplink/sync" \
+  -H "x-grouplink-sync-secret: SEU_SEGREDO" \
+  -H "content-type: application/json" \
+  -d '{}'
+```
+
+Se estiver usando agendamento por condomínio no Acquaxcontrol, prefira chamar:
+
+```bash
+curl -X POST "https://SEU_DOMINIO/api/integrations/grouplink/run-due" \
   -H "x-grouplink-sync-secret: SEU_SEGREDO" \
   -H "content-type: application/json" \
   -d '{}'

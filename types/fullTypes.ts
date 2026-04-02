@@ -1,6 +1,11 @@
 import { Complex, Block, Apartment, Meter, DealershipReading, Dealership, IotDevice, Reading } from "@prisma/client"
 
 export interface ComplexFull extends Complex {
+    groupLinkEnabled?: boolean;
+    groupLinkScheduleTime?: string | null;
+    groupLinkTimezone?: string | null;
+    groupLinkTopic?: string | null;
+    groupLinkLastSyncAt?: Date | null;
     _count?: {
         blocks?: number;
     };

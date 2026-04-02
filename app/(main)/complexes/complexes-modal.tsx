@@ -30,6 +30,10 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
     userPasswordPrefix?: string;
     userEmailPrefix?: string;
     userEmailDomain?: string;
+    groupLinkEnabled?: boolean;
+    groupLinkScheduleTime?: string;
+    groupLinkTimezone?: string;
+    groupLinkTopic?: string;
   }>({
     socialName: "",
     aliasName: "",
@@ -55,6 +59,10 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
     userPasswordPrefix: "",
     userEmailPrefix: "",
     userEmailDomain: "",
+    groupLinkEnabled: false,
+    groupLinkScheduleTime: "03:10",
+    groupLinkTimezone: "America/Sao_Paulo",
+    groupLinkTopic: "",
   })
 
   const [createdUsers, setCreatedUsers] = useState<Array<{
@@ -79,6 +87,10 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
         userPasswordPrefix: "",
         userEmailPrefix: "",
         userEmailDomain: "",
+        groupLinkEnabled: (complex as any).groupLinkEnabled ?? false,
+        groupLinkScheduleTime: (complex as any).groupLinkScheduleTime || "03:10",
+        groupLinkTimezone: (complex as any).groupLinkTimezone || "America/Sao_Paulo",
+        groupLinkTopic: (complex as any).groupLinkTopic || "",
       })
     } else {
       setFormData({
@@ -107,6 +119,10 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
         userPasswordPrefix: "",
         userEmailPrefix: "",
         userEmailDomain: "",
+        groupLinkEnabled: false,
+        groupLinkScheduleTime: "03:10",
+        groupLinkTimezone: "America/Sao_Paulo",
+        groupLinkTopic: "",
       })
     }
     // Limpar usuários criados quando o modal abrir/fechar ou trocar de condomínio
@@ -438,6 +454,56 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
                   <div className="space-y-2">
                     <Label htmlFor="companyId">Administradora</Label>
                     <CompaniesCombobox setSelectedCompany={handleSelectCompany} name="companyId" modal required />
+                  </div>
+                </div>
+                <div className="rounded-md border p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label htmlFor="groupLinkEnabled">Integração Group Link</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Agende o horário diário de coleta automática para este condomínio.
+                      </p>
+                    </div>
+                    <input
+                      id="groupLinkEnabled"
+                      type="checkbox"
+                      checked={!!formData.groupLinkEnabled}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, groupLinkEnabled: e.target.checked }))}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="groupLinkScheduleTime">Horário (HH:mm)</Label>
+                      <Input
+                        id="groupLinkScheduleTime"
+                        name="groupLinkScheduleTime"
+                        type="time"
+                        value={formData.groupLinkScheduleTime || ""}
+                        onChange={handleChange}
+                        disabled={!formData.groupLinkEnabled}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="groupLinkTimezone">Timezone</Label>
+                      <Input
+                        id="groupLinkTimezone"
+                        name="groupLinkTimezone"
+                        value={formData.groupLinkTimezone || ""}
+                        onChange={handleChange}
+                        disabled={!formData.groupLinkEnabled}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="groupLinkTopic">Tópico (opcional)</Label>
+                      <Input
+                        id="groupLinkTopic"
+                        name="groupLinkTopic"
+                        value={formData.groupLinkTopic || ""}
+                        onChange={handleChange}
+                        disabled={!formData.groupLinkEnabled}
+                        placeholder="message/seu-condominio"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

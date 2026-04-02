@@ -395,6 +395,13 @@ model Complex {
   apportionment             String        @default("Simples")
   status                    String        @default("Ativo")
 
+  // Integração Group Link (agendamento por condomínio)
+  groupLinkEnabled          Boolean       @default(false)
+  groupLinkScheduleTime     String?       // Formato HH:mm (24h), ex.: "03:10"
+  groupLinkTimezone         String?       @default("America/Sao_Paulo")
+  groupLinkTopic            String?       // Tópico específico do condomínio (opcional)
+  groupLinkLastSyncAt       DateTime?     @db.Timestamp
+
   deletedAt                 DateTime?     @db.Timestamp
   createdAt                 DateTime      @default(now()) @db.Timestamp
   updatedAt                 DateTime      @updatedAt @db.Timestamp

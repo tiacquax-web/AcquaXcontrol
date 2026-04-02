@@ -55,11 +55,14 @@ export interface GroupLinkSyncOptions {
   idleTimeoutMs?: number;
   maxMessages?: number;
   dryRun?: boolean;
+  topicOverride?: string;
+  sourceLabel?: string;
 }
 
 export interface GroupLinkSyncResult {
   connected: boolean;
   topic: string;
+  source: string;
   messagesCollected: number;
   candidatesParsed: number;
   devicesUpserted: number;
@@ -278,7 +281,8 @@ async function collectMqttMessages(params: {
 export class GroupLinkMqttService {
   static async syncOnce(options: GroupLinkSyncOptions = {}): Promise<GroupLinkSyncResult> {
     const startedAt = new Date();
-    const topic = getEnvOrThrow('GROUPLINK_MQTT_TOPIC');
+    const topic = options.topicOverride?.trim() || getEnvOrThrow('GROUPLINK_MQTT_TOPIC');
+    const source = options.sourceLabel?.trim() || 'default';
     const maxCollectionMs = options.maxCollectionMs ?? getNumericEnv('GROUPLINK_MQTT_MAX_COLLECTION_MS', DEFAULT_MAX_COLLECTION_MS);
     const idleTimeoutMs = options.idleTimeoutMs ?? getNumericEnv('GROUPLINK_MQTT_IDLE_TIMEOUT_MS', DEFAULT_IDLE_TIMEOUT_MS);
     const maxMessages = options.maxMessages ?? getNumericEnv('GROUPLINK_MQTT_MAX_MESSAGES', DEFAULT_MAX_MESSAGES);
@@ -310,6 +314,7 @@ export class GroupLinkMqttService {
       return {
         connected: collected.connected,
         topic,
+        source,
         messagesCollected: collected.messages.length,
         candidatesParsed: candidates.length,
         devicesUpserted: 0,
@@ -493,6 +498,7 @@ export class GroupLinkMqttService {
     return {
       connected: collected.connected,
       topic,
+      source,
       messagesCollected: collected.messages.length,
       candidatesParsed: candidates.length,
       devicesUpserted: deviceMap.size,
