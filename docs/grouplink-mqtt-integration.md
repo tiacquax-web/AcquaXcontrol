@@ -1,0 +1,89 @@
+# Integração Group Link via MQTT (coleta 1x ao dia)
+
+Este projeto agora possui integração nativa com o broker MQTT da Group Link, com autenticação por certificado e execução sob demanda (ideal para cron diário, sem stream contínuo).
+
+## 1) Pré-requisitos com a Group Link
+
+Conforme documentação deles:
+
+- Gerar CSR e chave privada localmente (`.key`).
+- Enviar o CSR para a Group Link.
+- Receber:
+  - certificado da CA: `grouplink-ca.crt`
+  - certificado de cliente assinado: `private.crt` (ou nome equivalente)
+
+Referência: documentação oficial da Group Link (MQTT/TLS por certificado).
+
+## 2) Configuração de ambiente
+
+No `.env` (base no `.env.example`), preencher:
+
+- `GROUPLINK_MQTT_HOST` (default: `mqtt.grouplinknetwork.com`)
+- `GROUPLINK_MQTT_PORT` (default: `8883`)
+- `GROUPLINK_MQTT_CLIENT_ID`
+- `GROUPLINK_MQTT_TOPIC` (ex.: `message/sua-org`)
+- `GROUPLINK_MQTT_CA_PATH` (path absoluto do `grouplink-ca.crt`)
+- `GROUPLINK_MQTT_CERT_PATH` (path absoluto do `.crt` do cliente)
+- `GROUPLINK_MQTT_KEY_PATH` (path absoluto da sua `.key`)
+- `GROUPLINK_SYNC_SECRET` (segredo para chamada do endpoint agendado)
+
+Opcional tuning:
+
+- `GROUPLINK_MQTT_CONNECT_TIMEOUT_MS`
+- `GROUPLINK_MQTT_MAX_COLLECTION_MS`
+- `GROUPLINK_MQTT_IDLE_TIMEOUT_MS`
+- `GROUPLINK_MQTT_MAX_MESSAGES`
+
+## 3) Endpoint de sincronização
+
+Rota implementada:
+
+- `POST /api/integrations/grouplink/sync`
+
+Autorização:
+
+- **Agendador/integração**: enviar header `x-grouplink-sync-secret` com valor de `GROUPLINK_SYNC_SECRET`.
+- **Uso manual**: usuário autenticado via sessão (cookie/bearer) também pode disparar.
+
+Payload opcional:
+
+```json
+{
+  "dryRun": true
+}
+```
+
+- `dryRun: true`: conecta/coleta/parseia, mas não grava no banco.
+
+## 4) Exemplo de agendamento 1x ao dia
+
+Exemplo usando `curl` (rodar em cron externo):
+
+```bash
+curl -X POST "https://SEU_DOMINIO/api/integrations/grouplink/sync" \
+  -H "x-grouplink-sync-secret: SEU_SEGREDO" \
+  -H "content-type: application/json" \
+  -d '{}'
+```
+
+Exemplo cron diário às 03:10:
+
+```cron
+10 3 * * * /usr/bin/curl -sS -X POST "https://SEU_DOMINIO/api/integrations/grouplink/sync" -H "x-grouplink-sync-secret: SEU_SEGREDO" -H "content-type: application/json" -d '{}'
+```
+
+## 5) O que a sincronização faz
+
+1. Conecta no MQTT com TLS mTLS (CA + cert + key).
+2. Assina o tópico configurado.
+3. Coleta mensagens por janela curta (timeout/idle/config).
+4. Normaliza mensagens para leituras.
+5. Deduplica por chave: `deviceId + readAt + reading`.
+6. Upsert em `IotDevice`.
+7. Resolve vínculo ativo `MeterDeviceLink` no instante da leitura.
+8. Insere em `Reading` com os campos IoT e contexto desnormalizado quando houver link.
+
+## 6) Observações importantes
+
+- A arquitetura continua suportando alto volume de mensagens no broker, mas seu sistema só consome quando o endpoint diário é chamado.
+- Se quiser reforço de idempotência em nível de banco, o próximo passo recomendado é criar uma chave única técnica para leitura IoT (ex.: hash persistido da leitura).
