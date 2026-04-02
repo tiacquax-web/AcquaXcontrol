@@ -7,7 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { Droplets, Calendar, Building2, DoorClosed, ZoomIn, X, Printer } from 'lucide-react';
+import { Droplets, Calendar, Building2, DoorClosed, ZoomIn, X } from 'lucide-react';
 
 interface MeterReportCardProps {
   report: MeterReportItem;
@@ -28,6 +28,21 @@ const parseDateYmd = (value?: string | null): Date | null => {
   if (!value) return null;
   const parsed = new Date(`${value}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const toValidDate = (value?: string | null): Date | null => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatDateSafely = (date: Date | null, pattern = 'dd/MM/yyyy'): string => {
+  if (!date) return '—';
+  try {
+    return format(date, pattern);
+  } catch {
+    return '—';
+  }
 };
 
 // ─── Modal de Foto Expandida ───────────────────────────────────────────────────
@@ -80,8 +95,8 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
 
   const { apartment, lastReading, history, dealershipReading } = report;
-  const complex = apartment?.block?.complex as any;
-  const block = apartment?.block as any;
+  const complex = apartment?.block?.complex;
+  const block = apartment?.block;
 
   const complexName = complex?.socialName || complex?.aliasName || 'Condomínio';
   const blockName = block?.name || '';
@@ -95,12 +110,19 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
   const prevReport1 = history?.[0];
   const prevReport2 = history?.[1];
 
-  const monthName = report.monthRef
-    ? format(new Date(Number(report.yearRef), Number(report.monthRef) - 1), 'MMMM', { locale: ptBR })
-    : '';
+  const monthNumber = Number(report.monthRef);
+  const yearNumber = Number(report.yearRef);
+  const monthDate =
+    Number.isFinite(monthNumber) &&
+    Number.isFinite(yearNumber) &&
+    monthNumber >= 1 &&
+    monthNumber <= 12
+      ? new Date(yearNumber, monthNumber - 1, 1)
+      : null;
+  const monthName = monthDate ? format(monthDate, 'MMMM', { locale: ptBR }) : '';
   const monthYearLabel = monthName
     ? `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} / ${report.yearRef}`
-    : `${report.monthRef}/${report.yearRef}`;
+    : `${String(report.monthRef || '').padStart(2, '0')}/${report.yearRef || '—'}`;
 
   const currentReadingDate = parseReadAtDate(lastReading?.readAtDate);
   const previousReadingDate = parseReadAtDate(prevReport1?.lastReading?.readAtDate);
@@ -112,12 +134,15 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
   const periodStartDate = previousReadingDate || derivedStartDate || null;
   const periodEndDate = currentReadingDate || null;
 
-  const periodStartFormatted = periodStartDate ? format(periodStartDate, 'dd/MM/yyyy') : '—';
-  const periodEndFormatted = periodEndDate ? format(periodEndDate, 'dd/MM/yyyy') : '—';
+  const periodStartFormatted = formatDateSafely(periodStartDate);
+  const periodEndFormatted = formatDateSafely(periodEndDate);
 
-  const nextReadingDateFormatted = lastReading?.nextReadingDate
-    ? format(parseDateYmd(lastReading.nextReadingDate) ?? new Date(lastReading.nextReadingDate), 'dd/MM/yyyy')
-    : '—';
+  const parsedNextReadingDate = lastReading?.nextReadingDate
+    ? parseDateYmd(lastReading.nextReadingDate) ??
+      parseReadAtDate(lastReading.nextReadingDate) ??
+      toValidDate(lastReading.nextReadingDate)
+    : null;
+  const nextReadingDateFormatted = formatDateSafely(parsedNextReadingDate);
 
   const emissionDate = format(new Date(), "dd/MM/yyyy 'às' HH:mm");
 
