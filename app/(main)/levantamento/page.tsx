@@ -826,7 +826,7 @@ export default function LevantamentoPage() {
       {/* ═══════════════════════════════════════════════════════════════════════
           VISTA DE ADMIN/SÍNDICO: tabela comparativa de todas as unidades
           ═══════════════════════════════════════════════════════════════════════ */}
-      {allLoaded && !isMorador && aptRows.length > 0 && !selectedRow && (
+      {allLoaded && !isMorador && aptRows.length > 0 && !selectedUnitRow && (
         <>
           {/* ── Cabeçalho do relatório (visível no print) ── */}
           <div className="hidden print:block mb-4">
@@ -1094,12 +1094,12 @@ export default function LevantamentoPage() {
       {/* ═══════════════════════════════════════════════════════════════════════
           VISTA DE UNIDADE SELECIONADA: filipetas + gráfico + média
           ═══════════════════════════════════════════════════════════════════════ */}
-      {allLoaded && !isMorador && selectedRow && (
+      {allLoaded && !isMorador && selectedUnitRow && (
         <>
           <div className="hidden print:block mb-4">
             <h2 className="text-lg font-bold">{complexDisplayName}</h2>
             <p className="text-sm text-gray-600">
-              Bl. {selectedRow.blockName} — Ap. {selectedRow.aptName} — {selectedMonths[0]?.labelFull} a {selectedMonths[selectedMonths.length - 1]?.labelFull}
+              Bl. {selectedUnitRow.blockName} — Ap. {selectedUnitRow.aptName} — {selectedMonths[0]?.labelFull} a {selectedMonths[selectedMonths.length - 1]?.labelFull}
             </p>
             <p className="text-xs text-gray-400">Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}</p>
           </div>
@@ -1110,10 +1110,10 @@ export default function LevantamentoPage() {
             </div>
             <div>
               <p className="font-bold text-teal-800 text-sm">
-                {complexDisplayName} — Bl. {selectedRow.blockName} / Ap. {selectedRow.aptName}
+                {complexDisplayName} — Bl. {selectedUnitRow.blockName} / Ap. {selectedUnitRow.aptName}
               </p>
               <p className="text-xs text-teal-600">
-                {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'} · Média {selectedRow.avgConsumption.toFixed(2)} m³/mês
+                {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'} · Média {selectedUnitRow.avgConsumption.toFixed(2)} m³/mês
               </p>
             </div>
           </div>
@@ -1125,7 +1125,7 @@ export default function LevantamentoPage() {
               Filipeta da Unidade por Mês
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 morador-cards-grid">
-              {selectedRow.months.map((m, mi) => (
+              {selectedUnitRow.months.map((m, mi) => (
                 <MeterPhotoCard
                   key={mi}
                   photoUrl={m.photoUrl}
@@ -1145,11 +1145,11 @@ export default function LevantamentoPage() {
           <div className="bg-white border rounded-xl p-4 print:border-gray-400">
             <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-teal-500" />
-              Evolução do Consumo — {complexDisplayName} Bl.{selectedRow.blockName} Ap.{selectedRow.aptName}
+              Evolução do Consumo — {complexDisplayName} Bl.{selectedUnitRow.blockName} Ap.{selectedUnitRow.aptName}
             </h3>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart
-                data={selectedRow.months.map((m) => ({ label: m.label, consumo: m.consumption ?? 0 }))}
+                data={selectedUnitRow.months.map((m) => ({ label: m.label, consumo: m.consumption ?? 0 }))}
                 margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -1157,7 +1157,7 @@ export default function LevantamentoPage() {
                 <YAxis tick={{ fontSize: 11 }} unit=" m³" width={60} />
                 <Tooltip formatter={(val: any) => [`${val} m³`, 'Consumo']} labelStyle={{ fontWeight: 'bold' }} />
                 <ReferenceLine
-                  y={selectedRow.avgConsumption}
+                  y={selectedUnitRow.avgConsumption}
                   stroke="#94a3b8"
                   strokeDasharray="4 4"
                   label={{ value: 'Média', position: 'right', fontSize: 10, fill: '#94a3b8' }}
@@ -1193,9 +1193,9 @@ export default function LevantamentoPage() {
                 <tbody>
                   <tr className="border-b bg-white">
                     <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">
-                      Bl.{selectedRow.blockName} Ap.{selectedRow.aptName}
+                      Bl.{selectedUnitRow.blockName} Ap.{selectedUnitRow.aptName}
                     </td>
-                    {selectedRow.months.map((m, mi) => (
+                    {selectedUnitRow.months.map((m, mi) => (
                       <td key={mi} className="px-3 py-2.5 text-center border-l">
                         <span className={`font-semibold ${m.consumption != null ? 'text-gray-800' : 'text-gray-300'}`}>
                           {fmt(m.consumption)}
@@ -1204,7 +1204,7 @@ export default function LevantamentoPage() {
                       </td>
                     ))}
                     <td className="px-3 py-2.5 text-center border-l bg-teal-50">
-                      <span className="font-bold text-teal-700">{selectedRow.avgConsumption.toFixed(2)}</span>
+                      <span className="font-bold text-teal-700">{selectedUnitRow.avgConsumption.toFixed(2)}</span>
                       <div className="text-[10px] text-teal-400">m³/mês</div>
                     </td>
                   </tr>
