@@ -137,7 +137,7 @@ const items = [
     url: "/users",
     icon: UsersRound,
     group: 'Cadastros',
-    requiresCreate: true,
+    requiresRead: true,
   },
   {
     title: "Papéis",
@@ -152,7 +152,7 @@ export function AppSidebar() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { permissions, loading } = usePermissionsContext();
 
-  function hasAnyPermission(url: string, requiresCreate?: boolean) {
+  function hasAnyPermission(url: string, requiresCreate?: boolean, requiresRead?: boolean) {
     // Dashboard sempre visível
     if (url === '/dashboard') return true;
     if (!permissions) return false;
@@ -161,6 +161,9 @@ export function AppSidebar() {
     if (!entity) return permissions.length > 0;
     if (requiresCreate) {
       return permissions.some((p: any) => p.entity === entity && p.action === 'create');
+    }
+    if (requiresRead) {
+      return permissions.some((p: any) => p.entity === entity && p.action === 'read');
     }
     return permissions.some((p: any) => p.entity === entity);
   }
@@ -172,7 +175,9 @@ export function AppSidebar() {
 
   const visibleGroups = groups.filter((group) =>
     items.some(
-      (item) => item.group === group && hasAnyPermission(item.url, (item as any).requiresCreate)
+      (item) =>
+        item.group === group &&
+        hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).requiresRead)
     )
   );
 
@@ -220,7 +225,11 @@ export function AppSidebar() {
                       .filter(
                         (item) =>
                           item.group === group &&
-                          hasAnyPermission(item.url, (item as any).requiresCreate)
+                          hasAnyPermission(
+                            item.url,
+                            (item as any).requiresCreate,
+                            (item as any).requiresRead
+                          )
                       )
                       .map((item) => (
                         <SidebarMenuItem key={item.title}>
