@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import FilipetaGridReport from '@/components/dealership-reading/FilipetaGridReport';
 import { usePermissionChecker } from '@/hooks/use-permission-checker';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const FilipetaPage = () => {
   const params = useParams();
@@ -18,8 +19,85 @@ const FilipetaPage = () => {
   const description = searchParams.get('description');
   const order = (searchParams.get('order') as 'block_apartment' | 'apartment_block' | null) || 'block_apartment';
   const [searchText, setSearchText] = React.useState('');
-  const { data, loading, error } = useDealershipFilipetaData({ dealershipReadingId: id, order, searchText });
+  const [selectedBlockId, setSelectedBlockId] = React.useState('all');
+  const [selectedApartmentId, setSelectedApartmentId] = React.useState('all');
+  const { data, loading, error } = useDealershipFilipetaData({ dealershipReadingId: id, order });
   const { hasPermission, loading: permissionsLoading } = usePermissionChecker();
+
+  const blockOptions = React.useMemo(() => {
+    if (!data?.list) return [];
+
+    const byId = new Map<string, string>();
+    data.list.forEach((report) => {
+      const blockId = report.apartment?.block?.id;
+      const blockName = report.apartment?.block?.name;
+      if (blockId && blockName && !byId.has(blockId)) {
+        byId.set(blockId, blockName);
+      }
+    });
+
+    return Array.from(byId.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' }));
+  }, [data?.list]);
+
+  const apartmentOptions = React.useMemo(() => {
+    if (!data?.list) return [];
+
+    const byId = new Map<string, { id: string; name: string; blockName: string; blockId: string }>();
+    data.list.forEach((report) => {
+      const apartmentId = report.apartment?.id;
+      const apartmentName = report.apartment?.name;
+      const blockName = report.apartment?.block?.name || '';
+      const blockId = report.apartment?.block?.id || '';
+      if (!apartmentId || !apartmentName) return;
+      if (selectedBlockId !== 'all' && blockId !== selectedBlockId) return;
+      if (!byId.has(apartmentId)) {
+        byId.set(apartmentId, { id: apartmentId, name: apartmentName, blockName, blockId });
+      }
+    });
+
+    return Array.from(byId.values()).sort((a, b) => {
+      const blockCmp = a.blockName.localeCompare(b.blockName, 'pt-BR', { numeric: true, sensitivity: 'base' });
+      if (blockCmp !== 0) return blockCmp;
+      return a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' });
+    });
+  }, [data?.list, selectedBlockId]);
+
+  React.useEffect(() => {
+    if (selectedApartmentId === 'all') return;
+    const stillExists = apartmentOptions.some((apartment) => apartment.id === selectedApartmentId);
+    if (!stillExists) {
+      setSelectedApartmentId('all');
+    }
+  }, [apartmentOptions, selectedApartmentId]);
+
+  const filteredReports = React.useMemo(() => {
+    if (!data?.list) return [];
+
+    const normalizedSearch = searchText.trim().toLowerCase();
+
+    return data.list.filter((report) => {
+      const blockId = report.apartment?.block?.id || '';
+      const apartmentId = report.apartment?.id || '';
+      const blockName = report.apartment?.block?.name || '';
+      const apartmentName = report.apartment?.name || '';
+
+      if (selectedBlockId !== 'all' && blockId !== selectedBlockId) return false;
+      if (selectedApartmentId !== 'all' && apartmentId !== selectedApartmentId) return false;
+      if (!normalizedSearch) return true;
+
+      return (
+        blockName.toLowerCase().includes(normalizedSearch) ||
+        apartmentName.toLowerCase().includes(normalizedSearch) ||
+        `bloco ${blockName}`.toLowerCase().includes(normalizedSearch) ||
+        `apto ${apartmentName}`.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [data?.list, searchText, selectedBlockId, selectedApartmentId]);
+
+  const hasActiveFilters =
+    !!searchText.trim() || selectedBlockId !== 'all' || selectedApartmentId !== 'all';
 
   const handlePrint = () => {
     window.print();
@@ -71,11 +149,11 @@ const FilipetaPage = () => {
       );
     }
 
-    if (data.list.length === 0) {
+    if (filteredReports.length === 0) {
       return (
         <div className="flex items-center justify-center p-10">
           <AlertTriangle className="h-8 w-8 mr-2" />
-          {searchText.trim()
+          {hasActiveFilters
             ? 'Nenhuma unidade encontrada com esse filtro.'
             : 'Nenhum relatório de apartamento encontrado para esta leitura.'}
         </div>
@@ -84,7 +162,7 @@ const FilipetaPage = () => {
 
     return (
       <div id="filipeta-body" className="space-y-0">
-        {data.list.map(report => (
+        {filteredReports.map(report => (
           <FilipetaGridReport 
             key={report.id || report.apartmentId} 
             report={report}
@@ -122,6 +200,41 @@ const FilipetaPage = () => {
               <X className="w-4 h-4" />
             </button>
           )}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
+          <Select
+            value={selectedBlockId}
+            onValueChange={(value) => {
+              setSelectedBlockId(value);
+              setSelectedApartmentId('all');
+            }}
+          >
+            <SelectTrigger className="bg-white">
+              <SelectValue placeholder="Filtrar por bloco" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os blocos</SelectItem>
+              {blockOptions.map((block) => (
+                <SelectItem key={block.id} value={block.id}>
+                  Bloco {block.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={selectedApartmentId} onValueChange={setSelectedApartmentId}>
+            <SelectTrigger className="bg-white">
+              <SelectValue placeholder="Filtrar por unidade" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as unidades</SelectItem>
+              {apartmentOptions.map((apartment) => (
+                <SelectItem key={apartment.id} value={apartment.id}>
+                  {`Bloco ${apartment.blockName} • Unidade ${apartment.name}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       {renderContent()}

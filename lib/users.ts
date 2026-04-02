@@ -4,6 +4,7 @@ import { getUserContextsForActionOnEntity } from './userContexts';
 import { createEntity, updateEntityData } from './userData';
 import { User } from '@prisma/client';
 import { NextRequest } from "next/server"
+import { getAccessibleUserIdsForAction } from './userAccess';
 
 // Função para normalizar email removendo acentos e caracteres especiais
 function normalizeEmail(email: string): string {
@@ -97,11 +98,13 @@ export async function updateUserPassword(id: string, password: string) {
 
 export async function updateUser(id: string, data: User, userId:string) {
   try {
-    const contexts = await getUserContextsForActionOnEntity(userId, 'user', 'update');
-    // TO-DO: O CERTO É COMPARAR O CONTEXTO (SE O USUÁRIO SENDO ATUALIZADO ESTÁ DENTRO DO CONTEXTO DO USUÁRIO QUE FAZ A REQUISIÇÃO)
-    // if (!contexts.system) {
-    //   throw new Error('Não autorizado');
-    // }
+    const access = await getAccessibleUserIdsForAction(userId, 'update');
+    if (!access.hasPermission) {
+      return { user: null, error: 'Não autorizado', status: 401 };
+    }
+    if (!access.isSystem && !access.userIds.includes(id)) {
+      return { user: null, error: 'Não autorizado', status: 401 };
+    }
 
     if (data.password) {
       validateNewPassword(data.password);

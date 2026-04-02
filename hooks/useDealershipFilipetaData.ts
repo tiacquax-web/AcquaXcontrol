@@ -4,12 +4,12 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { ApartmentWithConsumptionReport } from "@/types/apartment";
+import { AxiosError } from "axios";
 import { DealershipReadingFull } from "@/types/fullTypes";
 
 interface UseDealershipFilipetaDataProps {
   dealershipReadingId?: string;
   order?: 'block_apartment' | 'apartment_block';
-  searchText?: string;
 }
 
 // Define o tipo do relatório enriquecido para incluir o histórico
@@ -24,7 +24,7 @@ interface FilipetaData {
   dealershipReading: DealershipReadingFull; // Adiciona a propriedade que faltava
 }
 
-export const useDealershipFilipetaData = ({ dealershipReadingId, order, searchText }: UseDealershipFilipetaDataProps) => {
+export const useDealershipFilipetaData = ({ dealershipReadingId, order }: UseDealershipFilipetaDataProps) => {
   const [data, setData] = useState<FilipetaData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,12 +41,16 @@ export const useDealershipFilipetaData = ({ dealershipReadingId, order, searchTe
       try {
         const params: Record<string, string> = {};
         if (order) params.order = order;
-        if (searchText?.trim()) params.search = searchText.trim();
         const response = await axios.get<FilipetaData>(`/api/dealership-readings/${dealershipReadingId}/filipeta`, { params });
         setData(response.data);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Error fetching filipeta data:", err);
-        const errorMessage = err.response?.data?.message || err.message || "Ocorreu um erro ao buscar os dados da filipeta.";
+        const axiosError = err as AxiosError<{ message?: string; error?: string }>;
+        const errorMessage =
+          axiosError.response?.data?.message ||
+          axiosError.response?.data?.error ||
+          axiosError.message ||
+          "Ocorreu um erro ao buscar os dados da filipeta.";
         setError(errorMessage);
       } finally {
         setLoading(false);
@@ -54,7 +58,7 @@ export const useDealershipFilipetaData = ({ dealershipReadingId, order, searchTe
     };
 
     fetchFilipetaData();
-  }, [dealershipReadingId, order, searchText]);
+  }, [dealershipReadingId, order]);
 
   return { data, loading, error };
 };

@@ -31,9 +31,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
         if (!entityId) return NextResponse.json({ error: 'No entity id was informed. Set "entity_id" in the query params.' }, { status: 400 });
 
         console.log("######### Entity ID:", entityId)
+        const access = await getAccessibleUserIdsForAction(userId, 'update');
+        if (!access.hasPermission) {
+            return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+        }
+        if (!access.isSystem && !access.userIds.includes(entityId)) {
+            return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+        }
+
         // Attempt to update the entity
-        // const { entity: user, error: updateError, status: updateStatus } = await updateEntityData(userId, 'user', entityId, body);
-        const { user, error: updateError, status: updateStatus } = await updateUser(reqBody.id, body, userId);
+        const { user, error: updateError, status: updateStatus } = await updateUser(entityId, body, userId);
         if (updateError) return NextResponse.json({ error: updateError }, { status: updateStatus });
         if (!user) return NextResponse.json({ error: 'Internal Server Error - Entity not updated' }, { status: 500 });
 
@@ -44,7 +51,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
         // Return the updated entity data
         return NextResponse.json(user, {status: updateStatus});
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Log and handle unexpected errors
         console.error("Error updating user:", error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
@@ -89,7 +96,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
 
         // Return the deleted entity data
         return NextResponse.json(entity);
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Log and handle unexpected errors
         console.error("Error deleting user:", error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

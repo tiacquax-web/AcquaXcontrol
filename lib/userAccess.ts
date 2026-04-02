@@ -1,4 +1,4 @@
-import { ContextType, PermissionAction } from '@prisma/client';
+import { ContextType, PermissionAction, Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
 import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
 
@@ -80,7 +80,7 @@ export async function getAccessibleUserIdsForAction(userId: string, action: User
   }
   const apartmentIds = [...apartmentIdsSet];
 
-  const assignmentScopeOr: any[] = [
+  const assignmentScopeOr: Prisma.RoleAssignmentWhereInput[] = [
     ...(companyIds.length > 0
       ? [{ contextType: ContextType.company, contextId: { in: companyIds } }]
       : []),
@@ -206,14 +206,15 @@ export async function userCanAccessComplex(userId: string, complexId: string) {
 
 export function getTemporaryPasswordFromPreferences(preferences: unknown): string {
   if (!preferences || typeof preferences !== 'object' || Array.isArray(preferences)) return '';
-  const prefObj = preferences as Record<string, any>;
+  const prefObj = preferences as Record<string, unknown>;
 
   if (typeof prefObj.temporaryPassword === 'string') return prefObj.temporaryPassword;
   if (typeof prefObj.tempPassword === 'string') return prefObj.tempPassword;
   if (typeof prefObj.password === 'string' && prefObj.passwordSource === 'temporary') return prefObj.password;
-  if (prefObj.credentials && typeof prefObj.credentials === 'object') {
-    if (typeof prefObj.credentials.temporaryPassword === 'string') return prefObj.credentials.temporaryPassword;
-    if (typeof prefObj.credentials.password === 'string') return prefObj.credentials.password;
+  if (prefObj.credentials && typeof prefObj.credentials === 'object' && !Array.isArray(prefObj.credentials)) {
+    const credentials = prefObj.credentials as Record<string, unknown>;
+    if (typeof credentials.temporaryPassword === 'string') return credentials.temporaryPassword;
+    if (typeof credentials.password === 'string') return credentials.password;
   }
 
   return '';
