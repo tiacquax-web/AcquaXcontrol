@@ -272,6 +272,8 @@ export default function LevantamentoPage() {
   const [selectedComplexId, setSelectedComplexId] = useState<string | undefined>();
   const [selectedComplexObj, setSelectedComplexObj] = useState<any>(null);
   const [searchText, setSearchText] = useState('');
+  const [selectedBlock, setSelectedBlock] = useState('all');
+  const [selectedApartment, setSelectedApartment] = useState('all');
   const [expandedApt, setExpandedApt] = useState<string | null>(null);
 
   // ── Helpers de contexto ──────────────────────────────────────────────────────
@@ -375,6 +377,7 @@ export default function LevantamentoPage() {
   // ── Montar mapa de unidades → consumos por mês ───────────────────────────────
   interface AptRow {
     apartmentId: string;
+    blockId: string;
     aptName: string;
     blockName: string;
     months: Array<{
@@ -402,6 +405,7 @@ export default function LevantamentoPage() {
         if (!map.has(aptId)) {
           map.set(aptId, {
             apartmentId: aptId,
+            blockId: item.apartment?.block?.id ?? '',
             aptName: item.apartment?.name ?? '',
             blockName: item.apartment?.block?.name ?? '',
             months: monthsData.map(m2 => ({ label: m2.label, consumption: null, totalUnit: null, partial: null, waterSewage: null, prevReading: null, currReading: null, photoUrl: null })),
@@ -445,17 +449,52 @@ export default function LevantamentoPage() {
     });
   }, [allLoaded, monthsData]);
 
+  const blockOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    aptRows.forEach((row) => {
+      if (row.blockId && row.blockName && !byId.has(row.blockId)) {
+        byId.set(row.blockId, row.blockName);
+      }
+    });
+    return Array.from(byId.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' }));
+  }, [aptRows]);
+
+  const apartmentOptions = useMemo(() => {
+    const rows = selectedBlock === 'all'
+      ? aptRows
+      : aptRows.filter((row) => row.blockId === selectedBlock);
+    return rows
+      .map((row) => ({ apartmentId: row.apartmentId, aptName: row.aptName, blockName: row.blockName, blockId: row.blockId }))
+      .sort((a, b) => {
+        const blockCmp = a.blockName.localeCompare(b.blockName, 'pt-BR', { numeric: true, sensitivity: 'base' });
+        if (blockCmp !== 0) return blockCmp;
+        return a.aptName.localeCompare(b.aptName, 'pt-BR', { numeric: true, sensitivity: 'base' });
+      });
+  }, [aptRows, selectedBlock]);
+
+  useEffect(() => {
+    if (selectedApartment === 'all') return;
+    const stillExists = apartmentOptions.some((opt) => opt.apartmentId === selectedApartment);
+    if (!stillExists) setSelectedApartment('all');
+  }, [apartmentOptions, selectedApartment]);
+
   // Filtro por texto
   const filteredRows = useMemo(() => {
-    if (!searchText.trim()) return aptRows;
-    const q = searchText.toLowerCase();
-    return aptRows.filter(r =>
-      r.aptName.toLowerCase().includes(q) ||
-      r.blockName.toLowerCase().includes(q) ||
-      `bloco ${r.blockName}`.toLowerCase().includes(q) ||
-      `apto ${r.aptName}`.toLowerCase().includes(q)
-    );
-  }, [aptRows, searchText]);
+    const q = searchText.trim().toLowerCase();
+    return aptRows.filter((r) => {
+      if (selectedBlock !== 'all' && r.blockId !== selectedBlock) return false;
+      if (selectedApartment !== 'all' && r.apartmentId !== selectedApartment) return false;
+      if (!q) return true;
+      return (
+        r.aptName.toLowerCase().includes(q) ||
+        r.blockName.toLowerCase().includes(q) ||
+        `bloco ${r.blockName}`.toLowerCase().includes(q) ||
+        `apto ${r.aptName}`.toLowerCase().includes(q)
+      );
+    });
+  }, [aptRows, searchText, selectedBlock, selectedApartment]);
 
   // ── Dados para gráfico geral (consumo médio por mês) ─────────────────────────
   const chartData = useMemo(() => {
@@ -569,33 +608,91 @@ export default function LevantamentoPage() {
               <div className="flex gap-2 flex-wrap">
                 {userComplexes.map((cx: any) => (
                   <Button key={cx.id} variant={selectedComplexId === cx.id ? 'default' : 'outline'} size="sm"
-                    onClick={() => { setSelectedComplexId(cx.id); setSelectedComplexObj(cx); }}>
+                    onClick={() => {
+                      setSelectedComplexId(cx.id);
+                      setSelectedComplexObj(cx);
+                      setSearchText('');
+                      setSelectedBlock('all');
+                      setSelectedApartment('all');
+                    }}>
                     <Building2 className="w-3.5 h-3.5 mr-1.5" />
                     {cx.socialName || cx.aliasName}
                   </Button>
                 ))}
               </div>
             ) : (
-              <SelectComplex setSelectedComplex={(cx: any) => { setSelectedComplexId(cx?.id); setSelectedComplexObj(cx ?? null); }} complex={selectedComplexObj} autoSelectSingle={false} />
+              <SelectComplex
+                setSelectedComplex={(cx: any) => {
+                  setSelectedComplexId(cx?.id);
+                  setSelectedComplexObj(cx ?? null);
+                  setSearchText('');
+                  setSelectedBlock('all');
+                  setSelectedApartment('all');
+                }}
+                complex={selectedComplexObj}
+                autoSelectSingle={false}
+              />
             )}
           </div>
         )}
 
-        {/* Busca — só para não moradores */}
+        {/* Filtros de unidade — só para não moradores */}
         {!isMorador && allLoaded && aptRows.length > 0 && (
-          <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Buscar unidade</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              <Input value={searchText} onChange={e => setSearchText(e.target.value)}
-                placeholder="Bloco ou apartamento..." className="pl-9 pr-9" />
-              {searchText && (
-                <button onClick={() => setSearchText('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+          <>
+            <div className="flex flex-col gap-1 min-w-[180px]">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Bloco</label>
+              <Select
+                value={selectedBlock}
+                onValueChange={(value) => {
+                  setSelectedBlock(value);
+                  setSelectedApartment('all');
+                }}
+              >
+                <SelectTrigger className="w-44">
+                  <SelectValue placeholder="Todos os blocos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os blocos</SelectItem>
+                  {blockOptions.map((block) => (
+                    <SelectItem key={block.id} value={block.id}>
+                      Bloco {block.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </div>
+
+            <div className="flex flex-col gap-1 min-w-[220px]">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Unidade</label>
+              <Select value={selectedApartment} onValueChange={setSelectedApartment}>
+                <SelectTrigger className="w-56">
+                  <SelectValue placeholder="Todas as unidades" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as unidades</SelectItem>
+                  {apartmentOptions.map((apartment) => (
+                    <SelectItem key={apartment.apartmentId} value={apartment.apartmentId}>
+                      {`Bloco ${apartment.blockName} • Apto ${apartment.aptName}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1 flex-1 min-w-[220px]">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Buscar unidade</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <Input value={searchText} onChange={e => setSearchText(e.target.value)}
+                  placeholder="Bloco ou apartamento..." className="pl-9 pr-9" />
+                {searchText && (
+                  <button onClick={() => setSearchText('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
         )}
       </div>
 

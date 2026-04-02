@@ -13,13 +13,23 @@ import {
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
+import axios from "axios";
+
+type SidebarItem = {
+  title: string;
+  url: string;
+  icon: React.ComponentType<{ className?: string }>;
+  group: string;
+  requiresCreate?: boolean;
+  requiresRead?: boolean;
+};
 
 // ─── Menu items ───────────────────────────────────────────────────────────────
 // Regra: items sem requiresCreate aparecem para todos os perfis que têm
 //        permissão de leitura na entidade mapeada.
 //        Items com requiresCreate=true só aparecem para quem pode criar
 //        (admin, programador, síndico com permissão total).
-const items = [
+const items: SidebarItem[] = [
   {
     title: "Início",
     url: "/dashboard",
@@ -151,21 +161,56 @@ const items = [
 export function AppSidebar() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { permissions, loading } = usePermissionsContext();
+  const [canViewUsersByContext, setCanViewUsersByContext] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    async function resolveUsersVisibility() {
+      try {
+        const res = await axios.get('/api/auth/my-context', { withCredentials: true });
+        const data = res.data as {
+          isSystem?: boolean;
+          apartments?: Array<{ id: string }>;
+          blocks?: Array<{ id: string }>;
+          complexes?: Array<{ id: string }>;
+          companyIds?: string[];
+        };
+        const hasContextScope =
+          !!data?.isSystem ||
+          (data?.companyIds?.length || 0) > 0 ||
+          (data?.complexes?.length || 0) > 0 ||
+          (data?.blocks?.length || 0) > 0 ||
+          (data?.apartments?.length || 0) > 0;
+        if (!cancelled) setCanViewUsersByContext(hasContextScope);
+      } catch {
+        if (!cancelled) setCanViewUsersByContext(false);
+      }
+    }
+    resolveUsersVisibility();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const permissionsList = Array.isArray(permissions)
+    ? (permissions as Array<{ entity?: string | null; action?: string | null }>)
+    : [];
 
   function hasAnyPermission(url: string, requiresCreate?: boolean, requiresRead?: boolean) {
+    if (url === '/users' && canViewUsersByContext) return true;
     // Dashboard sempre visível
     if (url === '/dashboard') return true;
-    if (!permissions) return false;
+    if (!permissionsList.length) return false;
     const entity = sidebarPermissionMap[url];
     // URL sem mapeamento de entidade → visível se tiver qualquer permissão
-    if (!entity) return permissions.length > 0;
+    if (!entity) return permissionsList.length > 0;
     if (requiresCreate) {
-      return permissions.some((p: any) => p.entity === entity && p.action === 'create');
+      return permissionsList.some((p) => p.entity === entity && p.action === 'create');
     }
     if (requiresRead) {
-      return permissions.some((p: any) => p.entity === entity && p.action === 'read');
+      return permissionsList.some((p) => p.entity === entity && p.action === 'read');
     }
-    return permissions.some((p: any) => p.entity === entity);
+    return permissionsList.some((p) => p.entity === entity);
   }
 
   const groups = items.reduce<string[]>((acc, item) => {
@@ -177,7 +222,7 @@ export function AppSidebar() {
     items.some(
       (item) =>
         item.group === group &&
-        hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).requiresRead)
+        hasAnyPermission(item.url, item.requiresCreate, item.requiresRead)
     )
   );
 
@@ -227,8 +272,8 @@ export function AppSidebar() {
                           item.group === group &&
                           hasAnyPermission(
                             item.url,
-                            (item as any).requiresCreate,
-                            (item as any).requiresRead
+                            item.requiresCreate,
+                            item.requiresRead
                           )
                       )
                       .map((item) => (
