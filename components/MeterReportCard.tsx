@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Image from 'next/image';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { MeterReportItem } from '@/hooks/useMeterReport';
@@ -208,13 +207,12 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
 
               {/* ── Versão TELA (oculta no print via CSS) ── */}
               <div className="meter-photo-screen relative w-full h-[280px] sm:h-[200px] overflow-hidden bg-black">
-                <Image
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
                   src={photoUrl}
                   alt="Foto do medidor"
-                  fill
-                  sizes="(max-width: 640px) 100vw, 176px"
-                  className="object-contain transition-transform duration-300 group-hover:scale-105"
-                  priority
+                  className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+                  loading="lazy"
                 />
                 {/* Overlay hover + ícone de zoom */}
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
