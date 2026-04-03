@@ -108,6 +108,48 @@ function getNumericEnv(name: string, fallback: number): number {
   return parsed;
 }
 
+function normalizePemRaw(value: string): string {
+  return value.replace(/\\n/g, '\n').trim();
+}
+
+async function resolveTlsMaterial(params: {
+  label: string;
+  base64Env: string;
+  pemEnv: string;
+  pathEnv: string;
+}): Promise<Buffer> {
+  const base64Raw = process.env[params.base64Env]?.trim();
+  if (base64Raw) {
+    try {
+      const decoded = Buffer.from(base64Raw, 'base64');
+      if (!decoded.length) {
+        throw new Error('conteúdo vazio');
+      }
+      return decoded;
+    } catch (error) {
+      throw new Error(
+        `Falha ao decodificar ${params.label} em ${params.base64Env}: ${
+          error instanceof Error ? error.message : 'erro desconhecido'
+        }`,
+      );
+    }
+  }
+
+  const pemRaw = process.env[params.pemEnv]?.trim();
+  if (pemRaw) {
+    return Buffer.from(normalizePemRaw(pemRaw), 'utf-8');
+  }
+
+  const filePath = process.env[params.pathEnv]?.trim();
+  if (filePath) {
+    return readFile(filePath);
+  }
+
+  throw new Error(
+    `Credencial TLS ausente para ${params.label}. Configure um destes: ${params.base64Env}, ${params.pemEnv} ou ${params.pathEnv}.`,
+  );
+}
+
 function parseGroupLinkPayload(rawPayload: string): GroupLinkRootMessage | null {
   try {
     const parsed: unknown = JSON.parse(rawPayload);
@@ -192,14 +234,25 @@ async function collectMqttMessages(params: {
   const host = process.env.GROUPLINK_MQTT_HOST?.trim() || 'mqtt.grouplinknetwork.com';
   const port = getNumericEnv('GROUPLINK_MQTT_PORT', 8883);
   const clientId = getEnvOrThrow('GROUPLINK_MQTT_CLIENT_ID');
-  const caPath = getEnvOrThrow('GROUPLINK_MQTT_CA_PATH');
-  const certPath = getEnvOrThrow('GROUPLINK_MQTT_CERT_PATH');
-  const keyPath = getEnvOrThrow('GROUPLINK_MQTT_KEY_PATH');
-
   const [ca, cert, key] = await Promise.all([
-    readFile(caPath),
-    readFile(certPath),
-    readFile(keyPath),
+    resolveTlsMaterial({
+      label: 'CA Group Link',
+      base64Env: 'GROUPLINK_MQTT_CA_BASE64',
+      pemEnv: 'GROUPLINK_MQTT_CA_PEM',
+      pathEnv: 'GROUPLINK_MQTT_CA_PATH',
+    }),
+    resolveTlsMaterial({
+      label: 'certificado de cliente Group Link',
+      base64Env: 'GROUPLINK_MQTT_CERT_BASE64',
+      pemEnv: 'GROUPLINK_MQTT_CERT_PEM',
+      pathEnv: 'GROUPLINK_MQTT_CERT_PATH',
+    }),
+    resolveTlsMaterial({
+      label: 'chave privada Group Link',
+      base64Env: 'GROUPLINK_MQTT_KEY_BASE64',
+      pemEnv: 'GROUPLINK_MQTT_KEY_PEM',
+      pathEnv: 'GROUPLINK_MQTT_KEY_PATH',
+    }),
   ]);
 
   const connectTimeout = getNumericEnv('GROUPLINK_MQTT_CONNECT_TIMEOUT_MS', 12_000);

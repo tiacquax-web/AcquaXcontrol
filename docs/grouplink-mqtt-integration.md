@@ -22,9 +22,15 @@ No `.env` (base no `.env.example`), preencher:
 - `GROUPLINK_MQTT_PORT` (default: `8883`)
 - `GROUPLINK_MQTT_CLIENT_ID`
 - `GROUPLINK_MQTT_TOPIC` (ex.: `message/sua-org`)
-- `GROUPLINK_MQTT_CA_PATH` (path absoluto do `grouplink-ca.crt`)
-- `GROUPLINK_MQTT_CERT_PATH` (path absoluto do `.crt` do cliente)
-- `GROUPLINK_MQTT_KEY_PATH` (path absoluto da sua `.key`)
+- Certificados (escolha **uma** abordagem):
+  - **A) Arquivo em disco** (servidor tradicional):
+    - `GROUPLINK_MQTT_CA_PATH` (path absoluto do `grouplink-ca.crt`)
+    - `GROUPLINK_MQTT_CERT_PATH` (path absoluto do `.crt` do cliente)
+    - `GROUPLINK_MQTT_KEY_PATH` (path absoluto da sua `.key`)
+  - **B) Variável de ambiente (recomendado para Vercel)**:
+    - `GROUPLINK_MQTT_CA_PEM` **ou** `GROUPLINK_MQTT_CA_B64`
+    - `GROUPLINK_MQTT_CERT_PEM` **ou** `GROUPLINK_MQTT_CERT_B64`
+    - `GROUPLINK_MQTT_KEY_PEM` **ou** `GROUPLINK_MQTT_KEY_B64`
 - `GROUPLINK_SYNC_SECRET` (segredo para chamada do endpoint agendado)
 
 Opcional tuning:
@@ -120,6 +126,21 @@ Exemplo cron diário às 03:10:
 ```cron
 10 3 * * * /usr/bin/curl -sS -X POST "https://SEU_DOMINIO/api/integrations/grouplink/sync" -H "x-grouplink-sync-secret: SEU_SEGREDO" -H "content-type: application/json" -d '{}'
 ```
+
+### 4.1) Agendamento no Vercel (sem servidor próprio)
+
+Se você usa Vercel, prefira **Vercel Cron Jobs** chamando:
+
+- `POST /api/integrations/grouplink/run-due`
+- header `x-grouplink-sync-secret: ...`
+
+Como o Vercel Cron não envia header customizado nativamente, você pode usar query param:
+
+```bash
+https://SEU_DOMINIO/api/integrations/grouplink/run-due?secret=SEU_SEGREDO
+```
+
+> O endpoint já aceita `secret` por query string.
 
 ## 5) O que a sincronização faz
 
