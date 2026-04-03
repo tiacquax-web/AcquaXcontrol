@@ -6,13 +6,14 @@ import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert"
-import { AlertCircle, Upload, X, FileSpreadsheet, Loader2, Trash2 } from "lucide-react"
+import { AlertCircle, Upload, X, FileSpreadsheet, Loader2, Trash2, Download } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Progress } from "./ui/progress"
 import * as XLSX from "xlsx"
 import { useMeterMutations } from "@/hooks/useMeters"
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "./ui/table"
 import { getTypeMeters } from "@/services/typemetersService"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"
 
 interface ImportMetersDialogProps {
     open: boolean
@@ -43,6 +44,7 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
     const [importRows, setImportRows] = useState<any[] | null>(null)
     const [invalidRows, setInvalidRows] = useState<InvalidRow[]>([])
     const [availableTypes, setAvailableTypes] = useState<{ id: string; name: string; acronym: string }[]>([])
+    const [importMode, setImportMode] = useState<'upsert' | 'updateOnly' | 'createOnly'>('upsert')
     const fileInputRef = useRef<HTMLInputElement>(null)
     const { createMetersFromSheet, loading: loadingMutation } = useMeterMutations()
 
@@ -346,7 +348,7 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
         setProgress(0)
         setErrors([])
         try {
-            const result = await createMetersFromSheet(importRows)
+            const result = await createMetersFromSheet(importRows, importMode)
             // Se o backend retornar erro de importação em massa (status 400), pode vir como { error, details, created }
             if (result.errors && result.errors.length > 0) {
                 setErrors(result.errors)
@@ -390,6 +392,44 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
         } finally {
             setIsUploading(false)
         }
+    }
+
+    const handleDownloadTemplate = async () => {
+        const template = [
+            {
+                chassi: "ABC123456",
+                tipo: "Água Fria",
+                condominio: "Residencial Exemplo",
+                bloco: "A",
+                apartamento: "101",
+                localizacao: "Cozinha",
+                leitura_inicial: 0,
+                ano_fabricacao: 2024,
+                principal: "Sim",
+                rotacao: "Crescente",
+                id_group_link: "3617329729",
+                marca_iot: "GL",
+            },
+            {
+                chassi: "XYZ987654",
+                tipo: "Água Quente",
+                condominio: "Residencial Exemplo",
+                bloco: "A",
+                apartamento: "102",
+                localizacao: "Área de serviço",
+                leitura_inicial: 12.35,
+                ano_fabricacao: 2023,
+                principal: "Não",
+                rotacao: "Crescente",
+                id_group_link: "",
+                marca_iot: "TIM",
+            }
+        ];
+
+        const worksheet = XLSX.utils.json_to_sheet(template);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Medidores");
+        XLSX.writeFile(workbook, "modelo_importacao_medidores.xlsx");
     }
 
     const resetFileInput = () => {
@@ -436,7 +476,29 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
                                         <X className="h-4 w-4" />
                                     </Button>
                                 )}
+                                <Button type="button" variant="outline" onClick={handleDownloadTemplate}>
+                                    <Download className="mr-2 h-4 w-4" />
+                                    Modelo
+                                </Button>
                             </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Modo de importação</Label>
+                            <Select value={importMode} onValueChange={(value) => setImportMode(value as 'upsert' | 'updateOnly' | 'createOnly')}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Selecione o modo" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="upsert">Atualizar e criar</SelectItem>
+                                    <SelectItem value="updateOnly">Apenas atualizar existentes</SelectItem>
+                                    <SelectItem value="createOnly">Apenas criar novos</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                                {importMode === 'upsert' && 'Atualiza medidores existentes e cria os que não existem.'}
+                                {importMode === 'updateOnly' && 'Atualiza somente medidores já cadastrados; os novos serão ignorados.'}
+                                {importMode === 'createOnly' && 'Cria somente medidores novos; os já existentes serão ignorados.'}
+                            </p>
                         </div>
                         {file && (
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -602,6 +664,8 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
                                 <li>ano_fabricacao (opcional)</li>
                                 <li>principal (Sim/Não)</li>
                                 <li>rotacao (Crescente/Decrescente)</li>
+                                <li>group_link_device_id (opcional)</li>
+                                <li>iot_brand (opcional: GL, TIM, ARQDATA)</li>
                             </ul>
                         </div>
                     </div>

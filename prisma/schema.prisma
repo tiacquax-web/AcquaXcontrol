@@ -600,6 +600,7 @@ model Meter {
   yearManufacture           Int?        @db.Int
   main                      Boolean     @default(true)
   rotation                  String      @default("Crescente") // "Crescente" ou "Decrescente"
+  iotBrand                  String?     @default("GL") // GL, TIM, ARQDATA
   groupLinkDeviceId         String?     // ID do device na Group Link (device_id)
 
   apartmentId               String

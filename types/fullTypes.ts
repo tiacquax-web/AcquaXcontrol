@@ -58,6 +58,8 @@ export interface DealershipReadingFull extends DealershipReading {
 }
 
 export interface MeterFull extends Meter {
+    groupLinkDeviceId?: string | null;
+    iotBrand?: string | null;
     apartment?: {
         id: string;
         name: string;

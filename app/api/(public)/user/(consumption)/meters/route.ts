@@ -200,6 +200,14 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
         const rowAnoFabricacao = row.ano_fabricacao !== undefined && row.ano_fabricacao !== null && row.ano_fabricacao !== '' ? Number(row.ano_fabricacao) : undefined;
         const rowPrincipal = typeof row.principal === 'string' ? row.principal.trim().toLowerCase() === 'sim' : !!row.principal;
         const rowRotacao = row.rotacao === 'Crescente' || row.rotacao === 'Decrescente' ? row.rotacao : undefined;
+        const rowGroupLinkDeviceId = row.group_link_device_id !== undefined && row.group_link_device_id !== null
+            ? String(row.group_link_device_id).trim()
+            : '';
+        const rowIotBrandRaw = row.iot_brand !== undefined && row.iot_brand !== null
+            ? String(row.iot_brand).trim().toUpperCase()
+            : '';
+        const allowedBrands = ['GL', 'TIM', 'ARQDATA'];
+        const rowIotBrand = rowIotBrandRaw && allowedBrands.includes(rowIotBrandRaw) ? rowIotBrandRaw : 'GL';
 
         // Validação dos obrigatórios
         if (!rowChassi || rowChassi === '') {
@@ -262,6 +270,11 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
             continue;
         }
 
+        if (rowIotBrandRaw && !allowedBrands.includes(rowIotBrandRaw)) {
+            errors.push({ row: idx + 2, message: `Marca IoT inválida '${rowIotBrandRaw}'. Use GL, TIM ou ARQDATA.` });
+            continue;
+        }
+
         // Monta o objeto Meter
         const meterData: Partial<Meter> = {
             register: rowChassi.toUpperCase(), // Sempre salva em uppercase
@@ -272,6 +285,8 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
             yearManufacture: rowAnoFabricacao,
             main: rowPrincipal,
             rotation: rowRotacao,
+            groupLinkDeviceId: rowGroupLinkDeviceId || undefined,
+            iotBrand: rowIotBrand,
             status: row.status || 'Ativo',
         };
 
@@ -290,7 +305,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
             register: { in: allRegistersUpper },
             deletedAt: null
         },
-        select: { id: true, register: true, apartmentId: true, status: true, location: true, initialReading: true, yearManufacture: true, main: true, rotation: true }
+        select: { id: true, register: true, apartmentId: true, status: true, location: true, initialReading: true, yearManufacture: true, main: true, rotation: true, groupLinkDeviceId: true, iotBrand: true }
     });
 
     // Criar Map para busca O(1) otimizada - usando uppercase para chave
@@ -311,7 +326,9 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
                 existing.initialReading !== item.data.initialReading ||
                 existing.yearManufacture !== item.data.yearManufacture ||
                 existing.main !== item.data.main ||
-                existing.rotation !== item.data.rotation;
+                existing.rotation !== item.data.rotation ||
+                (existing.groupLinkDeviceId || '') !== (item.data.groupLinkDeviceId || '') ||
+                (existing.iotBrand || 'GL') !== (item.data.iotBrand || 'GL');
 
             if (needsUpdate) {
                 toUpdate.push({ 
@@ -322,7 +339,9 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
                         initialReading: item.data.initialReading,
                         yearManufacture: item.data.yearManufacture,
                         main: item.data.main,
-                        rotation: item.data.rotation
+                        rotation: item.data.rotation,
+                        groupLinkDeviceId: item.data.groupLinkDeviceId,
+                        iotBrand: item.data.iotBrand,
                     }, 
                     existingId: existing.id 
                 });
@@ -352,7 +371,8 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
 async function executeMetersBatch(
     userId: string, 
     toCreate: Array<{ rowIndex: number; data: any }>, 
-    toUpdate: Array<{ rowIndex: number; data: any; existingId: string }>
+    toUpdate: Array<{ rowIndex: number; data: any; existingId: string }>,
+    mode: 'upsert' | 'updateOnly' | 'createOnly'
 ): Promise<ExecutionResult> {
     const errors: Array<{ row: number; message: string }> = [];
     const created: any[] = [];
@@ -360,7 +380,7 @@ async function executeMetersBatch(
 
 
     // Executa criações em lote
-    if (toCreate.length > 0) {
+    if (mode !== 'updateOnly' && toCreate.length > 0) {
         try {
             const bulkData = toCreate.map(item => cleanEntityBody(item.data));
             const { entity, error: creationError, status } = await bulkCreateEntity(userId, 'meter', bulkData);
@@ -407,7 +427,7 @@ async function executeMetersBatch(
     }
 
     // Executa atualizações em lote com Promise.all (paralelo, ~7s para 120 registros)
-    if (toUpdate.length > 0) {
+    if (mode !== 'createOnly' && toUpdate.length > 0) {
         try {
             const updatePromises = toUpdate.map(item => {
                 const updateData = cleanEntityBody({ ...item.data });
@@ -543,6 +563,9 @@ export async function POST(req: NextRequest): Promise<Response> {
         // Batch import logic
         if (Array.isArray(reqBody.rows)) {
             if (reqBody.rows.length === 0) return NextResponse.json({ error: 'Lista vazia.' }, { status: 400 });
+            const mode = reqBody.mode === 'updateOnly' || reqBody.mode === 'createOnly' || reqBody.mode === 'upsert'
+                ? reqBody.mode
+                : 'upsert';
 
             // Etapa 0: Verificar se o usuário tem permissão para importar medidores
             const contexts = await getUserContextsForActionOnEntity(userId, 'meter', 'create');
@@ -573,7 +596,8 @@ export async function POST(req: NextRequest): Promise<Response> {
             const executionResult = await executeMetersBatch(
                 userId, 
                 validationResult.toCreate, 
-                validationResult.toUpdate
+                validationResult.toUpdate,
+                mode
             );
 
             if (executionResult.errors.length > 0) {
@@ -600,6 +624,9 @@ export async function POST(req: NextRequest): Promise<Response> {
         // Garantir que o register seja salvo em uppercase
         if (body.register && typeof body.register === 'string') {
             body.register = body.register.toUpperCase();
+        }
+        if (body.iotBrand && typeof body.iotBrand === 'string') {
+            body.iotBrand = body.iotBrand.trim().toUpperCase();
         }
         const groupLinkDeviceId = typeof body.groupLinkDeviceId === 'string'
             ? body.groupLinkDeviceId.trim()

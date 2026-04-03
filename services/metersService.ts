@@ -88,6 +88,12 @@ export const createMeter = async (meterData: any) => {
     if (meterData.groupLinkDeviceId) {
       meterData.groupLinkDeviceId = String(meterData.groupLinkDeviceId).trim();
     }
+    const normalizedBrand = meterData.iotBrand ? String(meterData.iotBrand).trim().toUpperCase() : '';
+    if (normalizedBrand) {
+      meterData.iotBrand = normalizedBrand;
+    } else {
+      delete meterData.iotBrand;
+    }
     const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/meters`, meterData);
     return response.data;
   } catch (error) {
@@ -105,6 +111,12 @@ export const updateMeter = async (meterId: string, meterData: any) => {
     }
     if (meterData.groupLinkDeviceId) {
       meterData.groupLinkDeviceId = String(meterData.groupLinkDeviceId).trim();
+    }
+    const normalizedBrand = meterData.iotBrand ? String(meterData.iotBrand).trim().toUpperCase() : '';
+    if (normalizedBrand) {
+      meterData.iotBrand = normalizedBrand;
+    } else {
+      delete meterData.iotBrand;
     }
     const response = await axios.put(`${NEXT_PUBLIC_API_URL}/user/meters/${meterId}`, meterData);
     return response.data;

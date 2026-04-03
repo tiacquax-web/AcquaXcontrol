@@ -76,6 +76,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
         if (body.register && typeof body.register === 'string') {
             body.register = body.register.toUpperCase();
         }
+        if (body.iotBrand && typeof body.iotBrand === 'string') {
+            body.iotBrand = body.iotBrand.trim().toUpperCase();
+        }
 
         // if (body.location) delete body.location; // Remove location if present in the body
         // if (body.deviceId) delete body.deviceId; // Remove deviceId if present in the body
@@ -83,6 +86,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
         // console.log("######### Request body!", body);
 
         // body.initialReading = body.initialReading ? parseFloat(body.initialReading) : undefined; // Parse initialReading to float if present
+
+        if (body.iotBrand && typeof body.iotBrand === 'string') {
+            body.iotBrand = body.iotBrand.trim().toUpperCase();
+        }
 
         const groupLinkDeviceId = typeof body.groupLinkDeviceId === 'string'
             ? body.groupLinkDeviceId.trim()

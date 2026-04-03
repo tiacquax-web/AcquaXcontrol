@@ -36,6 +36,7 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
     const [formData, setFormData] = useState<Partial<Meter>>({
         register: "",
         groupLinkDeviceId: "",
+        iotBrand: "GL",
         status: "Ativo",
         location: "",
         initialReading: 0,
@@ -166,6 +167,7 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
             const defaultData = {
                 register: "",
                 groupLinkDeviceId: "",
+                iotBrand: "GL",
                 status: "Ativo",
                 location: "",
                 initialReading: 0,
@@ -345,7 +347,6 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
                                             <TypeMetersCombobox
                                                 typeMeter={selectedTypeMeter}
                                                 setSelectedTypeMeter={handleSelectedTypeMeter}
-                                                required
                                                 disabled={loadingStates.typeMeter}
                                             />
                                             {loadingStates.typeMeter && (
@@ -354,6 +355,22 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="iotBrand">Marca IoT</Label>
+                                            <Select
+                                                value={(formData as any).iotBrand || "GL"}
+                                                onValueChange={(value) => handleSelectChange("iotBrand", value)}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Selecione a marca IoT" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="GL">GL</SelectItem>
+                                                    <SelectItem value="TIM">TIM</SelectItem>
+                                                    <SelectItem value="ARQDATA">ARQDATA</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="initialReading">
                                                 Leitura Inicial <span className="text-red-500">*</span>

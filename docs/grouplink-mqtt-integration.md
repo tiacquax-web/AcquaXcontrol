@@ -136,3 +136,33 @@ Exemplo cron diário às 03:10:
 
 - A arquitetura continua suportando alto volume de mensagens no broker, mas seu sistema só consome quando o endpoint diário é chamado.
 - Se quiser reforço de idempotência em nível de banco, o próximo passo recomendado é criar uma chave única técnica para leitura IoT (ex.: hash persistido da leitura).
+
+## 7) Medidores: marca IoT e vínculo por ID
+
+O cadastro de medidores já está preparado para múltiplas marcas IoT:
+
+- `GL`
+- `TIM`
+- `ARQDATA`
+
+No cadastro/edição de medidor:
+
+- campo **Marca IoT**
+- campo **ID Group Link (opcional)**
+
+Se o ID Group Link for informado e existir em Dispositivos IoT, o sistema cria automaticamente o vínculo (`MeterDeviceLink`) no salvamento do medidor.
+
+### Importação de medidores (planilha)
+
+No módulo de medidores:
+
+- botão para baixar **Modelo** da planilha
+- importação com modo:
+  - **Atualizar e criar**
+  - **Apenas atualizar existentes**
+  - **Apenas criar novos**
+
+Colunas adicionais suportadas na planilha:
+
+- `id_group_link` (opcional)
+- `marca_iot` (opcional: `GL`, `TIM`, `ARQDATA`)

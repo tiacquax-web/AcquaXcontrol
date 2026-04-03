@@ -107,6 +107,46 @@ export default function MetersPage() {
     }
   }
 
+  const handleDownloadMetersTemplate = async () => {
+    try {
+      const XLSX = (await import('xlsx')).default || (await import('xlsx'))
+      const template = [
+        {
+          chassi: 'HID-0001',
+          tipo: 'Água Fria',
+          condominio: 'Condomínio Exemplo',
+          bloco: 'A',
+          apartamento: '101',
+          localizacao: 'Área de serviço',
+          leitura_inicial: 0,
+          ano_fabricacao: 2024,
+          principal: 'Sim',
+          rotacao: 'Crescente',
+          marca_iot: 'GL',
+          id_group_link: '3617329729',
+        },
+      ]
+
+      const worksheet = XLSX.utils.json_to_sheet(template)
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Modelo')
+      const buffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'modelo_importacao_medidores.xlsx'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      toast({ title: 'Modelo baixado!', description: 'Use este arquivo como base para importação/atualização.' })
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error?.message || 'Não foi possível gerar o modelo', variant: 'destructive' })
+    }
+  }
+
   const handleAddMeter = () => {
     setCurrentMeter({})
     setIsModalOpen(true)
@@ -193,6 +233,9 @@ export default function MetersPage() {
               <Button variant="outline" onClick={handleExportMeters} disabled={exportLoading}>
                 {exportLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                 Exportar
+              </Button>
+              <Button variant="ghost" onClick={handleDownloadMetersTemplate}>
+                <Download className="mr-2 h-4 w-4" /> Modelo
               </Button>
               <Button variant="secondary" onClick={() => setIsImportDialogOpen(true)}>
                 <Upload className="mr-2 h-4 w-4" /> Importar Medidores
@@ -308,6 +351,7 @@ export default function MetersPage() {
                         <TableHead>Local</TableHead>
                         <TableHead>Leitura Inicial</TableHead>
                         <TableHead>Ano de Fabricação</TableHead>
+                        <TableHead>Marca IoT</TableHead>
                         <TableHead>ID Group Link</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
@@ -362,6 +406,7 @@ export default function MetersPage() {
                         <TableHead>Local</TableHead>
                         <TableHead>Leitura Inicial</TableHead>
                         <TableHead>Ano de Fabricação</TableHead>
+                        <TableHead>Marca IoT</TableHead>
                         <TableHead>ID Group Link</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
@@ -370,11 +415,11 @@ export default function MetersPage() {
                       {meters.length === 0 ? (
                         <TableRow>
                           {!filters.complex ? (
-                            <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
+                            <TableCell colSpan={9} className="text-center py-6 text-muted-foreground">
                               Por favor, selecione um condomínio para visualizar os medidores
                             </TableCell>
                           ) : (
-                            <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
+                            <TableCell colSpan={9} className="text-center py-6 text-muted-foreground">
                               Nenhum medidor encontrado
                             </TableCell>
                           )}
@@ -401,6 +446,9 @@ export default function MetersPage() {
                             <TableCell>{meter.location || "-"}</TableCell>
                             <TableCell>{meter.initialReading.toFixed(2)}</TableCell>
                             <TableCell>{meter.yearManufacture || "-"}</TableCell>
+                            <TableCell>
+                              {(meter as any).iotBrand || "GL"}
+                            </TableCell>
                             <TableCell>
                               {(meter as any).groupLinkDeviceId || "-"}
                             </TableCell>
