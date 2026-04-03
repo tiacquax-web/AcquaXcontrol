@@ -200,11 +200,19 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
         const rowAnoFabricacao = row.ano_fabricacao !== undefined && row.ano_fabricacao !== null && row.ano_fabricacao !== '' ? Number(row.ano_fabricacao) : undefined;
         const rowPrincipal = typeof row.principal === 'string' ? row.principal.trim().toLowerCase() === 'sim' : !!row.principal;
         const rowRotacao = row.rotacao === 'Crescente' || row.rotacao === 'Decrescente' ? row.rotacao : undefined;
-        const rowGroupLinkDeviceId = row.group_link_device_id !== undefined && row.group_link_device_id !== null
-            ? String(row.group_link_device_id).trim()
+        const rowGroupLinkDeviceIdValue =
+            row.id_group_link !== undefined && row.id_group_link !== null
+                ? row.id_group_link
+                : row.group_link_device_id;
+        const rowGroupLinkDeviceId = rowGroupLinkDeviceIdValue !== undefined && rowGroupLinkDeviceIdValue !== null
+            ? String(rowGroupLinkDeviceIdValue).trim()
             : '';
-        const rowIotBrandRaw = row.iot_brand !== undefined && row.iot_brand !== null
-            ? String(row.iot_brand).trim().toUpperCase()
+        const rowIotBrandValue =
+            row.marca_iot !== undefined && row.marca_iot !== null
+                ? row.marca_iot
+                : row.iot_brand;
+        const rowIotBrandRaw = rowIotBrandValue !== undefined && rowIotBrandValue !== null
+            ? String(rowIotBrandValue).trim().toUpperCase()
             : '';
         const allowedBrands = ['GL', 'TIM', 'ARQDATA'];
         const rowIotBrand = rowIotBrandRaw && allowedBrands.includes(rowIotBrandRaw) ? rowIotBrandRaw : 'GL';
