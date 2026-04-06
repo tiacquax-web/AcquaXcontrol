@@ -579,12 +579,6 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                         ]
                     });
                 }
-                console.warn('---- apartments:', contexts.apartmentIds)
-                console.warn('---- blocks:', contexts.blockIds)
-                console.warn('---- complexes:', contexts.complexIds)
-                console.warn('---- companies:', contexts.companyIds)
-                console.warn('MeterId:', where?.meterId)
-                // console.warn(JSON.stringify(readingsQuery, null, 2))
                 const readings = await prisma.reading.findMany({
                     ...readingsQuery,
                     take: take < 10000 ? take : 10000, // Permite até 10.000 registros para exportação de leituras
@@ -592,18 +586,6 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     include: include ? include : undefined,
                 })
                 const readingsCount = await prisma.reading.count(({ where: { ...readingsQuery.where } }));
-                console.log('------------------------------------LENGTH', readingsCount)
-                console.log(JSON.stringify({
-                    userId,
-                    entityType,
-                    contextType,
-                    contextId,
-                    search,
-                    where,
-                    take,
-                    skip,
-                    include
-                }, null, 2))
                 return { entity: readings, totalCount: readingsCount, error: null, status: 200 };
             case PermissionableEntity.dealershipReading:
                 const dealershipReadingsQuery = {

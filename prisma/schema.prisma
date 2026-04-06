@@ -154,6 +154,10 @@ model Session {
 
   // Índices
   @@index([userId])
+  @@index([createdAt])
+  @@index([createdAt, userId])
+  @@index([userId, createdAt])
+  @@index([createdAt, deletedAt])
   @@index([expiresAt])
   @@index([deletedAt])
 }
@@ -252,8 +256,11 @@ model RoleAssignment {
 
   // Índices
   @@index([userId])
+  @@index([userId, contextType, deletedAt])
   @@index([roleId])
   @@index([contextId, contextType])
+  @@index([contextType, contextId, deletedAt])
+  @@index([contextType, deletedAt])
   @@index([deletedAt])
 }
 

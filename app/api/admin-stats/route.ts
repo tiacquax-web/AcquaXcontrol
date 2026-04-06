@@ -7,11 +7,18 @@ import { validateUserSession } from '@/lib/users';
 import prisma from '@/lib/prisma';
 import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 
+const ADMIN_STATS_CACHE_TTL_MS = 60_000;
+let adminStatsCache: { expiresAt: number; payload: any } | null = null;
+
 export async function GET(req: NextRequest): Promise<Response> {
   try {
     const { userId, error: sessionError } = await validateUserSession(req);
     if (sessionError || !userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (adminStatsCache && adminStatsCache.expiresAt > Date.now()) {
+      return NextResponse.json(adminStatsCache.payload);
     }
 
     const today = new Date();
@@ -46,21 +53,30 @@ export async function GET(req: NextRequest): Promise<Response> {
 
       // Sessões de hoje
       prisma.session.findMany({
-        where: { createdAt: { gte: todayStart, lte: todayEnd } },
+        where: {
+          createdAt: { gte: todayStart, lte: todayEnd },
+          OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+        },
         select: { userId: true, createdAt: true },
         take: 5000,
       }),
 
       // Sessões últimos 7 dias
       prisma.session.findMany({
-        where: { createdAt: { gte: sevenDaysAgo, lte: todayEnd } },
+        where: {
+          createdAt: { gte: sevenDaysAgo, lte: todayEnd },
+          OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+        },
         select: { userId: true, createdAt: true },
         take: 20000,
       }),
 
       // Sessões últimos 30 dias
       prisma.session.findMany({
-        where: { createdAt: { gte: thirtyDaysAgo, lte: todayEnd } },
+        where: {
+          createdAt: { gte: thirtyDaysAgo, lte: todayEnd },
+          OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+        },
         select: { userId: true },
         take: 50000,
       }),
@@ -189,7 +205,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     const leastAccessed = accessCounts.length > 1 ? accessCounts[accessCounts.length - 1] : null;
 
     // ─── Resposta ─────────────────────────────────────────────────────────────
-    return NextResponse.json({
+    const payload = {
       totals: {
         complexes: totalComplexes,
         apartments: totalApartments,
@@ -209,7 +225,14 @@ export async function GET(req: NextRequest): Promise<Response> {
       mostAccessed,
       leastAccessed,
       complexes: complexesWithDates,
-    });
+    };
+
+    adminStatsCache = {
+      payload,
+      expiresAt: Date.now() + ADMIN_STATS_CACHE_TTL_MS,
+    };
+
+    return NextResponse.json(payload);
   } catch (e: any) {
     return serverError('admin-stats', e);
   }

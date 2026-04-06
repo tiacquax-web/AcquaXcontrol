@@ -14,8 +14,10 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         const complexId = req.nextUrl.searchParams.get('complexId') || undefined;
         const search = req.nextUrl.searchParams.get('search') || '';
-        const take = parseInt(req.nextUrl.searchParams.get('take') || '50');
-        const skip = parseInt(req.nextUrl.searchParams.get('skip') || '0');
+        const parsedTake = Number(req.nextUrl.searchParams.get('take') || '50');
+        const parsedSkip = Number(req.nextUrl.searchParams.get('skip') || '0');
+        const take = Number.isFinite(parsedTake) ? Math.min(Math.max(parsedTake, 1), 100) : 50;
+        const skip = Number.isFinite(parsedSkip) ? Math.max(parsedSkip, 0) : 0;
 
         // Base query for complexes (MongoDB-safe: deletedAt null OR not set)
         const where: any = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] };
@@ -96,31 +98,40 @@ export async function GET(req: NextRequest): Promise<Response> {
             select: { userId: true, contextId: true },
         });
 
-        // Apartment-level role assignments (using denormalized complexId)
-        const aptRoleAssignments = await prisma.roleAssignment.findMany({
-            where: {
-                contextType: 'apartment',
-                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
-            },
-            select: { userId: true, contextId: true },
-            take: 10000,
-        });
-
-        // Build apt→complex map for apt role assignments
-        const aptIds = [...new Set(aptRoleAssignments.map(ra => ra.contextId))];
+        // Apartment-level role assignments scoped only to apartments from current page complexes
         const aptComplexMap: Record<string, string> = {};
-        if (aptIds.length > 0) {
-            const apts = await prisma.apartment.findMany({
-                where: { id: { in: aptIds }, complexId: { in: complexIds } },
+        const apartmentsInPageComplexes = complexIds.length > 0
+            ? await prisma.apartment.findMany({
+                where: {
+                    complexId: { in: complexIds },
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
                 select: { id: true, complexId: true },
-            });
-            apts.forEach(a => { if (a.complexId) aptComplexMap[a.id] = a.complexId; });
-        }
+            })
+            : [];
+        apartmentsInPageComplexes.forEach((a) => {
+            if (a.complexId) aptComplexMap[a.id] = a.complexId;
+        });
+        const apartmentIdsForPage = apartmentsInPageComplexes.map((a) => a.id);
+        const aptRoleAssignments = apartmentIdsForPage.length > 0
+            ? await prisma.roleAssignment.findMany({
+                where: {
+                    contextType: 'apartment',
+                    contextId: { in: apartmentIdsForPage },
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                select: { userId: true, contextId: true },
+            })
+            : [];
 
         // Get recent sessions for those users
         const allUserIds = [...new Set([...roleAssignments, ...aptRoleAssignments].map(ra => ra.userId))];
         const recentSessions = allUserIds.length > 0 ? await prisma.session.findMany({
-            where: { userId: { in: allUserIds }, createdAt: { gte: thirtyDaysAgo } },
+            where: {
+                userId: { in: allUserIds },
+                createdAt: { gte: thirtyDaysAgo },
+                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+            },
             select: { userId: true },
             distinct: ['userId'],
             take: 5000,

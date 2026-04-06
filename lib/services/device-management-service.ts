@@ -251,8 +251,6 @@ export class DeviceManagementService {
             }
         }
 
-        console.log('🔍 Buscando devices com whereConditions:', JSON.stringify(whereConditions, null, 2));
-
         const [devices, total] = await Promise.all([
             prisma.iotDevice.findMany({
                 where: whereConditions,
@@ -290,45 +288,15 @@ export class DeviceManagementService {
             prisma.iotDevice.count({ where: whereConditions })
         ]);
 
-        console.log(`📊 Encontrados ${devices.length} devices, primeiro device:`, {
-            deviceId: devices[0]?.deviceId,
-            name: devices[0]?.name,
-            meterDeviceLinksCount: devices[0]?.meterDeviceLinks?.length || 0,
-            firstLink: devices[0]?.meterDeviceLinks?.[0] ? {
-                id: devices[0].meterDeviceLinks[0].id,
-                meterId: devices[0].meterDeviceLinks[0].meterId,
-                startDate: devices[0].meterDeviceLinks[0].startDate,
-                endDate: devices[0].meterDeviceLinks[0].endDate
-            } : null
-        });
-
         // 🔥 OTIMIZAÇÃO CRÍTICA: Buscar contagem de leituras não vinculadas com aggregation pipeline
         // Substituindo N+1 queries por uma única aggregation
         const deviceIds = devices.map(d => d.deviceId);
         const unlinkedCountsMap = await this.getUnlinkedReadingsCountsBulk(deviceIds);
 
         const devicesWithStatus: DeviceWithStatus[] = devices.map(device => {
-            console.log(`🔍 Processando device ${device.deviceId}:`, {
-                meterDeviceLinksCount: device.meterDeviceLinks.length,
-                links: device.meterDeviceLinks.map(link => ({
-                    id: link.id,
-                    startDate: link.startDate,
-                    endDate: link.endDate,
-                    isActive: link.endDate === null || link.endDate >= new Date()
-                }))
-            });
-
             const activeLink = device.meterDeviceLinks.find(link =>
                 link.endDate === null || link.endDate >= new Date()
             );
-
-            console.log(`🎯 Device ${device.deviceId} activeLink:`, activeLink ? {
-                id: activeLink.id,
-                startDate: activeLink.startDate,
-                endDate: activeLink.endDate,
-                meterRegister: activeLink.meter.register,
-                apartmentName: activeLink.meter.apartment?.name
-            } : 'Nenhum link ativo');
 
             const meterData = activeLink ? {
                 id: activeLink.meter.id,
@@ -597,7 +565,6 @@ export class DeviceManagementService {
             const cached = readingsCountCache.get(cacheKey);
             
             if (cached && Date.now() - cached.timestamp < cached.ttl) {
-                console.log('⚡ Cache hit para contagens de leituras');
                 return cached.data;
             }
 
@@ -621,18 +588,12 @@ export class DeviceManagementService {
                 }
             ];
 
-            console.log('🚀 Executando aggregation pipeline para contagens:', { deviceIds: deviceIds.length });
-            const startTime = Date.now();
-
             // Usando aggregateRaw para performance máxima no MongoDB
             const rawResults = await prisma.reading.aggregateRaw({
                 pipeline
             });
             
             const results = rawResults as unknown as Array<{ _id: string; unlinkedCount: number }>;
-
-            const endTime = Date.now();
-            console.log(`⚡ Aggregation concluída em ${endTime - startTime}ms para ${deviceIds.length} devices`);
 
             // Converter resultado para Map
             const countsMap = new Map<string, number>();
