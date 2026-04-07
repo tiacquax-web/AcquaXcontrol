@@ -6,6 +6,7 @@ import { getAccessibleUserIdsForAction, getTemporaryPasswordFromPreferences } fr
 
 const NOT_DELETED = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } as const;
 const EXCEL_SHEET_NAME_MAX_LENGTH = 31;
+const EXPORT_HEADERS = ['Unidade', 'Bloco', 'email', 'senha', 'papel'] as const;
 
 function buildExportSheetName(complexName?: string) {
     const defaultName = 'Usuários';
@@ -117,6 +118,37 @@ export async function POST(req: NextRequest): Promise<Response> {
         const roleMap: Record<string, string> = {};
         roles.forEach(r => { roleMap[r.id] = r.name; });
 
+        const apartmentContextIds = [...new Set(allAssigns
+            .filter((a) => a.contextType === 'apartment')
+            .map((a) => a.contextId))];
+        const blockContextIds = [...new Set(allAssigns
+            .filter((a) => a.contextType === 'block')
+            .map((a) => a.contextId))];
+
+        const apartments = apartmentContextIds.length > 0
+            ? await prisma.apartment.findMany({
+                where: { ...NOT_DELETED, id: { in: apartmentContextIds } },
+                select: {
+                    id: true,
+                    name: true,
+                    block: { select: { id: true, name: true } },
+                },
+            })
+            : [];
+
+        const blocks = blockContextIds.length > 0
+            ? await prisma.block.findMany({
+                where: { ...NOT_DELETED, id: { in: blockContextIds } },
+                select: { id: true, name: true },
+            })
+            : [];
+
+        const apartmentMap = new Map(apartments.map((a) => [
+            a.id,
+            { name: a.name, blockName: a.block?.name || '' },
+        ]));
+        const blockMap = new Map(blocks.map((b) => [b.id, b.name]));
+
         // Buscar nome do condomínio se filtro ativo
         let complexName = '';
         if (complexId) {
@@ -127,24 +159,45 @@ export async function POST(req: NextRequest): Promise<Response> {
         // Montar planilha
         const exportData = users.map(user => {
             const assigns = allAssigns.filter(a => a.userId === user.id);
-            const papeis = assigns.map(a => roleMap[a.roleId] || a.roleId).join(', ');
+            const papeis = [...new Set(assigns.map(a => roleMap[a.roleId] || a.roleId))].join(', ');
+            const unitNames = new Set<string>();
+            const blockNames = new Set<string>();
+
+            assigns.forEach((assignment) => {
+                if (assignment.contextType === 'apartment') {
+                    const apartmentInfo = apartmentMap.get(assignment.contextId);
+                    if (apartmentInfo?.name) unitNames.add(apartmentInfo.name);
+                    if (apartmentInfo?.blockName) blockNames.add(apartmentInfo.blockName);
+                    return;
+                }
+
+                if (assignment.contextType === 'block') {
+                    const blockName = blockMap.get(assignment.contextId);
+                    if (blockName) blockNames.add(blockName);
+                }
+            });
+
             const temporaryPassword = getTemporaryPasswordFromPreferences(user.preferences);
             return {
-                'Nome': user.name,
-                'Login': user.email,
-                'Senha': temporaryPassword || '',
-                'Documento': user.documentPerson || '',
-                'Telefone': user.telephone || '',
-                'Celular': user.cell || '',
-                'Papéis': papeis,
-                'Data de Cadastro': user.createdAt?.toLocaleDateString('pt-BR') || '',
+                Unidade: [...unitNames].join(', '),
+                Bloco: [...blockNames].join(', '),
+                email: user.email,
+                senha: temporaryPassword || '',
+                papel: papeis,
             };
         });
 
-        const worksheet = XLSX.utils.json_to_sheet(exportData);
-        // Auto-largura de colunas
-        const colWidths = Object.keys(exportData[0] || {}).map(k => ({
-            wch: Math.max(k.length, ...exportData.map(r => String((r as any)[k] || '').length)) + 2
+        exportData.sort((a, b) =>
+            `${a.Bloco}|${a.Unidade}|${a.email}`.localeCompare(`${b.Bloco}|${b.Unidade}|${b.email}`, 'pt-BR')
+        );
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData, { header: [...EXPORT_HEADERS] });
+        const colWidths = [...EXPORT_HEADERS].map((header) => ({
+            wch: Math.max(
+                header.length,
+                ...exportData.map((row) => String(row[header] || '').length),
+                12
+            ) + 2
         }));
         worksheet['!cols'] = colWidths;
 
