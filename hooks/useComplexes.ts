@@ -55,9 +55,18 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
                     take,
                     skip
                 })
-                setComplexes(data.list)
-                setTotalCount(data.totalCount || 0)
-                setHasNextPage(skip + take < (data.totalCount || 0))
+                const normalizedList = Array.isArray(data?.list)
+                    ? data.list
+                    : Array.isArray(data)
+                        ? data
+                        : []
+                const normalizedTotalCount = typeof data?.totalCount === 'number'
+                    ? data.totalCount
+                    : normalizedList.length
+
+                setComplexes(normalizedList)
+                setTotalCount(normalizedTotalCount)
+                setHasNextPage(skip + take < normalizedTotalCount)
                 setHasPreviousPage(skip > 0)
                 setError(null)
             } catch (error: any) {
