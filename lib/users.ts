@@ -201,36 +201,45 @@ export async function isUserSessionValid(userId: string, token: string) {
 }
 
 export async function isSessionValid(token: string) {
-  const userSession = await prisma.session.findUnique({
-    where: {
-      token,
-      expiresAt: {
-        gt: new Date(),
-      }
-    },
-  });
+  try {
+    const userSession = await prisma.session.findUnique({
+      where: { token },
+      select: {
+        id: true,
+        token: true,
+        userId: true,
+        expiresAt: true,
+        deletedAt: true,
+      },
+    });
 
-  if (!userSession) {
+    if (!userSession) return undefined;
+    if (userSession.deletedAt) return undefined;
+    if (new Date() > userSession.expiresAt) return undefined;
+    return userSession as any;
+  } catch {
     return undefined;
-  } else {
-    return userSession;
   }
 }
 
 export async function getUserByValidSession(token: string) {
-  const sessionUser = await prisma.session.findUnique({
-    where: {
-      token,
-      expiresAt: {
-        gt: new Date(),
-      }
-    },
-    select: {
-      user: true,
-    },
-  });
+  try {
+    const sessionUser = await prisma.session.findUnique({
+      where: { token },
+      select: {
+        expiresAt: true,
+        deletedAt: true,
+        user: true,
+      },
+    });
 
-  return sessionUser?.user;
+    if (!sessionUser) return undefined;
+    if (sessionUser.deletedAt) return undefined;
+    if (new Date() > sessionUser.expiresAt) return undefined;
+    return sessionUser.user;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function validateUserSession(req: NextRequest):Promise<{ userId: string | null; error: string | null; status: number }> {

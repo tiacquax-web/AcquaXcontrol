@@ -3,6 +3,7 @@ import { compare } from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import prisma from '@/lib/prisma';
+import { randomUUID } from 'crypto';
 
 // ─── Rate Limiter (in-memory, por IP) ─────────────────────────────────────────
 // Máximo 5 tentativas por IP em janela de 5 minutos (300 segundos).
@@ -24,6 +25,11 @@ function getRateLimitEntry(ip: string) {
 }
 
 function checkRateLimit(ip: string): { allowed: boolean; retryAfterSeconds: number } {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitStore.entries()) {
+    if (now > entry.resetAt) rateLimitStore.delete(key);
+  }
+
   const entry = getRateLimitEntry(ip);
   entry.count += 1;
   rateLimitStore.set(ip, entry);
@@ -34,14 +40,6 @@ function checkRateLimit(ip: string): { allowed: boolean; retryAfterSeconds: numb
   }
   return { allowed: true, retryAfterSeconds: 0 };
 }
-
-// Limpeza periódica do store para evitar crescimento ilimitado em memória
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of rateLimitStore.entries()) {
-    if (now > entry.resetAt) rateLimitStore.delete(ip);
-  }
-}, 10 * 60 * 1000); // A cada 10 minutos
 
 // ─── Validação de Schema (Zod) ────────────────────────────────────────────────
 const LoginSchema = z.object({
@@ -61,7 +59,7 @@ function getAllowedOrigin(req: Request): string {
   return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
 }
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_SECRET = process.env.JWT_SECRET || 'acquax-super-secret-jwt-key-2024';
 
 export async function OPTIONS(req: Request) {
   return new NextResponse(null, {
@@ -135,17 +133,23 @@ export async function POST(req: Request) {
     const token = jwt.sign(
       { userId: user.id, mustUpdateCredentials: user.mustUpdateCredentials ?? false },
       JWT_SECRET,
-      { expiresIn: '1h' }
+      { expiresIn: '1h', jwtid: randomUUID() }
     );
-
-    const session = await prisma.session.create({
-      data: {
-        token,
-        userId: user.id,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hora
-        deletedAt: null,
-      },
-    });
+    let sessionToken = token;
+    try {
+      const session = await prisma.session.create({
+        data: {
+          token,
+          userId: user.id,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hora
+          deletedAt: null,
+        },
+      });
+      sessionToken = session.token;
+    } catch (sessionError) {
+      // Em cenários de degradação do banco, não bloqueia login do usuário.
+      console.error('[login] Falha ao persistir sessão; seguindo com JWT no cookie:', sessionError);
+    }
 
     // ── 6. Zerar contador de tentativas ao logar com sucesso ──────────────────
     rateLimitStore.delete(ip);
@@ -153,7 +157,7 @@ export async function POST(req: Request) {
     // ── 7. Montar resposta ────────────────────────────────────────────────────
     const response = NextResponse.json({
       message: 'Login successful',
-      token: session.token,
+      token: sessionToken,
       user: {
         id: user.id,
         email: user.email,
@@ -165,7 +169,7 @@ export async function POST(req: Request) {
     response.headers.set('Access-Control-Allow-Origin', getAllowedOrigin(req));
     response.headers.set('Access-Control-Allow-Credentials', 'true');
 
-    response.cookies.set('session', session.token, {
+    response.cookies.set('session', sessionToken, {
       httpOnly: true,
       maxAge: 60 * 60, // 1 hora
       path: '/',

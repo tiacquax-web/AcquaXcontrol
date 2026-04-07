@@ -9,6 +9,7 @@ export async function POST(req: NextRequest) {
             where: { token },
             select: {
                 expiresAt: true,
+                deletedAt: true,
                 user: {
                     select: {
                         mustUpdateCredentials: true
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
             }
         });
 
-        if (!session || new Date() > session.expiresAt) {
+        if (!session || session.deletedAt || new Date() > session.expiresAt) {
             const response = NextResponse.json({ valid: false }, { status: 401 });
             response.cookies.delete('session');
 
