@@ -7,13 +7,16 @@ import { items as sidebarItems, type ItemType } from "./app-sidebar"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 
 export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
-  const { permissions } = usePermissionsContext();
+  const { permissions, loading } = usePermissionsContext();
 
   function hasAnyPermission(url: string, requiresCreate?: boolean) {
     if (url === '/dashboard') return true;
     if (!permissions) return false;
     const entity = sidebarPermissionMap[url];
     if (!entity) return permissions.length > 0;
+    if (url === '/users') {
+      return permissions.some((p: any) => p.entity === entity);
+    }
     if (requiresCreate) {
       return permissions.some((p: any) => p.entity === entity && p.action === 'create');
     }
@@ -44,7 +47,7 @@ export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onO
             <SidebarGroup>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {visibleGroups.map((group: string) => (
+                  {loading ? null : visibleGroups.map((group: string) => (
                     <div key={group}>
                       <SidebarGroupLabel>
                         {group}

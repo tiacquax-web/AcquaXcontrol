@@ -137,7 +137,6 @@ const items = [
     url: "/users",
     icon: UsersRound,
     group: 'Cadastros',
-    requiresCreate: true,
   },
   {
     title: "Papéis",
@@ -159,6 +158,9 @@ export function AppSidebar() {
     const entity = sidebarPermissionMap[url];
     // URL sem mapeamento de entidade → visível se tiver qualquer permissão
     if (!entity) return permissions.length > 0;
+    if (url === '/users') {
+      return permissions.some((p: any) => p.entity === entity);
+    }
     if (requiresCreate) {
       return permissions.some((p: any) => p.entity === entity && p.action === 'create');
     }
