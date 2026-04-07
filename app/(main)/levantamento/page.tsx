@@ -1000,6 +1000,30 @@ export default function LevantamentoPage() {
             </div>
           )}
 
+          {unitChartData && (
+            <div className="bg-white border rounded-xl p-4 print:border-gray-400">
+              <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                <Camera className="w-4 h-4 text-teal-500" />
+                Filipetas da Unidade no Período — Bl.{unitChartData.unit.blockName} Ap.{unitChartData.unit.aptName}
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {unitChartData.unit.months.map((m, mi) => (
+                  <MeterPhotoCard
+                    key={mi}
+                    photoUrl={m.photoUrl}
+                    label={m.label}
+                    currReading={m.currReading}
+                    prevReading={m.prevReading}
+                    consumption={m.consumption}
+                    totalUnit={m.totalUnit}
+                    partial={m.partial}
+                    waterSewage={m.waterSewage}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ── Tabela por unidade ──────────────────────────────────────── */}
           <div className="bg-white border rounded-xl overflow-hidden print:border-gray-400">
             <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
