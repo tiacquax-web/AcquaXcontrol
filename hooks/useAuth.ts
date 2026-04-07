@@ -30,6 +30,10 @@ export const useLogin = () => {
           "Erro ao fazer login";
       }
 
+      if (err.response?.status === 500) {
+        message = "Falha interna no servidor ao autenticar. Tente novamente em instantes.";
+      }
+
       setError(message);
       throw err;
     } finally {

@@ -23,6 +23,7 @@ export interface LoginResponse {
 export const login = async (payload: LoginPayload) => {
   const response = await axios.post<LoginResponse>(`${API_URL}/auth/login`, payload, {
     withCredentials: true,
+    timeout: 15000,
   });
   return response.data;
 };
