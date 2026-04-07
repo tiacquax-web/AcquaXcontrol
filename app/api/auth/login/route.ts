@@ -59,6 +59,15 @@ function getAllowedOrigin(req: Request): string {
   return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number, code: string): Promise<T> {
+  return await Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(code)), ms);
+    }),
+  ]);
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || 'acquax-super-secret-jwt-key-2024';
 
 export async function OPTIONS(req: Request) {
@@ -111,19 +120,23 @@ export async function POST(req: Request) {
     const { email, password } = parsed.data;
 
     // ── 3. Buscar usuário ─────────────────────────────────────────────────────
-    const user = await prisma.user.findFirst({
-      where: {
-        email,
-        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        password: true,
-        mustUpdateCredentials: true,
-      },
-    });
+    const user = await withTimeout(
+      prisma.user.findFirst({
+        where: {
+          email,
+          OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          password: true,
+          mustUpdateCredentials: true,
+        },
+      }),
+      8_000,
+      'DB_LOOKUP_TIMEOUT',
+    );
 
     // Mensagem genérica: não revela se o e-mail existe ou não
     if (!user) {
@@ -200,6 +213,15 @@ export async function POST(req: Request) {
       );
     }
     // Erro interno: não expor detalhes ao cliente
+    const message = error instanceof Error ? error.message : String(error);
+    const isDbUnavailable =
+      message.includes('DB_LOOKUP_TIMEOUT') ||
+      message.includes('Server selection timeout') ||
+      message.includes('ReplicaSetNoPrimary') ||
+      message.includes('No available servers');
+    if (isDbUnavailable) {
+      return NextResponse.json({ error: 'Serviço temporariamente indisponível. Tente novamente em instantes.' }, { status: 503 });
+    }
     console.error('[login] Erro interno:', error instanceof Error ? error.stack : error);
     return NextResponse.json({ error: 'Erro interno. Tente novamente mais tarde.' }, { status: 500 });
   }
