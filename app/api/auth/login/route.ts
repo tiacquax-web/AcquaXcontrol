@@ -111,8 +111,18 @@ export async function POST(req: Request) {
     const { email, password } = parsed.data;
 
     // ── 3. Buscar usuário ─────────────────────────────────────────────────────
-    const user = await prisma.user.findUnique({
-      where: { email },
+    const user = await prisma.user.findFirst({
+      where: {
+        email,
+        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        password: true,
+        mustUpdateCredentials: true,
+      },
     });
 
     // Mensagem genérica: não revela se o e-mail existe ou não
@@ -122,6 +132,10 @@ export async function POST(req: Request) {
     }
 
     // ── 4. Verificar senha ────────────────────────────────────────────────────
+    if (!user.password || typeof user.password !== 'string') {
+      return NextResponse.json({ error: 'Credenciais inválidas.' }, { status: 401 });
+    }
+
     const isPasswordValid = await compare(password, user.password);
 
     if (!isPasswordValid) {
@@ -178,7 +192,13 @@ export async function POST(req: Request) {
     });
 
     return response;
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'P1001' || error?.code === 'P2024') {
+      return NextResponse.json(
+        { error: 'Serviço temporariamente indisponível. Tente novamente em instantes.' },
+        { status: 503 }
+      );
+    }
     // Erro interno: não expor detalhes ao cliente
     console.error('[login] Erro interno:', error instanceof Error ? error.stack : error);
     return NextResponse.json({ error: 'Erro interno. Tente novamente mais tarde.' }, { status: 500 });
