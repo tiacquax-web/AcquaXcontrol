@@ -6,11 +6,11 @@ import { ptBR } from 'date-fns/locale';
 import axios from 'axios';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LineChart, Line, Legend, ReferenceLine,
+  ResponsiveContainer, LineChart, Line, ReferenceLine,
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, Minus, Building2, Calendar,
-  Droplets, Loader2, AlertCircle, Info, Search, X,
+  Droplets, Loader2, Info, Search, X,
   Printer, ChevronDown, ChevronUp, Camera, ZoomIn,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -43,6 +43,7 @@ function buildMonthOptions(count = 24) {
 }
 
 const ALL_MONTHS = buildMonthOptions(24);
+const ALL_FILTER_VALUE = '__all__';
 
 function fmt(v: number | null | undefined) {
   return v != null ? v.toFixed(3) : '—';
@@ -272,6 +273,9 @@ export default function LevantamentoPage() {
   const [selectedComplexId, setSelectedComplexId] = useState<string | undefined>();
   const [selectedComplexObj, setSelectedComplexObj] = useState<any>(null);
   const [searchText, setSearchText] = useState('');
+  const [selectedBlockId, setSelectedBlockId] = useState<string>(ALL_FILTER_VALUE);
+  const [selectedApartmentId, setSelectedApartmentId] = useState<string>(ALL_FILTER_VALUE);
+  const [selectedDealershipReadingId, setSelectedDealershipReadingId] = useState<string>(ALL_FILTER_VALUE);
   const [expandedApt, setExpandedApt] = useState<string | null>(null);
 
   // ── Helpers de contexto ──────────────────────────────────────────────────────
@@ -386,6 +390,7 @@ export default function LevantamentoPage() {
       prevReading: number | null;
       currReading: number | null;
       photoUrl: string | null;
+      dealershipReadingId: string | null;
     }>;
     avgConsumption: number;
     maxConsumption: number;
@@ -404,7 +409,17 @@ export default function LevantamentoPage() {
             apartmentId: aptId,
             aptName: item.apartment?.name ?? '',
             blockName: item.apartment?.block?.name ?? '',
-            months: monthsData.map(m2 => ({ label: m2.label, consumption: null, totalUnit: null, partial: null, waterSewage: null, prevReading: null, currReading: null, photoUrl: null })),
+            months: monthsData.map(m2 => ({
+              label: m2.label,
+              consumption: null,
+              totalUnit: null,
+              partial: null,
+              waterSewage: null,
+              prevReading: null,
+              currReading: null,
+              photoUrl: null,
+              dealershipReadingId: null,
+            })),
             avgConsumption: 0,
             maxConsumption: 0,
             minConsumption: 0,
@@ -423,6 +438,7 @@ export default function LevantamentoPage() {
             prevReading: item.history?.[0]?.lastReading?.reading ?? null,
             currReading: item.lastReading?.reading ?? null,
             photoUrl: item.lastReading?.urlCover ? sanitizeImageUrl(item.lastReading.urlCover) : null,
+            dealershipReadingId: item.dealershipReadingId ?? null,
           };
         }
       });
@@ -439,39 +455,137 @@ export default function LevantamentoPage() {
     });
 
     return Array.from(map.values()).sort((a, b) => {
-      const bComp = a.blockName.localeCompare(b.blockName);
+      const bComp = a.blockName.localeCompare(b.blockName, undefined, { numeric: true, sensitivity: 'base' });
       if (bComp !== 0) return bComp;
-      return a.aptName.localeCompare(b.aptName, undefined, { numeric: true });
+      return a.aptName.localeCompare(b.aptName, undefined, { numeric: true, sensitivity: 'base' });
     });
   }, [allLoaded, monthsData]);
 
-  // Filtro por texto
+  const blockOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    aptRows.forEach(row => {
+      if (!map.has(row.blockName)) map.set(row.blockName, { id: row.blockName, name: row.blockName });
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+  }, [aptRows]);
+
+  const apartmentOptions = useMemo(() => {
+    const filteredByBlock = selectedBlockId === ALL_FILTER_VALUE
+      ? aptRows
+      : aptRows.filter(row => row.blockName === selectedBlockId);
+    return filteredByBlock
+      .map(row => ({
+        id: row.apartmentId,
+        name: row.aptName,
+        blockName: row.blockName,
+      }))
+      .sort((a, b) => {
+        const byBlock = a.blockName.localeCompare(b.blockName, undefined, { numeric: true, sensitivity: 'base' });
+        if (byBlock !== 0) return byBlock;
+        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      });
+  }, [aptRows, selectedBlockId]);
+
+  const dealershipReadingOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    monthsData.forEach(md => {
+      md.items.forEach(item => {
+        if (!item.dealershipReadingId) return;
+        const label = item.dealershipReading?.dealership?.name
+          ? `${item.dealershipReading.dealership.name} — ${monthLabel(md.month, md.year)}`
+          : `Boleto ${monthLabel(md.month, md.year)}`;
+        if (!map.has(item.dealershipReadingId)) {
+          map.set(item.dealershipReadingId, label);
+        }
+      });
+    });
+    return Array.from(map.entries())
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+  }, [monthsData]);
+
+  useEffect(() => {
+    setSearchText('');
+    setSelectedBlockId(ALL_FILTER_VALUE);
+    setSelectedApartmentId(ALL_FILTER_VALUE);
+    setSelectedDealershipReadingId(ALL_FILTER_VALUE);
+    setExpandedApt(null);
+  }, [selectedComplexId, fromMonth.value, toMonth.value]);
+
+  useEffect(() => {
+    if (selectedBlockId === ALL_FILTER_VALUE) return;
+    const blockExists = blockOptions.some(block => block.id === selectedBlockId);
+    if (!blockExists) setSelectedBlockId(ALL_FILTER_VALUE);
+  }, [blockOptions, selectedBlockId]);
+
+  useEffect(() => {
+    if (selectedApartmentId === ALL_FILTER_VALUE) return;
+    const apartmentExists = apartmentOptions.some(apartment => apartment.id === selectedApartmentId);
+    if (!apartmentExists) setSelectedApartmentId(ALL_FILTER_VALUE);
+  }, [apartmentOptions, selectedApartmentId]);
+
+  useEffect(() => {
+    if (selectedDealershipReadingId === ALL_FILTER_VALUE) return;
+    const dealershipReadingExists = dealershipReadingOptions.some(reading => reading.id === selectedDealershipReadingId);
+    if (!dealershipReadingExists) setSelectedDealershipReadingId(ALL_FILTER_VALUE);
+  }, [dealershipReadingOptions, selectedDealershipReadingId]);
+
+  // Filtro por bloco, unidade, boleto e texto
   const filteredRows = useMemo(() => {
-    if (!searchText.trim()) return aptRows;
-    const q = searchText.toLowerCase();
-    return aptRows.filter(r =>
-      r.aptName.toLowerCase().includes(q) ||
-      r.blockName.toLowerCase().includes(q) ||
-      `bloco ${r.blockName}`.toLowerCase().includes(q) ||
-      `apto ${r.aptName}`.toLowerCase().includes(q)
-    );
-  }, [aptRows, searchText]);
+    const q = searchText.trim().toLowerCase();
+    return aptRows.filter(r => {
+      if (selectedBlockId !== ALL_FILTER_VALUE && r.blockName !== selectedBlockId) return false;
+      if (selectedApartmentId !== ALL_FILTER_VALUE && r.apartmentId !== selectedApartmentId) return false;
+      if (selectedDealershipReadingId !== ALL_FILTER_VALUE) {
+        const hasSelectedDealership = r.months.some(m => m.dealershipReadingId === selectedDealershipReadingId);
+        if (!hasSelectedDealership) return false;
+      }
+      if (!q) return true;
+      return (
+        r.aptName.toLowerCase().includes(q) ||
+        r.blockName.toLowerCase().includes(q) ||
+        `bloco ${r.blockName}`.toLowerCase().includes(q) ||
+        `apto ${r.aptName}`.toLowerCase().includes(q)
+      );
+    });
+  }, [aptRows, searchText, selectedBlockId, selectedApartmentId, selectedDealershipReadingId]);
+
+  const filteredMonthData = useMemo(() => {
+    if (!allLoaded) return monthsData;
+    return monthsData.map(md => ({
+      ...md,
+      items: md.items.filter(item => filteredRows.some(row => row.apartmentId === item.apartmentId)),
+    }));
+  }, [allLoaded, monthsData, filteredRows]);
+
+  const filteredAptRows = useMemo(() => filteredRows, [filteredRows]);
 
   // ── Dados para gráfico geral (consumo médio por mês) ─────────────────────────
   const chartData = useMemo(() => {
     if (!allLoaded) return [];
-    return monthsData.map(md => {
-      const vals = md.items.map(i => i.consumption).filter(v => v != null) as number[];
+    return filteredMonthData.map((md, index) => {
+      const vals = filteredAptRows
+        .map(row => row.months[index]?.consumption)
+        .filter(v => v != null) as number[];
       const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
       const total = vals.reduce((a, b) => a + b, 0);
       return {
         label: md.label,
         média: parseFloat(avg.toFixed(3)),
         total: parseFloat(total.toFixed(3)),
-        unidades: md.items.length,
+        unidades: filteredAptRows.length,
       };
     });
-  }, [allLoaded, monthsData]);
+  }, [allLoaded, filteredMonthData, filteredAptRows]);
+
+  const unitChartData = useMemo(() => {
+    if (selectedApartmentId === ALL_FILTER_VALUE || filteredAptRows.length !== 1) return null;
+    const unit = filteredAptRows[0];
+    return {
+      unit,
+      series: unit.months.map(m => ({ label: m.label, consumo: m.consumption ?? 0 })),
+    };
+  }, [selectedApartmentId, filteredAptRows]);
 
   const complexDisplayName = selectedComplexObj?.socialName || selectedComplexObj?.aliasName || '';
 
@@ -499,7 +613,7 @@ export default function LevantamentoPage() {
             </p>
           </div>
         </div>
-        {allLoaded && (isMorador ? moradorRow : filteredRows.length > 0) && (
+        {allLoaded && (isMorador ? moradorRow : filteredAptRows.length > 0) && (
           <Button variant="outline" size="sm" className="print:hidden" onClick={() => window.print()}>
             <Printer className="w-4 h-4 mr-2" />
             Imprimir / Exportar
@@ -597,6 +711,63 @@ export default function LevantamentoPage() {
             </div>
           </div>
         )}
+
+        {!isMorador && allLoaded && aptRows.length > 0 && (
+          <div className="flex flex-col gap-1 min-w-[180px]">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Bloco</label>
+            <Select value={selectedBlockId} onValueChange={setSelectedBlockId}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Todos os blocos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_FILTER_VALUE}>Todos os blocos</SelectItem>
+                {blockOptions.map(block => (
+                  <SelectItem key={block.id} value={block.id}>
+                    Bloco {block.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {!isMorador && allLoaded && aptRows.length > 0 && (
+          <div className="flex flex-col gap-1 min-w-[220px]">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Unidade</label>
+            <Select value={selectedApartmentId} onValueChange={setSelectedApartmentId}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Todas as unidades" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_FILTER_VALUE}>Todas as unidades</SelectItem>
+                {apartmentOptions.map(apt => (
+                  <SelectItem key={apt.id} value={apt.id}>
+                    Bl. {apt.blockName} / Ap. {apt.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {!isMorador && allLoaded && aptRows.length > 0 && (
+          <div className="flex flex-col gap-1 min-w-[220px]">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Boleto</label>
+            <Select value={selectedDealershipReadingId} onValueChange={setSelectedDealershipReadingId}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Todos os boletos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_FILTER_VALUE}>Todos os boletos</SelectItem>
+                {dealershipReadingOptions.map(reading => (
+                  <SelectItem key={reading.id} value={reading.id}>
+                    {reading.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {/* Alert: selecione condomínio */}
@@ -631,6 +802,13 @@ export default function LevantamentoPage() {
           <Droplets className="w-12 h-12 mb-3 opacity-30" />
           <p className="font-medium">Nenhum dado encontrado</p>
           <p className="text-sm mt-1">Não há leituras no período selecionado para este condomínio.</p>
+        </div>
+      )}
+      {allLoaded && aptRows.length > 0 && !isMorador && filteredAptRows.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground print:hidden">
+          <Droplets className="w-12 h-12 mb-3 opacity-30" />
+          <p className="font-medium">Nenhuma unidade encontrada com os filtros</p>
+          <p className="text-sm mt-1">Limpe o filtro de bloco, unidade, boleto ou busca para visualizar resultados.</p>
         </div>
       )}
 
@@ -720,7 +898,7 @@ export default function LevantamentoPage() {
       {/* ═══════════════════════════════════════════════════════════════════════
           VISTA DE ADMIN/SÍNDICO: tabela comparativa de todas as unidades
           ═══════════════════════════════════════════════════════════════════════ */}
-      {allLoaded && !isMorador && aptRows.length > 0 && (
+      {allLoaded && !isMorador && filteredAptRows.length > 0 && (
         <>
           {/* ── Cabeçalho do relatório (visível no print) ── */}
           <div className="hidden print:block mb-4">
@@ -734,7 +912,7 @@ export default function LevantamentoPage() {
           {/* ── KPIs gerais ─────────────────────────────────────────────── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 print:grid-cols-4">
             {[
-              { label: 'Unidades', value: aptRows.length.toString(), icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50' },
+              { label: 'Unidades', value: filteredAptRows.length.toString(), icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50' },
               { label: 'Meses', value: selectedMonths.length.toString(), icon: Calendar, color: 'text-purple-600', bg: 'bg-purple-50' },
               {
                 label: 'Consumo Médio/Mês',
@@ -799,13 +977,38 @@ export default function LevantamentoPage() {
             </ResponsiveContainer>
           </div>
 
+          {unitChartData && (
+            <div className="bg-white border rounded-xl p-4 print:border-gray-400">
+              <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-teal-500" />
+                Evolução da Unidade — Bl.{unitChartData.unit.blockName} Ap.{unitChartData.unit.aptName}
+              </h3>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={unitChartData.series} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} unit=" m³" width={60} />
+                  <Tooltip formatter={(val: any) => [`${val} m³`, 'Consumo']} labelStyle={{ fontWeight: 'bold' }} />
+                  <ReferenceLine
+                    y={unitChartData.unit.avgConsumption}
+                    stroke="#94a3b8" strokeDasharray="4 4"
+                    label={{ value: 'Média', position: 'right', fontSize: 10, fill: '#94a3b8' }}
+                  />
+                  <Line type="monotone" dataKey="consumo" stroke="#0d9488" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
           {/* ── Tabela por unidade ──────────────────────────────────────── */}
           <div className="bg-white border rounded-xl overflow-hidden print:border-gray-400">
             <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-blue-500" />
                 Detalhamento por Unidade
-                {searchText && <span className="text-xs text-muted-foreground">({filteredRows.length} de {aptRows.length})</span>}
+                {(searchText || selectedBlockId !== ALL_FILTER_VALUE || selectedApartmentId !== ALL_FILTER_VALUE || selectedDealershipReadingId !== ALL_FILTER_VALUE) && (
+                  <span className="text-xs text-muted-foreground">({filteredAptRows.length} de {aptRows.length})</span>
+                )}
               </h3>
             </div>
 
@@ -817,7 +1020,7 @@ export default function LevantamentoPage() {
                     <th className="sticky left-0 bg-gray-50 px-3 py-2.5 text-left font-semibold text-gray-700 whitespace-nowrap z-10 min-w-[130px]">
                       Unidade
                     </th>
-                    {monthsData.map(m => (
+                    {filteredMonthData.map(m => (
                       <th key={m.label} className="px-3 py-2.5 text-center font-semibold text-gray-700 whitespace-nowrap min-w-[110px] border-l">
                         {m.label}
                       </th>
@@ -828,7 +1031,7 @@ export default function LevantamentoPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRows.map((row, ri) => {
+                  {filteredAptRows.map((row, ri) => {
                     const isExpanded = expandedApt === row.apartmentId;
                     return (
                       <React.Fragment key={row.apartmentId}>
@@ -872,7 +1075,7 @@ export default function LevantamentoPage() {
                         {/* Linha expandida: detalhes completos */}
                         {isExpanded && (
                           <tr className="border-b bg-blue-50/30">
-                            <td colSpan={monthsData.length + 2} className="px-3 py-3">
+                            <td colSpan={filteredMonthData.length + 2} className="px-3 py-3">
                               <div className="overflow-x-auto">
                                 <table className="w-full text-xs border-collapse">
                                   <thead>
