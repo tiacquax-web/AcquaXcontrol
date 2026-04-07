@@ -1227,11 +1227,13 @@ export default function Dashboard() {
   const isProgramador = isSystem && !isAdministrador;
   const isMorador = useMemo(() => {
     if (!context) return false;
-    return !context.isSystem
-      && context.companyIds.length === 0
-      && context.complexes.length === 0
-      && context.blocks.length === 0
-      && context.apartments.length > 0;
+    const normalizedRoles = (context.roleNames ?? context.systemRoles ?? [])
+      .map((role) => (role || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim());
+
+    // Morador pode herdar contexto de bloco/condomínio via regras de acesso.
+    // A identificação por papel garante o dashboard correto mesmo com esse contexto expandido.
+    const hasMoradorRole = normalizedRoles.includes('morador');
+    return !context.isSystem && hasMoradorRole && context.apartments.length > 0;
   }, [context]);
 
   const renderDashboard = () => {

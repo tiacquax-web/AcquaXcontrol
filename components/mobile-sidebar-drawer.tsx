@@ -5,17 +5,66 @@ import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
 import { sidebarPermissionMap } from './sidebar-permission-map';
 import { items as sidebarItems, type ItemType } from "./app-sidebar"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
+import axios from "axios";
 
 export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
   const { permissions } = usePermissionsContext();
+  const [canViewUsersByContext, setCanViewUsersByContext] = React.useState(false);
+  const [hasApartmentVisualizationFallback, setHasApartmentVisualizationFallback] = React.useState(false);
 
-  function hasAnyPermission(url: string, requiresCreate?: boolean) {
+  React.useEffect(() => {
+    let cancelled = false;
+    async function resolveUsersVisibility() {
+      try {
+        const res = await axios.get('/api/auth/my-context', { withCredentials: true });
+        const data = res.data as {
+          isSystem?: boolean;
+          isRestrictedManager?: boolean;
+          apartments?: Array<{ id: string }>;
+          blocks?: Array<{ id: string }>;
+          complexes?: Array<{ id: string }>;
+          companyIds?: string[];
+        };
+        const hasManagerScope =
+          !!data?.isSystem ||
+          !!data?.isRestrictedManager ||
+          (data?.companyIds?.length || 0) > 0 ||
+          (data?.complexes?.length || 0) > 0 ||
+          (data?.blocks?.length || 0) > 0;
+        const hasApartmentScope = (data?.apartments?.length || 0) > 0;
+        const hasOnlyApartmentScope = !hasManagerScope && hasApartmentScope;
+        if (!cancelled) {
+          setCanViewUsersByContext(hasManagerScope && !hasOnlyApartmentScope);
+          setHasApartmentVisualizationFallback(hasApartmentScope);
+        }
+      } catch {
+        if (!cancelled) {
+          setCanViewUsersByContext(false);
+          setHasApartmentVisualizationFallback(false);
+        }
+      }
+    }
+    resolveUsersVisibility();
+    return () => { cancelled = true; };
+  }, []);
+
+  function hasAnyPermission(url: string, requiresCreate?: boolean, requiresRead?: boolean) {
+    if (url === '/users' && canViewUsersByContext) return true;
+    if (
+      hasApartmentVisualizationFallback &&
+      ['/readings', '/meter-report', '/levantamento', '/apartment-report', '/dashboard'].includes(url)
+    ) {
+      return true;
+    }
     if (url === '/dashboard') return true;
     if (!permissions) return false;
     const entity = sidebarPermissionMap[url];
     if (!entity) return permissions.length > 0;
     if (requiresCreate) {
       return permissions.some((p: any) => p.entity === entity && p.action === 'create');
+    }
+    if (requiresRead) {
+      return permissions.some((p: any) => p.entity === entity && p.action === 'read');
     }
     return permissions.some((p: any) => p.entity === entity);
   }
@@ -29,7 +78,7 @@ export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onO
     sidebarItems.some(
       (item: ItemType) =>
         item.group === group &&
-        hasAnyPermission(item.url, (item as any).requiresCreate)
+        hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).requiresRead)
     )
   );
 
@@ -54,7 +103,7 @@ export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onO
                         .filter(
                           (item: ItemType) =>
                             item.group === group &&
-                            hasAnyPermission(item.url, (item as any).requiresCreate)
+                            hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).requiresRead)
                         )
                         .map((item: ItemType) => (
                           <SidebarMenuItem key={item.title}>

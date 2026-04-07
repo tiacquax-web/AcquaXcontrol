@@ -41,6 +41,11 @@ export async function GET(req: NextRequest): Promise<Response> {
             .filter(a => a.contextType === 'system')
             .map(a => a.Role?.name)
             .filter(Boolean) as string[];
+        const roleNames = [...new Set(
+            assignments
+                .map(a => a.Role?.name)
+                .filter((name): name is string => !!name)
+        )];
         const apartmentIds = assignments.filter(a => a.contextType === 'apartment').map(a => a.contextId).filter(Boolean) as string[];
         const blockIds = assignments.filter(a => a.contextType === 'block').map(a => a.contextId).filter(Boolean) as string[];
         const complexIds = assignments.filter(a => a.contextType === 'complex').map(a => a.contextId).filter(Boolean) as string[];
@@ -91,6 +96,7 @@ export async function GET(req: NextRequest): Promise<Response> {
             isSystem,
             isRestrictedManager,
             systemRoles,
+            roleNames,
             apartments,
             blocks,
             complexes,

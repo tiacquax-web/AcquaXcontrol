@@ -42,6 +42,7 @@ export interface UserContext {
   isSystem: boolean;
   isRestrictedManager?: boolean;
   systemRoles: string[];   // ex: ['Administrador'] ou ['Programador']
+  roleNames?: string[];
   apartments: ApartmentWithContext[];
   blocks: BlockWithContext[];
   complexes: ComplexWithContext[];

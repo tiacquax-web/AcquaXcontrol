@@ -162,6 +162,7 @@ export function AppSidebar() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { permissions, loading } = usePermissionsContext();
   const [canViewUsersByContext, setCanViewUsersByContext] = React.useState(false);
+  const [hasApartmentVisualizationFallback, setHasApartmentVisualizationFallback] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -170,20 +171,31 @@ export function AppSidebar() {
         const res = await axios.get('/api/auth/my-context', { withCredentials: true });
         const data = res.data as {
           isSystem?: boolean;
+          isRestrictedManager?: boolean;
           apartments?: Array<{ id: string }>;
           blocks?: Array<{ id: string }>;
           complexes?: Array<{ id: string }>;
           companyIds?: string[];
         };
-        const hasContextScope =
+        const hasManagerScope =
           !!data?.isSystem ||
+          !!data?.isRestrictedManager ||
           (data?.companyIds?.length || 0) > 0 ||
           (data?.complexes?.length || 0) > 0 ||
-          (data?.blocks?.length || 0) > 0 ||
-          (data?.apartments?.length || 0) > 0;
-        if (!cancelled) setCanViewUsersByContext(hasContextScope);
+          (data?.blocks?.length || 0) > 0;
+        const hasApartmentScope = (data?.apartments?.length || 0) > 0;
+        const hasOnlyApartmentScope = !hasManagerScope && hasApartmentScope;
+        if (!cancelled) {
+          // Usuários: apenas perfis gerenciais/sistema, nunca morador puro.
+          setCanViewUsersByContext(hasManagerScope && !hasOnlyApartmentScope);
+          // Fallback para visualizações do morador quando permissões vierem incompletas.
+          setHasApartmentVisualizationFallback(hasApartmentScope);
+        }
       } catch {
-        if (!cancelled) setCanViewUsersByContext(false);
+        if (!cancelled) {
+          setCanViewUsersByContext(false);
+          setHasApartmentVisualizationFallback(false);
+        }
       }
     }
     resolveUsersVisibility();
@@ -197,7 +209,13 @@ export function AppSidebar() {
     : [];
 
   function hasAnyPermission(url: string, requiresCreate?: boolean, requiresRead?: boolean) {
-    if (url === '/users' && canViewUsersByContext) return true;
+    if (url === '/users') return canViewUsersByContext;
+    if (
+      hasApartmentVisualizationFallback &&
+      ['/readings', '/meter-report', '/levantamento', '/apartment-report', '/dashboard'].includes(url)
+    ) {
+      return true;
+    }
     // Dashboard sempre visível
     if (url === '/dashboard') return true;
     if (!permissionsList.length) return false;
