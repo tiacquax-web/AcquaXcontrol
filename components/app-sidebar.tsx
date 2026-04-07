@@ -3,6 +3,7 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGrou
 import { FooterSidebar } from "./footer-sidebar"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
+import { useUserContext } from "@/hooks/useUserContext"
 import { Skeleton } from "@/components/ui/skeleton"
 
 import {
@@ -150,17 +151,19 @@ const items = [
 export function AppSidebar() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { permissions, loading } = usePermissionsContext();
+  const { context: userContext } = useUserContext();
 
   function hasAnyPermission(url: string, requiresCreate?: boolean) {
     // Dashboard sempre visível
     if (url === '/dashboard') return true;
+    if (url === '/users') {
+      const hasUserPermission = !!permissions?.some((p: any) => p.entity === 'user');
+      return hasUserPermission || !!userContext?.isSystem || !!userContext?.isRestrictedManager;
+    }
     if (!permissions) return false;
     const entity = sidebarPermissionMap[url];
     // URL sem mapeamento de entidade → visível se tiver qualquer permissão
     if (!entity) return permissions.length > 0;
-    if (url === '/users') {
-      return permissions.some((p: any) => p.entity === entity);
-    }
     if (requiresCreate) {
       return permissions.some((p: any) => p.entity === entity && p.action === 'create');
     }
