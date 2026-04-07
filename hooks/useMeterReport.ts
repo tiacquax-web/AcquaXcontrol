@@ -62,7 +62,7 @@ export interface MeterReportItem {
 export interface MeterReportData {
   list: MeterReportItem[];
   totalCount: number;
-  dealershipReadings: any[];
+  dealershipReadings: unknown[];
 }
 
 export interface RecentMeterReportMonth {

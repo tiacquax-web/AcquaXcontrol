@@ -30,12 +30,10 @@ import {
   RecentMeterReportMonth,
 } from "@/hooks/useMeterReport";
 import { useDealershipReadings } from '@/hooks/useDealershipReadings';
-import { useComplexes } from '@/hooks/useComplexes';
 import { format, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
 } from 'recharts';

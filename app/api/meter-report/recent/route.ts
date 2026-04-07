@@ -83,8 +83,8 @@ export async function GET(req: NextRequest): Promise<Response> {
     }
 
     return NextResponse.json({ months });
-  } catch (e: any) {
-    console.error('[API meter-report/recent]', e);
+  } catch (error: unknown) {
+    console.error('[API meter-report/recent]', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
