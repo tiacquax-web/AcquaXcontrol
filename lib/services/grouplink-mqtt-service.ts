@@ -56,12 +56,14 @@ export interface GroupLinkSyncOptions {
   maxMessages?: number;
   dryRun?: boolean;
   topicOverride?: string;
+  topicsOverride?: string[];
   sourceLabel?: string;
 }
 
 export interface GroupLinkSyncResult {
   connected: boolean;
   topic: string;
+  topics: string[];
   source: string;
   messagesCollected: number;
   candidatesParsed: number;
@@ -114,12 +116,14 @@ function normalizePemRaw(value: string): string {
 
 async function resolveTlsMaterial(params: {
   label: string;
-  base64Env: string;
-  pemEnv: string;
+  base64Envs: string[];
+  pemEnvs: string[];
   pathEnv: string;
 }): Promise<Buffer> {
-  const base64Raw = process.env[params.base64Env]?.trim();
-  if (base64Raw) {
+  for (const envName of params.base64Envs) {
+    const base64Raw = process.env[envName]?.trim();
+    if (!base64Raw) continue;
+
     try {
       const decoded = Buffer.from(base64Raw, 'base64');
       if (!decoded.length) {
@@ -128,15 +132,16 @@ async function resolveTlsMaterial(params: {
       return decoded;
     } catch (error) {
       throw new Error(
-        `Falha ao decodificar ${params.label} em ${params.base64Env}: ${
+        `Falha ao decodificar ${params.label} em ${envName}: ${
           error instanceof Error ? error.message : 'erro desconhecido'
         }`,
       );
     }
   }
 
-  const pemRaw = process.env[params.pemEnv]?.trim();
-  if (pemRaw) {
+  for (const envName of params.pemEnvs) {
+    const pemRaw = process.env[envName]?.trim();
+    if (!pemRaw) continue;
     return Buffer.from(normalizePemRaw(pemRaw), 'utf-8');
   }
 
@@ -146,8 +151,36 @@ async function resolveTlsMaterial(params: {
   }
 
   throw new Error(
-    `Credencial TLS ausente para ${params.label}. Configure um destes: ${params.base64Env}, ${params.pemEnv} ou ${params.pathEnv}.`,
+    `Credencial TLS ausente para ${params.label}. Configure uma das variáveis base64 (${params.base64Envs.join(
+      ', ',
+    )}), uma PEM (${params.pemEnvs.join(', ')}) ou ${params.pathEnv}.`,
   );
+}
+
+function parseTopics(raw: string): string[] {
+  return raw
+    .split(/[\n,;]+/g)
+    .map((topic) => topic.trim())
+    .filter(Boolean);
+}
+
+function resolveTopics(options: GroupLinkSyncOptions): string[] {
+  const singleOverride = options.topicOverride?.trim();
+  if (singleOverride) return [singleOverride];
+
+  const listOverride = Array.isArray(options.topicsOverride)
+    ? options.topicsOverride.map((topic) => topic.trim()).filter(Boolean)
+    : [];
+  if (listOverride.length > 0) return [...new Set(listOverride)];
+
+  const topicsEnv = process.env.GROUPLINK_MQTT_TOPICS?.trim();
+  const parsedTopics = topicsEnv ? parseTopics(topicsEnv) : [];
+  if (parsedTopics.length > 0) return [...new Set(parsedTopics)];
+
+  const singleTopic = process.env.GROUPLINK_MQTT_TOPIC?.trim();
+  if (singleTopic) return [singleTopic];
+
+  throw new Error('Variável de ambiente obrigatória ausente: GROUPLINK_MQTT_TOPIC ou GROUPLINK_MQTT_TOPICS');
 }
 
 function parseGroupLinkPayload(rawPayload: string): GroupLinkRootMessage | null {
@@ -226,7 +259,7 @@ function normalizeCandidatesFromMessage(message: CollectedMqttMessage): Normaliz
 }
 
 async function collectMqttMessages(params: {
-  topic: string;
+  topics: string[];
   maxCollectionMs: number;
   idleTimeoutMs: number;
   maxMessages: number;
@@ -237,20 +270,20 @@ async function collectMqttMessages(params: {
   const [ca, cert, key] = await Promise.all([
     resolveTlsMaterial({
       label: 'CA Group Link',
-      base64Env: 'GROUPLINK_MQTT_CA_BASE64',
-      pemEnv: 'GROUPLINK_MQTT_CA_PEM',
+      base64Envs: ['GROUPLINK_MQTT_CA_B64', 'GROUPLINK_MQTT_CA_BASE64', 'GROUPLINK_MQTT_CA_PEM_B64'],
+      pemEnvs: ['GROUPLINK_MQTT_CA_PEM'],
       pathEnv: 'GROUPLINK_MQTT_CA_PATH',
     }),
     resolveTlsMaterial({
       label: 'certificado de cliente Group Link',
-      base64Env: 'GROUPLINK_MQTT_CERT_BASE64',
-      pemEnv: 'GROUPLINK_MQTT_CERT_PEM',
+      base64Envs: ['GROUPLINK_MQTT_CERT_B64', 'GROUPLINK_MQTT_CERT_BASE64', 'GROUPLINK_MQTT_CERT_PEM_B64'],
+      pemEnvs: ['GROUPLINK_MQTT_CERT_PEM'],
       pathEnv: 'GROUPLINK_MQTT_CERT_PATH',
     }),
     resolveTlsMaterial({
       label: 'chave privada Group Link',
-      base64Env: 'GROUPLINK_MQTT_KEY_BASE64',
-      pemEnv: 'GROUPLINK_MQTT_KEY_PEM',
+      base64Envs: ['GROUPLINK_MQTT_KEY_B64', 'GROUPLINK_MQTT_KEY_BASE64', 'GROUPLINK_MQTT_KEY_PEM_B64'],
+      pemEnvs: ['GROUPLINK_MQTT_KEY_PEM'],
       pathEnv: 'GROUPLINK_MQTT_KEY_PATH',
     }),
   ]);
@@ -312,7 +345,7 @@ async function collectMqttMessages(params: {
 
     client.on('connect', () => {
       connected = true;
-      client.subscribe(params.topic, { qos: 1 }, (error) => {
+      client.subscribe(params.topics, { qos: 1 }, (error) => {
         if (error) finish(error);
       });
     });
@@ -334,7 +367,8 @@ async function collectMqttMessages(params: {
 export class GroupLinkMqttService {
   static async syncOnce(options: GroupLinkSyncOptions = {}): Promise<GroupLinkSyncResult> {
     const startedAt = new Date();
-    const topic = options.topicOverride?.trim() || getEnvOrThrow('GROUPLINK_MQTT_TOPIC');
+    const topics = resolveTopics(options);
+    const topic = topics.join(',');
     const source = options.sourceLabel?.trim() || 'default';
     const maxCollectionMs = options.maxCollectionMs ?? getNumericEnv('GROUPLINK_MQTT_MAX_COLLECTION_MS', DEFAULT_MAX_COLLECTION_MS);
     const idleTimeoutMs = options.idleTimeoutMs ?? getNumericEnv('GROUPLINK_MQTT_IDLE_TIMEOUT_MS', DEFAULT_IDLE_TIMEOUT_MS);
@@ -342,7 +376,7 @@ export class GroupLinkMqttService {
     const dryRun = !!options.dryRun;
 
     const collected = await collectMqttMessages({
-      topic,
+      topics,
       maxCollectionMs,
       idleTimeoutMs,
       maxMessages,
@@ -367,6 +401,7 @@ export class GroupLinkMqttService {
       return {
         connected: collected.connected,
         topic,
+        topics,
         source,
         messagesCollected: collected.messages.length,
         candidatesParsed: candidates.length,
@@ -551,6 +586,7 @@ export class GroupLinkMqttService {
     return {
       connected: collected.connected,
       topic,
+      topics,
       source,
       messagesCollected: collected.messages.length,
       candidatesParsed: candidates.length,

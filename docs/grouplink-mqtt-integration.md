@@ -21,16 +21,17 @@ No `.env` (base no `.env.example`), preencher:
 - `GROUPLINK_MQTT_HOST` (default: `mqtt.grouplinknetwork.com`)
 - `GROUPLINK_MQTT_PORT` (default: `8883`)
 - `GROUPLINK_MQTT_CLIENT_ID`
-- `GROUPLINK_MQTT_TOPIC` (ex.: `message/sua-org`)
+- `GROUPLINK_MQTT_TOPIC` (ex.: `message/sua-org`) para fallback/schedule
+- `GROUPLINK_MQTT_TOPICS` (opcional): lista de tópicos para sincronização manual em lote (`/sync`), separados por vírgula, `;` ou quebra de linha
 - Certificados (escolha **uma** abordagem):
   - **A) Arquivo em disco** (servidor tradicional):
     - `GROUPLINK_MQTT_CA_PATH` (path absoluto do `grouplink-ca.crt`)
     - `GROUPLINK_MQTT_CERT_PATH` (path absoluto do `.crt` do cliente)
     - `GROUPLINK_MQTT_KEY_PATH` (path absoluto da sua `.key`)
   - **B) Variável de ambiente (recomendado para Vercel)**:
-    - `GROUPLINK_MQTT_CA_PEM` **ou** `GROUPLINK_MQTT_CA_B64`
-    - `GROUPLINK_MQTT_CERT_PEM` **ou** `GROUPLINK_MQTT_CERT_B64`
-    - `GROUPLINK_MQTT_KEY_PEM` **ou** `GROUPLINK_MQTT_KEY_B64`
+    - `GROUPLINK_MQTT_CA_PEM` **ou** `GROUPLINK_MQTT_CA_B64` (também aceita `GROUPLINK_MQTT_CA_BASE64`/`GROUPLINK_MQTT_CA_PEM_B64`)
+    - `GROUPLINK_MQTT_CERT_PEM` **ou** `GROUPLINK_MQTT_CERT_B64` (também aceita `GROUPLINK_MQTT_CERT_BASE64`/`GROUPLINK_MQTT_CERT_PEM_B64`)
+    - `GROUPLINK_MQTT_KEY_PEM` **ou** `GROUPLINK_MQTT_KEY_B64` (também aceita `GROUPLINK_MQTT_KEY_BASE64`/`GROUPLINK_MQTT_KEY_PEM_B64`)
 - `GROUPLINK_SYNC_SECRET` (segredo para chamada do endpoint agendado)
 
 Opcional tuning:
@@ -55,11 +56,15 @@ Payload opcional:
 
 ```json
 {
-  "dryRun": true
+  "dryRun": true,
+  "topic": "message/um-topico-especifico",
+  "topics": ["message/topico-1", "message/topico-2"]
 }
 ```
 
 - `dryRun: true`: conecta/coleta/parseia, mas não grava no banco.
+- `topic`: força sincronizar apenas um tópico nesta chamada.
+- `topics`: força sincronizar múltiplos tópicos nesta chamada.
 
 ## 3.1) Agendamento por condomínio (via Acquaxcontrol)
 
@@ -100,6 +105,9 @@ Esse endpoint varre condomínios habilitados e executa somente os que:
 
 - já chegaram no horário configurado do dia no timezone do condomínio
 - ainda **não** foram sincronizados hoje
+
+> Importante: no agendamento por condomínio (`run-due`), sempre é usado o tópico do condomínio (`groupLinkTopic`) e, se vazio, o fallback `GROUPLINK_MQTT_TOPIC`.  
+> O `GROUPLINK_MQTT_TOPICS` é para sincronização manual/lote via `/sync`.
 
 ## 4) Exemplo de agendamento 1x ao dia
 

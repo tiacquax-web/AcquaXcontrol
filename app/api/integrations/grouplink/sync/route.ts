@@ -33,10 +33,16 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     const body = await req.json().catch(() => ({}));
     const dryRun = Boolean(body?.dryRun);
+    const topicOverride = typeof body?.topic === 'string' ? body.topic : undefined;
+    const topicsOverride = Array.isArray(body?.topics)
+      ? body.topics.filter((topic: unknown): topic is string => typeof topic === 'string')
+      : undefined;
 
     const result = await GroupLinkMqttService.syncOnce({
       initiatedByUserId,
       dryRun,
+      topicOverride,
+      topicsOverride,
     });
 
     return NextResponse.json(

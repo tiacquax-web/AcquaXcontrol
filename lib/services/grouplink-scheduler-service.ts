@@ -202,6 +202,7 @@ export class GroupLinkSchedulerService {
     for (const complex of complexes) {
       const timezone = (complex.groupLinkTimezone || 'America/Sao_Paulo').trim();
       const scheduleTime = complex.groupLinkScheduleTime || '';
+      const topicForComplex = (complex.groupLinkTopic || '').trim() || process.env.GROUPLINK_MQTT_TOPIC?.trim() || '';
 
       try {
         if (!parseHHMM(scheduleTime)) {
@@ -238,9 +239,20 @@ export class GroupLinkSchedulerService {
           continue;
         }
 
+        if (!topicForComplex) {
+          results.push({
+            complexId: complex.id,
+            socialName: complex.socialName,
+            status: 'failed',
+            message:
+              'Tópico não configurado para o condomínio e GROUPLINK_MQTT_TOPIC global ausente. Defina o tópico no condomínio.',
+          });
+          continue;
+        }
+
         const syncResult = await GroupLinkMqttService.syncOnce({
           initiatedByUserId: undefined,
-          topicOverride: complex.groupLinkTopic || undefined,
+          topicOverride: topicForComplex,
           sourceLabel: `complex:${complex.id}`,
         });
 
