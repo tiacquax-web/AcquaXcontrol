@@ -65,6 +65,16 @@ export interface MeterReportData {
   dealershipReadings: any[];
 }
 
+export interface RecentMeterReportMonth {
+  monthRef: string;
+  yearRef: string;
+  list: MeterReportItem[];
+}
+
+export interface RecentMeterReportData {
+  months: RecentMeterReportMonth[];
+}
+
 interface UseMeterReportProps {
   month: string; // "01".."12"
   year: string;  // "2026"
@@ -111,6 +121,57 @@ export function useMeterReport({ month, year, complexId, apartmentId, enabled = 
 
     return () => { cancelled = true; };
   }, [month, year, complexId, apartmentId, enabled]);
+
+  return { data, loading, error };
+}
+
+interface UseRecentApartmentReportsProps {
+  apartmentId?: string;
+  monthsLimit?: number;
+  enabled?: boolean;
+}
+
+export function useRecentApartmentReports({
+  apartmentId,
+  monthsLimit = 48,
+  enabled = true,
+}: UseRecentApartmentReportsProps) {
+  const [data, setData] = useState<RecentMeterReportData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!enabled || !apartmentId) return;
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    axios
+      .get<RecentMeterReportData>(`${NEXT_PUBLIC_API_URL}/meter-report/recent`, {
+        params: {
+          apartment_id: apartmentId,
+          months_limit: monthsLimit,
+        },
+        withCredentials: true,
+      })
+      .then(res => {
+        if (!cancelled) {
+          setData(res.data);
+        }
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setError(err.response?.data?.error || err.message || 'Erro ao buscar histórico recente');
+          setData(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [apartmentId, monthsLimit, enabled]);
 
   return { data, loading, error };
 }

@@ -23,7 +23,12 @@ import SelectMeter from "@/components/ComboboxMeter";
 import { useUpdateUserPreferences } from '@/hooks/useUserPreferences';
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserContext } from "@/hooks/useUserContext";
-import { useMeterReport, MeterReportItem } from "@/hooks/useMeterReport";
+import {
+  useMeterReport,
+  useRecentApartmentReports,
+  MeterReportItem,
+  RecentMeterReportMonth,
+} from "@/hooks/useMeterReport";
 import { useDealershipReadings } from '@/hooks/useDealershipReadings';
 import { useComplexes } from '@/hooks/useComplexes';
 import { format, subMonths } from "date-fns";
@@ -54,6 +59,9 @@ const allMonthOptions = buildMonthOptions();
 
 const formatCurrency = (v: number | null | undefined) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0);
+
+const getMonthConsumptionTotal = (month: RecentMeterReportMonth) =>
+  month.list.reduce((sum, report) => sum + (report.consumption ?? 0), 0);
 
 // ─── MonthSelect ──────────────────────────────────────────────────────────────
 function MonthSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -146,52 +154,41 @@ function FilipetaMiniSkeleton() {
 }
 
 // ─── ConsumoAnualGraph ────────────────────────────────────────────────────────
-function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
+function ConsumoAnualGraph({
+  recentMonths,
+  loading,
+}: {
+  recentMonths: RecentMeterReportMonth[];
+  loading: boolean;
+}) {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
-  const [chartData, setChartData] = useState<{ month: string; consumption: number }[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [totalAnual, setTotalAnual] = useState<number | null>(null);
 
-  const yearOptions = useMemo(() =>
-    Array.from({ length: 4 }, (_, i) => String(currentYear - i)),
-  [currentYear]);
+  const yearOptions = useMemo(() => {
+    const availableYears = Array.from(new Set(recentMonths.map(month => month.yearRef)));
+    return availableYears.length > 0 ? availableYears : [String(currentYear)];
+  }, [recentMonths, currentYear]);
 
   useEffect(() => {
-    if (!apartmentId) return;
-    setLoading(true);
-    setChartData([]);
-    setTotalAnual(null);
+    if (yearOptions.length === 0) return;
+    setSelectedYear(prev => yearOptions.includes(prev) ? prev : yearOptions[0]);
+  }, [yearOptions]);
 
-    const base = '/api';
-    const now = new Date();
-    const maxMonth = Number(selectedYear) === currentYear ? now.getMonth() + 1 : 12;
-    const months = Array.from({ length: maxMonth }, (_, i) => String(i + 1).padStart(2, '0'));
+  const chartData = useMemo(() =>
+    recentMonths
+      .filter(month => month.yearRef === selectedYear)
+      .map(month => ({
+        monthNumber: Number(month.monthRef),
+        month: MONTH_NAMES_SHORT[Number(month.monthRef) - 1],
+        consumption: getMonthConsumptionTotal(month),
+      }))
+      .sort((a, b) => a.monthNumber - b.monthNumber)
+      .map(({ month, consumption }) => ({ month, consumption })),
+  [recentMonths, selectedYear]);
 
-    Promise.all(
-      months.map(month =>
-        fetch(`${base}/meter-report?month=${month}&year=${selectedYear}&apartment_id=${apartmentId}`, {
-          credentials: 'include',
-        })
-          .then(r => r.ok ? r.json() : { list: [] })
-          .then(d => {
-            const list: MeterReportItem[] = d.list ?? [];
-            const total = list.reduce((s, r) => s + (r.consumption ?? 0), 0);
-            return { month, consumption: total };
-          })
-          .catch(() => ({ month, consumption: 0 }))
-      )
-    ).then(results => {
-      const withData = results.filter(r => r.consumption > 0);
-      const data = withData.map(r => ({
-        month: MONTH_NAMES_SHORT[Number(r.month) - 1],
-        consumption: r.consumption,
-      }));
-      setChartData(data);
-      setTotalAnual(data.reduce((s, r) => s + r.consumption, 0));
-      setLoading(false);
-    });
-  }, [apartmentId, selectedYear, currentYear]);
+  const totalAnual = useMemo(() =>
+    chartData.reduce((sum, month) => sum + month.consumption, 0),
+  [chartData]);
 
   const maxVal = useMemo(() => Math.max(...chartData.map(d => d.consumption), 1), [chartData]);
   const peakMonth = useMemo(() =>
@@ -220,6 +217,11 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
         {loading ? (
           <div className="flex items-center justify-center h-40">
             <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+          </div>
+        ) : recentMonths.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+            <BarChart3 className="w-10 h-10 mb-2 opacity-30" />
+            <p className="text-sm">Sem leituras registradas para esta unidade</p>
           </div>
         ) : chartData.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
@@ -285,38 +287,16 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
 
   const [selectedAptId, setSelectedAptId] = useState<string | null>(null);
   const activeAptId = singleApartment?.id ?? selectedAptId;
-
-  // Filipeta preview (last 3 months)
-  const [filipetasByMonth, setFilipetasByMonth] = useState<Record<string, MeterReportItem[]>>({});
-  const [loadingFilipetas, setLoadingFilipetas] = useState(false);
-
-  const last3 = useMemo(() => Array.from({ length: 3 }, (_, i) => {
-    const d = subMonths(new Date(), i);
-    return {
-      month: String(d.getMonth() + 1).padStart(2, '0'),
-      year: String(d.getFullYear()),
-      label: format(d, 'MMM/yyyy', { locale: ptBR }),
-    };
-  }), []);
-
-  useEffect(() => {
-    if (ctxLoading || apartments.length === 0 || !activeAptId) return;
-    setLoadingFilipetas(true);
-    const base = '/api';
-    Promise.all(
-      last3.map(m =>
-        fetch(`${base}/meter-report?month=${m.month}&year=${m.year}&apartment_id=${activeAptId}`, { credentials: 'include' })
-          .then(r => r.json())
-          .then(d => ({ key: `${m.month}-${m.year}`, list: (d.list ?? []) as MeterReportItem[] }))
-          .catch(() => ({ key: `${m.month}-${m.year}`, list: [] as MeterReportItem[] }))
-      )
-    ).then(results => {
-      const map: Record<string, MeterReportItem[]> = {};
-      results.forEach(r => { map[r.key] = r.list; });
-      setFilipetasByMonth(map);
-      setLoadingFilipetas(false);
-    });
-  }, [ctxLoading, apartments.length, activeAptId]);
+  const {
+    data: recentReportsData,
+    loading: loadingRecentReports,
+  } = useRecentApartmentReports({
+    apartmentId: activeAptId ?? undefined,
+    monthsLimit: 48,
+    enabled: !ctxLoading && apartments.length > 0 && !!activeAptId,
+  });
+  const recentMonths = recentReportsData?.months ?? [];
+  const recentFilipetas = useMemo(() => recentMonths.slice(0, 3), [recentMonths]);
 
   if (ctxLoading) {
     return (
@@ -368,7 +348,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
         )}
 
         {activeAptId ? (
-          <ConsumoAnualGraph apartmentId={activeAptId} />
+          <ConsumoAnualGraph recentMonths={recentMonths} loading={loadingRecentReports} />
         ) : (
           !singleApartment && apartments.length > 1 && (
             <p className="text-xs text-muted-foreground text-center">Selecione uma unidade para ver o gráfico de consumo.</p>
@@ -381,7 +361,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-semibold">Filipetas — últimos 3 meses</h2>
+            <h2 className="text-lg font-semibold">Filipetas — mais recentes</h2>
           </div>
           <Button variant="outline" size="sm" asChild>
             <Link href="/meter-report" className="flex items-center gap-1">Ver todas <ChevronRight className="w-4 h-4" /></Link>
@@ -389,23 +369,21 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
         </div>
         {!activeAptId && apartments.length > 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">Selecione uma unidade para ver as filipetas.</p>
-        ) : loadingFilipetas ? (
+        ) : loadingRecentReports ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {[1, 2, 3].map(i => <FilipetaMiniSkeleton key={i} />)}
           </div>
+        ) : recentFilipetas.length === 0 ? (
+          <div className="border rounded-xl p-6 flex flex-col items-center justify-center text-muted-foreground text-sm min-h-[160px]">
+            <FileText className="w-8 h-8 mb-2 opacity-30" />
+            <span className="font-medium mb-1">Sem filipetas disponíveis</span>
+            <span className="text-xs">Nenhum relatório foi encontrado para esta unidade.</span>
+          </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {last3.map(m => {
-              const items = filipetasByMonth[`${m.month}-${m.year}`] ?? [];
-              if (items.length === 0)
-                return (
-                  <div key={m.label} className="border rounded-xl p-4 flex flex-col items-center justify-center text-muted-foreground text-sm min-h-[120px]">
-                    <span className="font-medium capitalize mb-1">{m.label}</span>
-                    <span className="text-xs">Sem dados</span>
-                  </div>
-                );
-              return items.map(r => <FilipetaMiniCard key={r.id} report={r} />);
-            })}
+            {recentFilipetas.flatMap(month =>
+              month.list.map(report => <FilipetaMiniCard key={report.id} report={report} />)
+            )}
           </div>
         )}
       </section>
