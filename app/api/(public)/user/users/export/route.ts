@@ -5,6 +5,26 @@ import * as XLSX from 'xlsx';
 import { getAccessibleUserIdsForAction, getTemporaryPasswordFromPreferences } from '@/lib/userAccess';
 
 const NOT_DELETED = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } as const;
+const EXCEL_SHEET_NAME_MAX_LENGTH = 31;
+
+function buildExportSheetName(complexName?: string) {
+    const defaultName = 'Usuários';
+    if (!complexName?.trim()) return defaultName;
+
+    const sanitizedComplexName = complexName
+        .replace(/[:\\/?*\[\]]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const prefix = `${defaultName} - `;
+    const availableLength = EXCEL_SHEET_NAME_MAX_LENGTH - prefix.length;
+    if (availableLength <= 0) return defaultName.substring(0, EXCEL_SHEET_NAME_MAX_LENGTH);
+
+    const truncatedComplexName = sanitizedComplexName.substring(0, availableLength).trim();
+    if (!truncatedComplexName) return defaultName;
+
+    return `${prefix}${truncatedComplexName}`;
+}
 
 function mergeUserIdScope(current: Set<string> | null, nextIds: string[]) {
     if (current === null) return new Set(nextIds);
@@ -129,7 +149,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         worksheet['!cols'] = colWidths;
 
         const workbook = XLSX.utils.book_new();
-        const sheetName = complexName ? `Usuários - ${complexName.substring(0, 25)}` : 'Usuários';
+        const sheetName = buildExportSheetName(complexName);
         XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
 
         const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
