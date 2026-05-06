@@ -114,7 +114,12 @@ export async function POST(req: NextRequest): Promise<Response> {
         worksheet['!cols'] = colWidths;
 
         const workbook = XLSX.utils.book_new();
-        const sheetName = complexName ? `Usuários - ${complexName.substring(0, 25)}` : 'Usuários';
+        const sanitizeSheetName = (name: string) =>
+  name.replace(/[\\/*?:[\]]/g, '').substring(0, 31);
+
+const sheetName = complexName
+  ? sanitizeSheetName(`Usuários - ${complexName}`)
+  : 'Usuários';
         XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
 
         const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
