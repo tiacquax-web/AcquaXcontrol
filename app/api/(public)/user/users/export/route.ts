@@ -4,9 +4,6 @@ import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
 import prisma from '@/lib/prisma';
 import * as XLSX from 'xlsx';
 
-const sanitizeSheetName = (name: string) =>
-  name.replace(/[\\/*?:[\]]/g, '').substring(0, 31);
-
 export async function POST(req: NextRequest): Promise<Response> {
     try {
         const session = req.cookies.get('session')?.value;
@@ -66,44 +63,16 @@ export async function POST(req: NextRequest): Promise<Response> {
             ]});
         }
         if (userIds.length > 0) andClauses.push({ id: { in: userIds } });
-        if (filteredByComplexUserIds && filteredByComplexUserIds.length > 0) {
-  andClauses.push({ id: { in: filteredByComplexUserIds } });
-}
-
-if (filteredByRoleUserIds && filteredByRoleUserIds.length > 0) {
-  andClauses.push({ id: { in: filteredByRoleUserIds } });
-}
+        if (filteredByComplexUserIds !== null) andClauses.push({ id: { in: filteredByComplexUserIds } });
+        if (filteredByRoleUserIds !== null) andClauses.push({ id: { in: filteredByRoleUserIds } });
 
         const users = await prisma.user.findMany({
-  where: { AND: andClauses },
-  select: {
-    id: true,
-    name: true,
-    email: true,
-    documentPerson: true,
-    telephone: true,
-    cell: true,
-    createdAt: true,
-    temporaryPassword: true // 👈 ajuste o nome se for outro
-  },
-  orderBy: { name: 'asc' },
-});
+            where: { AND: andClauses },
+            select: { id: true, name: true, email: true, documentPerson: true, telephone: true, cell: true, createdAt: true },
+            orderBy: { name: 'asc' },
+        });
 
-        if (users.length === 0) {
-  const worksheet = XLSX.utils.json_to_sheet([]);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Usuários');
-
-  const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-
-  return new NextResponse(excelBuffer, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename="usuarios_vazio.xlsx"',
-    },
-  });
-}
+        if (users.length === 0) return NextResponse.json({ error: 'Nenhum usuário encontrado' }, { status: 404 });
 
         // Buscar papel de cada usuário
         const allAssigns = await prisma.roleAssignment.findMany({
@@ -127,22 +96,14 @@ if (filteredByRoleUserIds && filteredByRoleUserIds.length > 0) {
             const assigns = allAssigns.filter(a => a.userId === user.id);
             const papeis = assigns.map(a => roleMap[a.roleId] || a.roleId).join(', ');
             return {
-  'Nome': user.name,
-  'Email': user.email,
-  'Senha Temporária': user.temporaryPassword || '',
-  'Documento': user.documentPerson || '',
-  'Telefone': user.telephone || '',
-  'Celular': user.cell || '',
-  'Papéis': papeis,
-  'Data de Cadastro': user.createdAt
-    ? new Date(user.createdAt)
-        .toISOString()
-        .split('T')[0]
-        .split('-')
-        .reverse()
-        .join('/')
-    : '',
-};
+                'Nome': user.name,
+                'Email': user.email,
+                'Documento': user.documentPerson || '',
+                'Telefone': user.telephone || '',
+                'Celular': user.cell || '',
+                'Papéis': papeis,
+                'Data de Cadastro': user.createdAt?.toLocaleDateString('pt-BR') || '',
+            };
         });
 
         const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -153,12 +114,7 @@ if (filteredByRoleUserIds && filteredByRoleUserIds.length > 0) {
         worksheet['!cols'] = colWidths;
 
         const workbook = XLSX.utils.book_new();
-        const sanitizeSheetName = (name: string) =>
-  name.replace(/[\\/*?:[\]]/g, '').substring(0, 31);
-
-const sheetName = complexName
-  ? sanitizeSheetName(`Usuários - ${complexName}`)
-  : 'Usuários';
+        const sheetName = complexName ? `Usuários - ${complexName.substring(0, 25)}` : 'Usuários';
         XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
 
         const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
