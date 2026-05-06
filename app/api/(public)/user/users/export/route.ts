@@ -4,6 +4,9 @@ import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
 import prisma from '@/lib/prisma';
 import * as XLSX from 'xlsx';
 
+const sanitizeSheetName = (name: string) =>
+  name.replace(/[\\/*?:[\]]/g, '').substring(0, 31);
+
 export async function POST(req: NextRequest): Promise<Response> {
     try {
         const session = req.cookies.get('session')?.value;
@@ -63,8 +66,13 @@ export async function POST(req: NextRequest): Promise<Response> {
             ]});
         }
         if (userIds.length > 0) andClauses.push({ id: { in: userIds } });
-        if (filteredByComplexUserIds !== null) andClauses.push({ id: { in: filteredByComplexUserIds } });
-        if (filteredByRoleUserIds !== null) andClauses.push({ id: { in: filteredByRoleUserIds } });
+        if (filteredByComplexUserIds && filteredByComplexUserIds.length > 0) {
+  andClauses.push({ id: { in: filteredByComplexUserIds } });
+}
+
+if (filteredByRoleUserIds && filteredByRoleUserIds.length > 0) {
+  andClauses.push({ id: { in: filteredByRoleUserIds } });
+}
 
         const users = await prisma.user.findMany({
             where: { AND: andClauses },
@@ -72,7 +80,21 @@ export async function POST(req: NextRequest): Promise<Response> {
             orderBy: { name: 'asc' },
         });
 
-        if (users.length === 0) return NextResponse.json({ error: 'Nenhum usuário encontrado' }, { status: 404 });
+        if (users.length === 0) {
+  const worksheet = XLSX.utils.json_to_sheet([]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Usuários');
+
+  const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+  return new NextResponse(excelBuffer, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="usuarios_vazio.xlsx"',
+    },
+  });
+}
 
         // Buscar papel de cada usuário
         const allAssigns = await prisma.roleAssignment.findMany({
@@ -102,7 +124,14 @@ export async function POST(req: NextRequest): Promise<Response> {
                 'Telefone': user.telephone || '',
                 'Celular': user.cell || '',
                 'Papéis': papeis,
-                'Data de Cadastro': user.createdAt?.toLocaleDateString('pt-BR') || '',
+                'Data de Cadastro': user.createdAt
+  ? new Date(user.createdAt)
+      .toISOString()
+      .split('T')[0]
+      .split('-')
+      .reverse()
+      .join('/')
+  : '',
             };
         });
 
@@ -114,7 +143,12 @@ export async function POST(req: NextRequest): Promise<Response> {
         worksheet['!cols'] = colWidths;
 
         const workbook = XLSX.utils.book_new();
-        const sheetName = complexName ? `Usuários - ${complexName.substring(0, 25)}` : 'Usuários';
+        const sanitizeSheetName = (name: string) =>
+  name.replace(/[\\/*?:[\]]/g, '').substring(0, 31);
+
+const sheetName = complexName
+  ? sanitizeSheetName(`Usuários - ${complexName}`)
+  : 'Usuários';
         XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
 
         const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
