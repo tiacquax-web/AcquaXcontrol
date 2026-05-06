@@ -75,10 +75,19 @@ if (filteredByRoleUserIds && filteredByRoleUserIds.length > 0) {
 }
 
         const users = await prisma.user.findMany({
-            where: { AND: andClauses },
-            select: { id: true, name: true, email: true, documentPerson: true, telephone: true, cell: true, createdAt: true },
-            orderBy: { name: 'asc' },
-        });
+  where: { AND: andClauses },
+  select: {
+    id: true,
+    name: true,
+    email: true,
+    documentPerson: true,
+    telephone: true,
+    cell: true,
+    createdAt: true,
+    temporaryPassword: true // 👈 ajuste o nome se for outro
+  },
+  orderBy: { name: 'asc' },
+});
 
         if (users.length === 0) {
   const worksheet = XLSX.utils.json_to_sheet([]);
@@ -118,21 +127,22 @@ if (filteredByRoleUserIds && filteredByRoleUserIds.length > 0) {
             const assigns = allAssigns.filter(a => a.userId === user.id);
             const papeis = assigns.map(a => roleMap[a.roleId] || a.roleId).join(', ');
             return {
-                'Nome': user.name,
-                'Email': user.email,
-                'Documento': user.documentPerson || '',
-                'Telefone': user.telephone || '',
-                'Celular': user.cell || '',
-                'Papéis': papeis,
-                'Data de Cadastro': user.createdAt
-  ? new Date(user.createdAt)
-      .toISOString()
-      .split('T')[0]
-      .split('-')
-      .reverse()
-      .join('/')
-  : '',
-            };
+  'Nome': user.name,
+  'Email': user.email,
+  'Senha Temporária': user.temporaryPassword || '',
+  'Documento': user.documentPerson || '',
+  'Telefone': user.telephone || '',
+  'Celular': user.cell || '',
+  'Papéis': papeis,
+  'Data de Cadastro': user.createdAt
+    ? new Date(user.createdAt)
+        .toISOString()
+        .split('T')[0]
+        .split('-')
+        .reverse()
+        .join('/')
+    : '',
+};
         });
 
         const worksheet = XLSX.utils.json_to_sheet(exportData);
