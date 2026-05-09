@@ -1,7 +1,8 @@
 import { cleanEntityBody } from "@/lib/prisma"
 import prisma from "@/lib/prisma"
-import { createEntity, deleteEntity, updateEntityData } from "@/lib/userData"
+import { deleteEntity } from "@/lib/userData"
 import { updateUser, validateUserSession } from "@/lib/users"
+import { getAccessibleUserIdsForAction, userHasRestrictedManagerProfile } from "@/lib/userAccess"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ entityId: string }> }): Promise<Response> {
@@ -60,6 +61,20 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
         // Extract entity ID from query parameters
         const { entityId } = await params;
         if (!entityId) return NextResponse.json({ error: 'No entity id was informed. Set "entity_id" in the query params.' }, { status: 400 });
+
+        const access = await getAccessibleUserIdsForAction(userId, 'delete');
+        if (!access.hasPermission) {
+            return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+        }
+
+        if (!access.isSystem && !access.userIds.includes(entityId)) {
+            return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+        }
+
+        const restrictedManager = await userHasRestrictedManagerProfile(userId);
+        if (restrictedManager) {
+            return NextResponse.json({ error: 'Síndico e administradora não podem excluir usuários.' }, { status: 403 });
+        }
 
         // 🔒 PROTEÇÃO: impede deleção do usuário admin@acquax.com
         const targetUser = await prisma.user.findUnique({ where: { id: entityId } });

@@ -22,6 +22,7 @@ import ComplexesCombobox from "@/components/ComboboxComplex"
 import BlocksCombobox from "@/components/ComboboxBlock"
 import { useRoles } from "@/hooks/useRoles"
 import { exportUsers } from "@/services/usersService"
+import { useUserContext } from "@/hooks/useUserContext"
 import type { Complex, Block } from "@prisma/client"
 
 export default function UsersPage() {
@@ -58,8 +59,8 @@ export default function UsersPage() {
         roleId: filterRoleId || undefined,
     })
     
-    const { createUser, updateUser, deleteUser, error: mutationError } = useUserMutations()
-    const { deleteRoleAssignment, error: errorDeleteRoleAssignment, loading: loadingDeleteRoleAssignment } = useRoleAssignmentMutations()
+    const { createUser, updateUser, deleteUser, bulkUsersAction, loading: mutationLoading, error: mutationError } = useUserMutations()
+    const { deleteRoleAssignment, error: errorDeleteRoleAssignment } = useRoleAssignmentMutations()
     const { roles } = useRoles({})
     const [currentUser, setCurrentUser] = useState<Partial<User> | undefined>(undefined)
     const [exportLoading, setExportLoading] = useState(false)
@@ -67,9 +68,14 @@ export default function UsersPage() {
     const [exportComplexId, setExportComplexId] = useState("")
     const [exportComplex, setExportComplex] = useState<Complex | undefined>(undefined)
     const [exportRoleId, setExportRoleId] = useState("")
+    const { context: userContext, loading: contextLoading } = useUserContext()
     const { toast } = useToast()
 
     const hasActiveFilters = !!(filterComplexId || filterBlockId || filterRoleId)
+    const isRestrictedManager =
+        !!userContext?.isRestrictedManager ||
+        ((userContext?.isSystem === false) && (userContext?.companyIds?.length || 0) > 0)
+    const canDeleteUsers = !contextLoading && !isRestrictedManager
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearchQuery(e.target.value)
@@ -115,6 +121,14 @@ export default function UsersPage() {
     }
 
     const handleDeleteUser = async (id: string) => {
+        if (!canDeleteUsers) {
+            toast({
+                title: "Sem permissão",
+                description: "Síndico e administradora não podem excluir usuários.",
+                variant: "destructive",
+            })
+            return
+        }
         if (window.confirm("Tem certeza de que deseja excluir este usuário?")) {
             try {
                 await deleteUser(id)
@@ -126,6 +140,56 @@ export default function UsersPage() {
             } catch (error) {
                 console.error("Erro ao excluir usuário:", error)
             }
+        }
+    }
+
+    const getBulkActionPayload = () => ({
+        search: searchQuery,
+        userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : [],
+        complexId: filterComplexId || undefined,
+        blockId: filterBlockId || undefined,
+        roleId: filterRoleId || undefined,
+    })
+
+    const handleResetAllUsers = async () => {
+        const confirmReset = window.confirm("Deseja redefinir todos os usuários filtrados? Novas senhas aleatórias serão geradas.")
+        if (!confirmReset) return
+        try {
+            const result = await bulkUsersAction({ action: 'resetAllUsers', ...getBulkActionPayload() })
+            if (!result) return
+            toast({
+                title: "Usuários redefinidos",
+                description: `${result.usersAffected ?? 0} usuário(s) com nova senha temporária.`,
+            })
+            setSelectedUsers(new Set())
+            refetch()
+        } catch (error) {
+            console.error("Erro ao redefinir usuários:", error)
+        }
+    }
+
+    const handleDeleteAllUsers = async () => {
+        if (!canDeleteUsers) {
+            toast({
+                title: "Sem permissão",
+                description: "Síndico e administradora não podem excluir usuários.",
+                variant: "destructive",
+            })
+            return
+        }
+        const confirmDelete = window.confirm("Deseja excluir todos os usuários filtrados? Esta ação não pode ser desfeita.")
+        if (!confirmDelete) return
+        try {
+            const result = await bulkUsersAction({ action: 'deleteAllUsers', ...getBulkActionPayload() })
+            if (!result) return
+            toast({
+                title: "Usuários excluídos",
+                description: `${result.usersAffected ?? 0} usuário(s) removido(s).`,
+            })
+            setSelectedUsers(new Set())
+            refetch()
+        } catch (error) {
+            console.error("Erro ao excluir usuários:", error)
         }
     }
 
@@ -255,9 +319,12 @@ export default function UsersPage() {
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <div>
                             <CardTitle className="text-2xl font-bold">Usuários</CardTitle>
-                            <CardDescription>Gerencie seus usuários e seus detalhes</CardDescription>
+                            <CardDescription>
+                                Gerencie seus usuários e seus detalhes
+                                {isRestrictedManager ? " (síndico/administradora: sem permissão de exclusão)." : ""}
+                            </CardDescription>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                             <Button variant="outline" onClick={handleOpenExportModal} disabled={exportLoading}>
                                 {exportLoading ? (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -271,7 +338,15 @@ export default function UsersPage() {
                                 Filtros
                                 {hasActiveFilters && <Badge className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs" variant="destructive">!</Badge>}
                             </Button>
-                            <Button onClick={handleAddUser}>
+                            {canDeleteUsers && (
+                                <Button variant="destructive" onClick={handleDeleteAllUsers} disabled={mutationLoading || loading}>
+                                    Excluir Todos
+                                </Button>
+                            )}
+                            <Button variant="outline" onClick={handleResetAllUsers} disabled={mutationLoading || loading}>
+                                Redefinir Todos
+                            </Button>
+                            <Button onClick={handleAddUser} disabled={mutationLoading}>
                                 <Plus className="mr-2 h-4 w-4" /> Adicionar Usuário
                             </Button>
                         </div>
@@ -421,12 +496,14 @@ export default function UsersPage() {
                                                             </TableCell>
                                                             <TableCell className="text-right">
                                                                 <div className="flex justify-end gap-2">
-                                                                    <Button variant="outline" size="sm" onClick={() => handleEditUser(user)}>
+                                                                    <Button variant="outline" size="sm" onClick={() => handleEditUser(user)} disabled={mutationLoading}>
                                                                         Editar
                                                                     </Button>
-                                                                    <Button variant="destructive" size="sm" onClick={() => handleDeleteUser(user.id)}>
-                                                                        Excluir
-                                                                    </Button>
+                                                                    {canDeleteUsers && (
+                                                                        <Button variant="destructive" size="sm" onClick={() => handleDeleteUser(user.id)} disabled={mutationLoading}>
+                                                                            Excluir
+                                                                        </Button>
+                                                                    )}
                                                                 </div>
                                                             </TableCell>
                                                         </TableRow>
@@ -526,6 +603,9 @@ export default function UsersPage() {
                                 </SelectContent>
                             </Select>
                         </div>
+                        <p className="text-xs text-muted-foreground">
+                            A planilha exportada inclui colunas de Login e Senha temporária (quando disponível).
+                        </p>
                         {!exportComplexId && !exportRoleId && selectedUsers.size === 0 && (
                             <p className="text-xs text-amber-600">
                                 Sem filtros selecionados, todos os usuários serão exportados.

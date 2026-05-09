@@ -30,6 +30,18 @@ function buildMonthOptions() {
 }
 
 const monthOptions = buildMonthOptions();
+const ALL_FILTER_VALUE = '__all__';
+
+type ComplexSelection = {
+  id?: string;
+  socialName?: string;
+  aliasName?: string | null;
+};
+
+type DealershipReadingOption = {
+  id: string;
+  label: string;
+};
 
 export default function MeterReportPage() {
   const { context, loading: contextLoading } = useUserContext();
@@ -39,10 +51,13 @@ export default function MeterReportPage() {
 
   // Selected complex (for non-residents or residents with multiple complexes)
   const [selectedComplexId, setSelectedComplexId] = useState<string | undefined>(undefined);
-  const [selectedComplexObj, setSelectedComplexObj] = useState<any>(null);
+  const [selectedComplexObj, setSelectedComplexObj] = useState<ComplexSelection | null>(null);
 
   // Search text for filtering by apartment/block (admin/sindico only)
   const [searchText, setSearchText] = useState('');
+  const [selectedBlockId, setSelectedBlockId] = useState<string>(ALL_FILTER_VALUE);
+  const [selectedApartmentId, setSelectedApartmentId] = useState<string>(ALL_FILTER_VALUE);
+  const [selectedDealershipReadingId, setSelectedDealershipReadingId] = useState<string>(ALL_FILTER_VALUE);
 
   // Resident helpers
   const isMorador = useMemo(() => {
@@ -95,23 +110,90 @@ export default function MeterReportPage() {
     enabled: !!selectedComplexId && !!selectedMonthOption?.month && !!selectedMonthOption?.year,
   });
 
+  const blockOptions = useMemo(() => {
+    if (!data?.list?.length) return [];
+    const map = new Map<string, string>();
+    data.list.forEach(item => {
+      const block = item.apartment?.block;
+      if (block?.id && block.name && !map.has(block.id)) map.set(block.id, block.name);
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+  }, [data]);
+
+  const apartmentOptions = useMemo(() => {
+    if (!data?.list?.length) return [];
+    const map = new Map<string, { id: string; name: string; blockName: string; blockId: string }>();
+    data.list.forEach(item => {
+      const apt = item.apartment;
+      const block = apt?.block;
+      if (!apt?.id || !apt.name || !block?.id) return;
+      if (selectedBlockId !== ALL_FILTER_VALUE && block.id !== selectedBlockId) return;
+      if (!map.has(apt.id)) {
+        map.set(apt.id, { id: apt.id, name: apt.name, blockName: block.name ?? '', blockId: block.id });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => {
+      const byBlock = a.blockName.localeCompare(b.blockName, undefined, { numeric: true, sensitivity: 'base' });
+      if (byBlock !== 0) return byBlock;
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [data, selectedBlockId]);
+
+  const dealershipReadingOptions = useMemo(() => {
+    if (!data?.dealershipReadings?.length) return [];
+    return (data.dealershipReadings as Array<{
+      id: string;
+      monthRef: string | number;
+      yearRef: string | number;
+      dealership?: { name?: string | null } | null;
+    }>)
+      .map((reading): DealershipReadingOption => ({
+        id: reading.id,
+        label: reading.dealership?.name
+          ? `${reading.dealership.name} — ${String(reading.monthRef).padStart(2, '0')}/${reading.yearRef}`
+          : `Boleto ${String(reading.monthRef).padStart(2, '0')}/${reading.yearRef}`,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+  }, [data]);
+
+  useEffect(() => {
+    setSearchText('');
+    setSelectedBlockId(ALL_FILTER_VALUE);
+    setSelectedApartmentId(ALL_FILTER_VALUE);
+    setSelectedDealershipReadingId(ALL_FILTER_VALUE);
+  }, [selectedComplexId, selectedMonthOption.value]);
+
+  useEffect(() => {
+    if (selectedApartmentId === ALL_FILTER_VALUE) return;
+    const stillExists = apartmentOptions.some(apt => apt.id === selectedApartmentId);
+    if (!stillExists) setSelectedApartmentId(ALL_FILTER_VALUE);
+  }, [apartmentOptions, selectedApartmentId]);
+
   // Client-side filter by search text (block name or apartment name)
   const filteredList = useMemo((): MeterReportItem[] => {
     if (!data?.list) return [];
-    if (!searchText.trim()) return data.list;
     const q = searchText.trim().toLowerCase();
     return data.list.filter(r => {
+      if (selectedBlockId !== ALL_FILTER_VALUE && r.apartment?.block?.id !== selectedBlockId) return false;
+      if (selectedApartmentId !== ALL_FILTER_VALUE && r.apartmentId !== selectedApartmentId) return false;
+      if (selectedDealershipReadingId !== ALL_FILTER_VALUE && r.dealershipReadingId !== selectedDealershipReadingId) return false;
+      if (!q) return true;
       const aptName = (r.apartment?.name ?? '').toLowerCase();
       const blockName = (r.apartment?.block?.name ?? '').toLowerCase();
       return aptName.includes(q) || blockName.includes(q) || `bloco ${blockName}`.includes(q) || `apto ${aptName}`.includes(q);
     });
-  }, [data, searchText]);
+  }, [data, searchText, selectedBlockId, selectedApartmentId, selectedDealershipReadingId]);
 
-  const handleComplexSelect = (complex: any) => {
+  const handleComplexSelect = (complex: ComplexSelection | null | undefined) => {
     if (complex?.id !== selectedComplexId) {
       setSelectedComplexId(complex?.id);
       setSelectedComplexObj(complex ?? null);
       setSearchText('');
+      setSelectedBlockId(ALL_FILTER_VALUE);
+      setSelectedApartmentId(ALL_FILTER_VALUE);
+      setSelectedDealershipReadingId(ALL_FILTER_VALUE);
     }
   };
 
@@ -216,6 +298,63 @@ export default function MeterReportPage() {
             </div>
           </div>
         )}
+
+        {!isMorador && selectedComplexId && data && data.list.length > 0 && (
+          <div className="flex flex-col gap-1 min-w-[180px]">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Bloco</label>
+            <Select value={selectedBlockId} onValueChange={setSelectedBlockId}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Todos os blocos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_FILTER_VALUE}>Todos os blocos</SelectItem>
+                {blockOptions.map(block => (
+                  <SelectItem key={block.id} value={block.id}>
+                    Bloco {block.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {!isMorador && selectedComplexId && data && data.list.length > 0 && (
+          <div className="flex flex-col gap-1 min-w-[220px]">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Unidade</label>
+            <Select value={selectedApartmentId} onValueChange={setSelectedApartmentId}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Todas as unidades" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_FILTER_VALUE}>Todas as unidades</SelectItem>
+                {apartmentOptions.map(apt => (
+                  <SelectItem key={apt.id} value={apt.id}>
+                    Bl. {apt.blockName} / Ap. {apt.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {!isMorador && selectedComplexId && data && data.list.length > 0 && (
+          <div className="flex flex-col gap-1 min-w-[220px]">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Boleto</label>
+            <Select value={selectedDealershipReadingId} onValueChange={setSelectedDealershipReadingId}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Todos os boletos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_FILTER_VALUE}>Todos os boletos</SelectItem>
+                {dealershipReadingOptions.map(reading => (
+                  <SelectItem key={reading.id} value={reading.id}>
+                    {reading.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {/* Prompt to select complex */}
@@ -261,12 +400,13 @@ export default function MeterReportPage() {
             <>
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-sm text-muted-foreground">
-                  {searchText ? (
+                  {searchText || selectedBlockId !== ALL_FILTER_VALUE || selectedApartmentId !== ALL_FILTER_VALUE || selectedDealershipReadingId !== ALL_FILTER_VALUE ? (
                     <>
                       <strong>{filteredList.length}</strong> de <strong>{data.totalCount}</strong> unidade{data.totalCount !== 1 ? 's' : ''}
                       {complexDisplayName ? ` em ${complexDisplayName}` : ''}
                       {' — '}<strong>{selectedMonthOption.label}</strong>
-                      {' '}<span className="text-blue-500">(filtrando por "{searchText}")</span>
+                      {searchText ? ` ` : ''}
+                      {searchText && <span className="text-blue-500">(busca: &quot;{searchText}&quot;)</span>}
                     </>
                   ) : (
                     <>

@@ -88,6 +88,16 @@ export async function GET(req: NextRequest): Promise<Response> {
             blocks,
             complexes,
             companyIds,
+            isRestrictedManager:
+                !isSystem &&
+                assignments.some((a) => {
+                    const normalizedName = (a.Role?.name || '')
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .toLowerCase()
+                        .trim();
+                    return normalizedName === 'sindico' || normalizedName === 'administradora';
+                }),
             // Helper: IDs únicos de condomínios que o usuário acessa (via apartamento, bloco ou direto)
             accessibleComplexIds: [
                 ...new Set([

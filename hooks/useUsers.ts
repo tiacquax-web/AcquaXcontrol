@@ -5,7 +5,8 @@ import {
     updateUser as updateUserService,
     deleteUser as deleteUserService,
     createBulkUsersForComplex as createBulkUsersForComplexService,
-    exportUsers as exportUsersService
+    exportUsers as exportUsersService,
+    bulkUsersAction as bulkUsersActionService
 } from '@/services/usersService';
 import { ContextType, User } from '@prisma/client';
 import { useDebounce } from './use-debounce';
@@ -247,5 +248,41 @@ export const useUserMutations = () => {
         }
     };
 
-    return { createUser, updateUser, deleteUser, createBulkUsersForComplex, exportUsers, loading, error };
+    const bulkUsersAction = async ({
+        action,
+        search,
+        userIds = [],
+        complexId,
+        blockId,
+        roleId,
+    }: {
+        action: 'deleteAllUsers' | 'resetAllUsers';
+        search?: string;
+        userIds?: string[];
+        complexId?: string;
+        blockId?: string;
+        roleId?: string;
+    }) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const result = await bulkUsersActionService({
+                action,
+                search,
+                userIds,
+                complexId,
+                blockId,
+                roleId,
+            });
+            return result;
+        } catch (error: any) {
+            const message = error.response?.data?.error || error.message || "Unknown error";
+            setError(message);
+            return null;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return { createUser, updateUser, deleteUser, createBulkUsersForComplex, exportUsers, bulkUsersAction, loading, error };
 };
