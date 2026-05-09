@@ -1,7 +1,10 @@
 import prisma, { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
 import { createEntity, deleteEntity, getAvailableComplexesForEntity, getEntityListData, updateEntityData } from "@/lib/userData"
 import { createUser, createBulkResidentsUsers, isSessionValid, validateUserSession } from "@/lib/users"
+import { getAccessibleUserIdsForAction } from "@/lib/userAccess"
 import { ContextType } from "@prisma/client"
+import { hash } from "bcryptjs"
+import { randomBytes } from "crypto"
 import { NextRequest, NextResponse } from "next/server"
 
 // Função para normalizar email removendo acentos e caracteres especiais
@@ -60,6 +63,102 @@ function getQueryParams(req: NextRequest) {
     const roleId = req.nextUrl.searchParams.get('role_id') || undefined
 
     return { getAvailableForEntity, userId, roleName, contextType, contextId, search, take, skip, orderBy, orderDirection, complexId, blockId, roleId }
+}
+
+const NOT_DELETED = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
+
+function mergeUserIdScope(current: Set<string> | null, nextIds: string[]) {
+    if (current === null) return new Set(nextIds)
+    const nextSet = new Set(nextIds)
+    return new Set([...current].filter((id) => nextSet.has(id)))
+}
+
+async function getUserIdsByContextFilter(complexId?: string, blockId?: string): Promise<string[] | null> {
+    if (!complexId && !blockId) return null
+
+    const blockIds = blockId
+        ? [blockId]
+        : (await prisma.block.findMany({
+            where: { ...NOT_DELETED, ...(complexId ? { complexId } : {}) },
+            select: { id: true }
+        })).map((b) => b.id)
+
+    const aptIds = (await prisma.apartment.findMany({
+        where: {
+            AND: [
+                NOT_DELETED,
+                {
+                    OR: [
+                        ...(complexId ? [{ complexId }] : []),
+                        ...(blockId ? [{ blockId }] : []),
+                    ]
+                }
+            ]
+        },
+        select: { id: true }
+    })).map((a) => a.id)
+
+    const assigns = await prisma.roleAssignment.findMany({
+        where: {
+            AND: [
+                NOT_DELETED,
+                {
+                    OR: [
+                        ...(complexId ? [{ contextId: complexId, contextType: ContextType.complex }] : []),
+                        ...(blockIds.length > 0 ? [{ contextId: { in: blockIds }, contextType: ContextType.block }] : []),
+                        ...(aptIds.length > 0 ? [{ contextId: { in: aptIds }, contextType: ContextType.apartment }] : []),
+                    ]
+                }
+            ]
+        },
+        select: { userId: true }
+    })
+
+    return [...new Set(assigns.map((a) => a.userId))]
+}
+
+async function getUserIdsByRoleFilter(roleId?: string): Promise<string[] | null> {
+    if (!roleId) return null
+    const assigns = await prisma.roleAssignment.findMany({
+        where: { ...NOT_DELETED, roleId },
+        select: { userId: true }
+    })
+    return [...new Set(assigns.map((a) => a.userId))]
+}
+
+async function getScopedUserIdsForReset(
+    actingUserId: string,
+    filters: { userIds?: string[]; complexId?: string; blockId?: string; roleId?: string; }
+) {
+    const access = await getAccessibleUserIdsForAction(actingUserId, 'update')
+    if (!access.hasPermission) {
+        return { error: 'Não autorizado', status: 401 as const, userIds: [] as string[] | null }
+    }
+
+    let scopedIds: Set<string> | null = access.isSystem ? null : new Set(access.userIds)
+
+    const idsByContext = await getUserIdsByContextFilter(filters.complexId, filters.blockId)
+    if (idsByContext) scopedIds = mergeUserIdScope(scopedIds, idsByContext)
+
+    const idsByRole = await getUserIdsByRoleFilter(filters.roleId)
+    if (idsByRole) scopedIds = mergeUserIdScope(scopedIds, idsByRole)
+
+    if (filters.userIds && filters.userIds.length > 0) {
+        scopedIds = mergeUserIdScope(scopedIds, filters.userIds)
+    }
+
+    return { error: null, status: 200 as const, userIds: scopedIds ? [...scopedIds] : null }
+}
+
+function generateTemporaryPassword(length = 12) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*'
+    const bytes = randomBytes(length * 2)
+    let password = ''
+    for (const b of bytes) {
+        password += chars[b % chars.length]
+        if (password.length >= length) break
+    }
+    return password
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -165,6 +264,85 @@ export async function POST(req: NextRequest): Promise<Response> {
 
         // Parse request body
         const reqBody = await req.json();
+        if (reqBody.bulkAction === 'resetAllUsers') {
+            const filters = {
+                search: reqBody.search || '',
+                userIds: Array.isArray(reqBody.userIds) ? reqBody.userIds : [],
+                complexId: reqBody.complexId || undefined,
+                blockId: reqBody.blockId || undefined,
+                roleId: reqBody.roleId || undefined,
+            }
+
+            const scope = await getScopedUserIdsForReset(userId, {
+                userIds: filters.userIds,
+                complexId: filters.complexId,
+                blockId: filters.blockId,
+                roleId: filters.roleId,
+            })
+            if (scope.error) return NextResponse.json({ error: scope.error }, { status: scope.status })
+
+            const targetUsersWhere: any = {
+                AND: [
+                    NOT_DELETED,
+                    ...(scope.userIds ? [{ id: { in: scope.userIds } }] : []),
+                    ...(filters.search ? [{
+                        OR: [
+                            { name: { contains: filters.search, mode: 'insensitive' } },
+                            { email: { contains: filters.search, mode: 'insensitive' } },
+                        ]
+                    }] : []),
+                ]
+            }
+
+            const targetUsers = await prisma.user.findMany({
+                where: targetUsersWhere,
+                select: { id: true, email: true, preferences: true },
+            })
+
+            const filteredTargets = targetUsers.filter((u) => u.email !== 'admin@acquax.com' && u.id !== userId)
+            if (filteredTargets.length === 0) {
+                return NextResponse.json({ error: 'Nenhum usuário elegível encontrado para redefinição.' }, { status: 404 })
+            }
+
+            const updatedAt = new Date()
+            await Promise.all(filteredTargets.map(async (targetUser) => {
+                const temporaryPassword = generateTemporaryPassword(12)
+                const hashedPassword = await hash(temporaryPassword, 10)
+                const basePreferences =
+                    targetUser.preferences &&
+                    typeof targetUser.preferences === 'object' &&
+                    !Array.isArray(targetUser.preferences)
+                        ? (targetUser.preferences as Record<string, unknown>)
+                        : {}
+
+                await prisma.user.update({
+                    where: { id: targetUser.id },
+                    data: {
+                        password: hashedPassword,
+                        mustUpdateCredentials: true,
+                        resetToken: null,
+                        resetTokenExpiry: null,
+                        preferences: {
+                            ...basePreferences,
+                            temporaryPassword,
+                            temporaryPasswordUpdatedAt: updatedAt.toISOString(),
+                        },
+                        updatedByUserId: userId,
+                    },
+                })
+            }))
+
+            await prisma.session.updateMany({
+                where: { userId: { in: filteredTargets.map((u) => u.id) }, ...NOT_DELETED },
+                data: { deletedAt: updatedAt },
+            })
+
+            return NextResponse.json({
+                message: 'Senhas redefinidas com sucesso.',
+                usersAffected: filteredTargets.length,
+            })
+        }
+
         // Suporte à criação em massa de usuários para um condomínio
         if (reqBody.createBulkUsersForComplex) {
             const { complexId, userNamePrefix, userPasswordPrefix, userEmailPrefix, userEmailDomain } = reqBody;

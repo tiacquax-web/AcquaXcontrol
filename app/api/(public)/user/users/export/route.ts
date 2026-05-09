@@ -1,8 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSessionValid } from '@/lib/users';
 import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
+import { getTemporaryPasswordFromPreferences } from '@/lib/userAccess';
 import prisma from '@/lib/prisma';
 import * as XLSX from 'xlsx';
+
+const MAX_XLSX_CELL_LENGTH = 32767;
+
+function sanitizeSheetName(name: string) {
+    const sanitized = name.replace(/[\\/*?:[\]]/g, '').trim();
+    return (sanitized || 'Usuários').substring(0, 31);
+}
+
+function sanitizeFileNamePart(value: string) {
+    return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\w.-]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .substring(0, 80);
+}
+
+function xlsxCell(value: unknown) {
+    const raw = value == null ? '' : String(value);
+    return raw.length > MAX_XLSX_CELL_LENGTH ? raw.substring(0, MAX_XLSX_CELL_LENGTH) : raw;
+}
 
 export async function POST(req: NextRequest): Promise<Response> {
     try {
@@ -68,7 +90,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
         const users = await prisma.user.findMany({
             where: { AND: andClauses },
-            select: { id: true, name: true, email: true, documentPerson: true, telephone: true, cell: true, createdAt: true },
+            select: { id: true, name: true, email: true, documentPerson: true, telephone: true, cell: true, createdAt: true, preferences: true },
             orderBy: { name: 'asc' },
         });
 
@@ -95,14 +117,16 @@ export async function POST(req: NextRequest): Promise<Response> {
         const exportData = users.map(user => {
             const assigns = allAssigns.filter(a => a.userId === user.id);
             const papeis = assigns.map(a => roleMap[a.roleId] || a.roleId).join(', ');
+            const temporaryPassword = getTemporaryPasswordFromPreferences(user.preferences);
             return {
-                'Nome': user.name,
-                'Email': user.email,
-                'Documento': user.documentPerson || '',
-                'Telefone': user.telephone || '',
-                'Celular': user.cell || '',
-                'Papéis': papeis,
-                'Data de Cadastro': user.createdAt?.toLocaleDateString('pt-BR') || '',
+                'Nome': xlsxCell(user.name),
+                'Email': xlsxCell(user.email),
+                'Senha': xlsxCell(temporaryPassword),
+                'Documento': xlsxCell(user.documentPerson || ''),
+                'Telefone': xlsxCell(user.telephone || ''),
+                'Celular': xlsxCell(user.cell || ''),
+                'Papéis': xlsxCell(papeis),
+                'Data de Cadastro': xlsxCell(user.createdAt?.toLocaleDateString('pt-BR') || ''),
             };
         });
 
@@ -114,16 +138,14 @@ export async function POST(req: NextRequest): Promise<Response> {
         worksheet['!cols'] = colWidths;
 
         const workbook = XLSX.utils.book_new();
-        const sanitizeSheetName = (name: string) =>
-  name.replace(/[\\/*?:[\]]/g, '').substring(0, 31);
-
-const sheetName = complexName
-  ? sanitizeSheetName(`Usuários - ${complexName}`)
-  : 'Usuários';
+        const sheetName = complexName
+            ? sanitizeSheetName(`Usuários - ${complexName}`)
+            : 'Usuários';
         XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
 
         const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-        const fileName = `usuarios_${complexName ? complexName.replace(/\s+/g, '_') + '_' : ''}${new Date().toISOString().split('T')[0]}.xlsx`;
+        const safeComplexName = complexName ? `${sanitizeFileNamePart(complexName)}_` : '';
+        const fileName = `usuarios_${safeComplexName}${new Date().toISOString().split('T')[0]}.xlsx`;
 
         return new NextResponse(excelBuffer, {
             status: 200,

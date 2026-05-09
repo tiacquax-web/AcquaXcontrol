@@ -58,7 +58,7 @@ export default function UsersPage() {
         roleId: filterRoleId || undefined,
     })
     
-    const { createUser, updateUser, deleteUser, error: mutationError } = useUserMutations()
+    const { createUser, updateUser, deleteUser, bulkUsersAction, loading: mutationLoading, error: mutationError } = useUserMutations()
     const { deleteRoleAssignment, error: errorDeleteRoleAssignment, loading: loadingDeleteRoleAssignment } = useRoleAssignmentMutations()
     const { roles } = useRoles({})
     const [currentUser, setCurrentUser] = useState<Partial<User> | undefined>(undefined)
@@ -126,6 +126,34 @@ export default function UsersPage() {
             } catch (error) {
                 console.error("Erro ao excluir usuário:", error)
             }
+        }
+    }
+
+    const getBulkActionPayload = () => ({
+        search: searchQuery,
+        userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : [],
+        complexId: filterComplexId || undefined,
+        blockId: filterBlockId || undefined,
+        roleId: filterRoleId || undefined,
+    })
+
+    const handleResetAllUsers = async () => {
+        const targetDescription = selectedUsers.size > 0
+            ? `${selectedUsers.size} usuário(s) selecionado(s)`
+            : "todos os usuários filtrados"
+        const confirmReset = window.confirm(`Deseja redefinir ${targetDescription}? Novas senhas aleatórias serão geradas e aparecerão no próximo export.`)
+        if (!confirmReset) return
+        try {
+            const result = await bulkUsersAction({ action: 'resetAllUsers', ...getBulkActionPayload() })
+            if (!result) return
+            toast({
+                title: "Usuários redefinidos",
+                description: `${result.usersAffected ?? 0} usuário(s) com nova senha temporária.`,
+            })
+            setSelectedUsers(new Set())
+            refetch()
+        } catch (error) {
+            console.error("Erro ao redefinir usuários:", error)
         }
     }
 
@@ -257,7 +285,7 @@ export default function UsersPage() {
                             <CardTitle className="text-2xl font-bold">Usuários</CardTitle>
                             <CardDescription>Gerencie seus usuários e seus detalhes</CardDescription>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                             <Button variant="outline" onClick={handleOpenExportModal} disabled={exportLoading}>
                                 {exportLoading ? (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -271,7 +299,10 @@ export default function UsersPage() {
                                 Filtros
                                 {hasActiveFilters && <Badge className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs" variant="destructive">!</Badge>}
                             </Button>
-                            <Button onClick={handleAddUser}>
+                            <Button variant="outline" onClick={handleResetAllUsers} disabled={mutationLoading || loading}>
+                                Redefinir Todos
+                            </Button>
+                            <Button onClick={handleAddUser} disabled={mutationLoading}>
                                 <Plus className="mr-2 h-4 w-4" /> Adicionar Usuário
                             </Button>
                         </div>
