@@ -12,6 +12,14 @@ const notDeleted = {
     ],
 } as const;
 
+// Apartments are only valid in the application when their parent block exists
+// and is active. The Prisma relation is optional to survive legacy/orphaned
+// MongoDB data, but normal reads should not surface those broken records.
+const hasActiveBlock = {
+    blockId: { not: null },
+    block: notDeleted,
+} as const;
+
 // Função para normalizar email removendo acentos e caracteres especiais
 function normalizeEmail(email: string): string {
     // Mapa de caracteres acentuados para normais
@@ -390,6 +398,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     where: cleanWhere({
                         AND: [
                             notDeleted,
+                            hasActiveBlock,
                             {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
                                 id: contextType === ContextType.apartment ? contextId : undefined,
@@ -969,15 +978,23 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 }
 
             case PermissionableEntity.apartment:
+                if (!data.blockId) {
+                    return { entity: null, error: 'Bloco é obrigatório para criar apartamento.', status: 400 };
+                }
                 const apartmentPermissionInContext = await prisma.block.findFirst({
                     where: {
-                        // Filtro do contexto ATRIBUÍDO
-                        id: data.blockId,
-                        // Filtro do contexto do USUÁRIO
-                        OR: hasSystemPermission ? undefined : [
-                            { id: { in: contexts.blockIds } }, // Permissão do bloco
-                            { complex: { companyId: { in: contexts.companyIds } } }, // Permissão da empresa
-                            { complexId: { in: contexts.complexIds } }, // Permissão do condomínio
+                        AND: [
+                            notDeleted,
+                            {
+                                // Filtro do contexto ATRIBUÍDO
+                                id: data.blockId,
+                                // Filtro do contexto do USUÁRIO
+                                OR: hasSystemPermission ? undefined : [
+                                    { id: { in: contexts.blockIds } }, // Permissão do bloco
+                                    { complex: { companyId: { in: contexts.companyIds } } }, // Permissão da empresa
+                                    { complexId: { in: contexts.complexIds } }, // Permissão do condomínio
+                                ]
+                            }
                         ]
                     },
                     include: {
@@ -1341,6 +1358,9 @@ async function bulkCreateEntity(userId: string, entityType: PermissionableEntity
         switch (entityType) {
             // Apartments
             case PermissionableEntity.apartment:
+                if (data.some((apartment) => !apartment.blockId)) {
+                    return { entity: null, error: 'Todos os apartamentos devem informar um bloco válido.', status: 400 };
+                }
                 // Permissão: system, company, complex, block
                 let allowedBlockIds: string[] = [];
                 if (hasSystemPermission) {
@@ -1350,10 +1370,15 @@ async function bulkCreateEntity(userId: string, entityType: PermissionableEntity
                         ...contexts.blockIds,
                         // Usa campos desnormalizados - muito mais eficiente!
                         ...await prisma.block.findMany({
-                            where: { 
-                                OR: [
-                                    { complexId: { in: contexts.complexIds } },
-                                    { companyId: { in: contexts.companyIds } }
+                            where: {
+                                AND: [
+                                    notDeleted,
+                                    {
+                                        OR: [
+                                            { complexId: { in: contexts.complexIds } },
+                                            { companyId: { in: contexts.companyIds } }
+                                        ]
+                                    }
                                 ]
                             },
                             select: { id: true }
@@ -1369,7 +1394,12 @@ async function bulkCreateEntity(userId: string, entityType: PermissionableEntity
                 // Busca os dados desnormalizados para todos os blocks únicos
                 const uniqueBlockIds = [...new Set(allowedApartments.map(a => a.blockId))];
                 const blocksData = await prisma.block.findMany({
-                    where: { id: { in: uniqueBlockIds } },
+                    where: {
+                        AND: [
+                            notDeleted,
+                            { id: { in: uniqueBlockIds } }
+                        ]
+                    },
                     select: {
                         id: true,
                         complexId: true,
@@ -2127,14 +2157,22 @@ async function updateEntityData(userId: string, entityType: PermissionableEntity
                     return { entity: null, error: 'Não autorizado', status: 401 };
                 }
             case PermissionableEntity.apartment:
+                if (Object.prototype.hasOwnProperty.call(data, 'blockId') && !data.blockId) {
+                    return { entity: null, error: 'Bloco é obrigatório para atualizar apartamento.', status: 400 };
+                }
                 const apartmentPermissionInContext = await prisma.apartment.findFirst({
                     where: {
-                        id: entityId,
-                        OR: hasSystemPermission ? undefined : [
-                            { id: { in: contexts.apartmentIds } }, // Apartamentos diretos
-                            { blockId: { in: contexts.blockIds } }, // Apartamentos dentro dos blocos do usuário
-                            { block: { complexId: { in: contexts.complexIds } } }, // Apartamentos dentro dos condomínios do usuário
-                            { block: { complex: { companyId: { in: contexts.companyIds } } }, }, // Apartamentos dentro dos condomínios da empresa do usuário
+                        AND: [
+                            notDeleted,
+                            {
+                                id: entityId,
+                                OR: hasSystemPermission ? undefined : [
+                                    { id: { in: contexts.apartmentIds } }, // Apartamentos diretos
+                                    { blockId: { in: contexts.blockIds } }, // Apartamentos dentro dos blocos do usuário
+                                    { block: { complexId: { in: contexts.complexIds } } }, // Apartamentos dentro dos condomínios do usuário
+                                    { block: { complex: { companyId: { in: contexts.companyIds } } }, }, // Apartamentos dentro dos condomínios da empresa do usuário
+                                ]
+                            }
                         ]
                     },
                 });
@@ -2152,10 +2190,9 @@ async function updateEntityData(userId: string, entityType: PermissionableEntity
                             select: { complexId: true, companyId: true }
                         });
                         
-                        if (newBlock) {
-                            data.complexId = newBlock.complexId;
-                            data.companyId = newBlock.companyId;
-                        }
+                        if (!newBlock) return { entity: null, error: 'Bloco informado não encontrado.', status: 400 };
+                        data.complexId = newBlock.complexId;
+                        data.companyId = newBlock.companyId;
                     }
                     
                     const apartment = await prisma.apartment.update({ where: { id: entityId }, data });
@@ -2515,7 +2552,37 @@ async function deleteEntity(userId: string, entityType: PermissionableEntity, en
                 if (!complexPermissionInContext) {
                     return { error: 'Não autorizado', status: 401, entity: null }
                 }
-                const complex = await prisma.complex.delete({ where: { id: entityId } });
+                const complexDeletedAt = new Date();
+                const [complex] = await prisma.$transaction([
+                    prisma.complex.update({
+                        where: { id: entityId },
+                        data: { deletedAt: complexDeletedAt, updatedByUserId: userId, updatedAt: complexDeletedAt }
+                    }),
+                    prisma.block.updateMany({
+                        where: { complexId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: complexDeletedAt, updatedByUserId: userId, updatedAt: complexDeletedAt }
+                    }),
+                    prisma.apartment.updateMany({
+                        where: { complexId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: complexDeletedAt, updatedByUserId: userId, updatedAt: complexDeletedAt }
+                    }),
+                    prisma.meter.updateMany({
+                        where: { complexId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: complexDeletedAt, updatedByUserId: userId, updatedAt: complexDeletedAt }
+                    }),
+                    prisma.reading.updateMany({
+                        where: { complexId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: complexDeletedAt, updatedByUserId: userId, updatedAt: complexDeletedAt }
+                    }),
+                    prisma.apartmentConsumptionReport.updateMany({
+                        where: { complexId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: complexDeletedAt, updatedByUserId: userId, updatedAt: complexDeletedAt }
+                    }),
+                    prisma.dealershipReading.updateMany({
+                        where: { complexId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: complexDeletedAt, updatedByUserId: userId, updatedAt: complexDeletedAt }
+                    }),
+                ]);
                 return { error: null, status: 200, entity: complex }
             case PermissionableEntity.block:
                 const blockPermissionInContext = await prisma.block.findFirst({
@@ -2531,7 +2598,29 @@ async function deleteEntity(userId: string, entityType: PermissionableEntity, en
                 if (!blockPermissionInContext) {
                     return { error: 'Não autorizado', status: 401, entity: null }
                 }
-                const block = await prisma.block.delete({ where: { id: entityId } });
+                const blockDeletedAt = new Date();
+                const [block] = await prisma.$transaction([
+                    prisma.block.update({
+                        where: { id: entityId },
+                        data: { deletedAt: blockDeletedAt, updatedByUserId: userId, updatedAt: blockDeletedAt }
+                    }),
+                    prisma.apartment.updateMany({
+                        where: { blockId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: blockDeletedAt, updatedByUserId: userId, updatedAt: blockDeletedAt }
+                    }),
+                    prisma.meter.updateMany({
+                        where: { blockId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: blockDeletedAt, updatedByUserId: userId, updatedAt: blockDeletedAt }
+                    }),
+                    prisma.reading.updateMany({
+                        where: { blockId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: blockDeletedAt, updatedByUserId: userId, updatedAt: blockDeletedAt }
+                    }),
+                    prisma.apartmentConsumptionReport.updateMany({
+                        where: { blockId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: blockDeletedAt, updatedByUserId: userId, updatedAt: blockDeletedAt }
+                    }),
+                ]);
                 return { error: null, status: 200, entity: block }
             case PermissionableEntity.apartment:
                 const apartmentPermissionInContext = await prisma.apartment.findFirst({
@@ -2548,7 +2637,25 @@ async function deleteEntity(userId: string, entityType: PermissionableEntity, en
                 if (!apartmentPermissionInContext) {
                     return { error: 'Não autorizado', status: 401, entity: null }
                 }
-                const apartment = await prisma.apartment.delete({ where: { id: entityId } });
+                const apartmentDeletedAt = new Date();
+                const [apartment] = await prisma.$transaction([
+                    prisma.apartment.update({
+                        where: { id: entityId },
+                        data: { deletedAt: apartmentDeletedAt, updatedByUserId: userId, updatedAt: apartmentDeletedAt }
+                    }),
+                    prisma.meter.updateMany({
+                        where: { apartmentId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: apartmentDeletedAt, updatedByUserId: userId, updatedAt: apartmentDeletedAt }
+                    }),
+                    prisma.reading.updateMany({
+                        where: { apartmentId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: apartmentDeletedAt, updatedByUserId: userId, updatedAt: apartmentDeletedAt }
+                    }),
+                    prisma.apartmentConsumptionReport.updateMany({
+                        where: { apartmentId: entityId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                        data: { deletedAt: apartmentDeletedAt, updatedByUserId: userId, updatedAt: apartmentDeletedAt }
+                    }),
+                ]);
                 return { error: null, status: 200, entity: apartment }
 
             // Meters and Devices
@@ -3380,6 +3487,7 @@ async function getAvailableApartmentsForEntity(
                 where: {
                     AND: [
                         notDeleted,
+                        hasActiveBlock,
                         {
                             id: apartmentId ?? undefined,
                             name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
@@ -3404,6 +3512,7 @@ async function getAvailableApartmentsForEntity(
                 where: {
                     AND: [
                         notDeleted,
+                        hasActiveBlock,
                         {
                             id: apartmentId ?? undefined,
                             name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
@@ -3432,6 +3541,7 @@ async function getAvailableApartmentsForEntity(
     const aptNonSystemWhere = cleanWhere({
         AND: [
             notDeleted,
+            hasActiveBlock,
             apartmentId ? { id: apartmentId } : {},
             { OR: aptOrConditions.length > 0 ? aptOrConditions : undefined },
             { name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined },

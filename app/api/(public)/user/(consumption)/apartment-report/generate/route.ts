@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { isSessionValid } from "@/lib/users"
-import { PrismaClient } from "@prisma/client"
+import prisma from "@/lib/prisma"
 
-const prisma = new PrismaClient()
 
 export async function POST(req: NextRequest): Promise<Response> {
     try {
@@ -42,8 +41,10 @@ export async function POST(req: NextRequest): Promise<Response> {
         // Get all apartments in the complex
         const apartments = await prisma.apartment.findMany({
             where: {
+                deletedAt: null,
                 block: {
-                    complexId: complexId
+                    complexId: complexId,
+                    deletedAt: null
                 }
             },
             include: {
