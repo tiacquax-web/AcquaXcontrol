@@ -76,7 +76,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
     });
     
     // Buscando todos os apartments necessários
-    let apartments: { id: string, name: string, blockId: string }[] = [];
+    let apartments: { id: string, name: string, blockId: string | null }[] = [];
 
     // Primeiro, vamos buscar todos os apartamentos únicos que precisamos por bloco
     const apartmentNamesByBlockId = new Map<string, Set<string>>();
@@ -200,7 +200,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
         }
 
         const apartment = apartments.find(
-            (a: { id: string, name: string, blockId: string }) => a.name.toLowerCase().trim() === rowApartamento.toLowerCase().trim() && a.blockId === block.id
+            (a: { id: string, name: string, blockId: string | null }) => a.name.toLowerCase().trim() === rowApartamento.toLowerCase().trim() && a.blockId === block.id
         );
         if (!apartment) {
             errors.push({ row: idx + 2, message: `Apartamento '${rowApartamento}' não encontrado no bloco '${rowBloco}'` });

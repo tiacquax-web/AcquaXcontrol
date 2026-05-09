@@ -95,7 +95,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           where: {
             id: payload.report.apartmentId,
             deletedAt: null,
-            block: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
+            block: { is: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } }
           },
           include: { block: { include: { complex: true } }, meters: { where: { deletedAt: null } } }
         });

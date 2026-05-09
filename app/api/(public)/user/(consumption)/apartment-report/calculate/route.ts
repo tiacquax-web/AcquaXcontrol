@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { isSessionValid } from "@/lib/users"
-import { PrismaClient } from "@prisma/client"
-
-const prisma = new PrismaClient()
+import prisma from "@/lib/prisma"
 
 export async function POST(req: NextRequest): Promise<Response> {
     try {
@@ -37,6 +35,11 @@ export async function POST(req: NextRequest): Promise<Response> {
                 error: 'Apartamento não encontrado' 
             }, { status: 404 })
         }
+        if (!apartment.block) {
+            return NextResponse.json({
+                error: 'Apartamento sem bloco válido. Corrija o cadastro antes de calcular o relatório.'
+            }, { status: 400 })
+        }
 
         // Get dealership reading data
         const dealershipReading = await prisma.dealershipReading.findUnique({
@@ -52,8 +55,12 @@ export async function POST(req: NextRequest): Promise<Response> {
         // Get total apartments in the complex for equal distribution
         const totalApartments = await prisma.apartment.count({
             where: {
+                deletedAt: null,
                 block: {
-                    complexId: apartment.block.complexId
+                    is: {
+                        complexId: apartment.block.complexId,
+                        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }]
+                    }
                 }
             }
         })

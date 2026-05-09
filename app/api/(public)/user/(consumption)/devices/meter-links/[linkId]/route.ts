@@ -196,12 +196,12 @@ export async function PUT( req: NextRequest, { params }: { params: Promise<{ lin
           register: updatedLink.meter.register,
           apartment: {
             name: updatedLink.meter.apartment.name,
-            block: {
+            block: updatedLink.meter.apartment.block ? {
               name: updatedLink.meter.apartment.block.name,
-              complex: {
+              complex: updatedLink.meter.apartment.block.complex ? {
                 socialName: updatedLink.meter.apartment.block.complex.socialName
-              }
-            }
+              } : null
+            } : null
           }
         }
       }

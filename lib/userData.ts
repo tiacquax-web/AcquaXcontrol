@@ -10,15 +10,15 @@ const notDeleted = {
         { deletedAt: null },
         { deletedAt: { isSet: false } },
     ],
-} as const;
+};
 
 // Apartments are only valid in the application when their parent block exists
 // and is active. The Prisma relation is optional to survive legacy/orphaned
 // MongoDB data, but normal reads should not surface those broken records.
 const hasActiveBlock = {
     blockId: { not: null },
-    block: notDeleted,
-} as const;
+    block: { is: notDeleted },
+};
 
 // Função para normalizar email removendo acentos e caracteres especiais
 function normalizeEmail(email: string): string {
@@ -1009,7 +1009,7 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 if (apartmentPermissionInContext) {
                     // Adiciona os campos desnormalizados do block/complex
                     data.complexId = apartmentPermissionInContext.complexId;
-                    data.companyId = apartmentPermissionInContext.complex?.companyId;
+                    data.companyId = apartmentPermissionInContext.companyId;
                     
                     const apartment = await prisma.apartment.create({ data: { ...data } });
                     return { entity: apartment, status: 201, error: null };
@@ -3274,6 +3274,7 @@ async function getAvailableComplexesForEntity(
             
             // Agrupa apartments por blockId
             apartmentsDataByBlock = apartments.reduce((acc, apt) => {
+                if (!apt.blockId) return acc;
                 if (!acc[apt.blockId]) acc[apt.blockId] = [];
                 acc[apt.blockId].push(apt);
                 return acc;
@@ -3691,7 +3692,7 @@ async function checkUserPermissionOnEntityOrParent(
             });
             if (!apartment) return false;
             apartmentId = entityId;
-            blockId = apartment.blockId;
+            blockId = apartment.blockId ?? undefined;
             complexId = apartment.block?.complexId;
             companyId = apartment.block?.complex?.companyId ?? undefined;
             break;
@@ -3726,7 +3727,7 @@ async function checkUserPermissionOnEntityOrParent(
             });
             if (!meter?.apartment) return false;
             apartmentId = meter.apartment.id;
-            blockId = meter.apartment.blockId;
+            blockId = meter.apartment.blockId ?? undefined;
             complexId = meter.apartment.block?.complexId;
             companyId = meter.apartment.block?.complex?.companyId ?? undefined;
             break;
