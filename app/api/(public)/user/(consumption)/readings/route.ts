@@ -53,6 +53,10 @@ export async function GET(req: NextRequest): Promise<Response> {
             isPreReading: isPreReading === 'true' ? true : isPreReading === 'false' ? false : undefined,
             id: readingId || undefined,
             meterId: meterId || undefined,
+            companyId: companyId || undefined,
+            complexId: complexId || undefined,
+            blockId: blockId || undefined,
+            apartmentId: apartmentId || undefined,
             readAt: {
                 gte: fromDate ? new Date(fromDate) : undefined,
                 lte: toDate ? new Date(toDate) : undefined,

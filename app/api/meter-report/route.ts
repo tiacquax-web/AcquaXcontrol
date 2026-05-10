@@ -28,6 +28,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     const monthRef = req.nextUrl.searchParams.get('month') || '';
     const yearRef = req.nextUrl.searchParams.get('year') || '';
     const complexId = req.nextUrl.searchParams.get('complex_id') || undefined;
+    const blockId = req.nextUrl.searchParams.get('block_id') || undefined;
     const apartmentId = req.nextUrl.searchParams.get('apartment_id') || undefined;
 
     if (!monthRef || !yearRef) {
@@ -48,6 +49,10 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     if (complexId) {
       where.complexId = complexId;
+    }
+
+    if (blockId) {
+      where.blockId = blockId;
     }
 
     if (apartmentId) {
@@ -76,6 +81,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         consumptionGasValue: true,
         totalGasValue: true,
         apartmentId: true,
+        blockId: true,
+        complexId: true,
         dealershipReadingId: true,
         utilityType: true,
         apartment: {
@@ -140,7 +147,12 @@ export async function GET(req: NextRequest): Promise<Response> {
       yearRef,
       OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
     };
-    if (complexId) drWhere.complexId = complexId;
+    if (complexId) {
+      drWhere.complexId = complexId;
+    } else if (currentReports.length > 0) {
+      const reportComplexIds = [...new Set(currentReports.map(report => report.complexId).filter(Boolean))];
+      if (reportComplexIds.length > 0) drWhere.complexId = { in: reportComplexIds };
+    }
 
     const dealershipReadings = await prisma.dealershipReading.findMany({
       where: drWhere,

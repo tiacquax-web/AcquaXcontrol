@@ -13,9 +13,38 @@ export async function GET(req: NextRequest): Promise<Response> {
         }
 
         const complexId = req.nextUrl.searchParams.get('complexId') || undefined;
+        const blockId = req.nextUrl.searchParams.get('blockId') || req.nextUrl.searchParams.get('block_id') || undefined;
+        const apartmentId = req.nextUrl.searchParams.get('apartmentId') || req.nextUrl.searchParams.get('apartment_id') || undefined;
         const search = req.nextUrl.searchParams.get('search') || '';
         const take = parseInt(req.nextUrl.searchParams.get('take') || '50');
         const skip = parseInt(req.nextUrl.searchParams.get('skip') || '0');
+
+        let hierarchyComplexId = complexId;
+        if (apartmentId) {
+            const apartment = await prisma.apartment.findFirst({
+                where: {
+                    id: apartmentId,
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                select: { blockId: true, complexId: true },
+            });
+            if (!apartment || (blockId && apartment.blockId !== blockId) || (complexId && apartment.complexId !== complexId)) {
+                return NextResponse.json({ list: [], totalCount: 0 });
+            }
+            hierarchyComplexId = apartment.complexId || hierarchyComplexId;
+        } else if (blockId) {
+            const block = await prisma.block.findFirst({
+                where: {
+                    id: blockId,
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                select: { complexId: true },
+            });
+            if (!block || (complexId && block.complexId !== complexId)) {
+                return NextResponse.json({ list: [], totalCount: 0 });
+            }
+            hierarchyComplexId = block.complexId || hierarchyComplexId;
+        }
 
         // Base query for complexes (MongoDB-safe: deletedAt null OR not set)
         const where: any = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] };
@@ -25,7 +54,7 @@ export async function GET(req: NextRequest): Promise<Response> {
                 { aliasName: { contains: search, mode: 'insensitive' } },
             ];
         }
-        if (complexId) where.id = complexId;
+        if (hierarchyComplexId) where.id = hierarchyComplexId;
 
         const [complexes, totalCount] = await Promise.all([
             prisma.complex.findMany({

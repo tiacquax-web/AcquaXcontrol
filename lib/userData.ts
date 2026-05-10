@@ -444,7 +444,8 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                                 complexId: contextType === ContextType.complex ? contextId : undefined,
                                 companyId: contextType === ContextType.company ? contextId : undefined,
                                 OR: meterWhereOr && meterWhereOr.length > 0 ? meterWhereOr : undefined,
-                            }
+                            },
+                            extraWhere,
                         ]
                     }),
                 };

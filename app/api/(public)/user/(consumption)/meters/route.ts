@@ -476,8 +476,16 @@ export async function GET(req: NextRequest): Promise<Response> {
         }
 
 
+        const where: any = {
+            id: meterId || undefined,
+            companyId: companyId || undefined,
+            complexId: complexId || undefined,
+            blockId: blockId || undefined,
+            apartmentId: apartmentId || undefined,
+        }
+
         // get meters
-        const {entity, totalCount, error, status} = await getEntityListData(userId, 'meter', contextType, contextId, search, undefined, take, include, skip, orderBy, orderDirection)
+        const {entity, totalCount, error, status} = await getEntityListData(userId, 'meter', contextType, contextId, search, where, take, include, skip, orderBy, orderDirection)
         if (error) return NextResponse.json({ error }, { status })
         if (!entity) return NextResponse.json({ error: 'Nenhum medidor encontrado.' }, { status: 404 })
 
