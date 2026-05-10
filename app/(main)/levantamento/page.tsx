@@ -5,7 +5,7 @@ import { format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import axios from 'axios';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, Legend, ReferenceLine,
 } from 'recharts';
 import {
@@ -837,23 +837,6 @@ export default function LevantamentoPage() {
                 />
                 <Line type="monotone" dataKey="média" stroke="#0d9488" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
               </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* ── Gráfico barras por mês ─────────────────────────────────── */}
-          <div className="bg-white border rounded-xl p-4 print:border-gray-400">
-            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-              <Droplets className="w-4 h-4 text-blue-500" />
-              Consumo Total do Condomínio por Mês (m³)
-            </h3>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} unit=" m³" width={65} />
-                <Tooltip formatter={(val: any) => [`${val} m³`, 'Total']} />
-                <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              </BarChart>
             </ResponsiveContainer>
           </div>
 
