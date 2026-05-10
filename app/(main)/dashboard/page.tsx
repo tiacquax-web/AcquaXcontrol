@@ -440,6 +440,9 @@ function SindicoDashboard() {
   const filipetaMonthOpt = allMonthOptions.find(o => o.value === filipetaMonthVal)!;
   const statsMonthOpt    = allMonthOptions.find(o => o.value === statsMonthVal)!;
   const billMonthOpt     = allMonthOptions.find(o => o.value === billMonthVal)!;
+  const statsMatchesFilipeta =
+    statsMonthOpt.month === filipetaMonthOpt.month &&
+    statsMonthOpt.year === filipetaMonthOpt.year;
 
   const { data: filipetaData, loading: loadingFilipetas } = useMeterReport({
     month: filipetaMonthOpt.month,
@@ -448,12 +451,14 @@ function SindicoDashboard() {
     enabled: !!selectedComplex?.id,
   });
 
-  const { data: statsData, loading: loadingStats } = useMeterReport({
+  const { data: separateStatsData, loading: loadingSeparateStats } = useMeterReport({
     month: statsMonthOpt.month,
     year:  statsMonthOpt.year,
     complexId: selectedComplex?.id,
-    enabled: !!selectedComplex?.id,
+    enabled: !!selectedComplex?.id && !statsMatchesFilipeta,
   });
+  const statsData = statsMatchesFilipeta ? filipetaData : separateStatsData;
+  const loadingStats = statsMatchesFilipeta ? loadingFilipetas : loadingSeparateStats;
 
   const { dealershipReadings, loading: loadingBill } = useDealershipReadings({
     complexId: selectedComplex?.id ?? undefined,

@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from "next/server"
 import { isSessionValid } from "@/lib/users"
 import prisma from "@/lib/prisma"
 
+async function runWithConcurrency<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>) {
+    const results: R[] = []
+    let nextIndex = 0
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (nextIndex < items.length) {
+            const currentIndex = nextIndex++
+            results[currentIndex] = await task(items[currentIndex])
+        }
+    })
+    await Promise.all(workers)
+    return results
+}
 
 export async function POST(req: NextRequest): Promise<Response> {
     try {
@@ -59,9 +71,18 @@ export async function POST(req: NextRequest): Promise<Response> {
         }
 
         // Generate reports based on calculation method
-        const reports = []
+        const existingReports = await prisma.apartmentConsumptionReport.findMany({
+            where: {
+                apartmentId: { in: apartments.map(apartment => apartment.id) },
+                monthRef,
+                yearRef,
+                dealershipReadingId
+            },
+            select: { id: true, apartmentId: true }
+        })
+        const existingReportByApartmentId = new Map(existingReports.map(report => [report.apartmentId, report.id]))
         
-        for (const apartment of apartments) {
+        const reports = await runWithConcurrency(apartments, 8, async (apartment) => {
             let calculatedValues
             
             switch (calculationMethod) {
@@ -78,43 +99,33 @@ export async function POST(req: NextRequest): Promise<Response> {
                     calculatedValues = calculateProportionalValues(apartment, dealershipReading)
             }
 
-            // Check if report already exists
-            const existingReport = await prisma.apartmentConsumptionReport.findFirst({
-                where: {
-                    apartmentId: apartment.id,
-                    monthRef,
-                    yearRef,
-                    dealershipReadingId
-                }
-            })
+            const existingReportId = existingReportByApartmentId.get(apartment.id)
 
-            if (existingReport) {
+            if (existingReportId) {
                 // Update existing report
-                const updatedReport = await prisma.apartmentConsumptionReport.update({
-                    where: { id: existingReport.id },
+                return await prisma.apartmentConsumptionReport.update({
+                    where: { id: existingReportId },
                     data: {
                         ...calculatedValues,
                         updatedByUserId: userId,
                         updatedAt: new Date()
                     }
                 })
-                reports.push(updatedReport)
-            } else {
-                // Create new report
-                const newReport = await prisma.apartmentConsumptionReport.create({
-                    data: {
-                        ...calculatedValues,
-                        apartmentId: apartment.id,
-                        monthRef,
-                        yearRef,
-                        dealershipReadingId,
-                        createdByUserId: userId,
-                        createdAt: new Date()
-                    }
-                })
-                reports.push(newReport)
             }
-        }
+
+            // Create new report
+            return await prisma.apartmentConsumptionReport.create({
+                data: {
+                    ...calculatedValues,
+                    apartmentId: apartment.id,
+                    monthRef,
+                    yearRef,
+                    dealershipReadingId,
+                    createdByUserId: userId,
+                    createdAt: new Date()
+                }
+            })
+        })
 
         return NextResponse.json({ 
             success: true, 

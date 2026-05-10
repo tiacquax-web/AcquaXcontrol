@@ -102,20 +102,24 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
         }
     }
 
-    // Agora busca os apartamentos por blockId
-    for (const [blockId, apartmentNames] of apartmentNamesByBlockId.entries()) {
-        if (apartmentNames.size > 0) {
-            const foundApartments = await prisma.apartment.findMany({
-                where: {
-                    name: { in: Array.from(apartmentNames), mode: 'insensitive' },
-                    blockId: blockId,
-                    deletedAt: null
-                },
-                select: { id: true, name: true, blockId: true }
-            });
-            apartments = apartments.concat(foundApartments);
-        }
-    }
+    // Busca todos os apartamentos necessários em uma única query para evitar N+1 por bloco.
+    const allApartmentNames = [
+        ...new Set(
+            Array.from(apartmentNamesByBlockId.values())
+                .flatMap(apartmentNames => Array.from(apartmentNames))
+        )
+    ];
+    const allApartmentBlockIds = Array.from(apartmentNamesByBlockId.keys());
+    apartments = allApartmentNames.length > 0 && allApartmentBlockIds.length > 0
+        ? await prisma.apartment.findMany({
+            where: {
+                name: { in: allApartmentNames, mode: 'insensitive' },
+                blockId: { in: allApartmentBlockIds },
+                deletedAt: null
+            },
+            select: { id: true, name: true, blockId: true }
+        })
+        : [];
 
 
     // Verificação de registers (chassi) duplicados no próprio lote

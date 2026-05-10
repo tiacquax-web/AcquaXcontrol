@@ -161,6 +161,15 @@ function generateTemporaryPassword(length = 12) {
     return password
 }
 
+async function runWithConcurrency<T>(items: T[], limit: number, task: (item: T) => Promise<void>) {
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async (_, workerIndex) => {
+        for (let index = workerIndex; index < items.length; index += limit) {
+            await task(items[index])
+        }
+    })
+    await Promise.all(workers)
+}
+
 export async function GET(req: NextRequest): Promise<Response> {
     try {
         // validate user session
@@ -305,7 +314,7 @@ export async function POST(req: NextRequest): Promise<Response> {
             }
 
             const updatedAt = new Date()
-            await Promise.all(filteredTargets.map(async (targetUser) => {
+            await runWithConcurrency(filteredTargets, 4, async (targetUser) => {
                 const temporaryPassword = generateTemporaryPassword(12)
                 const hashedPassword = await hash(temporaryPassword, 10)
                 const basePreferences =
@@ -330,7 +339,7 @@ export async function POST(req: NextRequest): Promise<Response> {
                         updatedByUserId: userId,
                     },
                 })
-            }))
+            })
 
             await prisma.session.updateMany({
                 where: { userId: { in: filteredTargets.map((u) => u.id) }, ...NOT_DELETED },

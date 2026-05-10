@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma';
 import * as XLSX from 'xlsx';
 
 const MAX_XLSX_CELL_LENGTH = 32767;
+const MAX_XLSX_COLUMN_WIDTH = 80;
 
 function sanitizeSheetName(name: string) {
     const sanitized = name.replace(/[\\/*?:[\]]/g, '').trim();
@@ -105,6 +106,12 @@ export async function POST(req: NextRequest): Promise<Response> {
         const roles = await prisma.role.findMany({ where: { id: { in: allRoleIds } }, select: { id: true, name: true } });
         const roleMap: Record<string, string> = {};
         roles.forEach(r => { roleMap[r.id] = r.name; });
+        const assignmentsByUserId = new Map<string, typeof allAssigns>();
+        for (const assignment of allAssigns) {
+            const current = assignmentsByUserId.get(assignment.userId);
+            if (current) current.push(assignment);
+            else assignmentsByUserId.set(assignment.userId, [assignment]);
+        }
 
         // Buscar nome do condomínio se filtro ativo
         let complexName = '';
@@ -115,7 +122,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
         // Montar planilha
         const exportData = users.map(user => {
-            const assigns = allAssigns.filter(a => a.userId === user.id);
+            const assigns = assignmentsByUserId.get(user.id) || [];
             const papeis = assigns.map(a => roleMap[a.roleId] || a.roleId).join(', ');
             const temporaryPassword = getTemporaryPasswordFromPreferences(user.preferences);
             return {
@@ -133,7 +140,10 @@ export async function POST(req: NextRequest): Promise<Response> {
         const worksheet = XLSX.utils.json_to_sheet(exportData);
         // Auto-largura de colunas
         const colWidths = Object.keys(exportData[0] || {}).map(k => ({
-            wch: Math.max(k.length, ...exportData.map(r => String((r as any)[k] || '').length)) + 2
+            wch: Math.min(
+                MAX_XLSX_COLUMN_WIDTH,
+                Math.max(k.length, ...exportData.map(r => String((r as any)[k] || '').length)) + 2
+            )
         }));
         worksheet['!cols'] = colWidths;
 

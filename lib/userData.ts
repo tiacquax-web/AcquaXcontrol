@@ -316,8 +316,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
         switch (entityType) {
             // Places (Contexts)
             case PermissionableEntity.company:
-                const companies = await prisma.company.findMany({
-                    where: {
+                const companiesWhere = {
                         AND: [
                             {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
@@ -332,10 +331,14 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             },
                             extraWhere,
                         ]
-                    },
+                    };
+                const companies = await prisma.company.findMany({
+                    where: companiesWhere,
                     take: take < 200 ? take : 200,
+                    skip: skip ? skip : 0,
                 });
-                return { entity: companies, error: null, status: 200 };
+                const companiesCount = await prisma.company.count({ where: companiesWhere });
+                return { entity: companies, totalCount: companiesCount, error: null, status: 200 };
             case PermissionableEntity.complex: {
                 const complexWhereOr = hasSystemPermission ? undefined : [
                     ...(contexts.complexIds.length > 0 ? [{ id: { in: contexts.complexIds } }] : []),
@@ -382,6 +385,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     }),
                     include: include ? include : undefined,
                     take: take < 200 ? take : 200,
+                    skip: skip ? skip : 0,
                 };
                 const blocks = await prisma.block.findMany(blocksQuery);
                 const blocksCount = await prisma.block.count({ where: blocksQuery.where });
@@ -412,6 +416,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     }),
                     include: include ? include : undefined,
                     take: take < 2000 ? take : 2000,
+                    skip: skip ? skip : 0,
                     orderBy: orderBy ? { [orderBy]: orderDirection } : undefined,
                 };
                 const apartments = await prisma.apartment.findMany(apartmentsQuery);
@@ -453,21 +458,23 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 const metersCount = await prisma.meter.count({ where: meterQuery.where });
                 return { entity: meters, totalCount: metersCount, error: null, status: 200 };
             case PermissionableEntity.typeMeter:
-                const typeMeters = await prisma.typeMeter.findMany({
-                    where: cleanWhere({
+                const typeMetersWhere = cleanWhere({
                         AND: [
                             {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
                             },
                             extraWhere,
                         ]
-                    }),
+                    });
+                const typeMeters = await prisma.typeMeter.findMany({
+                    where: typeMetersWhere,
                     take: take < 200 ? take : 200,
+                    skip: skip ? skip : 0,
                 });
-                return { entity: typeMeters, error: null, status: 200 };
+                const typeMetersCount = await prisma.typeMeter.count({ where: typeMetersWhere });
+                return { entity: typeMeters, totalCount: typeMetersCount, error: null, status: 200 };
             case PermissionableEntity.iotDevice:
-                const iotDevices = await prisma.iotDevice.findMany({
-                    where: {
+                const iotDevicesWhere = {
                         AND: [
                             {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
@@ -496,10 +503,14 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             },
                             extraWhere,
                         ]
-                    },
+                    };
+                const iotDevices = await prisma.iotDevice.findMany({
+                    where: iotDevicesWhere,
                     take: take < 200 ? take : 200,
+                    skip: skip ? skip : 0,
                 });
-                return { entity: iotDevices, error: null, status: 200 };
+                const iotDevicesCount = await prisma.iotDevice.count({ where: iotDevicesWhere });
+                return { entity: iotDevices, totalCount: iotDevicesCount, error: null, status: 200 };
 
             // Dealerships
             case PermissionableEntity.dealership:
@@ -765,8 +776,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 return { entity: roles, totalCount: rolesCount, error: null, status: 200 };
             case PermissionableEntity.roleAssignment:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
-                const roleAssignments = await prisma.roleAssignment.findMany({
-                    where: {
+                const roleAssignmentsWhere = {
                         AND: [
                             {
                                 OR: [
@@ -776,11 +786,16 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             },
                             extraWhere,
                         ]
-                    },
+                    };
+                const roleAssignments = await prisma.roleAssignment.findMany({
+                    where: roleAssignmentsWhere,
                     include: include ? include : undefined,
                     take: take < 200 ? take : 200,
+                    skip: skip ? skip : 0,
+                    orderBy: orderBy ? { [orderBy]: orderDirection } : undefined,
                 });
-                return { entity: roleAssignments, error: null, status: 200 };
+                const roleAssignmentsCount = await prisma.roleAssignment.count({ where: roleAssignmentsWhere });
+                return { entity: roleAssignments, totalCount: roleAssignmentsCount, error: null, status: 200 };
             case PermissionableEntity.permission:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 
@@ -844,7 +859,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 });
                 
                 const reservoirCount = await prisma.reservoir.count({
-                    where: {},
+                    where: reservoirWhereCondition,
                 });
 
                 console.log('Reservoirs found:', reservoirs.length);
