@@ -345,6 +345,78 @@
   .filipeta-layout-container {
     flex-direction: row !important;
   }
+
+  /* Levantamento: avoid clipping long reports and filipeta cards. */
+  .levantamento-filipetas-section,
+  .levantamento-line-chart,
+  .levantamento-summary-table,
+  .meter-report-card-print {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    overflow: visible !important;
+  }
+
+  .levantamento-filipetas-grid {
+    display: block !important;
+  }
+
+  .levantamento-filipetas-grid > * {
+    display: block !important;
+    width: 100% !important;
+    margin-bottom: 8mm !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .meter-report-card-print {
+    box-shadow: none !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+  }
+
+  .meter-report-card-print .meter-photo-screen,
+  .meter-photo-modal,
+  .levantamento-photo-modal {
+    display: none !important;
+  }
+
+  .meter-report-card-print .meter-photo-print {
+    display: block !important;
+    width: 100% !important;
+    max-height: 150mm !important;
+    height: auto !important;
+    object-fit: contain !important;
+    background: #000 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .meter-report-card-print .meter-report-photo-area {
+    background: #000 !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+  }
+
+  .levantamento-summary-table,
+  .levantamento-summary-table .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  .levantamento-summary-table table {
+    table-layout: auto !important;
+    min-width: 100% !important;
+    font-size: 8pt !important;
+  }
+
+  .levantamento-summary-table th,
+  .levantamento-summary-table td {
+    white-space: normal !important;
+    padding: 3px 4px !important;
+  }
+
+  .levantamento-summary-table .sticky {
+    position: static !important;
+  }
 }
 
 /* ── Levantamento: fotos ocultas na TELA (só aparecem no @media print) ── */

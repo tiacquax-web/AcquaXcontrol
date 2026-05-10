@@ -823,7 +823,7 @@ export default function LevantamentoPage() {
 
           {/* ── Filipetas da unidade filtrada ───────────────────────────── */}
           {selectedApartmentId && (
-            <div className="space-y-3">
+            <div className="levantamento-filipetas-section space-y-3">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Droplets className="w-4 h-4 text-blue-500" />
                 Filipetas da Unidade
@@ -832,7 +832,7 @@ export default function LevantamentoPage() {
                 </span>
               </h3>
               {selectedApartmentReports.length > 0 ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="levantamento-filipetas-grid grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {selectedApartmentReports.map(report => (
                     <MeterReportCard key={report.id} report={report} />
                   ))}
@@ -846,7 +846,7 @@ export default function LevantamentoPage() {
           )}
 
           {/* ── Gráfico consumo médio por mês ──────────────────────────── */}
-          <div className="bg-white border rounded-xl p-4 print:border-gray-400">
+          <div className="levantamento-line-chart bg-white border rounded-xl p-4 print:border-gray-400">
             <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-teal-500" />
               Evolução do Consumo Médio por Mês (m³)
@@ -871,7 +871,7 @@ export default function LevantamentoPage() {
           </div>
 
           {/* ── Tabela por unidade ──────────────────────────────────────── */}
-          <div className="bg-white border rounded-xl overflow-hidden print:border-gray-400">
+          <div className="levantamento-summary-table bg-white border rounded-xl overflow-hidden print:border-gray-400">
             <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-blue-500" />
