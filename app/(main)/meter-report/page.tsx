@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Building2, FileText, Loader2, AlertCircle, Info, Search, X, Printer } from 'lucide-react';
+import { Building, Building2, DoorClosed, FileText, Loader2, AlertCircle, Info, Search, X, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,6 +13,8 @@ import MeterReportCard from '@/components/MeterReportCard';
 import { useMeterReport, MeterReportItem } from '@/hooks/useMeterReport';
 import { useUserContext } from '@/hooks/useUserContext';
 import SelectComplex from '@/components/ComboboxComplex';
+import SelectBlock from '@/components/ComboboxBlock';
+import SelectApartment from '@/components/ComboboxApartment';
 
 // Build list of months: current month backwards 24 months
 function buildMonthOptions() {
@@ -40,6 +42,10 @@ export default function MeterReportPage() {
   // Selected complex (for non-residents or residents with multiple complexes)
   const [selectedComplexId, setSelectedComplexId] = useState<string | undefined>(undefined);
   const [selectedComplexObj, setSelectedComplexObj] = useState<any>(null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | undefined>(undefined);
+  const [selectedBlockObj, setSelectedBlockObj] = useState<any>(null);
+  const [selectedApartmentId, setSelectedApartmentId] = useState<string | undefined>(undefined);
+  const [selectedApartmentObj, setSelectedApartmentObj] = useState<any>(null);
 
   // Search text for filtering by apartment/block (admin/sindico only)
   const [searchText, setSearchText] = useState('');
@@ -91,7 +97,8 @@ export default function MeterReportPage() {
     month: selectedMonthOption.month,
     year: selectedMonthOption.year,
     complexId: selectedComplexId,
-    apartmentId: apartmentIdFilter,
+    blockId: selectedBlockId,
+    apartmentId: apartmentIdFilter || selectedApartmentId,
     enabled: !!selectedComplexId && !!selectedMonthOption?.month && !!selectedMonthOption?.year,
   });
 
@@ -111,6 +118,10 @@ export default function MeterReportPage() {
     if (complex?.id !== selectedComplexId) {
       setSelectedComplexId(complex?.id);
       setSelectedComplexObj(complex ?? null);
+      setSelectedBlockId(undefined);
+      setSelectedBlockObj(null);
+      setSelectedApartmentId(undefined);
+      setSelectedApartmentObj(null);
       setSearchText('');
     }
   };
@@ -190,6 +201,41 @@ export default function MeterReportPage() {
                 autoSelectSingle={false}
               />
             )}
+          </div>
+        )}
+
+        {/* Block selector */}
+        {!isMorador && selectedComplexId && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Bloco</label>
+            <SelectBlock
+              block={selectedBlockObj as any}
+              complexId={selectedComplexId}
+              setSelectedBlock={(block) => {
+                setSelectedBlockObj(block ?? null);
+                setSelectedBlockId(block?.id);
+                setSelectedApartmentObj(null);
+                setSelectedApartmentId(undefined);
+                setSearchText('');
+              }}
+            />
+          </div>
+        )}
+
+        {/* Apartment selector */}
+        {!isMorador && selectedComplexId && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Apartamento</label>
+            <SelectApartment
+              apartment={selectedApartmentObj as any}
+              complexId={selectedComplexId}
+              blockId={selectedBlockId}
+              setSelectedApartment={(apartment) => {
+                setSelectedApartmentObj(apartment ?? null);
+                setSelectedApartmentId(apartment?.id);
+                setSearchText('');
+              }}
+            />
           </div>
         )}
 

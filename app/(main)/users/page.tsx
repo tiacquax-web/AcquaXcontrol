@@ -20,9 +20,10 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import ComplexesCombobox from "@/components/ComboboxComplex"
 import BlocksCombobox from "@/components/ComboboxBlock"
+import ApartmentsCombobox from "@/components/ComboboxApartment"
 import { useRoles } from "@/hooks/useRoles"
 import { exportUsers } from "@/services/usersService"
-import type { Complex, Block } from "@prisma/client"
+import type { Apartment, Complex, Block } from "@prisma/client"
 
 export default function UsersPage() {
     const [searchQuery, setSearchQuery] = useState("")
@@ -33,9 +34,11 @@ export default function UsersPage() {
     // Filtros de busca por complexo/bloco
     const [filterComplexId, setFilterComplexId] = useState("")
     const [filterBlockId, setFilterBlockId] = useState("")
+    const [filterApartmentId, setFilterApartmentId] = useState("")
     const [filterRoleId, setFilterRoleId] = useState("")
     const [filterComplex, setFilterComplex] = useState<Complex | undefined>(undefined)
     const [filterBlock, setFilterBlock] = useState<Block | undefined>(undefined)
+    const [filterApartment, setFilterApartment] = useState<Apartment | undefined>(undefined)
     const [showFilters, setShowFilters] = useState(false)
     
     const skip = (currentPage - 1) * itemsPerPage
@@ -55,6 +58,7 @@ export default function UsersPage() {
         skip,
         complexId: filterComplexId || undefined,
         blockId: filterBlockId || undefined,
+        apartmentId: filterApartmentId || undefined,
         roleId: filterRoleId || undefined,
     })
     
@@ -66,10 +70,14 @@ export default function UsersPage() {
     const [showExportModal, setShowExportModal] = useState(false)
     const [exportComplexId, setExportComplexId] = useState("")
     const [exportComplex, setExportComplex] = useState<Complex | undefined>(undefined)
+    const [exportBlockId, setExportBlockId] = useState("")
+    const [exportBlock, setExportBlock] = useState<Block | undefined>(undefined)
+    const [exportApartmentId, setExportApartmentId] = useState("")
+    const [exportApartment, setExportApartment] = useState<Apartment | undefined>(undefined)
     const [exportRoleId, setExportRoleId] = useState("")
     const { toast } = useToast()
 
-    const hasActiveFilters = !!(filterComplexId || filterBlockId || filterRoleId)
+    const hasActiveFilters = !!(filterComplexId || filterBlockId || filterApartmentId || filterRoleId)
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearchQuery(e.target.value)
@@ -134,6 +142,7 @@ export default function UsersPage() {
         userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : [],
         complexId: filterComplexId || undefined,
         blockId: filterBlockId || undefined,
+        apartmentId: filterApartmentId || undefined,
         roleId: filterRoleId || undefined,
     })
 
@@ -205,6 +214,10 @@ export default function UsersPage() {
     const handleOpenExportModal = () => {
         setExportComplexId(filterComplexId || "")
         setExportComplex(filterComplex)
+        setExportBlockId(filterBlockId || "")
+        setExportBlock(filterBlock)
+        setExportApartmentId(filterApartmentId || "")
+        setExportApartment(filterApartment)
         setExportRoleId(filterRoleId || "")
         setShowExportModal(true)
     }
@@ -217,6 +230,8 @@ export default function UsersPage() {
                 search: searchQuery,
                 userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : [],
                 complexId: exportComplexId || undefined,
+                blockId: exportBlockId || undefined,
+                apartmentId: exportApartmentId || undefined,
                 roleId: exportRoleId || undefined,
             })
             
@@ -243,6 +258,8 @@ export default function UsersPage() {
         setFilterComplex(undefined)
         setFilterBlockId("")
         setFilterBlock(undefined)
+        setFilterApartmentId("")
+        setFilterApartment(undefined)
         setFilterRoleId("")
         setCurrentPage(1)
     }
@@ -331,7 +348,7 @@ export default function UsersPage() {
                                             </Button>
                                         )}
                                     </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                                         <div className="space-y-1">
                                             <Label className="text-xs text-muted-foreground">Condomínio</Label>
                                             <ComplexesCombobox
@@ -341,6 +358,8 @@ export default function UsersPage() {
                                                     setFilterComplexId(c?.id || "")
                                                     setFilterBlock(undefined)
                                                     setFilterBlockId("")
+                                                    setFilterApartment(undefined)
+                                                    setFilterApartmentId("")
                                                     setCurrentPage(1)
                                                 }}
                                             />
@@ -353,6 +372,21 @@ export default function UsersPage() {
                                                 setSelectedBlock={(b) => {
                                                     setFilterBlock(b as Block)
                                                     setFilterBlockId(b?.id || "")
+                                                    setFilterApartment(undefined)
+                                                    setFilterApartmentId("")
+                                                    setCurrentPage(1)
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs text-muted-foreground">Apartamento</Label>
+                                            <ApartmentsCombobox
+                                                apartment={filterApartment as any}
+                                                complexId={filterComplexId || undefined}
+                                                blockId={filterBlockId || undefined}
+                                                setSelectedApartment={(a) => {
+                                                    setFilterApartment(a as Apartment)
+                                                    setFilterApartmentId(a?.id || "")
                                                     setCurrentPage(1)
                                                 }}
                                             />
@@ -374,7 +408,7 @@ export default function UsersPage() {
                                     </div>
                                     {hasActiveFilters && (
                                         <p className="text-xs text-muted-foreground">
-                                            Filtros ativos: {[filterComplex?.socialName, filterBlock?.name, roles.find(r => r.id === filterRoleId)?.name].filter(Boolean).join(' › ')}
+                                            Filtros ativos: {[filterComplex?.socialName, filterBlock?.name, filterApartment?.name, roles.find(r => r.id === filterRoleId)?.name].filter(Boolean).join(' › ')}
                                         </p>
                                     )}
                                 </div>
@@ -540,6 +574,35 @@ export default function UsersPage() {
                                 setSelectedComplex={(c) => {
                                     setExportComplex(c as Complex)
                                     setExportComplexId(c?.id || "")
+                                    setExportBlock(undefined)
+                                    setExportBlockId("")
+                                    setExportApartment(undefined)
+                                    setExportApartmentId("")
+                                }}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Filtrar por Bloco <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+                            <BlocksCombobox
+                                block={exportBlock as any}
+                                complexId={exportComplexId || undefined}
+                                setSelectedBlock={(b) => {
+                                    setExportBlock(b as Block)
+                                    setExportBlockId(b?.id || "")
+                                    setExportApartment(undefined)
+                                    setExportApartmentId("")
+                                }}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Filtrar por Apartamento <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+                            <ApartmentsCombobox
+                                apartment={exportApartment as any}
+                                complexId={exportComplexId || undefined}
+                                blockId={exportBlockId || undefined}
+                                setSelectedApartment={(a) => {
+                                    setExportApartment(a as Apartment)
+                                    setExportApartmentId(a?.id || "")
                                 }}
                             />
                         </div>
@@ -557,7 +620,7 @@ export default function UsersPage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        {!exportComplexId && !exportRoleId && selectedUsers.size === 0 && (
+                        {!exportComplexId && !exportBlockId && !exportApartmentId && !exportRoleId && selectedUsers.size === 0 && (
                             <p className="text-xs text-amber-600">
                                 Sem filtros selecionados, todos os usuários serão exportados.
                             </p>

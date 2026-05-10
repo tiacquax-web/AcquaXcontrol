@@ -40,31 +40,60 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (!hasPermission) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         const body = await req.json();
-        const { search = '', userIds = [], complexId = '', roleId = '' } = body;
+        const { search = '', userIds = [], complexId = '', blockId = '', apartmentId = '', roleId = '' } = body;
 
-        // Se filtro por condomínio: buscar os userId vinculados ao complexId via RoleAssignment
+        // Se filtro por contexto: buscar os userId vinculados via RoleAssignment
         let filteredByComplexUserIds: string[] | null = null;
-        if (complexId) {
-            // Busca usuários com RoleAssignment no contexto do condomínio, bloco ou apt do condomínio
-            const blockIds = (await prisma.block.findMany({
-                where: { complexId, deletedAt: null }, select: { id: true }
-            })).map(b => b.id);
-            const aptIds = (await prisma.apartment.findMany({
-                where: { complexId, deletedAt: null }, select: { id: true }
-            })).map(a => a.id);
+        if (complexId || blockId || apartmentId) {
+            let blockIds: string[] = [];
+            let aptIds: string[] = [];
+            if (apartmentId) {
+                const apartment = await prisma.apartment.findFirst({
+                    where: {
+                        id: apartmentId,
+                        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                    },
+                    select: { id: true, blockId: true, complexId: true },
+                });
+                if (!apartment || (blockId && apartment.blockId !== blockId) || (complexId && apartment.complexId !== complexId)) {
+                    filteredByComplexUserIds = [];
+                } else {
+                    aptIds = [apartment.id];
+                    blockIds = apartment.blockId ? [apartment.blockId] : [];
+                }
+            } else {
+                blockIds = blockId ? [blockId] : (await prisma.block.findMany({
+                    where: { complexId, deletedAt: null }, select: { id: true }
+                })).map(b => b.id);
+                aptIds = (await prisma.apartment.findMany({
+                    where: { OR: [
+                        ...(complexId ? [{ complexId, deletedAt: null }] : []),
+                        ...(blockId ? [{ blockId, deletedAt: null }] : []),
+                    ]}, select: { id: true }
+                })).map(a => a.id);
+            }
+
+            const contextFilters = apartmentId
+                ? [{ contextId: { in: aptIds }, contextType: 'apartment' as const }]
+                : blockId
+                    ? [
+                        ...(blockIds.length ? [{ contextId: { in: blockIds }, contextType: 'block' as const }] : []),
+                        ...(aptIds.length ? [{ contextId: { in: aptIds }, contextType: 'apartment' as const }] : []),
+                    ]
+                    : [
+                        ...(complexId ? [{ contextId: complexId, contextType: 'complex' as const }] : []),
+                        ...(blockIds.length ? [{ contextId: { in: blockIds }, contextType: 'block' as const }] : []),
+                        ...(aptIds.length ? [{ contextId: { in: aptIds }, contextType: 'apartment' as const }] : []),
+                    ];
 
             const assigns = await prisma.roleAssignment.findMany({
                 where: {
                     deletedAt: null,
-                    OR: [
-                        { contextId: complexId, contextType: 'complex' },
-                        { contextId: { in: blockIds }, contextType: 'block' },
-                        { contextId: { in: aptIds }, contextType: 'apartment' },
-                    ]
+                    OR: contextFilters
                 },
                 select: { userId: true }
             });
-            filteredByComplexUserIds = [...new Set(assigns.map(a => a.userId))];
+            filteredByComplexUserIds = filteredByComplexUserIds ?? [...new Set(assigns.map(a => a.userId))];
         }
 
         // Se filtro por papel

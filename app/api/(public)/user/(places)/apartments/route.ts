@@ -265,7 +265,7 @@ function getQueryParams(req: NextRequest) {
     const companyId = req.nextUrl.searchParams.get('company_id') || undefined
     const complexId = req.nextUrl.searchParams.get('complex_id') || undefined
     const blockId = req.nextUrl.searchParams.get('block_id') || undefined
-    const apartmentId = req.nextUrl.searchParams.get('id') || undefined
+    const apartmentId = req.nextUrl.searchParams.get('id') || req.nextUrl.searchParams.get('apartment_id') || undefined
     const withBlock = req.nextUrl.searchParams.get('with_block') === 'true' ? true : false
     const withComplex = req.nextUrl.searchParams.get('with_complex') === 'true' ? true : false
     const withCompany = req.nextUrl.searchParams.get('with_company') === 'true' ? true : false

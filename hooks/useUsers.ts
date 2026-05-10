@@ -20,6 +20,7 @@ interface useUsersProps {
     contextId?: string;
     complexId?: string;
     blockId?: string;
+    apartmentId?: string;
     roleId?: string;
     take?: number;
     skip?: number;
@@ -35,6 +36,7 @@ export const useUsers = ({
     contextId, 
     complexId,
     blockId,
+    apartmentId,
     roleId,
     take = 10, 
     skip = 0,
@@ -67,6 +69,7 @@ export const useUsers = ({
                     contextId,
                     complexId,
                     blockId,
+                    apartmentId,
                     roleId,
                     take,
                     skip
@@ -85,7 +88,7 @@ export const useUsers = ({
         };
 
         fetchUsers();
-    }, [debouncedSearchQuery, debouncedDocumentUser, contextType, contextId, complexId, blockId, roleId, userId, roleName, take, skip, enabled]);
+    }, [debouncedSearchQuery, debouncedDocumentUser, contextType, contextId, complexId, blockId, apartmentId, roleId, userId, roleName, take, skip, enabled]);
 
     const hasNextPage = skip + take < totalCount;
     const hasPreviousPage = skip > 0;
@@ -104,6 +107,7 @@ export const useUsers = ({
                 contextId,
                 complexId,
                 blockId,
+                apartmentId,
                 roleId,
                 take,
                 skip
@@ -254,6 +258,7 @@ export const useUserMutations = () => {
         userIds = [],
         complexId,
         blockId,
+        apartmentId,
         roleId
     }: {
         action: 'resetAllUsers';
@@ -261,6 +266,7 @@ export const useUserMutations = () => {
         userIds?: string[];
         complexId?: string;
         blockId?: string;
+        apartmentId?: string;
         roleId?: string;
     }) => {
         setLoading(true);
@@ -272,6 +278,7 @@ export const useUserMutations = () => {
                 userIds,
                 complexId,
                 blockId,
+                apartmentId,
                 roleId
             });
         } catch (error: any) {

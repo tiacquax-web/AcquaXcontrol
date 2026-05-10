@@ -12,12 +12,13 @@ interface getUsersProps {
     contextId?: string;
     complexId?: string;
     blockId?: string;
+    apartmentId?: string;
     roleId?: string;
     take?: number;
     skip?: number;
 }
 
-export const getUsers = async ({ userId, searchQuery, documentUser, roleName, contextType, contextId, complexId, blockId, roleId, take = 10, skip = 0 }: getUsersProps) => {
+export const getUsers = async ({ userId, searchQuery, documentUser, roleName, contextType, contextId, complexId, blockId, apartmentId, roleId, take = 10, skip = 0 }: getUsersProps) => {
   try {
     const params: any = {};
     if (searchQuery) params.search = searchQuery;
@@ -28,6 +29,7 @@ export const getUsers = async ({ userId, searchQuery, documentUser, roleName, co
     if (contextId) params.role_context_id = contextId;
     if (complexId) params.complex_id = complexId;
     if (blockId) params.block_id = blockId;
+    if (apartmentId) params.apartment_id = apartmentId;
     if (roleId) params.role_id = roleId;
     if (take) params.take = take;
     if (skip) params.skip = skip;
@@ -103,6 +105,8 @@ interface ExportUsersProps {
   search?: string;
   userIds?: string[];
   complexId?: string;
+  blockId?: string;
+  apartmentId?: string;
   roleId?: string;
 }
 
@@ -112,15 +116,18 @@ interface BulkUsersActionProps {
   userIds?: string[];
   complexId?: string;
   blockId?: string;
+  apartmentId?: string;
   roleId?: string;
 }
 
-export const exportUsers = async ({ search, userIds = [], complexId, roleId }: ExportUsersProps) => {
+export const exportUsers = async ({ search, userIds = [], complexId, blockId, apartmentId, roleId }: ExportUsersProps) => {
   try {
     const response = await axios.post(`${NEXT_PUBLIC_API_URL}/user/users/export`, {
       search,
       userIds,
       complexId: complexId || undefined,
+      blockId: blockId || undefined,
+      apartmentId: apartmentId || undefined,
       roleId: roleId || undefined,
     }, {
       responseType: 'blob' // Importante para receber arquivo binário
@@ -159,6 +166,7 @@ export const bulkUsersAction = async ({
   userIds = [],
   complexId,
   blockId,
+  apartmentId,
   roleId,
 }: BulkUsersActionProps) => {
   try {
@@ -168,6 +176,7 @@ export const bulkUsersAction = async ({
       userIds,
       complexId: complexId || undefined,
       blockId: blockId || undefined,
+      apartmentId: apartmentId || undefined,
       roleId: roleId || undefined,
     });
     return response.data;

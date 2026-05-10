@@ -39,13 +39,14 @@ const SelectApartment = forwardRef<HTMLButtonElement, SelectApartmentProps>(
   ({ getAvailableForEntity, setSelectedApartment, apartment, required, name, complexId, blockId, disabled, modal = false, withComplex = false, withBlock = false, withCompany = false }, ref) => {
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState("")
-    // Só busca apartamentos quando há um blockId
+    // Busca apartamentos por bloco quando informado, ou por condomínio quando
+    // o usuário quer filtrar apartamento sem restringir bloco.
     const { apartments, loading, error } = useApartments({ 
       getAvailableForEntity, 
       complexId, 
       blockId: blockId || undefined, 
       nameQuery: search,
-      enabled: !!blockId && !disabled, // Só habilita a busca quando há blockId e disabled é false
+      enabled: !!(blockId || complexId) && !disabled,
       withComplex,
       withBlock,
       withCompany
@@ -104,7 +105,7 @@ const SelectApartment = forwardRef<HTMLButtonElement, SelectApartmentProps>(
               "w-full justify-between",
               !selectedId && "text-muted-foreground"
             )}
-            disabled={disabled || !blockId}
+            disabled={disabled || !(blockId || complexId)}
           >
             <DoorClosed className="h-4 w-4" />
             {selectedId ? selectedApartmentName : <span className="text-start w-full">Apartamento...</span>}
