@@ -26,7 +26,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       totalApartments,
       totalUsers,
       totalMeters,
-      roleAssignments,
+      roleAssignmentUserTypes,
       todaySessions,
       recentSessions,
       monthlySessions,
@@ -38,10 +38,10 @@ export async function GET(req: NextRequest): Promise<Response> {
       prisma.user.count({ where: { deletedAt: null } }),
       prisma.meter.count({ where: { deletedAt: null } }),
 
-      // Apenas ids e tipos de contexto — sem detalhes pesados
-      prisma.roleAssignment.findMany({
+      // Deduplica no banco por usuário/tipo; evita carregar múltiplas atribuições iguais.
+      prisma.roleAssignment.groupBy({
+        by: ['contextType', 'userId'],
         where: { deletedAt: null },
-        select: { userId: true, contextType: true, contextId: true },
       }),
 
       // Sessões de hoje
@@ -90,10 +90,10 @@ export async function GET(req: NextRequest): Promise<Response> {
     ]);
 
     // ─── Conjuntos de usuários por tipo ───────────────────────────────────────
-    const systemUsers    = new Set(roleAssignments.filter(r => r.contextType === 'system').map(r => r.userId));
-    const companyUsers   = new Set(roleAssignments.filter(r => r.contextType === 'company').map(r => r.userId));
-    const complexUsers   = new Set(roleAssignments.filter(r => r.contextType === 'complex').map(r => r.userId));
-    const apartmentUsers = new Set(roleAssignments.filter(r => r.contextType === 'apartment').map(r => r.userId));
+    const systemUsers    = new Set(roleAssignmentUserTypes.filter(r => r.contextType === 'system').map(r => r.userId));
+    const companyUsers   = new Set(roleAssignmentUserTypes.filter(r => r.contextType === 'company').map(r => r.userId));
+    const complexUsers   = new Set(roleAssignmentUserTypes.filter(r => r.contextType === 'complex').map(r => r.userId));
+    const apartmentUsers = new Set(roleAssignmentUserTypes.filter(r => r.contextType === 'apartment').map(r => r.userId));
 
     // ─── Logins de hoje por perfil ────────────────────────────────────────────
     const todayUserIds = [...new Set(todaySessions.map(s => s.userId))];
@@ -158,9 +158,14 @@ export async function GET(req: NextRequest): Promise<Response> {
     const complexAccessTotal: Record<string, Set<string>> = {};
 
     if (monthlyUserIds.length > 0) {
-      const monthlyAptRoles = roleAssignments.filter(
-        r => r.contextType === 'apartment' && monthlyUserIds.includes(r.userId)
-      );
+      const monthlyAptRoles = await prisma.roleAssignment.findMany({
+        where: {
+          deletedAt: null,
+          contextType: 'apartment',
+          userId: { in: monthlyUserIds },
+        },
+        select: { userId: true, contextId: true },
+      });
       const monthlyAptIds = [...new Set(monthlyAptRoles.map(r => r.contextId))];
 
       if (monthlyAptIds.length > 0) {

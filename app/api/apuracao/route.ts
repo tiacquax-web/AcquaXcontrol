@@ -90,32 +90,41 @@ export async function GET(req: NextRequest): Promise<Response> {
         // Get login counts per complex (last 30 days via RoleAssignments)
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-        // Complex-level role assignments
-        const roleAssignments = await prisma.roleAssignment.findMany({
-            where: { contextId: { in: complexIds }, contextType: 'complex', OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
-            select: { userId: true, contextId: true },
-        });
-
-        // Apartment-level role assignments (using denormalized complexId)
-        const aptRoleAssignments = await prisma.roleAssignment.findMany({
+        // Scope apartment role assignments to the current page's complexes.
+        // The old query scanned up to 10k apartment assignments globally on every page.
+        const pageApartments = complexIds.length > 0 ? await prisma.apartment.findMany({
             where: {
-                contextType: 'apartment',
-                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                complexId: { in: complexIds },
+                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }]
             },
-            select: { userId: true, contextId: true },
-            take: 10000,
+            select: { id: true, name: true, complexId: true },
+        }) : [];
+        const aptIds = pageApartments.map(apt => apt.id);
+        const aptComplexMap: Record<string, string> = {};
+        const aptNameMap: Record<string, { name: string; complexId: string | null }> = {};
+        pageApartments.forEach(apt => {
+            if (apt.complexId) aptComplexMap[apt.id] = apt.complexId;
+            aptNameMap[apt.id] = { name: apt.name, complexId: apt.complexId };
         });
 
-        // Build apt→complex map for apt role assignments
-        const aptIds = [...new Set(aptRoleAssignments.map(ra => ra.contextId))];
-        const aptComplexMap: Record<string, string> = {};
-        if (aptIds.length > 0) {
-            const apts = await prisma.apartment.findMany({
-                where: { id: { in: aptIds }, complexId: { in: complexIds } },
-                select: { id: true, complexId: true },
-            });
-            apts.forEach(a => { if (a.complexId) aptComplexMap[a.id] = a.complexId; });
-        }
+        const [roleAssignments, aptRoleAssignments] = await Promise.all([
+            prisma.roleAssignment.findMany({
+                where: {
+                    contextId: { in: complexIds },
+                    contextType: 'complex',
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }]
+                },
+                select: { userId: true, contextId: true },
+            }),
+            aptIds.length > 0 ? prisma.roleAssignment.findMany({
+                where: {
+                    contextId: { in: aptIds },
+                    contextType: 'apartment',
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                select: { userId: true, contextId: true },
+            }) : Promise.resolve([]),
+        ]);
 
         // Get recent sessions for those users
         const allUserIds = [...new Set([...roleAssignments, ...aptRoleAssignments].map(ra => ra.userId))];
@@ -150,17 +159,6 @@ export async function GET(req: NextRequest): Promise<Response> {
                 userCountPerApt[ra.contextId].add(ra.userId);
             }
         }
-        // Get apt names
-        const activeAptIds = Object.keys(userCountPerApt);
-        const aptNameMap: Record<string, { name: string; complexId: string | null }> = {};
-        if (activeAptIds.length > 0) {
-            const aptNames = await prisma.apartment.findMany({
-                where: { id: { in: activeAptIds } },
-                select: { id: true, name: true, complexId: true }
-            });
-            aptNames.forEach(a => { aptNameMap[a.id] = { name: a.name, complexId: a.complexId }; });
-        }
-
         const topAptPerComplex: Record<string, { name: string; logins: number }> = {};
         for (const [aptId, userSet] of Object.entries(userCountPerApt)) {
             const aptInfo = aptNameMap[aptId];

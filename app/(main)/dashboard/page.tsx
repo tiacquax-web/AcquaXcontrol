@@ -22,7 +22,7 @@ import SelectApartment from "@/components/ComboboxApartment";
 import SelectMeter from "@/components/ComboboxMeter";
 import { useUpdateUserPreferences } from '@/hooks/useUserPreferences';
 import { Skeleton } from "@/components/ui/skeleton";
-import { useUserContext } from "@/hooks/useUserContext";
+import { useUserContext, type UserContext } from "@/hooks/useUserContext";
 import { useMeterReport, MeterReportItem } from "@/hooks/useMeterReport";
 import { useDealershipReadings } from '@/hooks/useDealershipReadings';
 import { useComplexes } from '@/hooks/useComplexes';
@@ -274,8 +274,8 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
 }
 
 // ─── MoradorDashboard ─────────────────────────────────────────────────────────
-function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) {
-  const { context, loading: ctxLoading } = useUserContext();
+function MoradorDashboard({ router, context }: { router: ReturnType<typeof useRouter>; context: UserContext | null }) {
+  const ctxLoading = false;
   const apartments = context?.apartments ?? [];
 
   const singleApartment = useMemo(() => {
@@ -416,8 +416,8 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
 // ─── SindicoDashboard ─────────────────────────────────────────────────────────
 // Dashboard para Síndico e Administradora — exibe condomínios vinculados com
 // 3 painéis: Filipetas, Resumo de Consumo, Conta da Concessionária
-function SindicoDashboard() {
-  const { context, loading: ctxLoading } = useUserContext();
+function SindicoDashboard({ context }: { context: UserContext | null }) {
+  const ctxLoading = false;
 
   const complexes = useMemo(() => {
     if (!context) return [];
@@ -1249,8 +1249,8 @@ export default function Dashboard() {
     }
     if (isProgramador)    return <ProgramadorDashboard />;
     if (isAdministrador)  return <AdminKPIDashboard />;
-    if (isMorador)        return <MoradorDashboard router={router} />;
-    return <SindicoDashboard />;   // síndico ou administradora
+    if (isMorador)        return <MoradorDashboard router={router} context={context} />;
+    return <SindicoDashboard context={context} />;   // síndico ou administradora
   };
 
   return (
