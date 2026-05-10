@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import SelectComplex from '@/components/ComboboxComplex';
 import SelectBlock from '@/components/ComboboxBlock';
 import SelectApartment from '@/components/ComboboxApartment';
+import MeterReportCard from '@/components/MeterReportCard';
 import { useUserContext } from '@/hooks/useUserContext';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl } from '@/lib/utils';
@@ -480,6 +481,11 @@ export default function LevantamentoPage() {
     });
   }, [allLoaded, monthsData]);
 
+  const selectedApartmentReports = useMemo(() => {
+    if (!allLoaded || !selectedApartmentId) return [];
+    return monthsData.flatMap(md => md.items);
+  }, [allLoaded, monthsData, selectedApartmentId]);
+
   const complexDisplayName = selectedComplexObj?.socialName || selectedComplexObj?.aliasName || '';
 
   // ── Para morador: dados da sua unidade ──────────────────────────────────────
@@ -814,6 +820,30 @@ export default function LevantamentoPage() {
               </div>
             ))}
           </div>
+
+          {/* ── Filipetas da unidade filtrada ───────────────────────────── */}
+          {selectedApartmentId && (
+            <div className="space-y-3">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Droplets className="w-4 h-4 text-blue-500" />
+                Filipetas da Unidade
+                <span className="text-xs text-muted-foreground font-normal">
+                  ({selectedApartmentReports.length} de {selectedMonths.length} referência{selectedMonths.length !== 1 ? 's' : ''})
+                </span>
+              </h3>
+              {selectedApartmentReports.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {selectedApartmentReports.map(report => (
+                    <MeterReportCard key={report.id} report={report} />
+                  ))}
+                </div>
+              ) : (
+                <div className="border rounded-xl p-4 text-sm text-muted-foreground bg-white">
+                  Nenhuma filipeta encontrada para a unidade nas referências selecionadas.
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── Gráfico consumo médio por mês ──────────────────────────── */}
           <div className="bg-white border rounded-xl p-4 print:border-gray-400">
