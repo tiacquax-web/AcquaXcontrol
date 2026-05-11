@@ -240,7 +240,11 @@ export class LinkImportService {
       select: { id: true, name: true, block: { select: { id: true, name: true, complex: { select: { id: true, socialName: true } } } }, meters: { where: { deletedAt: null, status: 'Ativo' }, select: { id: true, register: true } } }
     });
     const map = new Map();
-    apartments.forEach(a => { const key = `${a.block.complex.socialName.toLowerCase()}|${a.block.name.toLowerCase()}|${a.name.toLowerCase()}`; map.set(key, a); });
+    apartments.forEach(a => {
+      if (!a.block?.complex) return;
+      const key = `${a.block.complex.socialName.toLowerCase()}|${a.block.name.toLowerCase()}|${a.name.toLowerCase()}`;
+      map.set(key, a);
+    });
     return map;
   }
 }

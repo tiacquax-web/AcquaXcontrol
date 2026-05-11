@@ -76,7 +76,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
     });
     
     // Buscando todos os apartments necessários
-    let apartments: { id: string, name: string, blockId: string }[] = [];
+    let apartments: { id: string, name: string, blockId: string | null }[] = [];
 
     // Primeiro, vamos buscar todos os apartamentos únicos que precisamos por bloco
     const apartmentNamesByBlockId = new Map<string, Set<string>>();
@@ -102,20 +102,24 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
         }
     }
 
-    // Agora busca os apartamentos por blockId
-    for (const [blockId, apartmentNames] of apartmentNamesByBlockId.entries()) {
-        if (apartmentNames.size > 0) {
-            const foundApartments = await prisma.apartment.findMany({
-                where: {
-                    name: { in: Array.from(apartmentNames), mode: 'insensitive' },
-                    blockId: blockId,
-                    deletedAt: null
-                },
-                select: { id: true, name: true, blockId: true }
-            });
-            apartments = apartments.concat(foundApartments);
-        }
-    }
+    // Busca todos os apartamentos necessários em uma única query para evitar N+1 por bloco.
+    const allApartmentNames = [
+        ...new Set(
+            Array.from(apartmentNamesByBlockId.values())
+                .flatMap(apartmentNames => Array.from(apartmentNames))
+        )
+    ];
+    const allApartmentBlockIds = Array.from(apartmentNamesByBlockId.keys());
+    apartments = allApartmentNames.length > 0 && allApartmentBlockIds.length > 0
+        ? await prisma.apartment.findMany({
+            where: {
+                name: { in: allApartmentNames, mode: 'insensitive' },
+                blockId: { in: allApartmentBlockIds },
+                deletedAt: null
+            },
+            select: { id: true, name: true, blockId: true }
+        })
+        : [];
 
 
     // Verificação de registers (chassi) duplicados no próprio lote
@@ -200,7 +204,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
         }
 
         const apartment = apartments.find(
-            (a: { id: string, name: string, blockId: string }) => a.name.toLowerCase().trim() === rowApartamento.toLowerCase().trim() && a.blockId === block.id
+            (a: { id: string, name: string, blockId: string | null }) => a.name.toLowerCase().trim() === rowApartamento.toLowerCase().trim() && a.blockId === block.id
         );
         if (!apartment) {
             errors.push({ row: idx + 2, message: `Apartamento '${rowApartamento}' não encontrado no bloco '${rowBloco}'` });
@@ -472,8 +476,16 @@ export async function GET(req: NextRequest): Promise<Response> {
         }
 
 
+        const where: any = {
+            id: meterId || undefined,
+            companyId: companyId || undefined,
+            complexId: complexId || undefined,
+            blockId: blockId || undefined,
+            apartmentId: apartmentId || undefined,
+        }
+
         // get meters
-        const {entity, totalCount, error, status} = await getEntityListData(userId, 'meter', contextType, contextId, search, undefined, take, include, skip, orderBy, orderDirection)
+        const {entity, totalCount, error, status} = await getEntityListData(userId, 'meter', contextType, contextId, search, where, take, include, skip, orderBy, orderDirection)
         if (error) return NextResponse.json({ error }, { status })
         if (!entity) return NextResponse.json({ error: 'Nenhum medidor encontrado.' }, { status: 404 })
 

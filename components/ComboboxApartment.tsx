@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, forwardRef } from "react"
+import { useEffect, useMemo, useState, forwardRef } from "react"
 import { Check, ChevronsUpDown, DoorClosed, Loader2, X } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import {
@@ -39,27 +39,29 @@ const SelectApartment = forwardRef<HTMLButtonElement, SelectApartmentProps>(
   ({ getAvailableForEntity, setSelectedApartment, apartment, required, name, complexId, blockId, disabled, modal = false, withComplex = false, withBlock = false, withCompany = false }, ref) => {
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState("")
-    // Só busca apartamentos quando há um blockId
+    // Busca apartamentos por bloco quando informado, ou por condomínio quando
+    // o usuário quer filtrar apartamento sem restringir bloco.
     const { apartments, loading, error } = useApartments({ 
       getAvailableForEntity, 
       complexId, 
       blockId: blockId || undefined, 
       nameQuery: search,
-      enabled: !!blockId && !disabled, // Só habilita a busca quando há blockId e disabled é false
+      enabled: !!(blockId || complexId) && !disabled,
       withComplex,
       withBlock,
       withCompany
     })
+    const safeApartments = useMemo(() => Array.isArray(apartments) ? apartments : [], [apartments])
     const [selectedId, setSelectedId] = useState<string | undefined>(apartment?.id)
 
     useEffect(() => {
       // Update selectedId when apartment prop changes
-      if (apartment) {
+      if (apartment?.id && apartment.id !== selectedId) {
         setSelectedId(apartment.id)
-      } else {
+      } else if (!apartment && selectedId) {
         setSelectedId(undefined)
       }
-    }, [apartment])
+    }, [apartment, selectedId])
 
     const handleSelect = (value: string) => {
       if (value === selectedId) {
@@ -67,7 +69,7 @@ const SelectApartment = forwardRef<HTMLButtonElement, SelectApartmentProps>(
         setSelectedId(undefined)
         setSelectedApartment(undefined)
       } else {
-        const selectedApartment = apartments.find((a) => a.id === value)
+        const selectedApartment = safeApartments.find((a) => a.id === value)
         if (selectedApartment) {
           setSelectedId(value)
           setSelectedApartment(selectedApartment)
@@ -84,7 +86,7 @@ const SelectApartment = forwardRef<HTMLButtonElement, SelectApartmentProps>(
 
     // Find the selected apartment name for display
     const selectedApartmentName = selectedId 
-      ? apartments.find(a => a.id === selectedId)?.name || apartment?.name || "Apartamento selecionado"
+      ? safeApartments.find(a => a.id === selectedId)?.name || apartment?.name || "Apartamento selecionado"
       : ""
 
     if (error) {
@@ -104,7 +106,7 @@ const SelectApartment = forwardRef<HTMLButtonElement, SelectApartmentProps>(
               "w-full justify-between",
               !selectedId && "text-muted-foreground"
             )}
-            disabled={disabled || !blockId}
+            disabled={disabled || !(blockId || complexId)}
           >
             <DoorClosed className="h-4 w-4" />
             {selectedId ? selectedApartmentName : <span className="text-start w-full">Apartamento...</span>}
@@ -141,7 +143,7 @@ const SelectApartment = forwardRef<HTMLButtonElement, SelectApartmentProps>(
                 <CommandEmpty>Nenhum apartamento encontrado.</CommandEmpty>
                 <CommandGroup>
                   <CommandList>
-                    {apartments.map((apartment) => (
+                    {safeApartments.map((apartment) => (
                       <CommandItem
                         key={apartment.id}
                         value={apartment.id}

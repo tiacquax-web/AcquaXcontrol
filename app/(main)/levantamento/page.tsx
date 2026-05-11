@@ -5,13 +5,13 @@ import { format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import axios from 'axios';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, Legend, ReferenceLine,
 } from 'recharts';
 import {
-  TrendingUp, TrendingDown, Minus, Building2, Calendar,
+  TrendingUp, TrendingDown, Minus, Building, Building2, Calendar,
   Droplets, Loader2, AlertCircle, Info, Search, X,
-  Printer, ChevronDown, ChevronUp, Camera, ZoomIn,
+  Printer, ChevronDown, ChevronUp, Camera, ZoomIn, DoorClosed,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +20,9 @@ import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import SelectComplex from '@/components/ComboboxComplex';
+import SelectBlock from '@/components/ComboboxBlock';
+import SelectApartment from '@/components/ComboboxApartment';
+import MeterReportCard from '@/components/MeterReportCard';
 import { useUserContext } from '@/hooks/useUserContext';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl } from '@/lib/utils';
@@ -271,6 +274,10 @@ export default function LevantamentoPage() {
 
   const [selectedComplexId, setSelectedComplexId] = useState<string | undefined>();
   const [selectedComplexObj, setSelectedComplexObj] = useState<any>(null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | undefined>();
+  const [selectedBlockObj, setSelectedBlockObj] = useState<any>(null);
+  const [selectedApartmentId, setSelectedApartmentId] = useState<string | undefined>();
+  const [selectedApartmentObj, setSelectedApartmentObj] = useState<any>(null);
   const [searchText, setSearchText] = useState('');
   const [expandedApt, setExpandedApt] = useState<string | null>(null);
 
@@ -326,9 +333,10 @@ export default function LevantamentoPage() {
     return undefined;
   }, [isMorador, userApartments]);
 
-  const fetchMonth = useCallback(async (month: string, year: string, complexId: string, aptId?: string) => {
+  const fetchMonth = useCallback(async (month: string, year: string, complexId: string, blockId?: string, aptId?: string) => {
     const params: Record<string, string> = { month, year };
     if (complexId) params.complex_id = complexId;
+    if (blockId) params.block_id = blockId;
     if (aptId) params.apartment_id = aptId;
     const res = await axios.get<{ list: MeterReportItem[] }>(`${API}/meter-report`, { params, withCredentials: true });
     return res.data.list;
@@ -353,7 +361,7 @@ export default function LevantamentoPage() {
     // Busca paralela
     selectedMonths.forEach(async (m, idx) => {
       try {
-        const items = await fetchMonth(m.month, m.year, selectedComplexId!, apartmentIdFilter);
+        const items = await fetchMonth(m.month, m.year, selectedComplexId!, selectedBlockId, apartmentIdFilter || selectedApartmentId);
         setMonthsData(prev => {
           const next = [...prev];
           if (next[idx]) next[idx] = { ...next[idx], items, loading: false };
@@ -367,7 +375,7 @@ export default function LevantamentoPage() {
         });
       }
     });
-  }, [selectedComplexId, selectedMonths, apartmentIdFilter, fetchMonth]);
+  }, [selectedComplexId, selectedBlockId, selectedApartmentId, selectedMonths, apartmentIdFilter, fetchMonth]);
 
   const isAnyLoading = monthsData.some(m => m.loading);
   const allLoaded = monthsData.length > 0 && !isAnyLoading;
@@ -473,6 +481,11 @@ export default function LevantamentoPage() {
     });
   }, [allLoaded, monthsData]);
 
+  const selectedApartmentReports = useMemo(() => {
+    if (!allLoaded || !selectedApartmentId) return [];
+    return monthsData.flatMap(md => md.items);
+  }, [allLoaded, monthsData, selectedApartmentId]);
+
   const complexDisplayName = selectedComplexObj?.socialName || selectedComplexObj?.aliasName || '';
 
   // ── Para morador: dados da sua unidade ──────────────────────────────────────
@@ -569,15 +582,66 @@ export default function LevantamentoPage() {
               <div className="flex gap-2 flex-wrap">
                 {userComplexes.map((cx: any) => (
                   <Button key={cx.id} variant={selectedComplexId === cx.id ? 'default' : 'outline'} size="sm"
-                    onClick={() => { setSelectedComplexId(cx.id); setSelectedComplexObj(cx); }}>
+                    onClick={() => {
+                      setSelectedComplexId(cx.id);
+                      setSelectedComplexObj(cx);
+                      setSelectedBlockId(undefined);
+                      setSelectedBlockObj(null);
+                      setSelectedApartmentId(undefined);
+                      setSelectedApartmentObj(null);
+                      setSearchText('');
+                    }}>
                     <Building2 className="w-3.5 h-3.5 mr-1.5" />
                     {cx.socialName || cx.aliasName}
                   </Button>
                 ))}
               </div>
             ) : (
-              <SelectComplex setSelectedComplex={(cx: any) => { setSelectedComplexId(cx?.id); setSelectedComplexObj(cx ?? null); }} complex={selectedComplexObj} autoSelectSingle={false} />
+              <SelectComplex setSelectedComplex={(cx: any) => {
+                setSelectedComplexId(cx?.id);
+                setSelectedComplexObj(cx ?? null);
+                setSelectedBlockId(undefined);
+                setSelectedBlockObj(null);
+                setSelectedApartmentId(undefined);
+                setSelectedApartmentObj(null);
+                setSearchText('');
+              }} complex={selectedComplexObj} autoSelectSingle={false} />
             )}
+          </div>
+        )}
+
+        {/* Bloco */}
+        {!isMorador && selectedComplexId && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Bloco</label>
+            <SelectBlock
+              block={selectedBlockObj as any}
+              complexId={selectedComplexId}
+              setSelectedBlock={(block) => {
+                setSelectedBlockObj(block ?? null);
+                setSelectedBlockId(block?.id);
+                setSelectedApartmentObj(null);
+                setSelectedApartmentId(undefined);
+                setSearchText('');
+              }}
+            />
+          </div>
+        )}
+
+        {/* Apartamento */}
+        {!isMorador && selectedComplexId && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Apartamento</label>
+            <SelectApartment
+              apartment={selectedApartmentObj as any}
+              complexId={selectedComplexId}
+              blockId={selectedBlockId}
+              setSelectedApartment={(apartment) => {
+                setSelectedApartmentObj(apartment ?? null);
+                setSelectedApartmentId(apartment?.id);
+                setSearchText('');
+              }}
+            />
           </div>
         )}
 
@@ -757,8 +821,32 @@ export default function LevantamentoPage() {
             ))}
           </div>
 
+          {/* ── Filipetas da unidade filtrada ───────────────────────────── */}
+          {selectedApartmentId && (
+            <div className="levantamento-filipetas-section space-y-3">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Droplets className="w-4 h-4 text-blue-500" />
+                Filipetas da Unidade
+                <span className="text-xs text-muted-foreground font-normal">
+                  ({selectedApartmentReports.length} de {selectedMonths.length} referência{selectedMonths.length !== 1 ? 's' : ''})
+                </span>
+              </h3>
+              {selectedApartmentReports.length > 0 ? (
+                <div className="levantamento-filipetas-grid grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {selectedApartmentReports.map(report => (
+                    <MeterReportCard key={report.id} report={report} />
+                  ))}
+                </div>
+              ) : (
+                <div className="border rounded-xl p-4 text-sm text-muted-foreground bg-white">
+                  Nenhuma filipeta encontrada para a unidade nas referências selecionadas.
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── Gráfico consumo médio por mês ──────────────────────────── */}
-          <div className="bg-white border rounded-xl p-4 print:border-gray-400">
+          <div className="levantamento-line-chart bg-white border rounded-xl p-4 print:border-gray-400">
             <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-teal-500" />
               Evolução do Consumo Médio por Mês (m³)
@@ -782,25 +870,8 @@ export default function LevantamentoPage() {
             </ResponsiveContainer>
           </div>
 
-          {/* ── Gráfico barras por mês ─────────────────────────────────── */}
-          <div className="bg-white border rounded-xl p-4 print:border-gray-400">
-            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-              <Droplets className="w-4 h-4 text-blue-500" />
-              Consumo Total do Condomínio por Mês (m³)
-            </h3>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} unit=" m³" width={65} />
-                <Tooltip formatter={(val: any) => [`${val} m³`, 'Total']} />
-                <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
           {/* ── Tabela por unidade ──────────────────────────────────────── */}
-          <div className="bg-white border rounded-xl overflow-hidden print:border-gray-400">
+          <div className="levantamento-summary-table bg-white border rounded-xl overflow-hidden print:border-gray-400">
             <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-blue-500" />

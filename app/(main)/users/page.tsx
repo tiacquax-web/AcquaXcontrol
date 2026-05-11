@@ -20,9 +20,10 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import ComplexesCombobox from "@/components/ComboboxComplex"
 import BlocksCombobox from "@/components/ComboboxBlock"
+import ApartmentsCombobox from "@/components/ComboboxApartment"
 import { useRoles } from "@/hooks/useRoles"
 import { exportUsers } from "@/services/usersService"
-import type { Complex, Block } from "@prisma/client"
+import type { Apartment, Complex, Block } from "@prisma/client"
 
 export default function UsersPage() {
     const [searchQuery, setSearchQuery] = useState("")
@@ -33,9 +34,11 @@ export default function UsersPage() {
     // Filtros de busca por complexo/bloco
     const [filterComplexId, setFilterComplexId] = useState("")
     const [filterBlockId, setFilterBlockId] = useState("")
+    const [filterApartmentId, setFilterApartmentId] = useState("")
     const [filterRoleId, setFilterRoleId] = useState("")
     const [filterComplex, setFilterComplex] = useState<Complex | undefined>(undefined)
     const [filterBlock, setFilterBlock] = useState<Block | undefined>(undefined)
+    const [filterApartment, setFilterApartment] = useState<Apartment | undefined>(undefined)
     const [showFilters, setShowFilters] = useState(false)
     
     const skip = (currentPage - 1) * itemsPerPage
@@ -55,21 +58,28 @@ export default function UsersPage() {
         skip,
         complexId: filterComplexId || undefined,
         blockId: filterBlockId || undefined,
+        apartmentId: filterApartmentId || undefined,
         roleId: filterRoleId || undefined,
     })
     
-    const { createUser, updateUser, deleteUser, error: mutationError } = useUserMutations()
+    const { createUser, updateUser, deleteUser, bulkUsersAction, loading: mutationLoading, error: mutationError } = useUserMutations()
     const { deleteRoleAssignment, error: errorDeleteRoleAssignment, loading: loadingDeleteRoleAssignment } = useRoleAssignmentMutations()
     const { roles } = useRoles({})
+    const safeUsers = Array.isArray(users) ? users : []
+    const safeRoles = Array.isArray(roles) ? roles : []
     const [currentUser, setCurrentUser] = useState<Partial<User> | undefined>(undefined)
     const [exportLoading, setExportLoading] = useState(false)
     const [showExportModal, setShowExportModal] = useState(false)
     const [exportComplexId, setExportComplexId] = useState("")
     const [exportComplex, setExportComplex] = useState<Complex | undefined>(undefined)
+    const [exportBlockId, setExportBlockId] = useState("")
+    const [exportBlock, setExportBlock] = useState<Block | undefined>(undefined)
+    const [exportApartmentId, setExportApartmentId] = useState("")
+    const [exportApartment, setExportApartment] = useState<Apartment | undefined>(undefined)
     const [exportRoleId, setExportRoleId] = useState("")
     const { toast } = useToast()
 
-    const hasActiveFilters = !!(filterComplexId || filterBlockId || filterRoleId)
+    const hasActiveFilters = !!(filterComplexId || filterBlockId || filterApartmentId || filterRoleId)
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearchQuery(e.target.value)
@@ -129,6 +139,35 @@ export default function UsersPage() {
         }
     }
 
+    const getBulkActionPayload = () => ({
+        search: searchQuery,
+        userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : [],
+        complexId: filterComplexId || undefined,
+        blockId: filterBlockId || undefined,
+        apartmentId: filterApartmentId || undefined,
+        roleId: filterRoleId || undefined,
+    })
+
+    const handleResetAllUsers = async () => {
+        const targetDescription = selectedUsers.size > 0
+            ? `${selectedUsers.size} usuário(s) selecionado(s)`
+            : "todos os usuários filtrados"
+        const confirmReset = window.confirm(`Deseja redefinir ${targetDescription}? Novas senhas aleatórias serão geradas e aparecerão no próximo export.`)
+        if (!confirmReset) return
+        try {
+            const result = await bulkUsersAction({ action: 'resetAllUsers', ...getBulkActionPayload() })
+            if (!result) return
+            toast({
+                title: "Usuários redefinidos",
+                description: `${result.usersAffected ?? 0} usuário(s) com nova senha temporária.`,
+            })
+            setSelectedUsers(new Set())
+            refetch()
+        } catch (error) {
+            console.error("Erro ao redefinir usuários:", error)
+        }
+    }
+
     const handleDeleteRoleAssignment = async (roleAssignmentId: string) => {
         if (window.confirm("Tem certeza de que deseja excluir esta atribuição de função?")) {
             try {
@@ -167,7 +206,7 @@ export default function UsersPage() {
 
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
-            const allUserIds = new Set(users.map(user => user.id))
+            const allUserIds = new Set(safeUsers.map(user => user.id))
             setSelectedUsers(allUserIds)
         } else {
             setSelectedUsers(new Set())
@@ -177,6 +216,10 @@ export default function UsersPage() {
     const handleOpenExportModal = () => {
         setExportComplexId(filterComplexId || "")
         setExportComplex(filterComplex)
+        setExportBlockId(filterBlockId || "")
+        setExportBlock(filterBlock)
+        setExportApartmentId(filterApartmentId || "")
+        setExportApartment(filterApartment)
         setExportRoleId(filterRoleId || "")
         setShowExportModal(true)
     }
@@ -189,6 +232,8 @@ export default function UsersPage() {
                 search: searchQuery,
                 userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : [],
                 complexId: exportComplexId || undefined,
+                blockId: exportBlockId || undefined,
+                apartmentId: exportApartmentId || undefined,
                 roleId: exportRoleId || undefined,
             })
             
@@ -215,6 +260,8 @@ export default function UsersPage() {
         setFilterComplex(undefined)
         setFilterBlockId("")
         setFilterBlock(undefined)
+        setFilterApartmentId("")
+        setFilterApartment(undefined)
         setFilterRoleId("")
         setCurrentPage(1)
     }
@@ -257,7 +304,7 @@ export default function UsersPage() {
                             <CardTitle className="text-2xl font-bold">Usuários</CardTitle>
                             <CardDescription>Gerencie seus usuários e seus detalhes</CardDescription>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                             <Button variant="outline" onClick={handleOpenExportModal} disabled={exportLoading}>
                                 {exportLoading ? (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -271,7 +318,10 @@ export default function UsersPage() {
                                 Filtros
                                 {hasActiveFilters && <Badge className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs" variant="destructive">!</Badge>}
                             </Button>
-                            <Button onClick={handleAddUser}>
+                            <Button variant="outline" onClick={handleResetAllUsers} disabled={mutationLoading || loading}>
+                                Redefinir Todos
+                            </Button>
+                            <Button onClick={handleAddUser} disabled={mutationLoading}>
                                 <Plus className="mr-2 h-4 w-4" /> Adicionar Usuário
                             </Button>
                         </div>
@@ -300,7 +350,7 @@ export default function UsersPage() {
                                             </Button>
                                         )}
                                     </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                                         <div className="space-y-1">
                                             <Label className="text-xs text-muted-foreground">Condomínio</Label>
                                             <ComplexesCombobox
@@ -310,6 +360,8 @@ export default function UsersPage() {
                                                     setFilterComplexId(c?.id || "")
                                                     setFilterBlock(undefined)
                                                     setFilterBlockId("")
+                                                    setFilterApartment(undefined)
+                                                    setFilterApartmentId("")
                                                     setCurrentPage(1)
                                                 }}
                                             />
@@ -322,6 +374,21 @@ export default function UsersPage() {
                                                 setSelectedBlock={(b) => {
                                                     setFilterBlock(b as Block)
                                                     setFilterBlockId(b?.id || "")
+                                                    setFilterApartment(undefined)
+                                                    setFilterApartmentId("")
+                                                    setCurrentPage(1)
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs text-muted-foreground">Apartamento</Label>
+                                            <ApartmentsCombobox
+                                                apartment={filterApartment as any}
+                                                complexId={filterComplexId || undefined}
+                                                blockId={filterBlockId || undefined}
+                                                setSelectedApartment={(a) => {
+                                                    setFilterApartment(a as Apartment)
+                                                    setFilterApartmentId(a?.id || "")
                                                     setCurrentPage(1)
                                                 }}
                                             />
@@ -334,7 +401,7 @@ export default function UsersPage() {
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="all">Todos os papéis</SelectItem>
-                                                    {roles.map(r => (
+                                                    {safeRoles.map(r => (
                                                         <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                                                     ))}
                                                 </SelectContent>
@@ -343,7 +410,7 @@ export default function UsersPage() {
                                     </div>
                                     {hasActiveFilters && (
                                         <p className="text-xs text-muted-foreground">
-                                            Filtros ativos: {[filterComplex?.socialName, filterBlock?.name, roles.find(r => r.id === filterRoleId)?.name].filter(Boolean).join(' › ')}
+                                            Filtros ativos: {[filterComplex?.socialName, filterBlock?.name, filterApartment?.name, safeRoles.find(r => r.id === filterRoleId)?.name].filter(Boolean).join(' › ')}
                                         </p>
                                     )}
                                 </div>
@@ -365,7 +432,7 @@ export default function UsersPage() {
                                                 <TableRow>
                                                     <TableHead className="w-12">
                                                         <Checkbox
-                                                            checked={users.length > 0 && selectedUsers.size === users.length}
+                                                            checked={safeUsers.length > 0 && selectedUsers.size === safeUsers.length}
                                                             onCheckedChange={handleSelectAll}
                                                         />
                                                     </TableHead>
@@ -377,14 +444,14 @@ export default function UsersPage() {
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {users.length === 0 ? (
+                                                {safeUsers.length === 0 ? (
                                                     <TableRow>
                                                         <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
                                                             Nenhum usuário encontrado
                                                         </TableCell>
                                                     </TableRow>
                                                 ) : (
-                                                    users.map((user) => (
+                                                    safeUsers.map((user) => (
                                                         <TableRow key={user.id}>
                                                             <TableCell>
                                                                 <Checkbox
@@ -509,6 +576,35 @@ export default function UsersPage() {
                                 setSelectedComplex={(c) => {
                                     setExportComplex(c as Complex)
                                     setExportComplexId(c?.id || "")
+                                    setExportBlock(undefined)
+                                    setExportBlockId("")
+                                    setExportApartment(undefined)
+                                    setExportApartmentId("")
+                                }}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Filtrar por Bloco <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+                            <BlocksCombobox
+                                block={exportBlock as any}
+                                complexId={exportComplexId || undefined}
+                                setSelectedBlock={(b) => {
+                                    setExportBlock(b as Block)
+                                    setExportBlockId(b?.id || "")
+                                    setExportApartment(undefined)
+                                    setExportApartmentId("")
+                                }}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Filtrar por Apartamento <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+                            <ApartmentsCombobox
+                                apartment={exportApartment as any}
+                                complexId={exportComplexId || undefined}
+                                blockId={exportBlockId || undefined}
+                                setSelectedApartment={(a) => {
+                                    setExportApartment(a as Apartment)
+                                    setExportApartmentId(a?.id || "")
                                 }}
                             />
                         </div>
@@ -520,13 +616,13 @@ export default function UsersPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">Todos os papéis</SelectItem>
-                                    {roles.map(r => (
+                                    {safeRoles.map(r => (
                                         <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                         </div>
-                        {!exportComplexId && !exportRoleId && selectedUsers.size === 0 && (
+                        {!exportComplexId && !exportBlockId && !exportApartmentId && !exportRoleId && selectedUsers.size === 0 && (
                             <p className="text-xs text-amber-600">
                                 Sem filtros selecionados, todos os usuários serão exportados.
                             </p>

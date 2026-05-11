@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "icons": "node scripts/generate-icons.js"
+    "icons": "node scripts/generate-icons.js",
+    "repair:orphan-apartments": "node scripts/repair-orphan-apartments.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.0.0",

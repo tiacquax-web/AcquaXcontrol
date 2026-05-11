@@ -190,14 +190,14 @@ export async function GET(
           apartment: {
             id: link.meter.apartment.id,
             name: link.meter.apartment.name,
-            block: {
+            block: link.meter.apartment.block ? {
               id: link.meter.apartment.block.id,
               name: link.meter.apartment.block.name,
-              complex: {
+              complex: link.meter.apartment.block.complex ? {
                 id: link.meter.apartment.block.complex.id,
                 socialName: link.meter.apartment.block.complex.socialName
-              }
-            }
+              } : null
+            } : null
           }
         },
         createdByUser: link.createdByUser ? {

@@ -92,11 +92,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
         // Fetch apartment to obtain contextual denormalized fields
         const apartment = await prisma.apartment.findFirst({
-          where: { id: payload.report.apartmentId, deletedAt: null },
+          where: {
+            id: payload.report.apartmentId,
+            deletedAt: null,
+            block: { is: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } }
+          },
           include: { block: { include: { complex: true } }, meters: { where: { deletedAt: null } } }
         });
         if (!apartment) {
           errors.push('Apartamento não encontrado.');
+          r.errors = errors; r.warnings = warnings; results.push(r); continue;
+        }
+        if (!apartment.block) {
+          errors.push('Apartamento sem bloco válido. Corrija o cadastro antes de gerar leitura/relatório.');
           r.errors = errors; r.warnings = warnings; results.push(r); continue;
         }
 

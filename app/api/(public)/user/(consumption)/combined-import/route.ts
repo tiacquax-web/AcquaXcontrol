@@ -90,7 +90,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Buscar apartamentos + meters do complexo (já era feito – mantém include para evitar nova query por meter)
     console.time("⏱️ Fetch apartments and meters");
     const apartments = await prisma.apartment.findMany({
-      where: { complexId: dealershipReading.complexId, deletedAt: null },
+      where: {
+        complexId: dealershipReading.complexId,
+        deletedAt: null,
+        block: { is: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } }
+      },
       include: {
         block: { include: { complex: true } },
         meters: { where: { deletedAt: null }, include: { typeMeter: true } as any }
@@ -267,8 +271,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               meterId: meter.id,
               apartmentId: apartment.id,
               blockId: apartment.blockId,
-              complexId: apartment.block.complexId,
-              companyId: apartment.block.complex?.companyId,
+              complexId: apartment.block?.complexId ?? apartment.complexId,
+              companyId: apartment.block?.complex?.companyId ?? apartment.companyId,
               isManualReading: r.isManualReading,
               isPreReading: r.isPreReading,
               registerName: r.registerName,
@@ -537,8 +541,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           utilityType: utilityType,
           // desnormalizados (coletar do apartamento):
           blockId: apartmentMeta.blockId,
-          complexId: apartmentMeta.block?.complexId,
-          companyId: apartmentMeta.block?.complex?.companyId,
+          complexId: apartmentMeta.block?.complexId ?? apartmentMeta.complexId,
+          companyId: apartmentMeta.block?.complex?.companyId ?? apartmentMeta.companyId,
           createdByUserId: userId,
           deletedAt: null
         });

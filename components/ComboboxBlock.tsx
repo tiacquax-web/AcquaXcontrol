@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, forwardRef } from "react"
+import { useEffect, useMemo, useState, forwardRef } from "react"
 import { Building, Check, ChevronsUpDown, Loader2, X } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import {
@@ -48,16 +48,17 @@ const SelectBlock = forwardRef<HTMLButtonElement, SelectBlockProps>(
       withApartmentsCount,
       withMetersCount
     })
+    const safeBlocks = useMemo(() => Array.isArray(blocks) ? blocks : [], [blocks])
     const [selectedId, setSelectedId] = useState<string | undefined>(block?.id)
 
     useEffect(() => {
       // Update selectedId when block prop changes
-      if (block) {
+      if (block?.id && block.id !== selectedId) {
         setSelectedId(block.id)
-      } else {
+      } else if (!block && selectedId) {
         setSelectedId(undefined)
       }
-    }, [block])
+    }, [block, selectedId])
 
     const handleSelect = (value: string) => {
       if (value === selectedId) {
@@ -65,7 +66,7 @@ const SelectBlock = forwardRef<HTMLButtonElement, SelectBlockProps>(
         setSelectedId(undefined)
         setSelectedBlock(undefined)
       } else {
-        const selectedBlock = blocks.find((b) => b.id === value)
+        const selectedBlock = safeBlocks.find((b) => b.id === value)
         if (selectedBlock) {
           setSelectedId(value)
           setSelectedBlock(selectedBlock)
@@ -82,7 +83,7 @@ const SelectBlock = forwardRef<HTMLButtonElement, SelectBlockProps>(
 
     // Find the selected block name for display
     const selectedBlockName = selectedId
-      ? blocks.find(b => b.id === selectedId)?.name || block?.name || "Bloco selecionado"
+      ? safeBlocks.find(b => b.id === selectedId)?.name || block?.name || "Bloco selecionado"
       : ""
 
     if (error) {
@@ -138,7 +139,7 @@ const SelectBlock = forwardRef<HTMLButtonElement, SelectBlockProps>(
                 <CommandEmpty>Nenhum bloco encontrado.</CommandEmpty>
                 <CommandGroup>
                   <CommandList>
-                    {blocks && blocks.map((block) => (
+                    {safeBlocks.map((block) => (
                       <CommandItem
                         key={block.id}
                         value={block.id}

@@ -236,6 +236,8 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
 function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, handleDeleteRoleAssignment: (roleAssignmentId: string) => Promise<void> }) {
     const { roleAssignments, error, loading, refetch } = useRoleAssignments({ userId: user.id });
     const { roles, error: rolesError, loading: rolesLoading } = useRoles({});
+    const safeRoleAssignments = Array.isArray(roleAssignments) ? roleAssignments : [];
+    const safeRoles = Array.isArray(roles) ? roles : [];
     const [addingRole, setAddingRole] = useState(false);
 
     const handleDeleteRoleAssignmentClick = async (roleAssignmentId: string) => {
@@ -252,7 +254,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
     return (
         <div className="space-y-4 mt-4">
             <h3 className="text-lg font-semibold">Atribuições de Papéis</h3>
-            {loading && !roleAssignments.length ? (
+            {loading && !safeRoleAssignments.length ? (
                 <div className="flex flex-col gap-2 py-8">
                     {[...Array(3)].map((_, i) => (
                         <div key={i} className="flex gap-2">
@@ -278,11 +280,11 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {roleAssignments.map((assignment) => (
-                            <TableRow key={assignment.roleId}>
-                                <TableCell>{mapContextType[assignment.contextType]}</TableCell>
+                        {safeRoleAssignments.map((assignment) => (
+                            <TableRow key={assignment.id || `${assignment.roleId}-${assignment.contextType}-${assignment.contextId}`}>
+                                <TableCell>{mapContextType[assignment.contextType] || assignment.contextType || '—'}</TableCell>
                                 <TableCell title={assignment.contextId || undefined}>{assignment.contextName || (assignment.contextType === ContextType.system ? 'Sistema' : assignment.contextId || '—')}</TableCell>
-                                <TableCell>{assignment.Role.name}</TableCell>
+                                <TableCell>{assignment.Role?.name || '—'}</TableCell>
                                 <TableCell className="text-right">
                                     <Button
                                         variant="outline"
@@ -302,7 +304,7 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
             {addingRole ? (
                 <RoleAssignmentCreationForm
                     user={user}
-                    availableRoles={roles}
+                    availableRoles={safeRoles}
                     onAddedRole={onAddedRole}
                     setAddingRole={setAddingRole}
                 />
@@ -327,6 +329,8 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     const [selectedComplexIds, setSelectedComplexIds] = useState<Set<string>>(new Set());
     const [complexSearch, setComplexSearch] = useState("");
     const { complexes: allComplexes, loading: complexesLoading } = useComplexes({ nameQuery: complexSearch, take: 50 });
+    const safeAvailableRoles = Array.isArray(availableRoles) ? availableRoles : [];
+    const safeAllComplexes = Array.isArray(allComplexes) ? allComplexes : [];
     const [bulkAdding, setBulkAdding] = useState(false);
     const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
 
@@ -392,7 +396,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
 
     const selectAllComplexes = (checked: boolean) => {
         if (checked) {
-            const ids = new Set(allComplexes.map(c => c.id));
+            const ids = new Set(safeAllComplexes.map(c => c.id));
             setSelectedComplexIds(ids);
         } else {
             setSelectedComplexIds(new Set());
@@ -422,13 +426,13 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                             <div className="p-1">
                                 <div className="flex items-center gap-2 p-2 border-b">
                                     <Checkbox
-                                        checked={allComplexes.length > 0 && selectedComplexIds.size === allComplexes.length}
+                                        checked={safeAllComplexes.length > 0 && selectedComplexIds.size === safeAllComplexes.length}
                                         onCheckedChange={selectAllComplexes}
                                     />
-                                    <span className="text-xs font-medium">Selecionar todos ({allComplexes.length})</span>
+                                    <span className="text-xs font-medium">Selecionar todos ({safeAllComplexes.length})</span>
                                 </div>
-                                {allComplexes.map(cx => (
-                                    <div key={cx.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer" onClick={() => toggleComplexSelection(cx.id)}>
+                                {safeAllComplexes.map(cx => (
+                                    <div key={cx.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded">
                                         <Checkbox
                                             checked={selectedComplexIds.has(cx.id)}
                                             onCheckedChange={() => toggleComplexSelection(cx.id)}
@@ -436,14 +440,14 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                                         <span className="text-sm">{cx.socialName || cx.aliasName}</span>
                                     </div>
                                 ))}
-                                {allComplexes.length === 0 && <p className="text-center text-sm text-muted-foreground p-4">Nenhum condomínio encontrado</p>}
+                                {safeAllComplexes.length === 0 && <p className="text-center text-sm text-muted-foreground p-4">Nenhum condomínio encontrado</p>}
                             </div>
                         )}
                     </div>
                     {selectedComplexIds.size > 0 && (
                         <div className="flex flex-wrap gap-1">
                             {[...selectedComplexIds].slice(0, 5).map(id => {
-                                const cx = allComplexes.find(c => c.id === id);
+                                const cx = safeAllComplexes.find(c => c.id === id);
                                 return <Badge key={id} variant="secondary" className="text-xs">{cx?.socialName || id.slice(0,8)}</Badge>;
                             })}
                             {selectedComplexIds.size > 5 && <Badge variant="outline" className="text-xs">+{selectedComplexIds.size - 5} mais</Badge>}
@@ -469,6 +473,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                 {(contextType == ContextType.block || contextType == ContextType.apartment) && cascateContextSearching.company && (
                     <ComplexesCombobox
                         modal
+                        autoSelectSingle={false}
                         complex={cascateContextSearching.complex as Complex}
                         setSelectedComplex={(complex) => {
                             handleCasacteContextSelect(ContextType.complex, complex as Complex);
@@ -559,12 +564,12 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                 <div className="space-y-2 mt-4">
                     {/* SELECT ROLE */}
                     <div className="flex space-x-2">
-                        <Select onValueChange={(value) => setSelectedRole(availableRoles.find((role) => role.id === value))}>
+                        <Select onValueChange={(value) => setSelectedRole(safeAvailableRoles.find((role) => role.id === value))}>
                             <SelectTrigger>
                                 <SelectValue placeholder="Selecione um papel" />
                             </SelectTrigger>
                             <SelectContent>
-                                {availableRoles.map((role) => (
+                                {safeAvailableRoles.map((role) => (
                                     <SelectItem key={role.id} value={role.id}>
                                         {role.name}
                                     </SelectItem>

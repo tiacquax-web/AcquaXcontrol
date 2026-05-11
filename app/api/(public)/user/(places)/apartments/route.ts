@@ -265,7 +265,7 @@ function getQueryParams(req: NextRequest) {
     const companyId = req.nextUrl.searchParams.get('company_id') || undefined
     const complexId = req.nextUrl.searchParams.get('complex_id') || undefined
     const blockId = req.nextUrl.searchParams.get('block_id') || undefined
-    const apartmentId = req.nextUrl.searchParams.get('id') || undefined
+    const apartmentId = req.nextUrl.searchParams.get('id') || req.nextUrl.searchParams.get('apartment_id') || undefined
     const withBlock = req.nextUrl.searchParams.get('with_block') === 'true' ? true : false
     const withComplex = req.nextUrl.searchParams.get('with_complex') === 'true' ? true : false
     const withCompany = req.nextUrl.searchParams.get('with_company') === 'true' ? true : false
@@ -295,8 +295,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         const { withCompany, withComplex, withBlock, getAvailableForEntity, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection } = getQueryParams(req)
 
         // identify context
-        const contextType: ContextType | undefined = blockId ? 'block' : complexId ? 'complex' : companyId ? 'company' : undefined
-        const contextId = contextType === 'block' ? blockId : contextType === 'complex' ? complexId : contextType === 'company' ? companyId : undefined
+        const contextType: ContextType | undefined = apartmentId ? 'apartment' : blockId ? 'block' : complexId ? 'complex' : companyId ? 'company' : undefined
+        const contextId = contextType === 'apartment' ? apartmentId : contextType === 'block' ? blockId : contextType === 'complex' ? complexId : contextType === 'company' ? companyId : undefined
 
         const include = withBlock || withComplex || withCompany ? {
             block: withBlock ? {
@@ -329,7 +329,14 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         // get apartments
         // ✅ CORREÇÃO 3: Adicionado orderDirection ao invés de 'asc' (linha 328)
-        const { entity, error, status, totalCount } = await getEntityListData(userId, 'apartment', contextType, contextId, search, null, take, include, skip, 'name', orderDirection)
+        const where: any = {
+            id: apartmentId || undefined,
+            companyId: companyId || undefined,
+            complexId: complexId || undefined,
+            blockId: blockId || undefined,
+        }
+
+        const { entity, error, status, totalCount } = await getEntityListData(userId, 'apartment', contextType, contextId, search, where, take, include, skip, 'name', orderDirection)
         if (error) return NextResponse.json({ error }, { status })
         if (!entity) return NextResponse.json({ error: 'No apartments found.' }, { status: 404 })
 

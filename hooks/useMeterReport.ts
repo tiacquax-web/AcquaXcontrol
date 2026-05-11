@@ -69,11 +69,12 @@ interface UseMeterReportProps {
   month: string; // "01".."12"
   year: string;  // "2026"
   complexId?: string;
+  blockId?: string;
   apartmentId?: string;
   enabled?: boolean;
 }
 
-export function useMeterReport({ month, year, complexId, apartmentId, enabled = true }: UseMeterReportProps) {
+export function useMeterReport({ month, year, complexId, blockId, apartmentId, enabled = true }: UseMeterReportProps) {
   const [data, setData] = useState<MeterReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +88,7 @@ export function useMeterReport({ month, year, complexId, apartmentId, enabled = 
 
     const params: Record<string, string> = { month, year };
     if (complexId) params.complex_id = complexId;
+    if (blockId) params.block_id = blockId;
     if (apartmentId) params.apartment_id = apartmentId;
 
     axios
@@ -110,7 +112,7 @@ export function useMeterReport({ month, year, complexId, apartmentId, enabled = 
       });
 
     return () => { cancelled = true; };
-  }, [month, year, complexId, apartmentId, enabled]);
+  }, [month, year, complexId, blockId, apartmentId, enabled]);
 
   return { data, loading, error };
 }

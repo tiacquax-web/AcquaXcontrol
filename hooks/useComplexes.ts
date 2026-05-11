@@ -55,9 +55,10 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
                     take,
                     skip
                 })
-                setComplexes(data.list)
-                setTotalCount(data.totalCount || 0)
-                setHasNextPage(skip + take < (data.totalCount || 0))
+                const list = Array.isArray(data?.list) ? data.list : (Array.isArray(data) ? data : []);
+                setComplexes(list)
+                setTotalCount(data?.totalCount || 0)
+                setHasNextPage(skip + take < (data?.totalCount || 0))
                 setHasPreviousPage(skip > 0)
                 setError(null)
             } catch (error: any) {
@@ -69,7 +70,7 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
         };
 
         fetchComplexes();
-    }, [debouncedNameQuery, debouncedDocumentCompany, companyId, withCompany, take, skip, enabled])
+    }, [id, debouncedNameQuery, debouncedDocumentCompany, companyId, withCompany, getAvailableForEntity, withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, take, skip, enabled])
 
     return { 
         complexes, 

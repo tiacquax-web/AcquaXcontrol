@@ -115,6 +115,10 @@ export async function GET(req: NextRequest): Promise<Response> {
         const where: any = {
             id: id || undefined,
             dealershipReadingId: dealershipReadingId || undefined,
+            companyId: companyId || undefined,
+            complexId: complexId || undefined,
+            blockId: blockId || undefined,
+            apartmentId: apartmentId || undefined,
             DealershipReading: startDate || endDate ? {
                 readingDate: {
                     gte: startDate ? startDate.slice(0, 10) : undefined,

@@ -28,6 +28,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     const monthRef = req.nextUrl.searchParams.get('month') || '';
     const yearRef = req.nextUrl.searchParams.get('year') || '';
     const complexId = req.nextUrl.searchParams.get('complex_id') || undefined;
+    const blockId = req.nextUrl.searchParams.get('block_id') || undefined;
     const apartmentId = req.nextUrl.searchParams.get('apartment_id') || undefined;
 
     if (!monthRef || !yearRef) {
@@ -50,6 +51,10 @@ export async function GET(req: NextRequest): Promise<Response> {
       where.complexId = complexId;
     }
 
+    if (blockId) {
+      where.blockId = blockId;
+    }
+
     if (apartmentId) {
       where.apartmentId = apartmentId;
     } else if (!isSystem && userApartmentIds.length > 0) {
@@ -61,17 +66,62 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     const currentReports = await prisma.apartmentConsumptionReport.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        monthRef: true,
+        yearRef: true,
+        consumption: true,
+        totalConsumption: true,
+        consumptionCost: true,
+        sewageCost: true,
+        partial: true,
+        totalUnit: true,
+        kiteCarConsumption: true,
+        kiteCarCost: true,
+        consumptionGasValue: true,
+        totalGasValue: true,
+        apartmentId: true,
+        blockId: true,
+        complexId: true,
+        dealershipReadingId: true,
+        utilityType: true,
         apartment: {
-          include: {
+          select: {
+            id: true,
+            name: true,
             block: {
-              include: {
-                complex: { include: { company: true } },
+              select: {
+                id: true,
+                name: true,
+                complexId: true,
+                complex: {
+                  select: {
+                    id: true,
+                    socialName: true,
+                    aliasName: true,
+                    street: true,
+                    number: true,
+                    neighborhood: true,
+                    city: true,
+                    state: true,
+                    zipcode: true,
+                    company: { select: { id: true, socialName: true, name: true } },
+                  },
+                },
               },
             },
           },
         },
-        lastReading: true,
+        lastReading: {
+          select: {
+            id: true,
+            reading: true,
+            readAtDate: true,
+            nextReadingDate: true,
+            urlCover: true,
+            registerName: true,
+          },
+        },
       },
       orderBy: [{ complexId: 'asc' }],
     });
@@ -97,11 +147,26 @@ export async function GET(req: NextRequest): Promise<Response> {
       yearRef,
       OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
     };
-    if (complexId) drWhere.complexId = complexId;
+    if (complexId) {
+      drWhere.complexId = complexId;
+    } else if (currentReports.length > 0) {
+      const reportComplexIds = [...new Set(currentReports.map(report => report.complexId).filter(Boolean))];
+      if (reportComplexIds.length > 0) drWhere.complexId = { in: reportComplexIds };
+    }
 
     const dealershipReadings = await prisma.dealershipReading.findMany({
       where: drWhere,
-      include: { complex: { include: { company: true } }, dealership: true },
+      select: {
+        id: true,
+        totalDays: true,
+        readingDate: true,
+        readingDateNext: true,
+        monthRef: true,
+        yearRef: true,
+        complexId: true,
+        dealership: { select: { id: true, name: true } },
+        complex: { select: { id: true, socialName: true, companyId: true } },
+      },
     });
 
     // Index dealership readings by id for quick lookup
@@ -121,7 +186,19 @@ export async function GET(req: NextRequest): Promise<Response> {
         ],
         AND: [{ OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }],
       },
-      include: { lastReading: true },
+      select: {
+        id: true,
+        apartmentId: true,
+        monthRef: true,
+        yearRef: true,
+        consumption: true,
+        lastReading: {
+          select: {
+            reading: true,
+            readAtDate: true,
+          },
+        },
+      },
       orderBy: { yearRef: 'desc' },
     });
 

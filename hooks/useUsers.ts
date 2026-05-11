@@ -5,7 +5,8 @@ import {
     updateUser as updateUserService,
     deleteUser as deleteUserService,
     createBulkUsersForComplex as createBulkUsersForComplexService,
-    exportUsers as exportUsersService
+    exportUsers as exportUsersService,
+    bulkUsersAction as bulkUsersActionService
 } from '@/services/usersService';
 import { ContextType, User } from '@prisma/client';
 import { useDebounce } from './use-debounce';
@@ -19,6 +20,7 @@ interface useUsersProps {
     contextId?: string;
     complexId?: string;
     blockId?: string;
+    apartmentId?: string;
     roleId?: string;
     take?: number;
     skip?: number;
@@ -34,6 +36,7 @@ export const useUsers = ({
     contextId, 
     complexId,
     blockId,
+    apartmentId,
     roleId,
     take = 10, 
     skip = 0,
@@ -66,6 +69,7 @@ export const useUsers = ({
                     contextId,
                     complexId,
                     blockId,
+                    apartmentId,
                     roleId,
                     take,
                     skip
@@ -84,7 +88,7 @@ export const useUsers = ({
         };
 
         fetchUsers();
-    }, [debouncedSearchQuery, debouncedDocumentUser, contextType, contextId, complexId, blockId, roleId, userId, roleName, take, skip, enabled]);
+    }, [debouncedSearchQuery, debouncedDocumentUser, contextType, contextId, complexId, blockId, apartmentId, roleId, userId, roleName, take, skip, enabled]);
 
     const hasNextPage = skip + take < totalCount;
     const hasPreviousPage = skip > 0;
@@ -103,6 +107,7 @@ export const useUsers = ({
                 contextId,
                 complexId,
                 blockId,
+                apartmentId,
                 roleId,
                 take,
                 skip
@@ -247,5 +252,43 @@ export const useUserMutations = () => {
         }
     };
 
-    return { createUser, updateUser, deleteUser, createBulkUsersForComplex, exportUsers, loading, error };
+    const bulkUsersAction = async ({
+        action,
+        search,
+        userIds = [],
+        complexId,
+        blockId,
+        apartmentId,
+        roleId
+    }: {
+        action: 'resetAllUsers';
+        search?: string;
+        userIds?: string[];
+        complexId?: string;
+        blockId?: string;
+        apartmentId?: string;
+        roleId?: string;
+    }) => {
+        setLoading(true);
+        setError(null);
+        try {
+            return await bulkUsersActionService({
+                action,
+                search,
+                userIds,
+                complexId,
+                blockId,
+                apartmentId,
+                roleId
+            });
+        } catch (error: any) {
+            const message = error.response?.data?.error || error.message || "Unknown error";
+            setError(message);
+            return null;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return { createUser, updateUser, deleteUser, createBulkUsersForComplex, exportUsers, bulkUsersAction, loading, error };
 };

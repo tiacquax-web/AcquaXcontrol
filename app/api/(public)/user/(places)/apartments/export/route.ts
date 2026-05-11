@@ -25,6 +25,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (blockId) where.blockId = blockId;
         else if (complexId) where.complexId = complexId;
         if (apartmentIds.length > 0) where.id = { in: apartmentIds };
+        where.block = { is: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } };
 
         const apartments = await prisma.apartment.findMany({
             where,
