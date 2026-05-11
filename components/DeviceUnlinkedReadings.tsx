@@ -87,18 +87,31 @@ const DeviceUnlinkedReadings = React.forwardRef<DeviceUnlinkedReadingsRef, Devic
       return;
     }
 
-    // Simular início do reprocessamento
     setReprocessing(true);
-    
-    // Aguardar um tempo para simular processamento
-    setTimeout(() => {
+
+    try {
+      const response = await fetch(`/api/user/devices/${deviceId}/reprocess-readings`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Erro ao reprocessar leituras');
+      }
+
+      toast({
+        title: "Reprocessamento concluído",
+        description: data.message || "Leituras reprocessadas com sucesso."
+      });
+      await fetchUnlinkedReadings(currentPage);
+    } catch (error) {
       toast({
         variant: "destructive",
-        title: "Reprocessamento indisponível",
-        description: "Esta funcionalidade está temporariamente desabilitada"
+        title: "Erro no reprocessamento",
+        description: error instanceof Error ? error.message : "Erro desconhecido"
       });
+    } finally {
       setReprocessing(false);
-    }, 1000);
+    }
   };
 
 

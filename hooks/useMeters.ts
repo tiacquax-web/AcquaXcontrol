@@ -62,9 +62,11 @@ export interface useMetersProps {
   withBlock?: boolean;
   withComplex?: boolean;
   withTypeMeter?: boolean;
+  withIotLink?: boolean;
+  withLastReading?: boolean;
 }
 
-export const useMeters = ({ companyId, complexId, blockId, nameQuery, apartmentId, search, take, skip, orderBy, enabled = true, withApartment, withBlock, withComplex, withTypeMeter }: useMetersProps) => {
+export const useMeters = ({ companyId, complexId, blockId, nameQuery, apartmentId, search, take, skip, orderBy, enabled = true, withApartment, withBlock, withComplex, withTypeMeter, withIotLink, withLastReading }: useMetersProps) => {
   const [meters, setMeters] = useState<MeterFull[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
@@ -90,7 +92,7 @@ export const useMeters = ({ companyId, complexId, blockId, nameQuery, apartmentI
     const fetchMeters = async () => {
       setLoading(true);
       try {
-        const data = await getMeters({ companyId, complexId, blockId, search: debouncedSearch, apartmentId, take, skip, orderBy, withApartment, withBlock, withComplex, withTypeMeter });
+        const data = await getMeters({ companyId, complexId, blockId, search: debouncedSearch, apartmentId, take, skip, orderBy, withApartment, withBlock, withComplex, withTypeMeter, withIotLink, withLastReading });
         setMeters(data.list);
         setTotalCount(data.totalCount);
         setError(null);
@@ -104,7 +106,7 @@ export const useMeters = ({ companyId, complexId, blockId, nameQuery, apartmentI
     };
 
     fetchMeters();
-  }, [companyId, complexId, blockId, apartmentId, debouncedNameQuery, debouncedSearch, take, skip, orderBy, enabled, sequence]);
+  }, [companyId, complexId, blockId, apartmentId, debouncedNameQuery, debouncedSearch, take, skip, orderBy, enabled, sequence, withApartment, withBlock, withComplex, withTypeMeter, withIotLink, withLastReading]);
 
   return { totalCount, meters, loading, error, refetch };
 };

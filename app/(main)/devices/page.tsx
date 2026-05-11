@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,7 @@ import { DeviceFull } from "@/types/fullTypes";
 import { ReadingReportImport, DailyReadingImport } from "@/types/reading";
 import UnlinkedReadingsTab from "@/components/UnlinkedReadingsTab";
 import { ImportLinksTab } from "@/components/devices/ImportLinksTab";
+import { ImportDeviceChassiTab } from "@/components/devices/ImportDeviceChassiTab";
 import DataPagination from "@/components/ui/data-pagination";
 
 export default function DevicesPage() {
@@ -47,22 +48,33 @@ export default function DevicesPage() {
 
     const [filters, setFilters] = useState<{
         semLink: boolean;
+        vinculados: boolean;
         comLeiturasDesvinculadas: boolean;
+        semLeitura: boolean;
+        piloto: boolean;
     }>({
         semLink: false,
+        vinculados: false,
         comLeiturasDesvinculadas: false,
+        semLeitura: false,
+        piloto: false,
     });
+    const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
 
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
 
     const { devices, isLoading, pagination, fetchDevices } = useDeviceIot(filters, currentPage, pageSize);
-    const { createDevice, updateDevice, deleteDevice } = useDeviceIotMutations();
+    const { createDevice, updateDevice, deleteDevice, bulkAction, importByChassi } = useDeviceIotMutations(fetchDevices);
 
     // Reset da página quando filtros mudarem
     useEffect(() => {
         setCurrentPage(1);
-    }, [filters.semLink, filters.comLeiturasDesvinculadas]);
+    }, [filters.semLink, filters.vinculados, filters.comLeiturasDesvinculadas, filters.semLeitura, filters.piloto]);
+
+    useEffect(() => {
+        setSelectedDeviceIds([]);
+    }, [currentPage, pageSize, filters, devices.length]);
 
     // Função para mudança de tamanho de página
     const handlePageSizeChange = (size: string) => {
@@ -126,6 +138,50 @@ export default function DevicesPage() {
             await createDevice(device);
         }
         handleCloseModal();
+    };
+
+    const toggleDeviceSelection = (deviceId: string, checked: boolean) => {
+        setSelectedDeviceIds((prev) =>
+            checked ? Array.from(new Set([...prev, deviceId])) : prev.filter((id) => id !== deviceId),
+        );
+    };
+
+    const toggleSelectAllVisible = (checked: boolean) => {
+        if (checked) {
+            setSelectedDeviceIds(Array.from(new Set([...selectedDeviceIds, ...devices.map((d) => d.id)])));
+        } else {
+            const visibleIds = new Set(devices.map((d) => d.id));
+            setSelectedDeviceIds((prev) => prev.filter((id) => !visibleIds.has(id)));
+        }
+    };
+
+    const runBulk = async (
+        action: 'delete_selected' | 'set_pilot_mode' | 'unlink_selected' | 'reprocess_selected' | 'cleanup_unlinked',
+        options?: Record<string, any>,
+    ) => {
+        try {
+            const result = await bulkAction({
+                action,
+                ids: selectedDeviceIds,
+                ...options,
+            } as any);
+
+            toast({
+                title: "Ação executada",
+                description: result?.message || "Operação concluída com sucesso.",
+            });
+
+            if (action !== 'set_pilot_mode') {
+                setSelectedDeviceIds([]);
+            }
+            await fetchDevices();
+        } catch (error: any) {
+            toast({
+                variant: "destructive",
+                title: "Erro na ação em lote",
+                description: error?.response?.data?.error || error?.message || "Erro desconhecido",
+            });
+        }
     };
 
     // Funções para importação
@@ -295,11 +351,12 @@ export default function DevicesPage() {
                 </CardHeader>
                 <CardContent>
                     <Tabs defaultValue="unlinked-readings" className="w-full">
-                        <TabsList className="grid w-full grid-cols-4">
+                        <TabsList className="grid w-full grid-cols-5">
                             <TabsTrigger value="unlinked-readings">Leituras Desvinculadas</TabsTrigger>
                             <TabsTrigger value="devices">Dispositivos</TabsTrigger>
                             <TabsTrigger value="import">Importar Leituras IoT</TabsTrigger>
                             <TabsTrigger value="import-links">Importar Vínculos</TabsTrigger>
+                            <TabsTrigger value="import-device-chassi">Importar Device x Chassi</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="unlinked-readings" className="mt-4">
@@ -307,18 +364,50 @@ export default function DevicesPage() {
                         </TabsContent>
 
                         <TabsContent value="devices" className="mt-4">
-                            <div className="flex justify-between items-center mb-4">
-                                <div className="flex items-center gap-4">
+                            <div className="space-y-3 mb-4">
+                                <div className="flex flex-wrap gap-2">
+                                    <Button size="sm" variant={filters.vinculados ? "default" : "outline"} onClick={() => setFilters(f => ({ ...f, vinculados: !f.vinculados, semLink: false }))}>
+                                        Vinculados
+                                    </Button>
+                                    <Button size="sm" variant={filters.semLink ? "default" : "outline"} onClick={() => setFilters(f => ({ ...f, semLink: !f.semLink, vinculados: false }))}>
+                                        Desvinculados
+                                    </Button>
+                                    <Button size="sm" variant={filters.piloto ? "default" : "outline"} onClick={() => setFilters(f => ({ ...f, piloto: !f.piloto }))}>
+                                        Piloto
+                                    </Button>
+                                    <Button size="sm" variant={filters.semLeitura ? "default" : "outline"} onClick={() => setFilters(f => ({ ...f, semLeitura: !f.semLeitura }))}>
+                                        Sem leitura
+                                    </Button>
                                     <div className="flex items-center gap-2">
-                                        <Label htmlFor="semLink">Mostrar apenas sem vínculo ativo</Label>
-                                        <Switch id="semLink" checked={filters.semLink} onCheckedChange={semLink => setFilters(f => ({ ...f, semLink }))} />
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Label htmlFor="comLeiturasDesvinculadas">Com leituras desvinculadas</Label>
+                                        <Label htmlFor="comLeiturasDesvinculadas">Leituras desvinculadas</Label>
                                         <Switch id="comLeiturasDesvinculadas" checked={filters.comLeiturasDesvinculadas} onCheckedChange={comLeiturasDesvinculadas => setFilters(f => ({ ...f, comLeiturasDesvinculadas }))} />
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-4">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Button size="sm" variant="destructive" disabled={selectedDeviceIds.length === 0} onClick={() => {
+                                        if (window.confirm(`Excluir ${selectedDeviceIds.length} dispositivos selecionados?`)) {
+                                            runBulk('delete_selected');
+                                        }
+                                    }}>
+                                        Excluir selecionados
+                                    </Button>
+                                    <Button size="sm" variant="outline" disabled={selectedDeviceIds.length === 0} onClick={() => runBulk('unlink_selected')}>
+                                        Desvincular selecionados
+                                    </Button>
+                                    <Button size="sm" variant="outline" disabled={selectedDeviceIds.length === 0} onClick={() => runBulk('reprocess_selected')}>
+                                        Reprocessar leituras
+                                    </Button>
+                                    <Button size="sm" variant="outline" disabled={selectedDeviceIds.length === 0} onClick={() => runBulk('set_pilot_mode', { pilotMode: true })}>
+                                        Marcar piloto
+                                    </Button>
+                                    <Button size="sm" variant="outline" disabled={selectedDeviceIds.length === 0} onClick={() => runBulk('set_pilot_mode', { pilotMode: false })}>
+                                        Remover piloto
+                                    </Button>
+                                    <Button size="sm" variant="secondary" onClick={() => runBulk('cleanup_unlinked', { onlyPilot: true, onlyWithoutReadings: true, olderThanDays: 30 })}>
+                                        Limpar antigos do piloto
+                                    </Button>
+                                </div>
+                                <div className="flex items-center justify-between">
                                     {pagination.total > 0 && (
                                         <div className="flex items-center gap-2">
                                             {isLoading && (
@@ -326,6 +415,7 @@ export default function DevicesPage() {
                                             )}
                                             <span className="text-sm text-gray-600 dark:text-gray-400">
                                                 {pagination.total} dispositivo{pagination.total !== 1 ? 's' : ''} encontrado{pagination.total !== 1 ? 's' : ''}
+                                                {selectedDeviceIds.length > 0 ? ` | ${selectedDeviceIds.length} selecionado(s)` : ''}
                                             </span>
                                         </div>
                                     )}
@@ -338,18 +428,31 @@ export default function DevicesPage() {
                                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                                     <thead>
                                         <tr>
-                                            <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Nome</th>
+                                            <th className="px-2 py-2 text-gray-900 dark:text-gray-100">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={devices.length > 0 && devices.every((d) => selectedDeviceIds.includes(d.id))}
+                                                    onChange={(e) => toggleSelectAllVisible(e.target.checked)}
+                                                />
+                                            </th>
                                             <th className="px-4 py-2 text-gray-900 dark:text-gray-100">ID do Device</th>
-                                            <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Apartamento</th>
                                             <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Medidor</th>
+                                            <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Chassi</th>
+                                            <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Apartamento</th>
+                                            <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Bloco</th>
+                                            <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Condomínio</th>
+                                            <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Status vínculo</th>
                                             <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Última Leitura</th>
+                                            <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Última Comunicação</th>
+                                            <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Origem</th>
+                                            <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Piloto</th>
                                             <th className="px-4 py-2 text-gray-900 dark:text-gray-100">Ações</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {isLoading ? (
                                             <tr>
-                                                <td colSpan={6} className="text-center py-8">
+                                                <td colSpan={13} className="text-center py-8">
                                                     <div className="flex items-center justify-center gap-2">
                                                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                                                         <span className="text-gray-600 dark:text-gray-400">Carregando dispositivos...</span>
@@ -358,7 +461,7 @@ export default function DevicesPage() {
                                             </tr>
                                         ) : devices.length === 0 ? (
                                             <tr>
-                                                <td colSpan={6} className="text-center py-8">
+                                                <td colSpan={13} className="text-center py-8">
                                                     <div className="text-gray-600 dark:text-gray-400">
                                                         {Object.values(filters).some(Boolean) ?
                                                             "Nenhum dispositivo encontrado com os filtros aplicados." :
@@ -367,22 +470,38 @@ export default function DevicesPage() {
                                                     </div>
                                                 </td>
                                             </tr>
-                                        ) : devices.map(device => (
-                                            <tr key={device.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                                                <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.name || device.deviceId}</td>
-                                                <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.deviceId}</td>                                            <td className="px-4 py-2 text-gray-900 dark:text-gray-100">
-                                                    {device.currentMeter?.apartment?.name || device.meter?.apartment?.name || '-'}
-                                                </td>
-                                                <td className="px-4 py-2 text-gray-900 dark:text-gray-100">
-                                                    {device.currentMeter?.register || device.meter?.register || '-'}
-                                                </td>
-                                                <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.lastReading ?? '-'}</td>
-                                                <td className="px-4 py-2 flex gap-2">
-                                                    <Button size="sm" variant="outline" onClick={() => handleOpenModal(device)}>Editar</Button>
-                                                    <Button size="sm" variant="destructive" onClick={() => deleteDevice(device.id)}>Excluir</Button>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        ) : devices.map(device => {
+                                            const meter = device.currentMeter || device.meter;
+                                            return (
+                                                <tr key={device.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                                                    <td className="px-2 py-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedDeviceIds.includes(device.id)}
+                                                            onChange={(e) => toggleDeviceSelection(device.id, e.target.checked)}
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.deviceId}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{meter ? 'Sim' : 'Não'}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{meter?.register || '-'}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{meter?.apartment?.name || '-'}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{meter?.apartment?.block?.name || '-'}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{meter?.apartment?.block?.complex?.socialName || '-'}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.hasActiveLink ? 'Vinculado' : 'Desvinculado'}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.lastReading ?? '-'}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.lastSeenDate || '-'}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.lastReadingSource || '-'}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.pilotMode ? 'Sim' : 'Não'}</td>
+                                                    <td className="px-4 py-2 flex flex-wrap gap-2">
+                                                        <Button size="sm" variant="outline" onClick={() => handleOpenModal(device)}>Vincular</Button>
+                                                        <Button size="sm" variant="outline" onClick={() => runBulk('unlink_selected', { ids: [device.id] })}>Desvincular</Button>
+                                                        <Button size="sm" variant="outline" onClick={() => runBulk('reprocess_selected', { ids: [device.id] })}>Reprocessar</Button>
+                                                        <Button size="sm" variant="outline" onClick={() => window.open('/meters', '_blank')}>Abrir medidor</Button>
+                                                        <Button size="sm" variant="destructive" onClick={() => deleteDevice(device.id)}>Excluir</Button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -874,6 +993,16 @@ export default function DevicesPage() {
                                 // Atualizar dados quando importação for concluída
                                 fetchDevices();
                             }} />
+                        </TabsContent>
+
+                        <TabsContent value="import-device-chassi" className="mt-4">
+                            <ImportDeviceChassiTab
+                                onImport={importByChassi}
+                                onImported={() => {
+                                    setSelectedDeviceIds([]);
+                                    fetchDevices();
+                                }}
+                            />
                         </TabsContent>
                     </Tabs>
                 </CardContent>

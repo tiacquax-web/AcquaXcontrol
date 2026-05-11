@@ -5,7 +5,10 @@ import type { DeviceFull } from "@/types/fullTypes";
 
 export interface DeviceIotFilters {
     semLink?: boolean;
+    vinculados?: boolean;
     comLeiturasDesvinculadas?: boolean;
+    semLeitura?: boolean;
+    piloto?: boolean;
 }
 
 export interface PaginationInfo {

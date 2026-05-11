@@ -20,9 +20,13 @@ export async function GET(req: NextRequest): Promise<Response> {
     }
 
     const service = new GrouplinkCsvIngestionService();
+    const pilotModeOnly = req.nextUrl.searchParams.get('pilot_only') === 'true';
+    const pilotComplexId = req.nextUrl.searchParams.get('pilot_complex_id') || undefined;
     const result = await service.run({
       trigger: 'cron',
       forceReprocess: false,
+      pilotModeOnly,
+      pilotComplexId,
     });
 
     return NextResponse.json({

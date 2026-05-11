@@ -40,6 +40,9 @@ export interface GrouplinkIngestionRunOptions {
   storageIntegrationId?: string;
   limitFiles?: number;
   forceReprocess?: boolean;
+  objectKey?: string;
+  pilotModeOnly?: boolean;
+  pilotComplexId?: string;
   trigger: 'manual' | 'cron';
 }
 
@@ -235,6 +238,7 @@ export class GrouplinkCsvIngestionService {
   private directMeterCache = new Map<string, ResolvedMeter | null>();
   private linkedMetersCache = new Map<string, Array<{ deviceId: string; startDate: Date; endDate: Date | null; meter: ResolvedMeter }>>();
   private iotDeviceAliasCache = new Map<string, string | null>();
+  private iotDevicePilotCache = new Map<string, boolean>();
   private readingDedupCache = new Map<string, string>();
 
   async run(options: GrouplinkIngestionRunOptions): Promise<GrouplinkIngestionRunResult> {
@@ -335,7 +339,7 @@ export class GrouplinkCsvIngestionService {
       vaultId: integration.vaultId,
     });
     const s3 = buildS3Client(integration, credentials);
-    const csvObjects = await this.listCsvObjects(s3, integration, options.limitFiles);
+    const csvObjects = await this.listCsvObjects(s3, integration, options.limitFiles, options.objectKey);
     console.info(
       `[grouplink-ingestion] integração=${integration.id} arquivos_csv_encontrados=${csvObjects.length}`,
     );
@@ -382,6 +386,7 @@ export class GrouplinkCsvIngestionService {
           s3,
           integration,
           objectKey,
+          options,
         });
 
         insertedReadings += result.insertedReadings;
@@ -430,13 +435,22 @@ export class GrouplinkCsvIngestionService {
     };
   }
 
-  private async listCsvObjects(s3: S3Client, integration: StorageIntegrationLite, limitFiles?: number) {
+  private async listCsvObjects(
+    s3: S3Client,
+    integration: StorageIntegrationLite,
+    limitFiles?: number,
+    objectKeyFilter?: string,
+  ) {
     const rootPrefix = normalizePathPrefix(integration.path);
     const grouplinkPrefix = normalizePathPrefix(process.env.GROUPLINK_S3_PREFIX || '');
     const listPrefix = joinPath(rootPrefix, grouplinkPrefix) || undefined;
 
     const objects: Array<{ Key?: string; LastModified?: Date; ETag?: string }> = [];
     let continuationToken: string | undefined = undefined;
+
+    if (objectKeyFilter) {
+      return [{ Key: objectKeyFilter, LastModified: new Date(), ETag: undefined }];
+    }
 
     do {
       const response: ListObjectsV2CommandOutput = await s3.send(
@@ -530,6 +544,7 @@ export class GrouplinkCsvIngestionService {
     s3: S3Client;
     integration: StorageIntegrationLite;
     objectKey: string;
+    options: GrouplinkIngestionRunOptions;
   }): Promise<{
     insertedReadings: number;
     duplicateReadings: number;
@@ -580,6 +595,7 @@ export class GrouplinkCsvIngestionService {
         const outcome = await this.processRow({
           companyId: params.integration.companyId,
           row,
+          options: params.options,
         });
 
         if (outcome.kind === 'inserted') insertedReadings += 1;
@@ -619,12 +635,19 @@ export class GrouplinkCsvIngestionService {
   private async processRow(params: {
     companyId: string;
     row: Record<string, string>;
+    options: GrouplinkIngestionRunOptions;
   }): Promise<RowProcessingOutcome> {
     const deviceId = trimAndNormalize(params.row.device_id);
-    if (!deviceId) throw new Error('device_id ausente');
+    if (!deviceId) {
+      console.warn('[grouplink-ingestion][linha_invalida]', { reason: 'device_id ausente' });
+      throw new Error('device_id ausente');
+    }
 
     const readingRaw = trimAndNormalize(params.row.reading);
-    if (!readingRaw) throw new Error('reading ausente');
+    if (!readingRaw) {
+      console.warn('[grouplink-ingestion][linha_invalida]', { deviceId, reason: 'reading ausente' });
+      throw new Error('reading ausente');
+    }
     const readingValue = parseReadingValue(readingRaw);
 
     const timestamp = parseTimestamp(params.row.reading_date || '', params.row.reading_time || '');
@@ -632,12 +655,31 @@ export class GrouplinkCsvIngestionService {
     const meterResolution = await this.resolveMeterForDeviceId(deviceId, timestamp);
 
     if (!meterResolution) {
+      console.warn('[grouplink-ingestion][medidor_nao_encontrado]', { deviceId });
       throw new Error(`Nenhum medidor IoT vinculado ao device_id "${deviceId}" para o timestamp informado.`);
+    }
+
+    if (params.options.pilotComplexId && meterResolution.meter.complexId !== params.options.pilotComplexId) {
+      console.warn('[grouplink-ingestion][device_fora_piloto]', {
+        deviceId,
+        meterComplexId: meterResolution.meter.complexId,
+        pilotComplexId: params.options.pilotComplexId,
+      });
+      throw new Error(`device ${deviceId} fora do condomínio piloto selecionado.`);
+    }
+
+    if (params.options.pilotModeOnly) {
+      const isPilot = await this.isPilotDevice(meterResolution.deviceId);
+      if (!isPilot) {
+        console.warn('[grouplink-ingestion][device_sem_vinculo_piloto]', { deviceId: meterResolution.deviceId });
+        throw new Error(`device sem vínculo de piloto: ${meterResolution.deviceId}`);
+      }
     }
 
     const dedupeKey = `${meterResolution.meter.id}|${timestamp.toISOString()}|${readingValue}|${GROUPLINK_SOURCE}`;
     const cachedReadingId = this.readingDedupCache.get(dedupeKey);
     if (cachedReadingId) {
+      console.info('[grouplink-ingestion][duplicidade_leitura_cache]', { deviceId, meterId: meterResolution.meter.id });
       return {
         kind: 'duplicate',
         readingId: cachedReadingId,
@@ -660,6 +702,7 @@ export class GrouplinkCsvIngestionService {
 
     if (existingReading) {
       this.readingDedupCache.set(dedupeKey, existingReading.id);
+      console.info('[grouplink-ingestion][duplicidade_leitura_db]', { deviceId, meterId: meterResolution.meter.id });
       return {
         kind: 'duplicate',
         readingId: existingReading.id,
@@ -701,20 +744,27 @@ export class GrouplinkCsvIngestionService {
   }
 
   private async resolveMeterForDeviceId(deviceIdRaw: string, timestamp: Date): Promise<{ meter: ResolvedMeter; deviceId: string } | null> {
-    const directMeter = await this.findDirectMeter(deviceIdRaw);
-    if (directMeter) return { meter: directMeter, deviceId: deviceIdRaw };
+    // Regra prioritária obrigatória: vínculo explícito no medidor (deviceIdIoT).
+    const explicitMeter = await this.findMeterByExplicitBinding(deviceIdRaw);
+    if (explicitMeter) return { meter: explicitMeter, deviceId: deviceIdRaw };
 
     const linked = await this.findMeterByDeviceLink(deviceIdRaw, timestamp);
     if (linked) return linked;
 
     const canonicalDeviceId = await this.resolveCanonicalIotDeviceId(deviceIdRaw);
     if (canonicalDeviceId && canonicalDeviceId !== deviceIdRaw) {
+      const explicitCanonical = await this.findMeterByExplicitBinding(canonicalDeviceId);
+      if (explicitCanonical) return { meter: explicitCanonical, deviceId: canonicalDeviceId };
+
       const fromCanonical = await this.findMeterByDeviceLink(canonicalDeviceId, timestamp);
       if (fromCanonical) return fromCanonical;
 
       const directCanonical = await this.findDirectMeter(canonicalDeviceId);
       if (directCanonical) return { meter: directCanonical, deviceId: canonicalDeviceId };
     }
+
+    const directMeter = await this.findDirectMeter(deviceIdRaw);
+    if (directMeter) return { meter: directMeter, deviceId: deviceIdRaw };
 
     return null;
   }
@@ -735,6 +785,53 @@ export class GrouplinkCsvIngestionService {
     const canonical = iotDevice?.deviceId || null;
     this.iotDeviceAliasCache.set(deviceIdRaw, canonical);
     return canonical;
+  }
+
+  private async isPilotDevice(deviceId: string): Promise<boolean> {
+    if (this.iotDevicePilotCache.has(deviceId)) {
+      return this.iotDevicePilotCache.get(deviceId) || false;
+    }
+
+    const iotDevice = await prisma.iotDevice.findFirst({
+      where: { deviceId, deletedAt: null },
+      select: { pilotMode: true },
+    });
+    const pilot = iotDevice?.pilotMode === true;
+    this.iotDevicePilotCache.set(deviceId, pilot);
+    return pilot;
+  }
+
+  private async findMeterByExplicitBinding(deviceId: string): Promise<ResolvedMeter | null> {
+    const meter = await prisma.meter.findFirst({
+      where: {
+        deviceIdIoT: deviceId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        register: true,
+        apartmentId: true,
+        blockId: true,
+        complexId: true,
+        companyId: true,
+        apartment: {
+          select: {
+            companyId: true,
+            blockId: true,
+            complexId: true,
+            block: {
+              select: {
+                companyId: true,
+                complexId: true,
+                complex: { select: { companyId: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return meter ? this.normalizeMeter(meter) : null;
   }
 
   private async findDirectMeter(deviceId: string): Promise<ResolvedMeter | null> {

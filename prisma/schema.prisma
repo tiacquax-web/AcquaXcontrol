@@ -464,6 +464,7 @@ model Complex {
   
   apportionment             String        @default("Simples")
   status                    String        @default("Ativo")
+  pilotMode                 Boolean       @default(false)
 
   deletedAt                 DateTime?     @db.Timestamp
   createdAt                 DateTime      @default(now()) @db.Timestamp
@@ -500,6 +501,7 @@ model Complex {
   @@index([companyId])
   @@index([deletedAt])
   @@index([status])
+  @@index([pilotMode])
   @@index([socialName])
   
   // ÍNDICES COMPOSTOS PARA OTIMIZAÇÃO DE PERFORMANCE
@@ -663,6 +665,7 @@ model Meter {
   yearManufacture           Int?        @db.Int
   main                      Boolean     @default(true)
   rotation                  String      @default("Crescente") // "Crescente" ou "Decrescente"
+  deviceIdIoT               String?
 
   apartmentId               String
   apartment                 Apartment   @relation(fields: [apartmentId], references: [id]) // Relacionamento com Apartment
@@ -710,6 +713,7 @@ model Meter {
   @@index([typeMeterId])
   @@index([register])
   @@index([status])
+  @@index([deviceIdIoT])
   
   // ÍNDICES COMPOSTOS PARA OTIMIZAÇÃO
   @@index([apartmentId, deletedAt]) // Índice composto para otimização de queries
@@ -770,6 +774,7 @@ model IotDevice {
   nomeInformado       String?
 
   devicePulseFactor   Float?
+  pilotMode            Boolean       @default(false)
 
   readAtDate          String?       // Data da leitura em AAAA-MM-DD HH:mm:ss
   
@@ -797,6 +802,7 @@ model IotDevice {
   // Índices
   @@index([remoteId])
   @@index([lastSeen])
+  @@index([pilotMode])
   @@index([deletedAt])
   
   // 🔥 ÍNDICES CRÍTICOS PARA PERFORMANCE - IotDevice  

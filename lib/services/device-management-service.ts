@@ -41,10 +41,22 @@ export interface DeviceWithStatus {
     currentMeter?: {
         id: string;
         register: string;
-        apartment: {
+        apartment?: {
             id: string;
             name: string;
+            block?: {
+                id: string;
+                name: string;
+                complex?: {
+                    id: string;
+                    socialName: string;
+                    companyId?: string | null;
+                };
+            };
         };
+        blockId?: string | null;
+        complexId?: string | null;
+        companyId?: string | null;
     };
     meter?: {
         id: string;
@@ -56,6 +68,9 @@ export interface DeviceWithStatus {
     };
     readingsCount: number;
     unlinkedReadingsCount: number;
+    pilotMode?: boolean;
+    lastReadingSource?: string | null;
+    lastReadingAt?: string | null;
 }
 
 export interface CreateMeterDeviceLinkData {
@@ -166,12 +181,14 @@ export class DeviceManagementService {
             remoteId?: string;
             hasActiveLink?: boolean;
             hasUnlinkedReadings?: boolean;
+            hasNoReadings?: boolean;
+            pilotMode?: boolean;
             take?: number;
             skip?: number;
         } = {}
     ): Promise<{ devices: DeviceWithStatus[]; total: number }> {
 
-        const { deviceId, remoteId, hasActiveLink, hasUnlinkedReadings, take = 50, skip = 0 } = options;
+        const { deviceId, remoteId, hasActiveLink, hasUnlinkedReadings, hasNoReadings, pilotMode, take = 50, skip = 0 } = options;
 
         // Verificar permissões
         const contexts = await getUserContextsForActionOnEntity(userId, PermissionableEntity.iotDevice, 'read');
@@ -188,6 +205,10 @@ export class DeviceManagementService {
 
         if (remoteId) {
             whereConditions.remoteId = { contains: remoteId, mode: 'insensitive' };
+        }
+
+        if (pilotMode !== undefined) {
+            whereConditions.pilotMode = pilotMode;
         }
 
         // Filtro para dispositivos com leituras desvinculadas
@@ -221,6 +242,22 @@ export class DeviceManagementService {
                             { meterId: null },
                             { meterId: { isSet: false } }
                         ]
+                    }
+                };
+            }
+        }
+
+        if (hasNoReadings !== undefined) {
+            if (hasNoReadings) {
+                whereConditions.Readings = {
+                    none: {
+                        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }]
+                    }
+                };
+            } else {
+                whereConditions.Readings = {
+                    some: {
+                        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }]
                     }
                 };
             }
@@ -268,13 +305,36 @@ export class DeviceManagementService {
                             meter: {
                                 include: {
                                     apartment: {
-                                        select: {
-                                            id: true,
-                                            name: true,
+                                        include: {
+                                            block: {
+                                                include: {
+                                                    complex: {
+                                                        select: {
+                                                            id: true,
+                                                            socialName: true,
+                                                            companyId: true,
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
+                        }
+                    },
+                    Readings: {
+                        where: {
+                            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }]
+                        },
+                        orderBy: { readAt: 'desc' },
+                        take: 1,
+                        select: {
+                            id: true,
+                            reading: true,
+                            source: true,
+                            readAt: true,
+                            readAtDate: true,
                         }
                     },
                     _count: {
@@ -333,8 +393,30 @@ export class DeviceManagementService {
             const meterData = activeLink ? {
                 id: activeLink.meter.id,
                 register: activeLink.meter.register,
-                apartment: activeLink.meter.apartment
+                apartment: activeLink.meter.apartment ? {
+                    id: activeLink.meter.apartment.id,
+                    name: activeLink.meter.apartment.name,
+                    block: activeLink.meter.apartment.block ? {
+                        id: activeLink.meter.apartment.block.id,
+                        name: activeLink.meter.apartment.block.name,
+                        complex: activeLink.meter.apartment.block.complex ? {
+                            id: activeLink.meter.apartment.block.complex.id,
+                            socialName: activeLink.meter.apartment.block.complex.socialName,
+                            companyId: activeLink.meter.apartment.block.complex.companyId,
+                        } : undefined
+                    } : undefined
+                } : undefined,
+                blockId: activeLink.meter.blockId || activeLink.meter.apartment?.blockId || null,
+                complexId: activeLink.meter.complexId || activeLink.meter.apartment?.block?.complexId || null,
+                companyId:
+                    activeLink.meter.companyId ||
+                    activeLink.meter.apartment?.companyId ||
+                    activeLink.meter.apartment?.block?.companyId ||
+                    activeLink.meter.apartment?.block?.complex?.companyId ||
+                    null
             } : undefined;
+
+            const lastReading = device.Readings?.[0];
 
             return {
                 id: device.id,
@@ -348,7 +430,10 @@ export class DeviceManagementService {
                 currentMeter: meterData,
                 meter: meterData, // Para compatibilidade com DeviceFull
                 readingsCount: device._count.Readings,
-                unlinkedReadingsCount: unlinkedCountsMap.get(device.deviceId) || 0
+                unlinkedReadingsCount: unlinkedCountsMap.get(device.deviceId) || 0,
+                pilotMode: device.pilotMode,
+                lastReadingSource: lastReading?.source || null,
+                lastReadingAt: lastReading?.readAtDate || lastReading?.readAt?.toISOString() || null,
             };
         });
 

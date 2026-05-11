@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building, Building2, DoorClosed, Download, Gauge, HousePlus, Plus, Search, Upload } from "lucide-react"
+import { Building, Building2, DoorClosed, Download, Gauge, HousePlus, Loader2, Plus, Search, Upload } from "lucide-react"
 import { useMeters, useMeterMutations } from "@/hooks/useMeters"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -68,6 +68,8 @@ export default function MetersPage() {
     withBlock: true,
     withComplex: true,
     withTypeMeter: true,
+    withIotLink: true,
+    withLastReading: true,
   })
   const { createMeter, updateMeter, deleteMeter, error: mutationError } = useMeterMutations()
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -303,6 +305,9 @@ export default function MetersPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Chassi</TableHead>
+                        <TableHead>Device IoT</TableHead>
+                        <TableHead>Última leitura</TableHead>
+                        <TableHead>Origem</TableHead>
                         <TableHead>Condomínio</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Local</TableHead>
@@ -321,6 +326,15 @@ export default function MetersPage() {
                             </TableCell>
                             <TableCell>
                               <Skeleton className="h-5 w-32" />
+                            </TableCell>
+                            <TableCell>
+                              <Skeleton className="h-5 w-24" />
+                            </TableCell>
+                            <TableCell>
+                              <Skeleton className="h-5 w-20" />
+                            </TableCell>
+                            <TableCell>
+                              <Skeleton className="h-5 w-16" />
                             </TableCell>
                             <TableCell>
                               <Skeleton className="h-5 w-16" />
@@ -353,6 +367,9 @@ export default function MetersPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Chassi</TableHead>
+                        <TableHead>Device IoT</TableHead>
+                        <TableHead>Última leitura</TableHead>
+                        <TableHead>Origem</TableHead>
                         <TableHead>Condomínio</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Local</TableHead>
@@ -365,11 +382,11 @@ export default function MetersPage() {
                       {meters.length === 0 ? (
                         <TableRow>
                           {!filters.complex ? (
-                            <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+                            <TableCell colSpan={10} className="text-center py-6 text-muted-foreground">
                               Por favor, selecione um condomínio para visualizar os medidores
                             </TableCell>
                           ) : (
-                            <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+                            <TableCell colSpan={10} className="text-center py-6 text-muted-foreground">
                               Nenhum medidor encontrado
                             </TableCell>
                           )}
@@ -384,6 +401,15 @@ export default function MetersPage() {
                             className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
                           >
                             <TableCell className="font-medium">{meter.register}</TableCell>
+                            <TableCell>
+                              {(meter as any).deviceIdIoT || (meter as any).meterDeviceLinks?.[0]?.device?.deviceId || '-'}
+                            </TableCell>
+                            <TableCell>
+                              {(meter as any).Readings?.[0]?.reading ?? '-'}
+                            </TableCell>
+                            <TableCell>
+                              {(meter as any).Readings?.[0]?.source || '-'}
+                            </TableCell>
                             <TableCell 
                               className="cursor-help" 
                               title={`Condomínio: ${meter.apartment?.block?.complex?.socialName || 'N/A'}\nBloco: ${meter.apartment?.block?.name || 'N/A'}\nApartamento: ${meter.apartment?.name || 'N/A'}`}

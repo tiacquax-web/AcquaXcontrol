@@ -4,6 +4,7 @@ import { getUserContextsForActionOnEntity } from "@/lib/userContexts"
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ContextType, Meter } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
+import { syncExplicitMeterDeviceLink } from "@/lib/services/meter-iot-link-service"
 // Aumenta o timeout para 60s (Vercel Hobby permite até 60s)
 export const maxDuration = 60;
 
@@ -404,6 +405,8 @@ function getQueryParams(req: NextRequest) {
     const withBlock = req.nextUrl.searchParams.get('with_block') === 'true'
     const withComplex = req.nextUrl.searchParams.get('with_complex') === 'true'
     const withTypeMeter = req.nextUrl.searchParams.get('with_type_meter') === 'true'
+    const withIotLink = req.nextUrl.searchParams.get('with_iot_link') === 'true'
+    const withLastReading = req.nextUrl.searchParams.get('with_last_reading') === 'true'
 
     // query params - default
     const search = req.nextUrl.searchParams.get('search') || ''
@@ -412,7 +415,7 @@ function getQueryParams(req: NextRequest) {
     const orderBy = req.nextUrl.searchParams.get('order_by') || 'createdAt'
     const orderDirection : 'asc' | 'desc' = req.nextUrl.searchParams.get('order_direction') || req.nextUrl.searchParams.get('order_by') ? 'asc' : 'desc'
 
-    return { meterId, companyId, complexId, blockId, apartmentId, withApartment, withBlock, withComplex, withTypeMeter, search, take, skip, orderBy, orderDirection }
+    return { meterId, companyId, complexId, blockId, apartmentId, withApartment, withBlock, withComplex, withTypeMeter, withIotLink, withLastReading, search, take, skip, orderBy, orderDirection }
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -422,7 +425,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         if (sessionError || !userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         
         // get query params
-        const { meterId, companyId, complexId, blockId, apartmentId, withApartment, withBlock, withComplex, withTypeMeter, search, take, skip, orderBy, orderDirection } = getQueryParams(req)
+        const { meterId, companyId, complexId, blockId, apartmentId, withApartment, withBlock, withComplex, withTypeMeter, withIotLink, withLastReading, search, take, skip, orderBy, orderDirection } = getQueryParams(req)
 
         // identify context
         const contextType : ContextType | undefined = apartmentId ? 'apartment' : blockId ? 'block' : complexId ? 'complex' : companyId ? 'company' : undefined
@@ -468,6 +471,45 @@ export async function GET(req: NextRequest): Promise<Response> {
                         }
                     } : undefined
                 }
+            }
+        }
+
+        if (withIotLink) {
+            include.meterDeviceLinks = {
+                where: {
+                    deletedAt: null,
+                    OR: [{ endDate: null }, { endDate: { gte: new Date() } }],
+                },
+                take: 1,
+                orderBy: { startDate: 'desc' },
+                include: {
+                    device: {
+                        select: {
+                            id: true,
+                            deviceId: true,
+                            name: true,
+                            pilotMode: true,
+                            lastSeenDate: true,
+                            lastReading: true,
+                        },
+                    },
+                },
+            }
+        }
+
+        if (withLastReading) {
+            include.Readings = {
+                where: { deletedAt: null },
+                orderBy: { readAt: 'desc' },
+                take: 1,
+                select: {
+                    id: true,
+                    reading: true,
+                    readAt: true,
+                    readAtDate: true,
+                    source: true,
+                    isManualReading: true,
+                },
             }
         }
 
@@ -563,6 +605,14 @@ export async function POST(req: NextRequest): Promise<Response> {
         // Error handling
         if (creationError) return NextResponse.json({ error: creationError }, { status: creationStatus });
         if (!entity) return NextResponse.json({ error: 'Internal Server Error - Entity not created' }, { status: 500 });
+
+        if (body.deviceIdIoT !== undefined) {
+            await syncExplicitMeterDeviceLink({
+                meterId: entity.id,
+                userId,
+                deviceIdIoT: body.deviceIdIoT || null,
+            });
+        }
 
         // Return the created entity data
         return NextResponse.json(entity);

@@ -378,18 +378,36 @@ export default function MeterDeviceLinksManager({ deviceId, deviceName, onReadin
       return;
     }
 
-    // Simular início do reprocessamento
     setReprocessing(true);
-    
-    // Aguardar um tempo para simular processamento
-    setTimeout(() => {
+
+    try {
+      const linkIds = links.map((link) => link.id);
+      const response = await fetch('/api/user/devices/reprocess-links', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ linkIds }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || data.details || 'Erro ao reprocessar vínculos');
+      }
+
+      toast({
+        title: "Reprocessamento concluído",
+        description: data.message || "Leituras reprocessadas com sucesso."
+      });
+      onReadingsUpdated?.();
+    } catch (error) {
       toast({
         variant: "destructive",
-        title: "Reprocessamento indisponível",
-        description: "Esta funcionalidade está temporariamente desabilitada"
+        title: "Erro no reprocessamento",
+        description: error instanceof Error ? error.message : "Erro desconhecido"
       });
+    } finally {
       setReprocessing(false);
-    }, 1000);
+    }
   };
 
   const isLinkActive = (link: MeterDeviceLink): boolean => {

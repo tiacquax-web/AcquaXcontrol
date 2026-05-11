@@ -5,6 +5,7 @@ import { DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft } from "lucide-react";
@@ -29,6 +30,7 @@ export default function DeviceIotModal({ isOpen, onClose, onSave, device, defaul
         name: "",
         remoteId: "",
         devicePulseFactor: undefined as number | undefined,
+        pilotMode: false,
         ...device,
     });
 
@@ -51,6 +53,7 @@ export default function DeviceIotModal({ isOpen, onClose, onSave, device, defaul
                 name: "", 
                 remoteId: "", 
                 devicePulseFactor: undefined 
+                ,pilotMode: false
             });
         }
     }, [device, isOpen]);
@@ -138,6 +141,21 @@ export default function DeviceIotModal({ isOpen, onClose, onSave, device, defaul
                                                 onChange={handleChange}
                                                 placeholder="Ex: 1.0"
                                             />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="pilotMode">Modo Piloto</Label>
+                                            <Select
+                                                value={formData.pilotMode ? "true" : "false"}
+                                                onValueChange={(value) => handleSelectChange("pilotMode", value === "true")}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Selecione" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="false">Não</SelectItem>
+                                                    <SelectItem value="true">Sim</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
                                     <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">

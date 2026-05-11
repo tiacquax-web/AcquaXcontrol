@@ -3,6 +3,7 @@ import { deleteEntity, updateEntityData } from "@/lib/userData";
 import { validateUserSession } from "@/lib/users";
 import { Meter } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
+import { syncExplicitMeterDeviceLink } from "@/lib/services/meter-iot-link-service";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ entityId: string }> }): Promise<Response> {
     try {
@@ -44,6 +45,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
         // Error handling
         if (updateError) return NextResponse.json({ error: updateError }, { status: updateStatus });
         if (!entity) return NextResponse.json({ error: 'Internal Server Error - Entity not updated' }, { status: 500 });
+
+        if (body.deviceIdIoT !== undefined) {
+            await syncExplicitMeterDeviceLink({
+                meterId: entityId,
+                userId,
+                deviceIdIoT: body.deviceIdIoT || null,
+            });
+        }
 
         // Return the updated entity data
         return NextResponse.json(entity);

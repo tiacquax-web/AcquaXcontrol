@@ -318,21 +318,37 @@ export const useDeviceLinkImport = (): UseDeviceLinkImportResult => {
     }
   };
 
-  // Reprocessamento desabilitado
   const reprocessByLinks = async (): Promise<any> => {
+    if (!importResult?.createdLinkIds?.length) {
+      throw new Error("Nenhum vínculo recém-criado para reprocessar.");
+    }
+
     setIsImporting(true);
-    
-    // Simular processamento
-    setTimeout(() => {
-      toast({
-        variant: "destructive",
-        title: "Reprocessamento indisponível",
-        description: "Esta funcionalidade está temporariamente desabilitada"
+    try {
+      const response = await fetch('/api/user/devices/reprocess-links', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          linkIds: importResult.createdLinkIds,
+        }),
       });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || result.details || 'Erro ao reprocessar vínculos.');
+      }
+
+      setStep('completed');
+      toast({
+        title: 'Reprocessamento concluído',
+        description: result.message || 'Leituras reprocessadas com sucesso.',
+      });
+      return result;
+    } finally {
       setIsImporting(false);
-    }, 1000);
-    
-    return null;
+    }
   };
 
   return {

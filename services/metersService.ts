@@ -50,9 +50,11 @@ interface getMetersListProps {
   withBlock?: boolean;
   withComplex?: boolean;
   withTypeMeter?: boolean;
+  withIotLink?: boolean;
+  withLastReading?: boolean;
 }
 
-export const getMeters = async ({ companyId, complexId, blockId, search, meterTypeName, apartmentId, take, skip, orderBy, meterId, withApartment, withBlock, withComplex, withTypeMeter }: getMetersListProps) => {
+export const getMeters = async ({ companyId, complexId, blockId, search, meterTypeName, apartmentId, take, skip, orderBy, meterId, withApartment, withBlock, withComplex, withTypeMeter, withIotLink, withLastReading }: getMetersListProps) => {
   try {
     const params: any = {};
     if (meterId) params.meter_id = meterId;
@@ -69,6 +71,8 @@ export const getMeters = async ({ companyId, complexId, blockId, search, meterTy
     if (withBlock) params.with_block = withBlock;
     if (withComplex) params.with_complex = withComplex;
     if (withTypeMeter) params.with_type_meter = withTypeMeter;
+    if (withIotLink) params.with_iot_link = withIotLink;
+    if (withLastReading) params.with_last_reading = withLastReading;
 
     const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/meters`, { params });
     return response.data;

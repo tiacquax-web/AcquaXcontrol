@@ -9,6 +9,9 @@ interface ManualIngestionBody {
   storageIntegrationId?: string;
   limitFiles?: number;
   forceReprocess?: boolean;
+  objectKey?: string;
+  pilotModeOnly?: boolean;
+  pilotComplexId?: string;
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -38,6 +41,9 @@ export async function POST(req: NextRequest): Promise<Response> {
       storageIntegrationId: body.storageIntegrationId,
       limitFiles: body.limitFiles,
       forceReprocess: body.forceReprocess,
+      objectKey: body.objectKey,
+      pilotModeOnly: body.pilotModeOnly,
+      pilotComplexId: body.pilotComplexId,
     });
 
     return NextResponse.json({

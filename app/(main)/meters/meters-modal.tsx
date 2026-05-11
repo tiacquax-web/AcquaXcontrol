@@ -43,6 +43,7 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
         rotation: "Crescente",
         apartmentId: "",
         typeMeterId: "",
+        deviceIdIoT: "",
     })
 
     // Estado para rastrear valores originais e detectar mudanças
@@ -172,6 +173,7 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
                 rotation: "Crescente",
                 apartmentId: "",
                 typeMeterId: "",
+                deviceIdIoT: "",
             }
             setFormData(defaultData)
             setOriginalData(defaultData) // Para novo medidor, dados originais são os padrão
@@ -428,6 +430,28 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
                                                 value={formData.yearManufacture || ""}
                                                 onChange={handleChange}
                                             />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="deviceIdIoT">Dispositivo IoT Vinculado (deviceIdIoT)</Label>
+                                            <div className="flex gap-2">
+                                                <Input
+                                                    id="deviceIdIoT"
+                                                    name="deviceIdIoT"
+                                                    value={(formData as any).deviceIdIoT || ""}
+                                                    onChange={handleChange}
+                                                    placeholder="Ex.: 3617329729"
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() => setFormData((prev) => ({ ...prev, deviceIdIoT: "" }))}
+                                                >
+                                                    Desvincular
+                                                </Button>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground">
+                                                Ao salvar, o sistema sincroniza automaticamente o vínculo explícito do medidor com o dispositivo.
+                                            </p>
                                         </div>
                                     </div>
                                 </TabsContent>
