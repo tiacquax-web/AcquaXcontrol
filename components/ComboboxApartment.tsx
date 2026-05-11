@@ -51,6 +51,7 @@ const SelectApartment = forwardRef<HTMLButtonElement, SelectApartmentProps>(
       withBlock,
       withCompany
     })
+    const safeApartments = Array.isArray(apartments) ? apartments : []
     const [selectedId, setSelectedId] = useState<string | undefined>(apartment?.id)
 
     useEffect(() => {
@@ -68,7 +69,7 @@ const SelectApartment = forwardRef<HTMLButtonElement, SelectApartmentProps>(
         setSelectedId(undefined)
         setSelectedApartment(undefined)
       } else {
-        const selectedApartment = apartments.find((a) => a.id === value)
+        const selectedApartment = safeApartments.find((a) => a.id === value)
         if (selectedApartment) {
           setSelectedId(value)
           setSelectedApartment(selectedApartment)
@@ -85,7 +86,7 @@ const SelectApartment = forwardRef<HTMLButtonElement, SelectApartmentProps>(
 
     // Find the selected apartment name for display
     const selectedApartmentName = selectedId 
-      ? apartments.find(a => a.id === selectedId)?.name || apartment?.name || "Apartamento selecionado"
+      ? safeApartments.find(a => a.id === selectedId)?.name || apartment?.name || "Apartamento selecionado"
       : ""
 
     if (error) {
@@ -142,7 +143,7 @@ const SelectApartment = forwardRef<HTMLButtonElement, SelectApartmentProps>(
                 <CommandEmpty>Nenhum apartamento encontrado.</CommandEmpty>
                 <CommandGroup>
                   <CommandList>
-                    {apartments.map((apartment) => (
+                    {safeApartments.map((apartment) => (
                       <CommandItem
                         key={apartment.id}
                         value={apartment.id}

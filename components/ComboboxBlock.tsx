@@ -48,6 +48,7 @@ const SelectBlock = forwardRef<HTMLButtonElement, SelectBlockProps>(
       withApartmentsCount,
       withMetersCount
     })
+    const safeBlocks = Array.isArray(blocks) ? blocks : []
     const [selectedId, setSelectedId] = useState<string | undefined>(block?.id)
 
     useEffect(() => {
@@ -65,7 +66,7 @@ const SelectBlock = forwardRef<HTMLButtonElement, SelectBlockProps>(
         setSelectedId(undefined)
         setSelectedBlock(undefined)
       } else {
-        const selectedBlock = blocks.find((b) => b.id === value)
+        const selectedBlock = safeBlocks.find((b) => b.id === value)
         if (selectedBlock) {
           setSelectedId(value)
           setSelectedBlock(selectedBlock)
@@ -82,7 +83,7 @@ const SelectBlock = forwardRef<HTMLButtonElement, SelectBlockProps>(
 
     // Find the selected block name for display
     const selectedBlockName = selectedId
-      ? blocks.find(b => b.id === selectedId)?.name || block?.name || "Bloco selecionado"
+      ? safeBlocks.find(b => b.id === selectedId)?.name || block?.name || "Bloco selecionado"
       : ""
 
     if (error) {
@@ -138,7 +139,7 @@ const SelectBlock = forwardRef<HTMLButtonElement, SelectBlockProps>(
                 <CommandEmpty>Nenhum bloco encontrado.</CommandEmpty>
                 <CommandGroup>
                   <CommandList>
-                    {blocks && blocks.map((block) => (
+                    {safeBlocks.map((block) => (
                       <CommandItem
                         key={block.id}
                         value={block.id}

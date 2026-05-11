@@ -65,6 +65,8 @@ export default function UsersPage() {
     const { createUser, updateUser, deleteUser, bulkUsersAction, loading: mutationLoading, error: mutationError } = useUserMutations()
     const { deleteRoleAssignment, error: errorDeleteRoleAssignment, loading: loadingDeleteRoleAssignment } = useRoleAssignmentMutations()
     const { roles } = useRoles({})
+    const safeUsers = Array.isArray(users) ? users : []
+    const safeRoles = Array.isArray(roles) ? roles : []
     const [currentUser, setCurrentUser] = useState<Partial<User> | undefined>(undefined)
     const [exportLoading, setExportLoading] = useState(false)
     const [showExportModal, setShowExportModal] = useState(false)
@@ -204,7 +206,7 @@ export default function UsersPage() {
 
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
-            const allUserIds = new Set(users.map(user => user.id))
+            const allUserIds = new Set(safeUsers.map(user => user.id))
             setSelectedUsers(allUserIds)
         } else {
             setSelectedUsers(new Set())
@@ -399,7 +401,7 @@ export default function UsersPage() {
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="all">Todos os papéis</SelectItem>
-                                                    {roles.map(r => (
+                                                    {safeRoles.map(r => (
                                                         <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                                                     ))}
                                                 </SelectContent>
@@ -408,7 +410,7 @@ export default function UsersPage() {
                                     </div>
                                     {hasActiveFilters && (
                                         <p className="text-xs text-muted-foreground">
-                                            Filtros ativos: {[filterComplex?.socialName, filterBlock?.name, filterApartment?.name, roles.find(r => r.id === filterRoleId)?.name].filter(Boolean).join(' › ')}
+                                            Filtros ativos: {[filterComplex?.socialName, filterBlock?.name, filterApartment?.name, safeRoles.find(r => r.id === filterRoleId)?.name].filter(Boolean).join(' › ')}
                                         </p>
                                     )}
                                 </div>
@@ -430,7 +432,7 @@ export default function UsersPage() {
                                                 <TableRow>
                                                     <TableHead className="w-12">
                                                         <Checkbox
-                                                            checked={users.length > 0 && selectedUsers.size === users.length}
+                                                            checked={safeUsers.length > 0 && selectedUsers.size === safeUsers.length}
                                                             onCheckedChange={handleSelectAll}
                                                         />
                                                     </TableHead>
@@ -442,14 +444,14 @@ export default function UsersPage() {
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {users.length === 0 ? (
+                                                {safeUsers.length === 0 ? (
                                                     <TableRow>
                                                         <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
                                                             Nenhum usuário encontrado
                                                         </TableCell>
                                                     </TableRow>
                                                 ) : (
-                                                    users.map((user) => (
+                                                    safeUsers.map((user) => (
                                                         <TableRow key={user.id}>
                                                             <TableCell>
                                                                 <Checkbox
@@ -614,7 +616,7 @@ export default function UsersPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">Todos os papéis</SelectItem>
-                                    {roles.map(r => (
+                                    {safeRoles.map(r => (
                                         <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                                     ))}
                                 </SelectContent>
