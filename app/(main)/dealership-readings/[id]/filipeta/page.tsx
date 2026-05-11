@@ -3,19 +3,17 @@
 
 import React from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { Printer, AlertTriangle, LoaderCircle } from 'lucide-react';
+import { Printer, AlertTriangle, LoaderCircle, Building2, Building, DoorClosed } from 'lucide-react';
 
 import { useDealershipFilipetaData } from '@/hooks/useDealershipFilipetaData';
 import { Button } from '@/components/ui/button';
 import FilipetaGridReport from '@/components/dealership-reading/FilipetaGridReport';
 import { usePermissionChecker } from '@/hooks/use-permission-checker';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import SelectComplex from '@/components/ComboboxComplex';
+import SelectBlock from '@/components/ComboboxBlock';
+import SelectApartment from '@/components/ComboboxApartment';
+import { motion } from 'framer-motion';
 
 const FilipetaPage = () => {
   const params = useParams();
@@ -31,15 +29,15 @@ const FilipetaPage = () => {
       | null) || 'block_apartment';
 
   // FILTROS SEPARADOS
-  const [selectedCondominium, setSelectedCondominium] = React.useState('');
-  const [selectedBlock, setSelectedBlock] = React.useState('');
-  const [selectedApartment, setSelectedApartment] = React.useState('');
+  const [selectedComplex, setSelectedComplex] = React.useState<any>(undefined);
+  const [selectedBlock, setSelectedBlock] = React.useState<any>(undefined);
+  const [selectedApartment, setSelectedApartment] = React.useState<any>(undefined);
 
   const { data, loading, error } = useDealershipFilipetaData({
     dealershipReadingId: id,
     order,
-    block: selectedBlock,
-    apartment: selectedApartment
+    block: selectedBlock?.name,
+    apartment: selectedApartment?.name,
   });
 
   const {
@@ -49,49 +47,6 @@ const FilipetaPage = () => {
 
   const handlePrint = () => {
     window.print();
-  };
-
-  // Obter lista única de condomínios
-  const getCondominiums = React.useMemo(() => {
-    return [...new Set(data?.list?.map((r: any) => r.condominiumName) || [])];
-  }, [data]);
-
-  // Obter blocos filtrados por condomínio selecionado
-  const getBlocks = React.useMemo(() => {
-    if (!selectedCondominium || selectedCondominium === 'all') {
-      return [...new Set(data?.list?.map((r: any) => r.blockName) || [])];
-    }
-    return [...new Set(
-      data?.list
-        ?.filter((r: any) => r.condominiumName === selectedCondominium)
-        ?.map((r: any) => r.blockName) || []
-    )];
-  }, [data, selectedCondominium]);
-
-  // Obter apartamentos filtrados por condomínio e bloco
-  const getApartments = React.useMemo(() => {
-    let filtered = data?.list || [];
-
-    if (selectedCondominium && selectedCondominium !== 'all') {
-      filtered = filtered.filter((r: any) => r.condominiumName === selectedCondominium);
-    }
-
-    if (selectedBlock && selectedBlock !== 'all') {
-      filtered = filtered.filter((r: any) => r.blockName === selectedBlock);
-    }
-
-    return [...new Set(filtered.map((r: any) => r.apartmentNumber) || [])];
-  }, [data, selectedCondominium, selectedBlock]);
-
-  const handleCondominiumChange = (value: string) => {
-    setSelectedCondominium(value);
-    setSelectedBlock('');
-    setSelectedApartment('');
-  };
-
-  const handleBlockChange = (value: string) => {
-    setSelectedBlock(value);
-    setSelectedApartment('');
   };
 
   if (permissionsLoading) {
@@ -144,19 +99,20 @@ const FilipetaPage = () => {
       <div id="filipeta-body" className="space-y-0">
         {data.list
           .filter((report: any) => {
-            const condominiumMatch =
-              !selectedCondominium || selectedCondominium === 'all' ||
-              report.condominiumName === selectedCondominium;
+            const complexMatch =
+              !selectedComplex ||
+              report.blockName === selectedBlock?.name ||
+              report.apartmentNumber === selectedApartment?.name;
 
             const blockMatch =
-              !selectedBlock || selectedBlock === 'all' ||
-              report.blockName === selectedBlock;
+              !selectedBlock ||
+              report.blockName === selectedBlock.name;
 
             const apartmentMatch =
-              !selectedApartment || selectedApartment === 'all' ||
-              report.apartmentNumber === selectedApartment;
+              !selectedApartment ||
+              report.apartmentNumber === selectedApartment.name;
 
-            return condominiumMatch && blockMatch && apartmentMatch;
+            return complexMatch && blockMatch && apartmentMatch;
           })
           .map((report: any) => (
             <FilipetaGridReport
@@ -187,102 +143,59 @@ const FilipetaPage = () => {
       </div>
 
       {/* FILTROS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 no-print">
-
+      <motion.div
+        className="flex flex-col sm:flex-row gap-4 mb-6 no-print"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+      >
         {/* CONDOMÍNIO */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">
+        <div className="relative flex-1">
+          <Label className="flex items-center gap-1.5 mb-1.5 ml-0.5">
+            <Building2 className="h-4 w-4" />
             Condomínio
-          </label>
-
-          <Select
-            value={selectedCondominium}
-            onValueChange={handleCondominiumChange}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Condomínio..." />
-            </SelectTrigger>
-
-            <SelectContent>
-              <SelectItem value="all">
-                Todos os condomínios
-              </SelectItem>
-
-              {getCondominiums.map((condominium: any) => (
-                <SelectItem
-                  key={condominium}
-                  value={condominium}
-                >
-                  {condominium}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          </Label>
+          <SelectComplex
+            complex={selectedComplex}
+            companyId={undefined}
+            autoSelectSingle={false}
+            setSelectedComplex={(complex) => {
+              setSelectedComplex(complex);
+              setSelectedBlock(undefined);
+              setSelectedApartment(undefined);
+            }}
+          />
         </div>
 
         {/* BLOCO */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">
+        <div className="relative flex-1">
+          <Label className="flex items-center gap-1.5 mb-1.5 ml-0.5">
+            <Building className="h-4 w-4" />
             Bloco
-          </label>
-
-          <Select
-            value={selectedBlock}
-            onValueChange={handleBlockChange}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Bloco..." />
-            </SelectTrigger>
-
-            <SelectContent>
-              <SelectItem value="all">
-                Todos os blocos
-              </SelectItem>
-
-              {getBlocks.map((block: any) => (
-                <SelectItem
-                  key={block}
-                  value={block}
-                >
-                  {block}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          </Label>
+          <SelectBlock
+            block={selectedBlock}
+            complexId={selectedComplex?.id}
+            setSelectedBlock={(block) => {
+              setSelectedBlock(block);
+              setSelectedApartment(undefined);
+            }}
+          />
         </div>
 
         {/* APARTAMENTO */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">
+        <div className="relative flex-1">
+          <Label className="flex items-center gap-1.5 mb-1.5 ml-0.5">
+            <DoorClosed className="h-4 w-4" />
             Apartamento
-          </label>
-
-          <Select
-            value={selectedApartment}
-            onValueChange={setSelectedApartment}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Apartamento..." />
-            </SelectTrigger>
-
-            <SelectContent>
-              <SelectItem value="all">
-                Todos os apartamentos
-              </SelectItem>
-
-              {getApartments.map((apartment: any) => (
-                <SelectItem
-                  key={apartment}
-                  value={apartment}
-                >
-                  {apartment}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          </Label>
+          <SelectApartment
+            apartment={selectedApartment}
+            blockId={selectedBlock?.id}
+            setSelectedApartment={setSelectedApartment}
+          />
         </div>
-
-      </div>
+      </motion.div>
 
       {renderContent()}
     </div>
@@ -290,3 +203,4 @@ const FilipetaPage = () => {
 };
 
 export default FilipetaPage;
+
