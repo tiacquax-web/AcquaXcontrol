@@ -154,11 +154,11 @@ export const useMeterMutations = () => {
     }
   };
 
-  const createMetersFromSheetMutation = async (rows: any[]) => {
+  const createMetersFromSheetMutation = async (rows: any[], options?: { updateExisting?: boolean }) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await createMetersFromSheet(rows);
+      const result = await createMetersFromSheet(rows, options);
       return result;
     } catch (error: any) {
       const message = error.response?.data?.error || error.message || "Unknown error";

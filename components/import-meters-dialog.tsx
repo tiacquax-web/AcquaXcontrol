@@ -13,6 +13,7 @@ import * as XLSX from "xlsx"
 import { useMeterMutations } from "@/hooks/useMeters"
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "./ui/table"
 import { getTypeMeters } from "@/services/typemetersService"
+import { Switch } from "./ui/switch"
 
 interface ImportMetersDialogProps {
     open: boolean
@@ -45,6 +46,7 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
     const [availableTypes, setAvailableTypes] = useState<{ id: string; name: string; acronym: string }[]>([])
     const fileInputRef = useRef<HTMLInputElement>(null)
     const { createMetersFromSheet, loading: loadingMutation } = useMeterMutations()
+    const [updateExisting, setUpdateExisting] = useState(true)
 
     // Fetch available meter types when dialog opens
     useEffect(() => {
@@ -346,7 +348,7 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
         setProgress(0)
         setErrors([])
         try {
-            const result = await createMetersFromSheet(importRows)
+            const result = await createMetersFromSheet(importRows, { updateExisting })
             // Se o backend retornar erro de importação em massa (status 400), pode vir como { error, details, created }
             if (result.errors && result.errors.length > 0) {
                 setErrors(result.errors)
@@ -363,9 +365,14 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
                     description: `${result.created ?? 0} criados, ${result.details.length} erros.`,
                 })
             } else {
+                const createdCount = result.created ?? 0
+                const updatedCount = result.updated ?? 0
+                const ignoredCount = result.ignored ?? result.skipped ?? 0
+                const conflictsCount = result.conflicts ?? 0
+                const errorCount = result.errorCount ?? 0
                 toast({
                     title: "Importação concluída",
-                    description: `${result.created ?? result.updated ?? 0} medidores criados e ${result.updated ?? 0} atualizados.`,
+                    description: `Criados: ${createdCount} | Atualizados: ${updatedCount} | Ignorados: ${ignoredCount} | Conflitos: ${conflictsCount} | Erros: ${errorCount}`,
                 })
                 onImportComplete()
                 onOpenChange(false)
@@ -583,6 +590,12 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
                             </Alert>
                         )}
                         <div className="text-sm text-muted-foreground">
+                            <div className="flex items-center gap-2 py-2">
+                                <Switch id="update-existing" checked={updateExisting} onCheckedChange={setUpdateExisting} />
+                                <Label htmlFor="update-existing" className="text-sm text-foreground">
+                                    Atualizar existentes
+                                </Label>
+                            </div>
                             <p>O arquivo deve conter as seguintes colunas:</p>
                             <ul className="list-disc pl-5">
                                 <li>chassi</li>

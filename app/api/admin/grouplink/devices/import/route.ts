@@ -8,6 +8,7 @@ interface ImportBody {
   rows: DeviceChassiImportRow[];
   pilotMode?: boolean;
   pilotComplexId?: string;
+  updateExisting?: boolean;
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -25,6 +26,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     const result = await GrouplinkOperationalService.importDevicesByChassi(body.rows, {
       pilotMode: body.pilotMode,
       pilotComplexId: body.pilotComplexId,
+      updateExisting: body.updateExisting,
     });
 
     await logAdminAction({
@@ -35,10 +37,14 @@ export async function POST(req: NextRequest): Promise<Response> {
         rowsCount: body.rows.length,
         pilotMode: body.pilotMode,
         pilotComplexId: body.pilotComplexId,
+        updateExisting: body.updateExisting,
       },
       responseSummary: {
         success: result.success.length,
+        created: result.created.length,
+        updated: result.updated.length,
         ignored: result.ignored.length,
+        conflicts: result.conflicts.length,
         errors: result.errors.length,
       },
     });
@@ -47,7 +53,10 @@ export async function POST(req: NextRequest): Promise<Response> {
       message: 'Importação em massa (device_id x chassi) concluída.',
       summary: {
         success: result.success.length,
+        created: result.created.length,
+        updated: result.updated.length,
         ignored: result.ignored.length,
+        conflicts: result.conflicts.length,
         errors: result.errors.length,
       },
       result,

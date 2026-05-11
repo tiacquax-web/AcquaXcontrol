@@ -76,6 +76,7 @@ export async function importDevicesByChassi(payload: {
     rows: Array<{ device_id: string; chassi: string; pilotMode?: boolean }>;
     pilotMode?: boolean;
     pilotComplexId?: string;
+    updateExisting?: boolean;
 }) {
     const { data } = await axios.post(`${NEXT_PUBLIC_API_URL}/user/devices/import-by-chassi`, payload);
     return data;

@@ -91,7 +91,32 @@ function trimAndNormalize(value: string | undefined | null): string {
 }
 
 function normalizeHeader(value: string): string {
-  return trimAndNormalize(value).toLowerCase().replace(/\ufeff/g, '');
+  const raw = trimAndNormalize(value)
+    .replace(/\ufeff/g, '')
+    .replace(/Â³/g, '³')
+    .replace(/m3/gi, 'm³')
+    .replace(/\s+/g, '_')
+    .replace(/[^\w³]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+
+  const aliases: Record<string, string> = {
+    deviceid: 'device_id',
+    device_id: 'device_id',
+    remoteid: 'remote_id',
+    remote_id: 'remote_id',
+    devicename: 'device_name',
+    device_name: 'device_name',
+    alarms: 'alarm_code',
+    alarm: 'alarm_code',
+    'm³': 'consumption_m3',
+    consumption_m3: 'consumption_m3',
+    latest_event_created_epoch: 'latest_event_created_epoch',
+    latest_event_created: 'latest_event_created',
+    oldest_event_created: 'oldest_event_created',
+  };
+
+  return aliases[raw] || raw;
 }
 
 function normalizePathPrefix(path?: string | null): string {
@@ -108,7 +133,7 @@ function joinPath(...parts: Array<string | undefined | null>): string {
 }
 
 function selectDelimiter(headerLine: string): string {
-  const delimiters = [',', ';', '\t'];
+  const delimiters = [';', ',', '\t'];
   let selected = ',';
   let bestCount = -1;
   for (const delimiter of delimiters) {
@@ -214,6 +239,31 @@ function parseTimestamp(readingDateRaw: string, readingTimeRaw?: string): Date {
   throw new Error('Nenhum campo de data informado (reading_date ou reading_time).');
 }
 
+function parseEpochTimestamp(valueRaw?: string): Date | null {
+  const normalized = trimAndNormalize(valueRaw || '');
+  if (!normalized) return null;
+  const value = Number(normalized);
+  if (!Number.isFinite(value)) return null;
+  const millis = value > 9_999_999_999 ? value : value * 1000;
+  const parsed = new Date(millis);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseTimestampFromRow(row: Record<string, string>): Date {
+  const epochTimestamp = parseEpochTimestamp(row.latest_event_created_epoch);
+  if (epochTimestamp) return epochTimestamp;
+
+  if (trimAndNormalize(row.latest_event_created)) {
+    return parseTimestamp(row.latest_event_created);
+  }
+
+  if (trimAndNormalize(row.oldest_event_created)) {
+    return parseTimestamp(row.oldest_event_created);
+  }
+
+  return parseTimestamp(row.reading_date || '', row.reading_time || '');
+}
+
 function toReadAtDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -227,10 +277,15 @@ function buildS3Client(integration: StorageIntegrationLite, credentials: { acces
 
 function toNodeReadable(body: unknown): Readable {
   if (!body) throw new Error('S3 object body is empty.');
-  if (body instanceof Readable) return body;
+  if (body instanceof Readable) {
+    body.setEncoding('utf8');
+    return body;
+  }
   if (typeof (body as any).transformToWebStream === 'function') {
     const webStream = (body as any).transformToWebStream();
-    return Readable.fromWeb(webStream);
+    const stream = Readable.fromWeb(webStream);
+    stream.setEncoding('utf8');
+    return stream;
   }
   throw new Error('Unsupported S3 object body stream type.');
 }
@@ -743,16 +798,23 @@ export class GrouplinkCsvIngestionService {
       throw new Error('device_id ausente');
     }
 
-    const readingRaw = trimAndNormalize(params.row.reading);
+    const readingRaw = trimAndNormalize(params.row.consumption_m3 || params.row.reading);
     if (!readingRaw) {
       console.warn('[grouplink-ingestion][linha_invalida]', { deviceId, reason: 'reading ausente' });
       throw new Error('reading ausente');
     }
     const readingValue = parseReadingValue(readingRaw);
 
-    const timestamp = parseTimestamp(params.row.reading_date || '', params.row.reading_time || '');
+    const remoteId = trimAndNormalize(params.row.remote_id || params.row.remoteid || '');
+    const deviceName = trimAndNormalize(params.row.device_name || params.row.devicename || '');
+    const timestamp = parseTimestampFromRow(params.row);
     const alarmCode = trimAndNormalize(params.row.alarm_code) || undefined;
-    const meterResolution = await this.resolveMeterForDeviceId(deviceId, timestamp);
+    const meterResolution = await this.resolveMeterForDeviceId({
+      deviceIdRaw: deviceId,
+      timestamp,
+      remoteIdRaw: remoteId || null,
+      deviceNameRaw: deviceName || null,
+    });
 
     if (!meterResolution) {
       console.warn('[grouplink-ingestion][medidor_nao_encontrado]', { deviceId });
@@ -823,7 +885,8 @@ export class GrouplinkCsvIngestionService {
         isPreReading: false,
         source: GROUPLINK_SOURCE,
         deviceId: meterResolution.deviceId,
-        remoteId: deviceId,
+        remoteId: remoteId || deviceId,
+        deviceName: deviceName || undefined,
         apartmentId: meterResolution.meter.apartmentId || undefined,
         blockId: meterResolution.meter.blockId || undefined,
         complexId: meterResolution.meter.complexId || undefined,
@@ -843,13 +906,45 @@ export class GrouplinkCsvIngestionService {
     };
   }
 
-  private async resolveMeterForDeviceId(deviceIdRaw: string, timestamp: Date): Promise<{ meter: ResolvedMeter; deviceId: string } | null> {
-    // Regra prioritária obrigatória: vínculo explícito no medidor (deviceIdIoT).
+  private async resolveMeterForDeviceId(params: {
+    deviceIdRaw: string;
+    timestamp: Date;
+    remoteIdRaw?: string | null;
+    deviceNameRaw?: string | null;
+  }): Promise<{ meter: ResolvedMeter; deviceId: string } | null> {
+    const { deviceIdRaw, timestamp, remoteIdRaw, deviceNameRaw } = params;
+    // Prioridade operacional:
+    // 1) vínculo explícito meter.deviceIdIoT == CSV.deviceId
     const explicitMeter = await this.findMeterByExplicitBinding(deviceIdRaw);
     if (explicitMeter) return { meter: explicitMeter, deviceId: deviceIdRaw };
 
+    // 2) MeterDeviceLink ativo por CSV.deviceId
     const linked = await this.findMeterByDeviceLink(deviceIdRaw, timestamp);
     if (linked) return linked;
+
+    // 3) fallback via remoteId do CSV
+    if (remoteIdRaw) {
+      const canonicalByRemote = await this.resolveCanonicalIotDeviceId(remoteIdRaw);
+      if (canonicalByRemote) {
+        const explicitRemote = await this.findMeterByExplicitBinding(canonicalByRemote);
+        if (explicitRemote) return { meter: explicitRemote, deviceId: canonicalByRemote };
+
+        const linkedRemote = await this.findMeterByDeviceLink(canonicalByRemote, timestamp);
+        if (linkedRemote) return linkedRemote;
+      }
+    }
+
+    // 4) fallback opcional por deviceName
+    if (deviceNameRaw) {
+      const canonicalByName = await this.findCanonicalDeviceIdByName(deviceNameRaw);
+      if (canonicalByName) {
+        const explicitByName = await this.findMeterByExplicitBinding(canonicalByName);
+        if (explicitByName) return { meter: explicitByName, deviceId: canonicalByName };
+
+        const linkedByName = await this.findMeterByDeviceLink(canonicalByName, timestamp);
+        if (linkedByName) return linkedByName;
+      }
+    }
 
     const canonicalDeviceId = await this.resolveCanonicalIotDeviceId(deviceIdRaw);
     if (canonicalDeviceId && canonicalDeviceId !== deviceIdRaw) {
@@ -858,11 +953,9 @@ export class GrouplinkCsvIngestionService {
 
       const fromCanonical = await this.findMeterByDeviceLink(canonicalDeviceId, timestamp);
       if (fromCanonical) return fromCanonical;
-
-      const directCanonical = await this.findDirectMeter(canonicalDeviceId);
-      if (directCanonical) return { meter: directCanonical, deviceId: canonicalDeviceId };
     }
 
+    // Compatibilidade com estrutura legada
     const directMeter = await this.findDirectMeter(deviceIdRaw);
     if (directMeter) return { meter: directMeter, deviceId: deviceIdRaw };
 
@@ -885,6 +978,23 @@ export class GrouplinkCsvIngestionService {
     const canonical = iotDevice?.deviceId || null;
     this.iotDeviceAliasCache.set(deviceIdRaw, canonical);
     return canonical;
+  }
+
+  private async findCanonicalDeviceIdByName(deviceNameRaw: string): Promise<string | null> {
+    const normalized = trimAndNormalize(deviceNameRaw);
+    if (!normalized) return null;
+
+    const matches = await prisma.iotDevice.findMany({
+      where: {
+        deletedAt: null,
+        name: { equals: normalized, mode: 'insensitive' },
+      },
+      select: { deviceId: true },
+      take: 2,
+    });
+
+    if (matches.length !== 1) return null;
+    return matches[0].deviceId;
   }
 
   private async isPilotDevice(deviceId: string): Promise<boolean> {

@@ -37,6 +37,7 @@ export async function POST(req: NextRequest): Promise<Response> {
             select: {
                 id: true,
                 register: true,
+                deviceIdIoT: true,
                 status: true,
                 location: true,
                 initialReading: true,
@@ -49,6 +50,35 @@ export async function POST(req: NextRequest): Promise<Response> {
                     }
                 },
                 typeMeter: { select: { name: true } },
+                meterDeviceLinks: {
+                    where: {
+                        deletedAt: null,
+                        OR: [{ endDate: null }, { endDate: { gte: new Date() } }],
+                    },
+                    take: 1,
+                    orderBy: { startDate: 'desc' },
+                    include: {
+                        device: {
+                            select: {
+                                deviceId: true,
+                                remoteId: true,
+                                name: true,
+                                pilotMode: true,
+                                lastSeenDate: true,
+                            },
+                        },
+                    },
+                },
+                Readings: {
+                    where: { deletedAt: null },
+                    orderBy: { readAt: 'desc' },
+                    take: 1,
+                    select: {
+                        reading: true,
+                        readAtDate: true,
+                        source: true,
+                    },
+                },
             },
             orderBy: [{ apartment: { block: { complex: { socialName: 'asc' } } } }, { register: 'asc' }],
             take: 50000,
@@ -56,18 +86,49 @@ export async function POST(req: NextRequest): Promise<Response> {
 
         if (meters.length === 0) return NextResponse.json({ error: 'Nenhum medidor encontrado' }, { status: 404 });
 
-        const exportData = meters.map(m => ({
+        const explicitDeviceIds = Array.from(new Set(meters.map((meter) => meter.deviceIdIoT).filter(Boolean))) as string[];
+        const explicitDevices = explicitDeviceIds.length
+            ? await prisma.iotDevice.findMany({
+                where: {
+                    deviceId: { in: explicitDeviceIds },
+                    deletedAt: null,
+                },
+                select: {
+                    deviceId: true,
+                    remoteId: true,
+                    name: true,
+                    pilotMode: true,
+                    lastSeenDate: true,
+                },
+            })
+            : [];
+        const explicitDeviceMap = new Map(explicitDevices.map((device) => [device.deviceId, device]));
+
+        const exportData = meters.map(m => {
+            const activeLink = m.meterDeviceLinks?.[0];
+            const linkedDevice = activeLink?.device || (m.deviceIdIoT ? explicitDeviceMap.get(m.deviceIdIoT) : undefined);
+            const lastReading = m.Readings?.[0];
+            return ({
             'Chassi/Registro': m.register || '',
             'Tipo': m.typeMeter?.name || '',
             'Condomínio': m.apartment?.block?.complex?.socialName || '',
             'Bloco': m.apartment?.block?.name || '',
             'Apartamento': m.apartment?.name || '',
+            'deviceIdIoT': m.deviceIdIoT || linkedDevice?.deviceId || '',
+            'Status vínculo': m.deviceIdIoT || linkedDevice?.deviceId ? 'vinculado' : 'desvinculado',
+            'Última leitura': lastReading?.reading ?? '',
+            'Última leitura data': lastReading?.readAtDate || '',
+            'Última comunicação': linkedDevice?.lastSeenDate || '',
+            'PilotMode': linkedDevice?.pilotMode ? 'Sim' : 'Não',
+            'remoteId': linkedDevice?.remoteId || '',
+            'deviceName': linkedDevice?.name || '',
+            'Origem da leitura': lastReading?.source || '',
             'Local': m.location || '',
             'Leitura Inicial': m.initialReading ?? '',
             'Ano Fabricação': m.yearManufacture || '',
             'Status': m.status || '',
             'Cadastrado em': m.createdAt?.toLocaleDateString('pt-BR') || '',
-        }));
+        })});
 
         const worksheet = XLSX.utils.json_to_sheet(exportData);
         const colWidths = Object.keys(exportData[0] || {}).map(k => ({

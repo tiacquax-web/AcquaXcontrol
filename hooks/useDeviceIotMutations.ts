@@ -74,6 +74,7 @@ export function useDeviceIotMutations(onChange?: () => void) {
     rows: Array<{ device_id: string; chassi: string; pilotMode?: boolean }>;
     pilotMode?: boolean;
     pilotComplexId?: string;
+    updateExisting?: boolean;
   }) {
     setIsLoading(true);
     setError(null);

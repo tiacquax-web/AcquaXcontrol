@@ -10,6 +10,7 @@ export const maxDuration = 60;
 
 interface ValidationResult {
     errors: Array<{ row: number; message: string }>;
+    conflicts: Array<{ row: number; message: string }>;
     toCreate: Array<{ rowIndex: number; data: any }>;
     toUpdate: Array<{ rowIndex: number; data: any; existingId: string }>;
     toSkip: Array<{ rowIndex: number; reason: string }>;
@@ -21,8 +22,9 @@ interface ExecutionResult {
     updated: any[];
 }
 
-async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
+async function validateMetersBatch(reqBody: any[], options?: { updateExisting?: boolean }): Promise<ValidationResult> {
     const errors: Array<{ row: number; message: string }> = [];
+    const conflicts: Array<{ row: number; message: string }> = [];
     const toCreate: Array<{ rowIndex: number; data: any }> = [];
     const toUpdate: Array<{ rowIndex: number; data: any; existingId: string }> = [];
     const toSkip: Array<{ rowIndex: number; reason: string }> = [];    // Coleta todos os nomes de condomínio, bloco e tipo únicos
@@ -138,7 +140,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
 
     // Se há registers duplicados, retorna os erros
     if (errors.length > 0) {
-        return { errors, toCreate, toUpdate, toSkip };
+        return { errors, conflicts, toCreate, toUpdate, toSkip };
     }
 
     // Coleta todos os apartmentIds válidos para buscar medidores existentes
@@ -156,6 +158,8 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
         const rowAnoFabricacao = row.ano_fabricacao !== undefined && row.ano_fabricacao !== null && row.ano_fabricacao !== '' ? Number(row.ano_fabricacao) : undefined;
         const rowPrincipal = typeof row.principal === 'string' ? row.principal.trim().toLowerCase() === 'sim' : !!row.principal;
         const rowRotacao = row.rotacao === 'Crescente' || row.rotacao === 'Decrescente' ? row.rotacao : undefined;
+        const rowDeviceIdIoTRaw = row.deviceIdIoT ?? row.device_id ?? row.deviceId ?? row.deviceidiot;
+        const rowDeviceIdIoT = rowDeviceIdIoTRaw !== undefined && rowDeviceIdIoTRaw !== null ? String(rowDeviceIdIoTRaw).trim() : undefined;
 
         // Validação dos obrigatórios
         if (!rowChassi || rowChassi === '') {
@@ -229,6 +233,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
             main: rowPrincipal,
             rotation: rowRotacao,
             status: row.status || 'Ativo',
+            deviceIdIoT: rowDeviceIdIoT || undefined,
         };
 
         validMeterData.push({ register: rowChassi.toUpperCase(), apartmentId: apartment.id, rowIndex: idx, data: meterData });
@@ -236,7 +241,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
 
     // Se há erros na validação básica, retorna
     if (errors.length > 0) {
-        return { errors, toCreate, toUpdate, toSkip };
+        return { errors, conflicts, toCreate, toUpdate, toSkip };
     }
 
     // Busca todos os medidores existentes em lote - GLOBAL por register (otimizado)
@@ -246,7 +251,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
             register: { in: allRegistersUpper },
             deletedAt: null
         },
-        select: { id: true, register: true, apartmentId: true, status: true, location: true, initialReading: true, yearManufacture: true, main: true, rotation: true }
+        select: { id: true, register: true, apartmentId: true, status: true, location: true, initialReading: true, yearManufacture: true, main: true, rotation: true, deviceIdIoT: true }
     });
 
     // Criar Map para busca O(1) otimizada - usando uppercase para chave
@@ -267,9 +272,10 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
                 existing.initialReading !== item.data.initialReading ||
                 existing.yearManufacture !== item.data.yearManufacture ||
                 existing.main !== item.data.main ||
-                existing.rotation !== item.data.rotation;
+                existing.rotation !== item.data.rotation ||
+                (item.data.deviceIdIoT !== undefined && existing.deviceIdIoT !== item.data.deviceIdIoT);
 
-            if (needsUpdate) {
+            if (needsUpdate && options?.updateExisting !== false) {
                 toUpdate.push({ 
                     rowIndex: item.rowIndex, 
                     data: {
@@ -278,19 +284,22 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
                         initialReading: item.data.initialReading,
                         yearManufacture: item.data.yearManufacture,
                         main: item.data.main,
-                        rotation: item.data.rotation
+                        rotation: item.data.rotation,
+                        deviceIdIoT: item.data.deviceIdIoT,
                     }, 
                     existingId: existing.id 
                 });
             } else {
                 toSkip.push({ 
                     rowIndex: item.rowIndex, 
-                    reason: 'Medidor já existe com os mesmos dados' 
+                    reason: options?.updateExisting === false
+                        ? 'Medidor existente ignorado (Atualizar existentes desativado)'
+                        : 'Medidor já existe com os mesmos dados' 
                 });
             }
         } else {
             // Existe em outro apartamento - ERRO! Violação de constraint
-            errors.push({ 
+            conflicts.push({ 
                 row: item.rowIndex + 2, 
                 message: `Chassi '${item.register}' já está cadastrado em outro apartamento. O número do chassi deve ser único no sistema.` 
             });
@@ -298,11 +307,11 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
     }
     
     // Se há erros de registros duplicados, retorna
-    if (errors.length > 0) {
-        return { errors, toCreate, toUpdate, toSkip };
+    if (errors.length > 0 || conflicts.length > 0) {
+        return { errors, conflicts, toCreate, toUpdate, toSkip };
     }
     
-    return { errors, toCreate, toUpdate, toSkip };
+    return { errors, conflicts, toCreate, toUpdate, toSkip };
 }
 
 async function executeMetersBatch(
@@ -336,10 +345,32 @@ async function executeMetersBatch(
                     });
                 }
             } else if (entity && entity.count) {
-                // Se sucesso, cria objetos mock para representar os medidores criados
-                // (createMany retorna apenas o count, não os objetos criados)
-                for (let i = 0; i < entity.count; i++) {
-                    created.push({ id: `created_${i}`, register: toCreate[i]?.data?.register || `Medidor ${i + 1}` });
+                const createdRegisters = toCreate.map(item => item.data.register).filter(Boolean);
+                const createdMeters = await prisma.meter.findMany({
+                    where: {
+                        register: { in: createdRegisters },
+                        deletedAt: null,
+                    },
+                    select: { id: true, register: true, apartmentId: true, deviceIdIoT: true },
+                });
+
+                const meterByRegisterAndApartment = new Map(
+                    createdMeters.map((meter) => [`${meter.register}|${meter.apartmentId}`, meter]),
+                );
+
+                for (const item of toCreate) {
+                    const key = `${item.data.register}|${item.data.apartmentId}`;
+                    const meter = meterByRegisterAndApartment.get(key);
+                    if (meter) {
+                        created.push(meter);
+                        if (item.data.deviceIdIoT !== undefined) {
+                            await syncExplicitMeterDeviceLink({
+                                meterId: meter.id,
+                                userId,
+                                deviceIdIoT: item.data.deviceIdIoT || null,
+                            });
+                        }
+                    }
                 }
             }
         } catch (err: any) {
@@ -380,7 +411,18 @@ async function executeMetersBatch(
                 });
             });
             const results = await Promise.all(updatePromises);
-            results.forEach(entity => updated.push(entity));
+            for (let index = 0; index < results.length; index += 1) {
+                const entity = results[index];
+                const item = toUpdate[index];
+                updated.push(entity);
+                if (item?.data?.deviceIdIoT !== undefined) {
+                    await syncExplicitMeterDeviceLink({
+                        meterId: item.existingId,
+                        userId,
+                        deviceIdIoT: item.data.deviceIdIoT || null,
+                    });
+                }
+            }
         } catch (err: any) {
             console.error('Erro ao atualizar medidores em lote:', err);
             toUpdate.forEach(item => {
@@ -557,12 +599,20 @@ export async function POST(req: NextRequest): Promise<Response> {
             }
 
             // Etapa 1: Validação completa de todos os dados
-            const validationResult = await validateMetersBatch(reqBody.rows);
+            const updateExisting = reqBody.updateExisting !== false;
+            const validationResult = await validateMetersBatch(reqBody.rows, { updateExisting });
             
-            if (validationResult.errors.length > 0) {
+            if (validationResult.errors.length > 0 || validationResult.conflicts.length > 0) {
                 return NextResponse.json({ 
                     error: 'Erros na validação', 
-                    details: validationResult.errors 
+                    details: validationResult.errors,
+                    conflicts: validationResult.conflicts,
+                    created: 0,
+                    updated: 0,
+                    ignored: validationResult.toSkip.length,
+                    skipped: validationResult.toSkip.length,
+                    errors: validationResult.errors.length,
+                    conflictsCount: validationResult.conflicts.length,
                 }, { status: 400 });
             }
 
@@ -576,7 +626,14 @@ export async function POST(req: NextRequest): Promise<Response> {
             if (executionResult.errors.length > 0) {
                 return NextResponse.json({ 
                     error: 'Erros na execução', 
-                    details: executionResult.errors 
+                    details: executionResult.errors,
+                    created: executionResult.created.length,
+                    updated: executionResult.updated.length,
+                    ignored: validationResult.toSkip.length,
+                    skipped: validationResult.toSkip.length,
+                    errors: executionResult.errors.length,
+                    conflicts: [],
+                    conflictsCount: 0,
                 }, { status: 400 });
             }
 
@@ -584,7 +641,11 @@ export async function POST(req: NextRequest): Promise<Response> {
                 message: 'Importação concluída', 
                 created: executionResult.created.length,
                 updated: executionResult.updated.length,
+                ignored: validationResult.toSkip.length,
                 skipped: validationResult.toSkip.length,
+                conflicts: validationResult.conflicts,
+                conflictsCount: validationResult.conflicts.length,
+                errors: 0,
                 meters: [...executionResult.created, ...executionResult.updated] 
             });
         }

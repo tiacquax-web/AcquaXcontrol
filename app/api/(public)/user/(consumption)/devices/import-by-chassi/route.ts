@@ -6,6 +6,7 @@ interface ImportByChassiBody {
   rows: DeviceChassiImportRow[];
   pilotMode?: boolean;
   pilotComplexId?: string;
+  updateExisting?: boolean;
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -24,13 +25,17 @@ export async function POST(req: NextRequest): Promise<Response> {
     const result = await GrouplinkOperationalService.importDevicesByChassi(body.rows, {
       pilotMode: body.pilotMode,
       pilotComplexId: body.pilotComplexId,
+      updateExisting: body.updateExisting,
     });
 
     return NextResponse.json({
       message: 'Importação de devices por chassi concluída.',
       resumo: {
         sucesso: result.success.length,
+        criados: result.created.length,
+        atualizados: result.updated.length,
         ignorados: result.ignored.length,
+        conflitos: result.conflicts.length,
         erros: result.errors.length,
       },
       result,

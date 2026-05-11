@@ -116,11 +116,11 @@ export const deleteMeter = async (meterId: string) => {
   }
 };
 
-export const createMetersFromSheet = async (rows: any[]) => {
+export const createMetersFromSheet = async (rows: any[], options?: { updateExisting?: boolean }) => {
   try {
     const response = await axios.post(
       `${NEXT_PUBLIC_API_URL}/user/meters`,
-      JSON.stringify({ rows }),
+      JSON.stringify({ rows, updateExisting: options?.updateExisting !== false }),
       { headers: { "Content-Type": "application/json" } }
     );
     return response.data;

@@ -15,6 +15,7 @@ interface ImportDeviceChassiTabProps {
     rows: Array<{ device_id: string; chassi: string; pilotMode?: boolean }>;
     pilotMode?: boolean;
     pilotComplexId?: string;
+    updateExisting?: boolean;
   }) => Promise<any>;
   onImported?: () => void;
 }
@@ -25,6 +26,7 @@ export function ImportDeviceChassiTab({ onImport, onImported }: ImportDeviceChas
   const [rows, setRows] = useState<Array<{ device_id: string; chassi: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [pilotMode, setPilotMode] = useState(false);
+  const [updateExisting, setUpdateExisting] = useState(true);
   const [pilotComplexId, setPilotComplexId] = useState("");
   const [summary, setSummary] = useState<any>(null);
 
@@ -87,11 +89,12 @@ export function ImportDeviceChassiTab({ onImport, onImported }: ImportDeviceChas
         rows,
         pilotMode,
         pilotComplexId: pilotComplexId.trim() || undefined,
+        updateExisting,
       });
       setSummary(result);
       toast({
         title: "Importação concluída",
-        description: `Sucesso: ${result?.resumo?.sucesso ?? result?.summary?.success ?? 0} | Ignorados: ${result?.resumo?.ignorados ?? result?.summary?.ignored ?? 0} | Erros: ${result?.resumo?.erros ?? result?.summary?.errors ?? 0}`,
+        description: `Criados: ${result?.resumo?.criados ?? result?.summary?.created ?? 0} | Atualizados: ${result?.resumo?.atualizados ?? result?.summary?.updated ?? 0} | Ignorados: ${result?.resumo?.ignorados ?? result?.summary?.ignored ?? 0} | Conflitos: ${result?.resumo?.conflitos ?? result?.summary?.conflicts ?? 0} | Erros: ${result?.resumo?.erros ?? result?.summary?.errors ?? 0}`,
       });
       onImported?.();
     } catch (error: any) {
@@ -150,6 +153,25 @@ export function ImportDeviceChassiTab({ onImport, onImported }: ImportDeviceChas
               </Button>
             </div>
           </div>
+          <div className="space-y-1">
+            <Label>Atualizar existentes</Label>
+            <div className="flex gap-2">
+              <Button
+                variant={updateExisting ? "default" : "outline"}
+                onClick={() => setUpdateExisting(true)}
+                type="button"
+              >
+                Sim
+              </Button>
+              <Button
+                variant={!updateExisting ? "default" : "outline"}
+                onClick={() => setUpdateExisting(false)}
+                type="button"
+              >
+                Não
+              </Button>
+            </div>
+          </div>
         </div>
 
         {!!rows.length && (
@@ -176,8 +198,10 @@ export function ImportDeviceChassiTab({ onImport, onImported }: ImportDeviceChas
             <CheckCircle className="h-4 w-4" />
             <AlertDescription className="text-xs space-y-1">
               <p>
-                Sucesso: <strong>{summary?.resumo?.sucesso ?? summary?.summary?.success ?? 0}</strong> | Ignorados:{" "}
-                <strong>{summary?.resumo?.ignorados ?? summary?.summary?.ignored ?? 0}</strong> | Erros:{" "}
+                Criados: <strong>{summary?.resumo?.criados ?? summary?.summary?.created ?? 0}</strong> | Atualizados:{" "}
+                <strong>{summary?.resumo?.atualizados ?? summary?.summary?.updated ?? 0}</strong> | Ignorados:{" "}
+                <strong>{summary?.resumo?.ignorados ?? summary?.summary?.ignored ?? 0}</strong> | Conflitos:{" "}
+                <strong>{summary?.resumo?.conflitos ?? summary?.summary?.conflicts ?? 0}</strong> | Erros:{" "}
                 <strong>{summary?.resumo?.erros ?? summary?.summary?.errors ?? 0}</strong>
               </p>
             </AlertDescription>

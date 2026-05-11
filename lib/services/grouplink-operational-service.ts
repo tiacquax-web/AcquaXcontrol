@@ -9,8 +9,11 @@ export interface DeviceChassiImportRow {
 }
 
 export interface DeviceChassiImportResult {
+  created: Array<{ row: number; deviceId: string; chassi: string; meterId: string; action: string }>;
+  updated: Array<{ row: number; deviceId: string; chassi: string; meterId: string; action: string }>;
   success: Array<{ row: number; deviceId: string; chassi: string; meterId: string; action: string }>;
   ignored: Array<{ row: number; deviceId: string; chassi: string; reason: string }>;
+  conflicts: Array<{ row: number; deviceId: string; chassi: string; reason: string }>;
   errors: Array<{ row: number; deviceId: string; chassi: string; reason: string }>;
 }
 
@@ -25,11 +28,14 @@ function normalizeChassi(value: unknown): string {
 export class GrouplinkOperationalService {
   static async importDevicesByChassi(
     rows: DeviceChassiImportRow[],
-    options?: { pilotMode?: boolean; pilotComplexId?: string },
+    options?: { pilotMode?: boolean; pilotComplexId?: string; updateExisting?: boolean },
   ): Promise<DeviceChassiImportResult> {
     const result: DeviceChassiImportResult = {
+      created: [],
+      updated: [],
       success: [],
       ignored: [],
+      conflicts: [],
       errors: [],
     };
 
@@ -49,6 +55,7 @@ export class GrouplinkOperationalService {
         select: {
           id: true,
           register: true,
+          deviceIdIoT: true,
           complexId: true,
           companyId: true,
           apartment: {
@@ -98,7 +105,7 @@ export class GrouplinkOperationalService {
           continue;
         }
         if (seenDeviceIds.has(deviceId)) {
-          result.errors.push({ row: rowNumber, deviceId, chassi, reason: 'device_id duplicado na planilha' });
+          result.conflicts.push({ row: rowNumber, deviceId, chassi, reason: 'device_id duplicado na planilha' });
           continue;
         }
         seenDeviceIds.add(deviceId);
@@ -124,6 +131,11 @@ export class GrouplinkOperationalService {
         const device = devicesByDeviceId.get(deviceId);
 
         const targetPilotMode = normalized.pilotMode ?? options?.pilotMode ?? false;
+        const updateExisting = options?.updateExisting !== false;
+        let createdDevice = false;
+        let updatedDevice = false;
+        let createdLink = false;
+        let updatedMeterBinding = false;
 
         if (!device) {
           const created = await prisma.iotDevice.create({
@@ -133,19 +145,21 @@ export class GrouplinkOperationalService {
               pilotMode: targetPilotMode,
             },
           });
+          createdDevice = true;
           devicesByDeviceId.set(deviceId, { id: created.id, deviceId: created.deviceId, pilotMode: created.pilotMode });
-        } else if (device.pilotMode !== targetPilotMode) {
+        } else if (device.pilotMode !== targetPilotMode && updateExisting) {
           await prisma.iotDevice.update({
             where: { id: device.id },
             data: { pilotMode: targetPilotMode },
           });
+          updatedDevice = true;
           devicesByDeviceId.set(deviceId, { ...device, pilotMode: targetPilotMode });
         }
 
         const activeLink = activeLinkByDevice.get(deviceId);
 
         if (activeLink && activeLink.meterId !== meter.id) {
-          result.errors.push({
+          result.conflicts.push({
             row: rowNumber,
             deviceId,
             chassi,
@@ -154,33 +168,65 @@ export class GrouplinkOperationalService {
           continue;
         }
 
+        if (meter.deviceIdIoT && meter.deviceIdIoT !== deviceId && !updateExisting) {
+          result.conflicts.push({
+            row: rowNumber,
+            deviceId,
+            chassi,
+            reason: `medidor ${chassi} já possui vínculo explícito (${meter.deviceIdIoT})`,
+          });
+          continue;
+        }
+
         let action = 'updated-device';
         if (!activeLink) {
-          const createdLink = await prisma.meterDeviceLink.create({
+          const createdLinkEntity = await prisma.meterDeviceLink.create({
             data: {
               meterId: meter.id,
               deviceId,
               startDate: new Date(),
             },
           });
-          activeLinkByDevice.set(deviceId, { id: createdLink.id, deviceId: createdLink.deviceId, meterId: createdLink.meterId });
+          activeLinkByDevice.set(deviceId, {
+            id: createdLinkEntity.id,
+            deviceId: createdLinkEntity.deviceId,
+            meterId: createdLinkEntity.meterId,
+          });
+          createdLink = true;
           action = device ? 'linked-existing-device' : 'created-device-and-linked';
         } else {
           action = 'already-linked';
         }
 
-        await prisma.meter.update({
-          where: { id: meter.id },
-          data: { deviceIdIoT: deviceId },
-        });
+        if (meter.deviceIdIoT !== deviceId) {
+          await prisma.meter.update({
+            where: { id: meter.id },
+            data: { deviceIdIoT: deviceId },
+          });
+          metersByChassi.set(chassi, { ...meter, deviceIdIoT: deviceId });
+          updatedMeterBinding = true;
+        }
 
-        result.success.push({
+        const successEntry = {
           row: rowNumber,
           deviceId,
           chassi,
           meterId: meter.id,
           action,
-        });
+        };
+        result.success.push(successEntry);
+        if (createdDevice || createdLink) {
+          result.created.push(successEntry);
+        } else if (updatedDevice || updatedMeterBinding) {
+          result.updated.push(successEntry);
+        } else {
+          result.ignored.push({
+            row: rowNumber,
+            deviceId,
+            chassi,
+            reason: 'registro já estava atualizado',
+          });
+        }
       } catch (error) {
         result.errors.push({
           row: rowNumber,
