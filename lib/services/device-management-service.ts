@@ -61,10 +61,22 @@ export interface DeviceWithStatus {
     meter?: {
         id: string;
         register: string;
-        apartment: {
+        apartment?: {
             id: string;
             name: string;
+            block?: {
+                id: string;
+                name: string;
+                complex?: {
+                    id: string;
+                    socialName: string;
+                    companyId?: string | null;
+                };
+            };
         };
+        blockId?: string | null;
+        complexId?: string | null;
+        companyId?: string | null;
     };
     readingsCount: number;
     unlinkedReadingsCount: number;

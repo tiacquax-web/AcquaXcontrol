@@ -18,8 +18,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     const result = await FastReadingReprocessService.reprocessLinkReadings(validSession.userId, linkIds);
     return NextResponse.json({
-      message: 'Reprocessamento por vínculos executado.',
-      ...result,
+      message: result.message || 'Reprocessamento por vínculos executado.',
+      result,
     });
   } catch (error) {
     console.error('Erro ao reprocessar por vínculos:', error);
