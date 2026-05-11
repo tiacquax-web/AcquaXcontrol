@@ -420,9 +420,19 @@ model StorageFileProcessing {
   bucket               String
   objectKey            String
   checksum             String?
+  trigger              String?
+  correlationId        String?
   status               StorageIngestionStatus @default(processing)
+  totalRows            Int?
+  insertedReadings     Int?
+  duplicateReadings    Int?
+  createdAnomalies     Int?
+  duplicateAnomalies   Int?
+  rowErrorsCount       Int?
+  durationMs           Int?
   processedAt          DateTime?            @db.Timestamp
   errorMessage         String?
+  errors               StorageFileProcessingError[]
 
   createdAt            DateTime             @default(now()) @db.Timestamp
   updatedAt            DateTime             @updatedAt @db.Timestamp
@@ -432,7 +442,44 @@ model StorageFileProcessing {
   @@index([companyId, status, deletedAt])
   @@index([storageIntegrationId, deletedAt])
   @@index([bucket, objectKey, deletedAt])
+  @@index([correlationId, createdAt])
   @@unique([storageIntegrationId, bucket, objectKey, deletedAt], name: "unique_storage_file_processing_not_deleted")
+}
+
+model StorageFileProcessingError {
+  id                      String                @id @map("_id") @default(uuid())
+  storageFileProcessingId String
+  storageFileProcessing   StorageFileProcessing @relation(fields: [storageFileProcessingId], references: [id])
+  lineNumber              Int
+  errorType               String?
+  errorMessage            String
+  rawLine                 String?
+  createdAt               DateTime              @default(now()) @db.Timestamp
+  updatedAt               DateTime              @updatedAt @db.Timestamp
+  deletedAt               DateTime?             @db.Timestamp
+
+  @@map("StorageFileProcessingErrors")
+  @@index([storageFileProcessingId, lineNumber])
+  @@index([deletedAt, createdAt])
+}
+
+model AdminActionAudit {
+  id               String    @id @map("_id") @default(uuid())
+  userId           String
+  action           String
+  target           String?
+  status           String
+  correlationId    String?
+  requestPayload   Json?
+  responseSummary  Json?
+  createdAt        DateTime  @default(now()) @db.Timestamp
+  updatedAt        DateTime  @updatedAt @db.Timestamp
+  deletedAt        DateTime? @db.Timestamp
+
+  @@map("AdminActionAudits")
+  @@index([userId, createdAt])
+  @@index([correlationId, createdAt])
+  @@index([action, createdAt])
 }
 
 model Complex {

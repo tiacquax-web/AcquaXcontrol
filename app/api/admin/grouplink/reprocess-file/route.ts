@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminOrCompanyContext } from '@/lib/admin-auth';
 import { GrouplinkCsvIngestionService } from '@/lib/services/grouplink-csv-ingestion-service';
+import { logAdminAction } from '@/lib/services/admin-audit-service';
 import { serverError } from '@/lib/safeError';
 
 interface ReprocessFileBody {
@@ -33,6 +34,20 @@ export async function POST(req: NextRequest): Promise<Response> {
       pilotModeOnly: body.pilotModeOnly,
       pilotComplexId: body.pilotComplexId,
       limitFiles: 1,
+    });
+
+    await logAdminAction({
+      userId: auth.userId!,
+      action: 'grouplink_reprocess_file',
+      target: body.objectKey,
+      status: 'success',
+      correlationId: result.correlationId,
+      requestPayload: body as unknown as Record<string, unknown>,
+      responseSummary: {
+        processedFiles: result.processedFiles,
+        failedFiles: result.failedFiles,
+        rowErrors: result.rowErrors,
+      },
     });
 
     return NextResponse.json({

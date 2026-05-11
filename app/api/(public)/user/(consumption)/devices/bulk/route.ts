@@ -3,6 +3,7 @@ import { isSessionValid } from '@/lib/users';
 import prisma from '@/lib/prisma';
 import { GrouplinkOperationalService } from '@/lib/services/grouplink-operational-service';
 import FastReadingReprocessService from '@/lib/services/reading-fast-reprocess-service';
+import { logAdminAction } from '@/lib/services/admin-audit-service';
 
 type BulkAction =
   | 'delete_selected'
@@ -19,6 +20,7 @@ interface BulkRequestBody {
   onlyPilot?: boolean;
   onlyWithoutReadings?: boolean;
   olderThanDays?: number;
+  confirmationText?: string;
 }
 
 async function resolveDeviceIds(ids?: string[], deviceIds?: string[]): Promise<string[]> {
@@ -46,9 +48,25 @@ export async function POST(req: NextRequest): Promise<Response> {
     }
 
     if (body.action === 'delete_selected') {
+      if (body.confirmationText !== 'EXCLUIR') {
+        return NextResponse.json(
+          { error: 'Confirmação dupla inválida. Envie confirmationText="EXCLUIR".' },
+          { status: 400 },
+        );
+      }
       const result = await GrouplinkOperationalService.bulkDeleteDevices({
         ids: body.ids,
         deviceIds: body.deviceIds,
+      });
+      await logAdminAction({
+        userId: validSession.userId,
+        action: 'iot_bulk_delete_devices',
+        status: 'success',
+        requestPayload: {
+          ids: body.ids,
+          deviceIds: body.deviceIds,
+        },
+        responseSummary: result as unknown as Record<string, unknown>,
       });
       return NextResponse.json({ message: 'Dispositivos removidos em lote.', result });
     }

@@ -3,6 +3,7 @@ import { validateUserSession } from '@/lib/users';
 import { getUserContexts } from '@/lib/userContexts';
 import { serverError } from '@/lib/safeError';
 import { GrouplinkCsvIngestionService } from '@/lib/services/grouplink-csv-ingestion-service';
+import { logAdminAction } from '@/lib/services/admin-audit-service';
 
 interface ManualIngestionBody {
   companyId?: string;
@@ -44,6 +45,20 @@ export async function POST(req: NextRequest): Promise<Response> {
       objectKey: body.objectKey,
       pilotModeOnly: body.pilotModeOnly,
       pilotComplexId: body.pilotComplexId,
+    });
+
+    await logAdminAction({
+      userId,
+      action: 'grouplink_manual_ingestion',
+      target: body.companyId || body.storageIntegrationId,
+      status: 'success',
+      correlationId: result.correlationId,
+      requestPayload: body as unknown as Record<string, unknown>,
+      responseSummary: {
+        processedFiles: result.processedFiles,
+        failedFiles: result.failedFiles,
+        rowErrors: result.rowErrors,
+      },
     });
 
     return NextResponse.json({

@@ -7,6 +7,7 @@ import {
   ListObjectsV2CommandOutput,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
 import { getS3CredentialsFromOrganizationVault } from '@/lib/services/organization-vault-service';
@@ -35,6 +36,13 @@ type RowProcessingOutcome =
   | { kind: 'inserted'; readingId: string; meterId: string; timestamp: Date; alarmCode?: string }
   | { kind: 'duplicate'; readingId: string; meterId: string; timestamp: Date; alarmCode?: string };
 
+type ProcessingErrorRow = {
+  lineNumber: number;
+  errorType: string;
+  errorMessage: string;
+  rawLine: string;
+};
+
 export interface GrouplinkIngestionRunOptions {
   companyId?: string;
   storageIntegrationId?: string;
@@ -43,10 +51,13 @@ export interface GrouplinkIngestionRunOptions {
   objectKey?: string;
   pilotModeOnly?: boolean;
   pilotComplexId?: string;
+  lineNumbers?: number[];
+  correlationId?: string;
   trigger: 'manual' | 'cron';
 }
 
 export interface GrouplinkIngestionRunResult {
+  correlationId: string;
   trigger: 'manual' | 'cron';
   startedAt: string;
   finishedAt: string;
@@ -59,6 +70,7 @@ export interface GrouplinkIngestionRunResult {
   createdAnomalies: number;
   duplicateAnomalies: number;
   rowErrors: number;
+  totalRows: number;
   integrationSummaries: Array<{
     storageIntegrationId: string;
     companyId: string;
@@ -70,6 +82,7 @@ export interface GrouplinkIngestionRunResult {
     createdAnomalies: number;
     duplicateAnomalies: number;
     rowErrors: number;
+    totalRows: number;
   }>;
 }
 
@@ -243,9 +256,10 @@ export class GrouplinkCsvIngestionService {
 
   async run(options: GrouplinkIngestionRunOptions): Promise<GrouplinkIngestionRunResult> {
     const startedAt = new Date();
+    const correlationId = options.correlationId || randomUUID();
     const integrations = await this.getTargetIntegrations(options);
     console.info(
-      `[grouplink-ingestion] início trigger=${options.trigger} integrations=${integrations.length} force=${options.forceReprocess === true}`,
+      `[grouplink-ingestion] início correlationId=${correlationId} trigger=${options.trigger} integrations=${integrations.length} force=${options.forceReprocess === true}`,
     );
     const summaries: GrouplinkIngestionRunResult['integrationSummaries'] = [];
 
@@ -257,14 +271,15 @@ export class GrouplinkCsvIngestionService {
     let createdAnomalies = 0;
     let duplicateAnomalies = 0;
     let rowErrors = 0;
+    let totalRows = 0;
 
     for (const integration of integrations) {
       let summary: GrouplinkIngestionRunResult['integrationSummaries'][number];
       try {
-        summary = await this.processIntegration(integration, options);
+        summary = await this.processIntegration(integration, options, correlationId);
       } catch (error) {
         console.error(
-          `[grouplink-ingestion] falha geral na integração ${integration.id} (company ${integration.companyId}):`,
+          `[grouplink-ingestion] falha geral correlationId=${correlationId} integração=${integration.id} company=${integration.companyId}:`,
           error,
         );
         summary = {
@@ -278,6 +293,7 @@ export class GrouplinkCsvIngestionService {
           createdAnomalies: 0,
           duplicateAnomalies: 0,
           rowErrors: 0,
+          totalRows: 0,
         };
       }
 
@@ -290,9 +306,11 @@ export class GrouplinkCsvIngestionService {
       createdAnomalies += summary.createdAnomalies;
       duplicateAnomalies += summary.duplicateAnomalies;
       rowErrors += summary.rowErrors;
+      totalRows += summary.totalRows;
     }
 
     return {
+      correlationId,
       trigger: options.trigger,
       startedAt: startedAt.toISOString(),
       finishedAt: new Date().toISOString(),
@@ -305,6 +323,7 @@ export class GrouplinkCsvIngestionService {
       createdAnomalies,
       duplicateAnomalies,
       rowErrors,
+      totalRows,
       integrationSummaries: summaries,
     };
   }
@@ -330,9 +349,13 @@ export class GrouplinkCsvIngestionService {
     });
   }
 
-  private async processIntegration(integration: StorageIntegrationLite, options: GrouplinkIngestionRunOptions) {
+  private async processIntegration(
+    integration: StorageIntegrationLite,
+    options: GrouplinkIngestionRunOptions,
+    correlationId: string,
+  ) {
     console.info(
-      `[grouplink-ingestion] processando integração=${integration.id} company=${integration.companyId} bucket=${integration.bucket}`,
+      `[grouplink-ingestion] processando correlationId=${correlationId} integração=${integration.id} company=${integration.companyId} bucket=${integration.bucket}`,
     );
     const credentials = await getS3CredentialsFromOrganizationVault({
       organizationId: integration.companyId,
@@ -352,6 +375,7 @@ export class GrouplinkCsvIngestionService {
     let createdAnomalies = 0;
     let duplicateAnomalies = 0;
     let rowErrors = 0;
+    let totalRows = 0;
 
     for (const object of csvObjects) {
       const objectKey = object.Key;
@@ -378,7 +402,11 @@ export class GrouplinkCsvIngestionService {
         bucket: integration.bucket,
         objectKey,
         checksum: object.ETag || null,
+        trigger: options.trigger,
+        correlationId,
       });
+
+      await this.replaceProcessingErrors(processingRecord.id, []);
 
       try {
         console.info(`[grouplink-ingestion] processando arquivo: ${objectKey}`);
@@ -394,6 +422,8 @@ export class GrouplinkCsvIngestionService {
         createdAnomalies += result.createdAnomalies;
         duplicateAnomalies += result.duplicateAnomalies;
         rowErrors += result.rowErrors;
+        totalRows += result.totalRows;
+        await this.replaceProcessingErrors(processingRecord.id, result.errorRows);
 
         await prisma.storageFileProcessing.update({
           where: { id: processingRecord.id },
@@ -401,23 +431,39 @@ export class GrouplinkCsvIngestionService {
             status: 'success',
             processedAt: new Date(),
             errorMessage: summarizeRowErrors(result.rowErrorMessages),
+            totalRows: result.totalRows,
+            insertedReadings: result.insertedReadings,
+            duplicateReadings: result.duplicateReadings,
+            createdAnomalies: result.createdAnomalies,
+            duplicateAnomalies: result.duplicateAnomalies,
+            rowErrorsCount: result.rowErrors,
+            durationMs: Date.now() - new Date(processingRecord.createdAt).getTime(),
           },
         });
         console.info(
-          `[grouplink-ingestion] arquivo concluído: ${objectKey} inserted=${result.insertedReadings} dup=${result.duplicateReadings} rowErrors=${result.rowErrors}`,
+          `[grouplink-ingestion] arquivo concluído correlationId=${correlationId} key=${objectKey} rows=${result.totalRows} inserted=${result.insertedReadings} dup=${result.duplicateReadings} rowErrors=${result.rowErrors}`,
         );
       } catch (error) {
         failedFiles += 1;
         const message = error instanceof Error ? error.message : String(error);
+        await this.replaceProcessingErrors(processingRecord.id, [
+          {
+            lineNumber: 0,
+            errorType: 'file_error',
+            errorMessage: message,
+            rawLine: '',
+          },
+        ]);
         await prisma.storageFileProcessing.update({
           where: { id: processingRecord.id },
           data: {
             status: 'error',
             processedAt: new Date(),
             errorMessage: message.slice(0, 4000),
+            durationMs: Date.now() - new Date(processingRecord.createdAt).getTime(),
           },
         });
-        console.error(`[grouplink-ingestion] arquivo falhou ${objectKey}:`, error);
+        console.error(`[grouplink-ingestion] arquivo falhou correlationId=${correlationId} key=${objectKey}:`, error);
       }
     }
 
@@ -432,6 +478,7 @@ export class GrouplinkCsvIngestionService {
       createdAnomalies,
       duplicateAnomalies,
       rowErrors,
+      totalRows,
     };
   }
 
@@ -505,6 +552,8 @@ export class GrouplinkCsvIngestionService {
     bucket: string;
     objectKey: string;
     checksum: string | null;
+    trigger: 'manual' | 'cron';
+    correlationId: string;
   }) {
     const existing = await prisma.storageFileProcessing.findFirst({
       where: {
@@ -522,6 +571,15 @@ export class GrouplinkCsvIngestionService {
         data: {
           status: 'processing',
           checksum: params.checksum || undefined,
+          trigger: params.trigger,
+          correlationId: params.correlationId,
+          totalRows: 0,
+          insertedReadings: 0,
+          duplicateReadings: 0,
+          createdAnomalies: 0,
+          duplicateAnomalies: 0,
+          rowErrorsCount: 0,
+          durationMs: null,
           processedAt: null,
           errorMessage: null,
         },
@@ -535,9 +593,32 @@ export class GrouplinkCsvIngestionService {
         bucket: params.bucket,
         objectKey: params.objectKey,
         checksum: params.checksum || undefined,
+        trigger: params.trigger,
+        correlationId: params.correlationId,
         status: 'processing',
       },
     });
+  }
+
+  private async replaceProcessingErrors(processingId: string, rows: ProcessingErrorRow[]) {
+    await prisma.storageFileProcessingError.deleteMany({
+      where: {
+        storageFileProcessingId: processingId,
+        deletedAt: null,
+      },
+    });
+
+    for (const row of rows) {
+      await prisma.storageFileProcessingError.create({
+        data: {
+          storageFileProcessingId: processingId,
+          lineNumber: row.lineNumber,
+          errorType: row.errorType,
+          errorMessage: row.errorMessage.slice(0, 4000),
+          rawLine: row.rawLine ? row.rawLine.slice(0, 4000) : null,
+        },
+      });
+    }
   }
 
   private async processFile(params: {
@@ -546,12 +627,14 @@ export class GrouplinkCsvIngestionService {
     objectKey: string;
     options: GrouplinkIngestionRunOptions;
   }): Promise<{
+    totalRows: number;
     insertedReadings: number;
     duplicateReadings: number;
     createdAnomalies: number;
     duplicateAnomalies: number;
     rowErrors: number;
     rowErrorMessages: string[];
+    errorRows: ProcessingErrorRow[];
   }> {
     const response: GetObjectCommandOutput = await params.s3.send(
       new GetObjectCommand({
@@ -571,7 +654,10 @@ export class GrouplinkCsvIngestionService {
     let createdAnomalies = 0;
     let duplicateAnomalies = 0;
     let rowErrors = 0;
+    let totalRows = 0;
     const rowErrorMessages: string[] = [];
+    const errorRows: ProcessingErrorRow[] = [];
+    const targetLineNumbers = params.options.lineNumbers?.length ? new Set(params.options.lineNumbers) : null;
 
     for await (const lineRaw of lineReader) {
       lineNumber += 1;
@@ -584,6 +670,12 @@ export class GrouplinkCsvIngestionService {
         headers = parseCsvLine(line, delimiter).map((header) => normalizeHeader(header));
         continue;
       }
+
+      if (targetLineNumbers && !targetLineNumbers.has(lineNumber)) {
+        continue;
+      }
+
+      totalRows += 1;
 
       try {
         const columns = parseCsvLine(line, delimiter);
@@ -618,17 +710,25 @@ export class GrouplinkCsvIngestionService {
         rowErrors += 1;
         const message = error instanceof Error ? error.message : String(error);
         rowErrorMessages.push(`linha ${lineNumber}: ${message}`);
+        errorRows.push({
+          lineNumber,
+          errorType: 'row_error',
+          errorMessage: message,
+          rawLine: line.slice(0, 4000),
+        });
         console.warn(`[grouplink-ingestion] falha na linha ${lineNumber} (${params.objectKey}): ${message}`);
       }
     }
 
     return {
+      totalRows,
       insertedReadings,
       duplicateReadings,
       createdAnomalies,
       duplicateAnomalies,
       rowErrors,
       rowErrorMessages,
+      errorRows,
     };
   }
 

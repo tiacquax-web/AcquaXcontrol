@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminOrCompanyContext } from '@/lib/admin-auth';
 import { GrouplinkOperationalService, type DeviceChassiImportRow } from '@/lib/services/grouplink-operational-service';
+import { logAdminAction } from '@/lib/services/admin-audit-service';
 import { serverError } from '@/lib/safeError';
 
 interface ImportBody {
@@ -24,6 +25,22 @@ export async function POST(req: NextRequest): Promise<Response> {
     const result = await GrouplinkOperationalService.importDevicesByChassi(body.rows, {
       pilotMode: body.pilotMode,
       pilotComplexId: body.pilotComplexId,
+    });
+
+    await logAdminAction({
+      userId: auth.userId!,
+      action: 'grouplink_import_devices_by_chassi',
+      status: 'success',
+      requestPayload: {
+        rowsCount: body.rows.length,
+        pilotMode: body.pilotMode,
+        pilotComplexId: body.pilotComplexId,
+      },
+      responseSummary: {
+        success: result.success.length,
+        ignored: result.ignored.length,
+        errors: result.errors.length,
+      },
     });
 
     return NextResponse.json({

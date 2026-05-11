@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
@@ -385,9 +386,17 @@ export default function DevicesPage() {
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
                                     <Button size="sm" variant="destructive" disabled={selectedDeviceIds.length === 0} onClick={() => {
-                                        if (window.confirm(`Excluir ${selectedDeviceIds.length} dispositivos selecionados?`)) {
-                                            runBulk('delete_selected');
+                                        if (!window.confirm(`Excluir ${selectedDeviceIds.length} dispositivos selecionados?`)) return;
+                                        const typed = window.prompt('Confirmação dupla: digite "EXCLUIR" para continuar.');
+                                        if (typed !== 'EXCLUIR') {
+                                            toast({
+                                                variant: "destructive",
+                                                title: "Confirmação inválida",
+                                                description: 'A exclusão em massa foi cancelada.',
+                                            });
+                                            return;
                                         }
+                                        runBulk('delete_selected', { confirmationText: typed });
                                     }}>
                                         Excluir selecionados
                                     </Button>
@@ -482,16 +491,34 @@ export default function DevicesPage() {
                                                         />
                                                     </td>
                                                     <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.deviceId}</td>
-                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{meter ? 'Sim' : 'Não'}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">
+                                                        <Badge variant={meter ? "success" : "secondary"}>{meter ? 'Vinculado' : 'Desvinculado'}</Badge>
+                                                    </td>
                                                     <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{meter?.register || '-'}</td>
                                                     <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{meter?.apartment?.name || '-'}</td>
                                                     <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{meter?.apartment?.block?.name || '-'}</td>
                                                     <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{meter?.apartment?.block?.complex?.socialName || '-'}</td>
-                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.hasActiveLink ? 'Vinculado' : 'Desvinculado'}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">
+                                                        <div className="flex gap-1 flex-wrap">
+                                                            <Badge variant={device.hasActiveLink ? "success" : "secondary"}>
+                                                                {device.hasActiveLink ? 'vinculado' : 'desvinculado'}
+                                                            </Badge>
+                                                            {(device.unlinkedReadingsCount || 0) > 0 && (
+                                                                <Badge variant="destructive">erro</Badge>
+                                                            )}
+                                                            {(device.readingsCount || 0) === 0 && (
+                                                                <Badge variant="secondary">sem leitura</Badge>
+                                                            )}
+                                                        </div>
+                                                    </td>
                                                     <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.lastReading ?? '-'}</td>
                                                     <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.lastSeenDate || '-'}</td>
                                                     <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.lastReadingSource || '-'}</td>
-                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{device.pilotMode ? 'Sim' : 'Não'}</td>
+                                                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">
+                                                        <Badge variant={device.pilotMode ? "outline" : "secondary"}>
+                                                            {device.pilotMode ? 'piloto' : 'normal'}
+                                                        </Badge>
+                                                    </td>
                                                     <td className="px-4 py-2 flex flex-wrap gap-2">
                                                         <Button size="sm" variant="outline" onClick={() => handleOpenModal(device)}>Vincular</Button>
                                                         <Button size="sm" variant="outline" onClick={() => runBulk('unlink_selected', { ids: [device.id] })}>Desvincular</Button>

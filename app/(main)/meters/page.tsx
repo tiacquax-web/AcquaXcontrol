@@ -402,7 +402,20 @@ export default function MetersPage() {
                           >
                             <TableCell className="font-medium">{meter.register}</TableCell>
                             <TableCell>
-                              {(meter as any).deviceIdIoT || (meter as any).meterDeviceLinks?.[0]?.device?.deviceId || '-'}
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span>{(meter as any).deviceIdIoT || (meter as any).meterDeviceLinks?.[0]?.device?.deviceId || '-'}</span>
+                                {((meter as any).deviceIdIoT || (meter as any).meterDeviceLinks?.[0]?.device?.deviceId) ? (
+                                  <Badge variant="success">vinculado</Badge>
+                                ) : (
+                                  <Badge variant="secondary">desvinculado</Badge>
+                                )}
+                                {(meter as any).meterDeviceLinks?.[0]?.device?.pilotMode && (
+                                  <Badge variant="outline">piloto</Badge>
+                                )}
+                                {!(meter as any).Readings?.[0] && (
+                                  <Badge variant="secondary">sem leitura</Badge>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell>
                               {(meter as any).Readings?.[0]?.reading ?? '-'}

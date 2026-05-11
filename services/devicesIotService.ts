@@ -66,6 +66,7 @@ export async function runDevicesBulkAction(payload: {
     onlyPilot?: boolean;
     onlyWithoutReadings?: boolean;
     olderThanDays?: number;
+    confirmationText?: string;
 }) {
     const { data } = await axios.post(`${NEXT_PUBLIC_API_URL}/user/devices/bulk`, payload);
     return data;

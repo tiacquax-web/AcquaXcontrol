@@ -475,14 +475,36 @@ export class GrouplinkOperationalService {
         companyId: true,
         bucket: true,
         objectKey: true,
+        trigger: true,
+        correlationId: true,
         status: true,
+        totalRows: true,
+        insertedReadings: true,
+        duplicateReadings: true,
+        rowErrorsCount: true,
+        durationMs: true,
         processedAt: true,
         createdAt: true,
+        updatedAt: true,
         errorMessage: true,
       },
     });
 
-    const [importedReadings, importedAnomalies, linkedDevices, unlinkedDevices, importErrors, importSuccess] =
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const [
+      importedReadings,
+      importedAnomalies,
+      linkedDevices,
+      unlinkedDevices,
+      importErrors,
+      importSuccess,
+      importedReadingsToday,
+      importedAnomaliesToday,
+      ingestionFailuresToday,
+      latestAudits,
+    ] =
       await Promise.all([
         prisma.reading.count({ where: { source: GROUPLINK_SOURCE, deletedAt: null } }),
         prisma.iotAnomalyEvent.count({ where: { source: GROUPLINK_SOURCE, deletedAt: null } }),
@@ -504,6 +526,41 @@ export class GrouplinkOperationalService {
         }),
         prisma.storageFileProcessing.count({ where: { deletedAt: null, status: 'error' } }),
         prisma.storageFileProcessing.count({ where: { deletedAt: null, status: 'success' } }),
+        prisma.reading.count({
+          where: {
+            source: GROUPLINK_SOURCE,
+            deletedAt: null,
+            createdAt: { gte: startOfToday },
+          },
+        }),
+        prisma.iotAnomalyEvent.count({
+          where: {
+            source: GROUPLINK_SOURCE,
+            deletedAt: null,
+            createdAt: { gte: startOfToday },
+          },
+        }),
+        prisma.storageFileProcessing.count({
+          where: {
+            deletedAt: null,
+            status: 'error',
+            createdAt: { gte: startOfToday },
+          },
+        }),
+        prisma.adminActionAudit.findMany({
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+          select: {
+            id: true,
+            userId: true,
+            action: true,
+            target: true,
+            status: true,
+            correlationId: true,
+            createdAt: true,
+          },
+        }),
       ]);
 
     const durations = latestFiles
@@ -515,6 +572,57 @@ export class GrouplinkOperationalService {
       ? Number((durations.reduce((acc, v) => acc + v, 0) / durations.length).toFixed(2))
       : 0;
 
+    const timelineMap = new Map<
+      string,
+      {
+        correlationId: string;
+        trigger: string;
+        startedAt: Date;
+        finishedAt: Date;
+        filesTotal: number;
+        filesSuccess: number;
+        filesError: number;
+        totalRows: number;
+        rowErrors: number;
+        durationMs: number;
+      }
+    >();
+
+    for (const file of latestFiles) {
+      const key = file.correlationId || `processing-${file.id}`;
+      const existing = timelineMap.get(key);
+      const startedAt = file.createdAt;
+      const finishedAt = file.processedAt || file.updatedAt;
+      const durationMs = file.durationMs || 0;
+      if (!existing) {
+        timelineMap.set(key, {
+          correlationId: key,
+          trigger: file.trigger || 'manual',
+          startedAt,
+          finishedAt,
+          filesTotal: 1,
+          filesSuccess: file.status === 'success' ? 1 : 0,
+          filesError: file.status === 'error' ? 1 : 0,
+          totalRows: file.totalRows || 0,
+          rowErrors: file.rowErrorsCount || 0,
+          durationMs,
+        });
+      } else {
+        existing.startedAt = existing.startedAt < startedAt ? existing.startedAt : startedAt;
+        existing.finishedAt = existing.finishedAt > finishedAt ? existing.finishedAt : finishedAt;
+        existing.filesTotal += 1;
+        existing.filesSuccess += file.status === 'success' ? 1 : 0;
+        existing.filesError += file.status === 'error' ? 1 : 0;
+        existing.totalRows += file.totalRows || 0;
+        existing.rowErrors += file.rowErrorsCount || 0;
+        existing.durationMs += durationMs;
+      }
+    }
+
+    const timeline = Array.from(timelineMap.values())
+      .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+      .slice(0, 20);
+
     return {
       counters: {
         importedReadings,
@@ -524,8 +632,96 @@ export class GrouplinkOperationalService {
         importErrors,
         importSuccess,
         avgIngestionDurationSec: avgDurationSec,
+        importedReadingsToday,
+        importedAnomaliesToday,
+        ingestionFailuresToday,
       },
       latestFiles,
+      timeline,
+      latestAudits,
     };
+  }
+
+  static async getIngestionDetails(params: {
+    processingId: string;
+    take?: number;
+    skip?: number;
+  }) {
+    const take = Math.min(Math.max(params.take || 25, 1), 200);
+    const skip = Math.max(params.skip || 0, 0);
+
+    const processing = await prisma.storageFileProcessing.findFirst({
+      where: { id: params.processingId, deletedAt: null },
+      include: {
+        errors: {
+          where: { deletedAt: null },
+          orderBy: { lineNumber: 'asc' },
+          take,
+          skip,
+        },
+        _count: {
+          select: { errors: true },
+        },
+      },
+    });
+
+    if (!processing) {
+      return null;
+    }
+
+    return {
+      processing,
+      pagination: {
+        take,
+        skip,
+        total: processing._count.errors,
+        hasMore: processing._count.errors > skip + take,
+      },
+    };
+  }
+
+  static async exportIngestionErrorsCsv(processingId: string): Promise<string | null> {
+    const processing = await prisma.storageFileProcessing.findFirst({
+      where: { id: processingId, deletedAt: null },
+      select: {
+        id: true,
+        objectKey: true,
+        correlationId: true,
+        errors: {
+          where: { deletedAt: null },
+          orderBy: { lineNumber: 'asc' },
+          select: {
+            lineNumber: true,
+            errorType: true,
+            errorMessage: true,
+            rawLine: true,
+          },
+        },
+      },
+    });
+
+    if (!processing) return null;
+
+    const lines = [
+      ['processing_id', 'correlation_id', 'object_key', 'line_number', 'error_type', 'error_message', 'raw_line'].join(','),
+    ];
+
+    for (const error of processing.errors) {
+      lines.push(
+        [
+          processing.id,
+          processing.correlationId || '',
+          processing.objectKey,
+          String(error.lineNumber),
+          error.errorType || '',
+          error.errorMessage,
+          error.rawLine || '',
+        ]
+          .map((value) => `"${String(value).replace(/"/g, '""')}"`)
+          .join(','),
+      );
+    }
+
+    return lines.join('\n');
   }
 }

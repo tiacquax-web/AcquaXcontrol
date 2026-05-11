@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminOrCompanyContext } from '@/lib/admin-auth';
 import prisma from '@/lib/prisma';
+import { logAdminAction } from '@/lib/services/admin-audit-service';
 import { serverError } from '@/lib/safeError';
 
 interface PilotConfigBody {
@@ -45,6 +46,21 @@ export async function POST(req: NextRequest): Promise<Response> {
         data: { pilotMode: true },
       });
     }
+
+    await logAdminAction({
+      userId: auth.userId!,
+      action: 'grouplink_pilot_configure',
+      target: body.complexId,
+      status: 'success',
+      requestPayload: {
+        complexId: body.complexId,
+        deviceIdsCount: body.deviceIds?.length || 0,
+        replaceDeviceSelection: body.replaceDeviceSelection,
+      },
+      responseSummary: {
+        selectedDevices: body.deviceIds?.length || 0,
+      },
+    });
 
     return NextResponse.json({
       message: 'Configuração de piloto atualizada.',

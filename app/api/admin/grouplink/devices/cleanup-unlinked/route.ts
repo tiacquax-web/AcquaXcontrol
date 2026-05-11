@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminOrCompanyContext } from '@/lib/admin-auth';
 import { GrouplinkOperationalService } from '@/lib/services/grouplink-operational-service';
+import { logAdminAction } from '@/lib/services/admin-audit-service';
 import { serverError } from '@/lib/safeError';
 
 interface CleanupBody {
@@ -22,6 +23,14 @@ export async function POST(req: NextRequest): Promise<Response> {
       onlyPilot: body.onlyPilot,
       onlyWithoutReadings: body.onlyWithoutReadings ?? true,
       olderThanDays: body.olderThanDays,
+    });
+
+    await logAdminAction({
+      userId: auth.userId!,
+      action: 'grouplink_cleanup_unlinked_devices',
+      status: 'success',
+      requestPayload: body as unknown as Record<string, unknown>,
+      responseSummary: result as unknown as Record<string, unknown>,
     });
 
     return NextResponse.json({

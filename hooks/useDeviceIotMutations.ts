@@ -54,6 +54,7 @@ export function useDeviceIotMutations(onChange?: () => void) {
     onlyPilot?: boolean;
     onlyWithoutReadings?: boolean;
     olderThanDays?: number;
+    confirmationText?: string;
   }) {
     setIsLoading(true);
     setError(null);
