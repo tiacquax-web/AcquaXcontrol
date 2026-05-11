@@ -207,6 +207,19 @@ enum PermissionableEntity {
 
   // Entidades legadas (existem no banco mas não implementadas no frontend)
   serviceOrder
+
+  // Infraestrutura
+  storageIntegration
+}
+
+enum StorageProvider {
+  aws_s3
+}
+
+enum StorageIntegrationStatus {
+  active
+  inactive
+  error
 }
 
 enum PermissionAction {
@@ -348,6 +361,9 @@ model Company {
   // Relacionamento com Complex
   complexes Complex[]
 
+  // Relacionamento com integrações de storage
+  storageIntegrations StorageIntegration[]
+
   // Relacionamento com RoleAssignment
   // RoleAssignments RoleAssignment[]
 
@@ -363,6 +379,29 @@ model Company {
   // @@index([deletedAt, companyId]) // Para queries mais eficientes
   // @@index([deletedAt, socialName]) // Para busca com texto
   // @@index([companyId, deletedAt, socialName]) // Índice composto completo
+}
+
+model StorageIntegration {
+  id        String                  @id @map("_id") @default(uuid())
+  provider  StorageProvider         @default(aws_s3)
+  vaultId   String
+  bucket    String
+  region    String
+  path      String?
+  status    StorageIntegrationStatus @default(active)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  createdAt DateTime  @default(now()) @db.Timestamp
+  updatedAt DateTime  @updatedAt @db.Timestamp
+  deletedAt DateTime? @db.Timestamp
+
+  @@map("StorageIntegrations")
+  @@index([companyId])
+  @@index([provider, status, deletedAt])
+  @@index([vaultId])
+  @@unique([companyId, provider, deletedAt], name: "unique_company_provider_storage_not_deleted")
 }
 
 model Complex {

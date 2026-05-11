@@ -42,4 +42,6 @@ export const entityTitleMap: Record<PermissionableEntity, string> = {
     recurringSchedule: "Agendamentos Recorrentes",
     scheduleOverride: "Substituições de Agendamento",
     generateFilipeta: "Gerar Filipeta",
+    storageIntegration: "Integrações de Storage",
+    serviceOrder: "Ordem de Serviço",
 }

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma'
 import { isSessionValid } from '@/lib/users'
 import { PermissionAction, PermissionableEntity } from '@prisma/client'
 import { userHasPermission } from '@/lib/userContexts'
+import { getActiveStorageIntegrationsByMeterIds } from '@/lib/services/storage-integration-service'
 
 /*
   Fase 1 - Endpoint de agregação para dashboard de monitoramento de leituras.
@@ -29,6 +30,7 @@ interface MonitoringRequestBody {
   alertsOnly?: boolean
   includeStats?: boolean
   outlierSigma?: number
+  includeStorageInfo?: boolean
 }
 
 export async function POST(req: NextRequest) {
@@ -57,6 +59,10 @@ export async function POST(req: NextRequest) {
     const alertsOnly = body.alertsOnly || false
     const includeStats = body.includeStats !== false // default true
     const sigma = body.outlierSigma || 2
+    const includeStorageInfo = body.includeStorageInfo !== false
+    const storageByMeterId = includeStorageInfo
+      ? await getActiveStorageIntegrationsByMeterIds(body.meterIds)
+      : new Map()
 
     // Busca leituras brutas
     const rawReadings = await prisma.reading.findMany({
@@ -206,7 +212,22 @@ export async function POST(req: NextRequest) {
         register: readings[0].meter.register,
         rotation,
         readings: seriesData,
-        stats
+        stats,
+        storage: includeStorageInfo
+          ? (() => {
+              const storageIntegration = storageByMeterId.get(meterId)
+              if (!storageIntegration) {
+                return { enabled: false }
+              }
+              return {
+                enabled: true,
+                provider: storageIntegration.provider,
+                bucket: storageIntegration.bucket,
+                region: storageIntegration.region,
+                path: storageIntegration.path || ''
+              }
+            })()
+          : undefined
       })
     }
 
