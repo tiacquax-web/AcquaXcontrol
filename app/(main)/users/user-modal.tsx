@@ -281,10 +281,10 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
                     </TableHeader>
                     <TableBody>
                         {safeRoleAssignments.map((assignment) => (
-                            <TableRow key={assignment.roleId}>
-                                <TableCell>{mapContextType[assignment.contextType]}</TableCell>
+                            <TableRow key={assignment.id || `${assignment.roleId}-${assignment.contextType}-${assignment.contextId}`}>
+                                <TableCell>{mapContextType[assignment.contextType] || assignment.contextType || '—'}</TableCell>
                                 <TableCell title={assignment.contextId || undefined}>{assignment.contextName || (assignment.contextType === ContextType.system ? 'Sistema' : assignment.contextId || '—')}</TableCell>
-                                <TableCell>{assignment.Role.name}</TableCell>
+                                <TableCell>{assignment.Role?.name || '—'}</TableCell>
                                 <TableCell className="text-right">
                                     <Button
                                         variant="outline"
@@ -432,7 +432,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                                     <span className="text-xs font-medium">Selecionar todos ({safeAllComplexes.length})</span>
                                 </div>
                                 {safeAllComplexes.map(cx => (
-                                    <div key={cx.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer" onClick={() => toggleComplexSelection(cx.id)}>
+                                    <div key={cx.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded">
                                         <Checkbox
                                             checked={selectedComplexIds.has(cx.id)}
                                             onCheckedChange={() => toggleComplexSelection(cx.id)}
@@ -473,6 +473,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                 {(contextType == ContextType.block || contextType == ContextType.apartment) && cascateContextSearching.company && (
                     <ComplexesCombobox
                         modal
+                        autoSelectSingle={false}
                         complex={cascateContextSearching.complex as Complex}
                         setSelectedComplex={(complex) => {
                             handleCasacteContextSelect(ContextType.complex, complex as Complex);

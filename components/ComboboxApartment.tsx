@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, forwardRef } from "react"
+import { useEffect, useMemo, useState, forwardRef } from "react"
 import { Check, ChevronsUpDown, DoorClosed, Loader2, X } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import {
@@ -51,17 +51,17 @@ const SelectApartment = forwardRef<HTMLButtonElement, SelectApartmentProps>(
       withBlock,
       withCompany
     })
-    const safeApartments = Array.isArray(apartments) ? apartments : []
+    const safeApartments = useMemo(() => Array.isArray(apartments) ? apartments : [], [apartments])
     const [selectedId, setSelectedId] = useState<string | undefined>(apartment?.id)
 
     useEffect(() => {
       // Update selectedId when apartment prop changes
-      if (apartment) {
+      if (apartment?.id && apartment.id !== selectedId) {
         setSelectedId(apartment.id)
-      } else {
+      } else if (!apartment && selectedId) {
         setSelectedId(undefined)
       }
-    }, [apartment])
+    }, [apartment, selectedId])
 
     const handleSelect = (value: string) => {
       if (value === selectedId) {

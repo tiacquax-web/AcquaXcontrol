@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useEffect, useState, forwardRef } from "react"
+import { useEffect, useMemo, useState, forwardRef } from "react"
 import { Building2, Check, ChevronsUpDown, Loader2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
@@ -36,17 +36,17 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
       enabled: !disabled,
       withCompany
     })
-    const safeComplexes = Array.isArray(complexes) ? complexes : []
+    const safeComplexes = useMemo(() => Array.isArray(complexes) ? complexes : [], [complexes])
     const [selectedId, setSelectedId] = useState<string | undefined>(complex?.id)
     const [autoSelected, setAutoSelected] = useState(false)
 
     useEffect(() => {
-      if (complex) {
+      if (complex?.id && complex.id !== selectedId) {
         setSelectedId(complex.id)
-      } else {
+      } else if (!complex && selectedId) {
         setSelectedId(undefined)
       }
-    }, [complex])
+    }, [complex, selectedId])
 
     // Auto-seleciona quando só há 1 condomínio disponível
     useEffect(() => {
