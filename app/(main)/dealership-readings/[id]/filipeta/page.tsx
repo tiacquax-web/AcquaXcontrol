@@ -9,6 +9,13 @@ import { useDealershipFilipetaData } from '@/hooks/useDealershipFilipetaData';
 import { Button } from '@/components/ui/button';
 import FilipetaGridReport from '@/components/dealership-reading/FilipetaGridReport';
 import { usePermissionChecker } from '@/hooks/use-permission-checker';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
 
 const FilipetaPage = () => {
   const params = useParams();
@@ -95,11 +102,11 @@ const FilipetaPage = () => {
         {data.list
           .filter((report: any) => {
             const blockMatch =
-              !selectedBlock ||
+              !selectedBlock || selectedBlock === 'all' ||
               report.blockName === selectedBlock;
 
             const apartmentMatch =
-              !selectedApartment ||
+              !selectedApartment || selectedApartment === 'all' ||
               report.apartmentNumber === selectedApartment;
 
             return blockMatch && apartmentMatch;
@@ -133,7 +140,90 @@ const FilipetaPage = () => {
       </div>
 
       {/* FILTROS */}
-      <div className="flex gap-4 mb-6 no-print">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 no-print">
+
+  {/* BLOCO */}
+  <div className="space-y-2">
+    <label className="text-sm font-medium">
+      Bloco
+    </label>
+
+    <Select
+      value={selectedBlock}
+      onValueChange={(value) => {
+        setSelectedBlock(value);
+        setSelectedApartment('');
+      }}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Bloco..." />
+      </SelectTrigger>
+
+      <SelectContent>
+        <SelectItem value="all">
+          Todos os blocos
+        </SelectItem>
+
+        {[...new Set(
+          data?.list?.map((r: any) => r.blockName)
+        )].map((block: any) => (
+          <SelectItem
+            key={block}
+            value={block}
+          >
+            {block}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  </div>
+
+  {/* APARTAMENTO */}
+  <div className="space-y-2">
+    <label className="text-sm font-medium">
+      Apartamento
+    </label>
+
+    <Select
+      value={selectedApartment}
+      onValueChange={setSelectedApartment}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Apartamento..." />
+      </SelectTrigger>
+
+      <SelectContent>
+        <SelectItem value="all">
+          Todos apartamentos
+        </SelectItem>
+
+        {data?.list
+          ?.filter((r: any) =>
+            !selectedBlock || selectedBlock === 'all' ||
+            selectedBlock === 'all' ||
+            r.blockName === selectedBlock
+          )
+          ?.map((r: any) => r.apartmentNumber)
+          ?.filter(
+            (
+              value: any,
+              index: number,
+              self: any[]
+            ) => self.indexOf(value) === index
+          )
+          ?.map((apartment: any) => (
+            <SelectItem
+              key={apartment}
+              value={apartment}
+            >
+              {apartment}
+            </SelectItem>
+          ))}
+      </SelectContent>
+    </Select>
+  </div>
+
+</div>
 
         {/* BLOCO */}
         <select
@@ -167,7 +257,7 @@ const FilipetaPage = () => {
 
           {data?.list
             ?.filter((r: any) =>
-              !selectedBlock ||
+              !selectedBlock || selectedBlock === 'all' ||
               r.blockName === selectedBlock
             )
             ?.map((r: any) => r.apartmentNumber)
