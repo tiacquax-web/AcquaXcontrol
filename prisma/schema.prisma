@@ -222,6 +222,12 @@ enum StorageIntegrationStatus {
   error
 }
 
+enum StorageIngestionStatus {
+  processing
+  success
+  error
+}
+
 enum PermissionAction {
   create
   read
@@ -393,6 +399,8 @@ model StorageIntegration {
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
 
+  processedFiles StorageFileProcessing[]
+
   createdAt DateTime  @default(now()) @db.Timestamp
   updatedAt DateTime  @updatedAt @db.Timestamp
   deletedAt DateTime? @db.Timestamp
@@ -402,6 +410,29 @@ model StorageIntegration {
   @@index([provider, status, deletedAt])
   @@index([vaultId])
   @@unique([companyId, provider, deletedAt], name: "unique_company_provider_storage_not_deleted")
+}
+
+model StorageFileProcessing {
+  id                   String               @id @map("_id") @default(uuid())
+  companyId            String
+  storageIntegrationId String
+  storageIntegration   StorageIntegration   @relation(fields: [storageIntegrationId], references: [id])
+  bucket               String
+  objectKey            String
+  checksum             String?
+  status               StorageIngestionStatus @default(processing)
+  processedAt          DateTime?            @db.Timestamp
+  errorMessage         String?
+
+  createdAt            DateTime             @default(now()) @db.Timestamp
+  updatedAt            DateTime             @updatedAt @db.Timestamp
+  deletedAt            DateTime?            @db.Timestamp
+
+  @@map("StorageFileProcessings")
+  @@index([companyId, status, deletedAt])
+  @@index([storageIntegrationId, deletedAt])
+  @@index([bucket, objectKey, deletedAt])
+  @@unique([storageIntegrationId, bucket, objectKey, deletedAt], name: "unique_storage_file_processing_not_deleted")
 }
 
 model Complex {
@@ -666,6 +697,9 @@ model Meter {
   // Relacionamento com MeterDeviceLink
   meterDeviceLinks MeterDeviceLink[] @relation("MeterToDeviceLinks")
 
+  // Relacionamento com eventos de anomalia IoT
+  anomalyEvents IotAnomalyEvent[]
+
   // Mapeamento
   @@map("Meters")
 
@@ -820,6 +854,7 @@ model Reading {
 
   topic               String?        // Tópico do MQTT relativo ao condominio (Ex. "message/condominio-1")
   alerts              String?       // Basicamente um array de strings em JSON (Ex. ["REVERSE_FLOW"])
+  source              String?
 
   remoteId            String?      // ID do Chassi para o cliente que enviou a leitura (útil apenas para eles, e em caso de alguma comunicação entre este sistema e o que enviou a leitura)
 
@@ -857,6 +892,9 @@ model Reading {
 
   // Relacionamento com ApartmentConsumptionReport (quando esta é a última leitura utilizada no relatório)
   apartmentConsumptionReports ApartmentConsumptionReport[]
+
+  // Relacionamento com eventos de anomalia IoT
+  anomalyEvents IotAnomalyEvent[]
 
   deletedAt         DateTime?       @db.Timestamp
   createdAt         DateTime?       @default(now()) @db.Timestamp
@@ -903,6 +941,31 @@ model Reading {
   @@index([meterId, readAtDate, deletedAt])
   @@index([nextReadingDate])
   @@index([nextReadingDate, deletedAt])
+  @@index([source])
+  @@index([meterId, source, readAt, deletedAt])
+}
+
+model IotAnomalyEvent {
+  id          String    @id @map("_id") @default(uuid())
+  meterId     String
+  meter       Meter     @relation(fields: [meterId], references: [id])
+  readingId   String?
+  reading     Reading?  @relation(fields: [readingId], references: [id])
+  companyId   String?
+  occurredAt  DateTime  @db.Timestamp
+  alarmCode   String
+  source      String    @default("grouplink_batch")
+  rawPayload  String?
+
+  createdAt   DateTime  @default(now()) @db.Timestamp
+  updatedAt   DateTime  @updatedAt @db.Timestamp
+  deletedAt   DateTime? @db.Timestamp
+
+  @@map("IotAnomalyEvents")
+  @@index([meterId, occurredAt, deletedAt])
+  @@index([companyId, occurredAt, deletedAt])
+  @@index([source, occurredAt, deletedAt])
+  @@unique([meterId, occurredAt, alarmCode, source, deletedAt], name: "unique_iot_anomaly_event_not_deleted")
 }
 
 // RELATÓRIOS E CONCESSIONÁRIAS

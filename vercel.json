@@ -5,7 +5,17 @@
   "framework": "nextjs",
   "env": {
     "NEXT_PUBLIC_API_URL": "/api"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/grouplink-ingestion",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/grouplink-ingestion",
+      "schedule": "0 19 * * *"
+    }
+  ]
 }
 
 
