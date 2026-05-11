@@ -1,14 +1,16 @@
-import { serverError } from '@/lib/safeError';
 import { NextRequest, NextResponse } from 'next/server';
 import { isSessionValid } from '@/lib/users';
 import { DeviceManagementService } from '@/lib/services/device-management-service';
 import { cleanEntityBody } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 
 function getQueryParams(req: NextRequest) {
   const deviceId = req.nextUrl.searchParams.get('device_id') || undefined;
   const remoteId = req.nextUrl.searchParams.get('remote_id') || undefined;
   const hasActiveLink = req.nextUrl.searchParams.get('has_active_link');
   const hasUnlinkedReadings = req.nextUrl.searchParams.get('has_unlinked_readings');
+  const hasNoReadings = req.nextUrl.searchParams.get('has_no_readings');
+  const pilotMode = req.nextUrl.searchParams.get('pilot_mode');
   const take = parseInt(req.nextUrl.searchParams.get('take') || '50');
   const skip = parseInt(req.nextUrl.searchParams.get('skip') || '0');
 
@@ -17,6 +19,8 @@ function getQueryParams(req: NextRequest) {
     remoteId, 
     hasActiveLink: hasActiveLink ? hasActiveLink === 'true' : undefined,
     hasUnlinkedReadings: hasUnlinkedReadings ? hasUnlinkedReadings === 'true' : undefined,
+    hasNoReadings: hasNoReadings ? hasNoReadings === 'true' : undefined,
+    pilotMode: pilotMode ? pilotMode === 'true' : undefined,
     take, 
     skip 
   };
@@ -33,9 +37,9 @@ export async function GET(req: NextRequest): Promise<Response> {
     }
 
     const userId = validSession.userId;
-    const { deviceId, remoteId, hasActiveLink, hasUnlinkedReadings, take, skip } = getQueryParams(req);
+    const { deviceId, remoteId, hasActiveLink, hasUnlinkedReadings, hasNoReadings, pilotMode, take, skip } = getQueryParams(req);
 
-    console.log('Buscando devices...', { deviceId, remoteId, hasActiveLink, hasUnlinkedReadings, take, skip });
+    console.log('Buscando devices...', { deviceId, remoteId, hasActiveLink, hasUnlinkedReadings, hasNoReadings, pilotMode, take, skip });
 
     // Buscar devices com status
     const result = await DeviceManagementService.findDevicesWithStatus(userId, {
@@ -43,6 +47,8 @@ export async function GET(req: NextRequest): Promise<Response> {
       remoteId,
       hasActiveLink,
       hasUnlinkedReadings,
+      hasNoReadings,
+      pilotMode,
       take,
       skip
     });
@@ -64,6 +70,58 @@ export async function GET(req: NextRequest): Promise<Response> {
       error: 'Erro interno do servidor',
       details: error instanceof Error ? error.message : 'Erro desconhecido'
     }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest): Promise<Response> {
+  try {
+    const session = req.cookies.get('session')?.value;
+    const validSession = session ? await isSessionValid(session) : false;
+
+    if (!validSession) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
+    const reqBody = await req.json();
+    const body = cleanEntityBody(reqBody);
+    const deviceId = (body.deviceId || '').toString().trim();
+
+    if (!deviceId) {
+      return NextResponse.json({ error: 'deviceId é obrigatório' }, { status: 400 });
+    }
+
+    const existing = await prisma.iotDevice.findFirst({
+      where: { deviceId, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (existing) {
+      return NextResponse.json({ error: `Dispositivo ${deviceId} já existe` }, { status: 409 });
+    }
+
+    const created = await prisma.iotDevice.create({
+      data: {
+        deviceId,
+        remoteId: (body.remoteId || deviceId).toString().trim(),
+        name: body.name ? String(body.name) : undefined,
+        devicePulseFactor:
+          body.devicePulseFactor !== undefined && body.devicePulseFactor !== null && body.devicePulseFactor !== ''
+            ? Number(body.devicePulseFactor)
+            : undefined,
+        pilotMode: body.pilotMode === true,
+      },
+    });
+
+    return NextResponse.json(created, { status: 201 });
+  } catch (error) {
+    console.error('Erro ao criar device:', error);
+    return NextResponse.json(
+      {
+        error: 'Erro interno do servidor',
+        details: error instanceof Error ? error.message : 'Erro desconhecido',
+      },
+      { status: 500 },
+    );
   }
 }
 //     if (apartmentId) contextType = ContextType.apartment;

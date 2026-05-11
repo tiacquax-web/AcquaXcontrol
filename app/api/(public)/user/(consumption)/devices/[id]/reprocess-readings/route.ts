@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSessionValid } from '@/lib/users';
+import FastReadingReprocessService from '@/lib/services/reading-fast-reprocess-service';
 
 export async function POST(
   req: NextRequest,
@@ -14,17 +15,22 @@ export async function POST(
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    // Retornar imediatamente com mensagem de indisponibilidade
-    return NextResponse.json({ 
-      error: 'Reprocessamento indisponível',
-      message: 'Esta funcionalidade está temporariamente desabilitada'
-    }, { status: 503 });
+    const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ error: 'deviceId não informado' }, { status: 400 });
+    }
+
+    const result = await FastReadingReprocessService.fastReprocessDevices(validSession.userId, [id]);
+    return NextResponse.json({
+      message: 'Reprocessamento executado',
+      result,
+    });
 
   } catch (error) {
     console.error('Erro no reprocessamento de leituras:', error);
     return NextResponse.json({ 
-      error: 'Reprocessamento indisponível',
-      message: 'Esta funcionalidade está temporariamente desabilitada'
-    }, { status: 503 });
+      error: 'Erro ao reprocessar leituras',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    }, { status: 500 });
   }
 }

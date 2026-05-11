@@ -207,6 +207,25 @@ enum PermissionableEntity {
 
   // Entidades legadas (existem no banco mas não implementadas no frontend)
   serviceOrder
+
+  // Infraestrutura
+  storageIntegration
+}
+
+enum StorageProvider {
+  aws_s3
+}
+
+enum StorageIntegrationStatus {
+  active
+  inactive
+  error
+}
+
+enum StorageIngestionStatus {
+  processing
+  success
+  error
 }
 
 enum PermissionAction {
@@ -348,6 +367,9 @@ model Company {
   // Relacionamento com Complex
   complexes Complex[]
 
+  // Relacionamento com integrações de storage
+  storageIntegrations StorageIntegration[]
+
   // Relacionamento com RoleAssignment
   // RoleAssignments RoleAssignment[]
 
@@ -363,6 +385,101 @@ model Company {
   // @@index([deletedAt, companyId]) // Para queries mais eficientes
   // @@index([deletedAt, socialName]) // Para busca com texto
   // @@index([companyId, deletedAt, socialName]) // Índice composto completo
+}
+
+model StorageIntegration {
+  id        String                  @id @map("_id") @default(uuid())
+  provider  StorageProvider         @default(aws_s3)
+  vaultId   String
+  bucket    String
+  region    String
+  path      String?
+  status    StorageIntegrationStatus @default(active)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  processedFiles StorageFileProcessing[]
+
+  createdAt DateTime  @default(now()) @db.Timestamp
+  updatedAt DateTime  @updatedAt @db.Timestamp
+  deletedAt DateTime? @db.Timestamp
+
+  @@map("StorageIntegrations")
+  @@index([companyId])
+  @@index([provider, status, deletedAt])
+  @@index([vaultId])
+  @@unique([companyId, provider, deletedAt], name: "unique_company_provider_storage_not_deleted")
+}
+
+model StorageFileProcessing {
+  id                   String               @id @map("_id") @default(uuid())
+  companyId            String
+  storageIntegrationId String
+  storageIntegration   StorageIntegration   @relation(fields: [storageIntegrationId], references: [id])
+  bucket               String
+  objectKey            String
+  checksum             String?
+  trigger              String?
+  correlationId        String?
+  status               StorageIngestionStatus @default(processing)
+  totalRows            Int?
+  insertedReadings     Int?
+  duplicateReadings    Int?
+  createdAnomalies     Int?
+  duplicateAnomalies   Int?
+  rowErrorsCount       Int?
+  durationMs           Int?
+  processedAt          DateTime?            @db.Timestamp
+  errorMessage         String?
+  errors               StorageFileProcessingError[]
+
+  createdAt            DateTime             @default(now()) @db.Timestamp
+  updatedAt            DateTime             @updatedAt @db.Timestamp
+  deletedAt            DateTime?            @db.Timestamp
+
+  @@map("StorageFileProcessings")
+  @@index([companyId, status, deletedAt])
+  @@index([storageIntegrationId, deletedAt])
+  @@index([bucket, objectKey, deletedAt])
+  @@index([correlationId, createdAt])
+  @@unique([storageIntegrationId, bucket, objectKey, deletedAt], name: "unique_storage_file_processing_not_deleted")
+}
+
+model StorageFileProcessingError {
+  id                      String                @id @map("_id") @default(uuid())
+  storageFileProcessingId String
+  storageFileProcessing   StorageFileProcessing @relation(fields: [storageFileProcessingId], references: [id])
+  lineNumber              Int
+  errorType               String?
+  errorMessage            String
+  rawLine                 String?
+  createdAt               DateTime              @default(now()) @db.Timestamp
+  updatedAt               DateTime              @updatedAt @db.Timestamp
+  deletedAt               DateTime?             @db.Timestamp
+
+  @@map("StorageFileProcessingErrors")
+  @@index([storageFileProcessingId, lineNumber])
+  @@index([deletedAt, createdAt])
+}
+
+model AdminActionAudit {
+  id               String    @id @map("_id") @default(uuid())
+  userId           String
+  action           String
+  target           String?
+  status           String
+  correlationId    String?
+  requestPayload   Json?
+  responseSummary  Json?
+  createdAt        DateTime  @default(now()) @db.Timestamp
+  updatedAt        DateTime  @updatedAt @db.Timestamp
+  deletedAt        DateTime? @db.Timestamp
+
+  @@map("AdminActionAudits")
+  @@index([userId, createdAt])
+  @@index([correlationId, createdAt])
+  @@index([action, createdAt])
 }
 
 model Complex {
@@ -394,6 +511,7 @@ model Complex {
   
   apportionment             String        @default("Simples")
   status                    String        @default("Ativo")
+  pilotMode                 Boolean       @default(false)
 
   deletedAt                 DateTime?     @db.Timestamp
   createdAt                 DateTime      @default(now()) @db.Timestamp
@@ -430,6 +548,7 @@ model Complex {
   @@index([companyId])
   @@index([deletedAt])
   @@index([status])
+  @@index([pilotMode])
   @@index([socialName])
   
   // ÍNDICES COMPOSTOS PARA OTIMIZAÇÃO DE PERFORMANCE
@@ -593,6 +712,7 @@ model Meter {
   yearManufacture           Int?        @db.Int
   main                      Boolean     @default(true)
   rotation                  String      @default("Crescente") // "Crescente" ou "Decrescente"
+  deviceIdIoT               String?
 
   apartmentId               String
   apartment                 Apartment   @relation(fields: [apartmentId], references: [id]) // Relacionamento com Apartment
@@ -627,6 +747,9 @@ model Meter {
   // Relacionamento com MeterDeviceLink
   meterDeviceLinks MeterDeviceLink[] @relation("MeterToDeviceLinks")
 
+  // Relacionamento com eventos de anomalia IoT
+  anomalyEvents IotAnomalyEvent[]
+
   // Mapeamento
   @@map("Meters")
 
@@ -637,6 +760,7 @@ model Meter {
   @@index([typeMeterId])
   @@index([register])
   @@index([status])
+  @@index([deviceIdIoT])
   
   // ÍNDICES COMPOSTOS PARA OTIMIZAÇÃO
   @@index([apartmentId, deletedAt]) // Índice composto para otimização de queries
@@ -697,6 +821,7 @@ model IotDevice {
   nomeInformado       String?
 
   devicePulseFactor   Float?
+  pilotMode            Boolean       @default(false)
 
   readAtDate          String?       // Data da leitura em AAAA-MM-DD HH:mm:ss
   
@@ -724,6 +849,7 @@ model IotDevice {
   // Índices
   @@index([remoteId])
   @@index([lastSeen])
+  @@index([pilotMode])
   @@index([deletedAt])
   
   // 🔥 ÍNDICES CRÍTICOS PARA PERFORMANCE - IotDevice  
@@ -781,6 +907,7 @@ model Reading {
 
   topic               String?        // Tópico do MQTT relativo ao condominio (Ex. "message/condominio-1")
   alerts              String?       // Basicamente um array de strings em JSON (Ex. ["REVERSE_FLOW"])
+  source              String?
 
   remoteId            String?      // ID do Chassi para o cliente que enviou a leitura (útil apenas para eles, e em caso de alguma comunicação entre este sistema e o que enviou a leitura)
 
@@ -818,6 +945,9 @@ model Reading {
 
   // Relacionamento com ApartmentConsumptionReport (quando esta é a última leitura utilizada no relatório)
   apartmentConsumptionReports ApartmentConsumptionReport[]
+
+  // Relacionamento com eventos de anomalia IoT
+  anomalyEvents IotAnomalyEvent[]
 
   deletedAt         DateTime?       @db.Timestamp
   createdAt         DateTime?       @default(now()) @db.Timestamp
@@ -864,6 +994,31 @@ model Reading {
   @@index([meterId, readAtDate, deletedAt])
   @@index([nextReadingDate])
   @@index([nextReadingDate, deletedAt])
+  @@index([source])
+  @@index([meterId, source, readAt, deletedAt])
+}
+
+model IotAnomalyEvent {
+  id          String    @id @map("_id") @default(uuid())
+  meterId     String
+  meter       Meter     @relation(fields: [meterId], references: [id])
+  readingId   String?
+  reading     Reading?  @relation(fields: [readingId], references: [id])
+  companyId   String?
+  occurredAt  DateTime  @db.Timestamp
+  alarmCode   String
+  source      String    @default("grouplink_batch")
+  rawPayload  String?
+
+  createdAt   DateTime  @default(now()) @db.Timestamp
+  updatedAt   DateTime  @updatedAt @db.Timestamp
+  deletedAt   DateTime? @db.Timestamp
+
+  @@map("IotAnomalyEvents")
+  @@index([meterId, occurredAt, deletedAt])
+  @@index([companyId, occurredAt, deletedAt])
+  @@index([source, occurredAt, deletedAt])
+  @@unique([meterId, occurredAt, alarmCode, source, deletedAt], name: "unique_iot_anomaly_event_not_deleted")
 }
 
 // RELATÓRIOS E CONCESSIONÁRIAS

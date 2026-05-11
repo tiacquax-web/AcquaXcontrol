@@ -4,6 +4,9 @@ import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ContextType, Reading } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { randomUUID } from "crypto"
+import { uploadFileToCompanyS3 } from "@/lib/services/s3-storage-service"
+import { getCompanyIdByMeterId } from "@/lib/services/storage-integration-service"
 
 function getQueryParams(req: NextRequest) {
     // query params - custom
@@ -175,8 +178,13 @@ export async function POST(req: NextRequest): Promise<Response> {
             return NextResponse.json({ error: 'Invalid coverBase64' }, { status: 400 });
         }
 
-        const base64Data = coverBase64.replace(/^.*(?=\/9j\/)/, ''); // Remove everything before "/9j/"
+        const imageKind = (coverBase64.match(/^data:?image\/(jpeg|jpg|png);?base64,?/i)?.[1] || 'jpeg').toLowerCase();
+        const contentType = imageKind === 'png' ? 'image/png' : 'image/jpeg';
+        const fileExtension = imageKind === 'png' ? 'png' : 'jpg';
+        const base64Data = coverBase64.replace(/^data:?image\/(jpeg|jpg|png);?base64,?/i, '');
         const buffer = Buffer.from(base64Data, 'base64');
+
+        const nowInSaoPaulo = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
 
         const readingToSave: Partial<Reading> = {
             coverBase64: buffer,
@@ -187,8 +195,36 @@ export async function POST(req: NextRequest): Promise<Response> {
             isManualReading: body.isManualReading || false,
             deletedAt: null,
             registerName: body.registerName,
-            readAt: new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })),
-            readAtDate: new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })).toISOString().split('T')[0], // Format to YYYY-MM-DD
+            readAt: nowInSaoPaulo,
+            readAtDate: nowInSaoPaulo.toISOString().split('T')[0], // Format to YYYY-MM-DD
+        }
+
+        // Integração opcional com S3 via Organization Vault:
+        // se houver integração ativa para a empresa do medidor, gravamos a imagem no S3
+        // e evitamos persistir o binário no banco para esse registro.
+        try {
+            const meterCompanyId = await getCompanyIdByMeterId(body.meterId);
+            if (meterCompanyId) {
+                const objectPath = `iot-readings/${body.meterId}/${Date.now()}-${randomUUID()}.${fileExtension}`;
+                const uploadResult = await uploadFileToCompanyS3({
+                    companyId: meterCompanyId,
+                    objectPath,
+                    body: buffer,
+                    contentType,
+                    cacheControl: 'private, max-age=31536000',
+                    metadata: {
+                        module: 'iot-readings',
+                        meterId: String(body.meterId),
+                    },
+                });
+
+                readingToSave.urlCover = uploadResult.url;
+                readingToSave.cover = uploadResult.key;
+                readingToSave.coverBase64 = undefined;
+            }
+        } catch (storageError) {
+            // Fallback seguro: mantém comportamento atual salvando no banco, sem quebrar o fluxo.
+            console.warn('S3 upload unavailable for manual reading. Falling back to DB coverBase64.', storageError);
         }
 
         // Attempt to create the entity

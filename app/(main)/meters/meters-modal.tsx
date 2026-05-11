@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, use } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -16,14 +16,15 @@ import TypeMetersCombobox from "@/components/ComboboxTypeMeter"
 import CompaniesCombobox from "@/components/ComboboxCompany"
 import ComplexesCombobox from "@/components/ComboboxComplex"
 import BlocksCombobox from "@/components/ComboboxBlock"
-import { complex } from "framer-motion"
-import { Card, CardContent, CardHeader, CardFooter, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { getApartments } from "@/services/apartmentService"
 import { getBlocks } from "@/services/blocksService"
 import { getComplexes } from "@/services/complexesService"
 import { getCompanies } from "@/services/companiesService"
 import { getTypeMeters } from "@/services/typemetersService"
+import { useDebounce } from "@/hooks/use-debounce"
 
 interface MeterModalProps {
     isOpen: boolean
@@ -43,6 +44,7 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
         rotation: "Crescente",
         apartmentId: "",
         typeMeterId: "",
+        deviceIdIoT: "",
     })
 
     // Estado para rastrear valores originais e detectar mudanças
@@ -73,6 +75,10 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
 
     const [selectedApartment, setSelectedApartment] = useState<Apartment | undefined>(undefined)
     const [selectedTypeMeter, setSelectedTypeMeter] = useState<TypeMeter | undefined>(undefined)
+    const [deviceSuggestions, setDeviceSuggestions] = useState<any[]>([])
+    const [loadingDeviceSuggestions, setLoadingDeviceSuggestions] = useState(false)
+    const [showDeviceSuggestions, setShowDeviceSuggestions] = useState(false)
+    const debouncedDeviceSearch = useDebounce(((formData as any).deviceIdIoT || "").trim(), 300)
 
     async function fillContextFilter(meter: Meter) {
         const availableApartments = await getApartments({ apartmentId: meter.apartmentId, getAvailableForEntity: PermissionableEntity.meter })
@@ -172,6 +178,7 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
                 rotation: "Crescente",
                 apartmentId: "",
                 typeMeterId: "",
+                deviceIdIoT: "",
             }
             setFormData(defaultData)
             setOriginalData(defaultData) // Para novo medidor, dados originais são os padrão
@@ -186,6 +193,42 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
             })
         }
     }, [meter, isOpen])
+
+    useEffect(() => {
+        const search = debouncedDeviceSearch
+        if (!isOpen || !search || search.length < 2) {
+            setDeviceSuggestions([])
+            setShowDeviceSuggestions(false)
+            return
+        }
+
+        let cancelled = false
+        const run = async () => {
+            setLoadingDeviceSuggestions(true)
+            try {
+                const response = await fetch(`/api/user/devices?device_id=${encodeURIComponent(search)}&take=8`)
+                const data = await response.json()
+                if (!response.ok) {
+                    throw new Error(data?.error || "Falha ao buscar dispositivos IoT")
+                }
+                if (!cancelled) {
+                    setDeviceSuggestions(data.devices || [])
+                    setShowDeviceSuggestions(true)
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    setDeviceSuggestions([])
+                }
+            } finally {
+                if (!cancelled) setLoadingDeviceSuggestions(false)
+            }
+        }
+
+        run()
+        return () => {
+            cancelled = true
+        }
+    }, [debouncedDeviceSearch, isOpen])
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target
@@ -236,6 +279,16 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
             setSelectedTypeMeter(undefined)
         }
     }
+
+    const normalizedDeviceId = ((formData as any).deviceIdIoT || "").trim()
+    const selectedDevicePreview = deviceSuggestions.find(
+        (device) => (device.deviceId || "").toLowerCase() === normalizedDeviceId.toLowerCase(),
+    )
+    const hasDeviceConflict =
+        !!selectedDevicePreview?.hasActiveLink &&
+        !!selectedDevicePreview?.currentMeter &&
+        !!meter?.id &&
+        selectedDevicePreview.currentMeter.id !== meter.id
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
@@ -428,6 +481,99 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
                                                 value={formData.yearManufacture || ""}
                                                 onChange={handleChange}
                                             />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="deviceIdIoT">Dispositivo IoT Vinculado (deviceIdIoT)</Label>
+                                            <div className="flex gap-2 relative">
+                                                <Input
+                                                    id="deviceIdIoT"
+                                                    name="deviceIdIoT"
+                                                    value={(formData as any).deviceIdIoT || ""}
+                                                    onChange={(e) => {
+                                                        handleChange(e)
+                                                        setShowDeviceSuggestions(true)
+                                                    }}
+                                                    onFocus={() => setShowDeviceSuggestions(true)}
+                                                    autoComplete="off"
+                                                    placeholder="Ex.: 3617329729"
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() => setFormData((prev) => ({ ...prev, deviceIdIoT: "" }))}
+                                                >
+                                                    Desvincular
+                                                </Button>
+                                            </div>
+                                            {showDeviceSuggestions && (debouncedDeviceSearch || loadingDeviceSuggestions) && (
+                                                <div className="border rounded-md p-2 max-h-48 overflow-y-auto bg-background">
+                                                    {loadingDeviceSuggestions ? (
+                                                        <p className="text-xs text-muted-foreground">Buscando dispositivos...</p>
+                                                    ) : deviceSuggestions.length === 0 ? (
+                                                        <p className="text-xs text-muted-foreground">Nenhum dispositivo encontrado.</p>
+                                                    ) : (
+                                                        <div className="space-y-1">
+                                                            {deviceSuggestions.map((device) => (
+                                                                <button
+                                                                    key={device.id}
+                                                                    type="button"
+                                                                    className="w-full text-left text-xs p-2 rounded hover:bg-muted"
+                                                                    onClick={() => {
+                                                                        setFormData((prev) => ({ ...prev, deviceIdIoT: device.deviceId }))
+                                                                        setShowDeviceSuggestions(false)
+                                                                    }}
+                                                                >
+                                                                    <div className="flex items-center justify-between gap-2">
+                                                                        <span className="font-medium">{device.deviceId}</span>
+                                                                        <div className="flex gap-1">
+                                                                            <Badge variant={device.hasActiveLink ? "success" : "secondary"}>
+                                                                                {device.hasActiveLink ? "vinculado" : "desvinculado"}
+                                                                            </Badge>
+                                                                            {device.pilotMode && <Badge variant="outline">piloto</Badge>}
+                                                                            {device.readingsCount === 0 && <Badge variant="secondary">sem leitura</Badge>}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-muted-foreground mt-1">
+                                                                        medidor: {device.currentMeter?.register || "-"} | apto: {device.currentMeter?.apartment?.name || "-"}
+                                                                    </div>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {normalizedDeviceId && (
+                                                <div className="border rounded-md p-2 text-xs space-y-2">
+                                                    <div className="flex items-center gap-1 flex-wrap">
+                                                        <span className="font-medium">Preview do vínculo:</span>
+                                                        {selectedDevicePreview ? (
+                                                            <>
+                                                                <Badge variant={selectedDevicePreview.hasActiveLink ? "success" : "secondary"}>
+                                                                    {selectedDevicePreview.hasActiveLink ? "vinculado" : "desvinculado"}
+                                                                </Badge>
+                                                                {selectedDevicePreview.pilotMode && <Badge variant="outline">piloto</Badge>}
+                                                                {(selectedDevicePreview.readingsCount || 0) === 0 && <Badge variant="secondary">sem leitura</Badge>}
+                                                                {hasDeviceConflict && <Badge variant="destructive">erro</Badge>}
+                                                            </>
+                                                        ) : (
+                                                            <Badge variant="destructive">erro</Badge>
+                                                        )}
+                                                    </div>
+                                                    {selectedDevicePreview ? (
+                                                        <div className="text-muted-foreground">
+                                                            device: {selectedDevicePreview.deviceId} | medidor atual: {selectedDevicePreview.currentMeter?.register || "sem vínculo"} | origem última leitura: {selectedDevicePreview.lastReadingSource || "-"}
+                                                            {hasDeviceConflict ? " | conflito: vinculado a outro medidor" : ""}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-destructive">
+                                                            O device informado não foi encontrado. O vínculo será criado apenas se o ID for válido.
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            <p className="text-xs text-muted-foreground">
+                                                Ao salvar, o sistema sincroniza automaticamente o vínculo explícito do medidor com o dispositivo.
+                                            </p>
                                         </div>
                                     </div>
                                 </TabsContent>

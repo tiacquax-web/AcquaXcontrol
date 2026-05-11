@@ -80,18 +80,20 @@ export function ImportLinksTab({ onImportComplete }: ImportLinksTabProps) {
   };
 
   const handleReprocess = async () => {
-    // Simular início do reprocessamento
     setReprocessing(true);
-    
-    // Aguardar um tempo para simular processamento
-    setTimeout(() => {
+    try {
+      const result = await reprocessByLinks();
+      setReprocessed(true);
+      setReprocessResult(result);
+    } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "Reprocessamento indisponível",
-        description: "Esta funcionalidade está temporariamente desabilitada"
+        title: "Erro no reprocessamento",
+        description: error?.message || "Falha ao reprocessar leituras por vínculos.",
       });
+    } finally {
       setReprocessing(false);
-    }, 1000);
+    }
   };
 
   const handleComplete = () => {

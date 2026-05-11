@@ -70,6 +70,25 @@ export interface MeterFull extends Meter {
         name: string;
         acronym: string;
     };
+    meterDeviceLinks?: Array<{
+        id: string;
+        deviceId: string;
+        device?: {
+            id: string;
+            deviceId: string;
+            name?: string | null;
+            pilotMode?: boolean;
+            lastSeenDate?: string | null;
+            lastReading?: number | null;
+        };
+    }>;
+    Readings?: Array<{
+        id: string;
+        reading: number;
+        readAtDate?: string | null;
+        source?: string | null;
+        isManualReading?: boolean | null;
+    }>;
 }
 
 export interface DeviceFull extends Omit<IotDevice, 'lastReading' | 'lastSeen' | 'lastSeenDate' | 'hasActiveLink' | 'readingsCount' | 'unlinkedReadingsCount'> {
@@ -77,6 +96,9 @@ export interface DeviceFull extends Omit<IotDevice, 'lastReading' | 'lastSeen' |
     currentMeter?: {
         id: string;
         register: string;
+        blockId?: string | null;
+        complexId?: string | null;
+        companyId?: string | null;
         apartment: {
             id: string;
             name: string;
@@ -96,6 +118,8 @@ export interface DeviceFull extends Omit<IotDevice, 'lastReading' | 'lastSeen' |
     hasActiveLink?: boolean | null;
     readingsCount?: number | null;
     unlinkedReadingsCount?: number | null;
+    lastReadingSource?: string | null;
+    lastReadingAt?: string | null;
 }
 
 export interface ReadingFull extends Reading{
