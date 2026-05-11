@@ -224,62 +224,6 @@ const FilipetaPage = () => {
   </div>
 
 </div>
-
-        {/* BLOCO */}
-        <select
-          value={selectedBlock}
-          onChange={(e) => {
-            setSelectedBlock(e.target.value);
-            setSelectedApartment('');
-          }}
-          className="border rounded px-3 py-2 bg-white"
-        >
-          <option value="">Todos os blocos</option>
-
-          {[...new Set(
-            data?.list?.map((r: any) => r.blockName)
-          )].map((block: any) => (
-            <option key={block} value={block}>
-              {block}
-            </option>
-          ))}
-        </select>
-
-        {/* APARTAMENTO */}
-        <select
-          value={selectedApartment}
-          onChange={(e) =>
-            setSelectedApartment(e.target.value)
-          }
-          className="border rounded px-3 py-2 bg-white"
-        >
-          <option value="">Todos apartamentos</option>
-
-          {data?.list
-            ?.filter((r: any) =>
-              !selectedBlock || selectedBlock === 'all' ||
-              r.blockName === selectedBlock
-            )
-            ?.map((r: any) => r.apartmentNumber)
-            ?.filter(
-              (
-                value: any,
-                index: number,
-                self: any[]
-              ) => self.indexOf(value) === index
-            )
-            ?.map((apartment: any) => (
-              <option
-                key={apartment}
-                value={apartment}
-              >
-                {apartment}
-              </option>
-            ))}
-        </select>
-
-      </div>
-
       {renderContent()}
     </div>
   );
