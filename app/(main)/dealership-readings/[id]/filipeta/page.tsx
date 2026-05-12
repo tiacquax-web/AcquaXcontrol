@@ -203,4 +203,3 @@ const FilipetaPage = () => {
 };
 
 export default FilipetaPage;
-
