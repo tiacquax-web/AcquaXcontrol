@@ -21,6 +21,7 @@ import ComplexesList from "@/components/ComplexesList"
 import ReservoirsList from "@/components/ReservoirsList"
 import { DatePickerComponent } from "@/components/date-picker"
 import { useReservoirPermissions, useReservoirStats } from "@/hooks"
+import { usePermissionChecker } from "@/hooks/use-permission-checker"
 import { PermissionableEntity, type Complex } from "@prisma/client"
 import { Badge } from "@/components/ui/badge"
 import { DateRange } from "react-day-picker"
@@ -29,6 +30,7 @@ const sixMonthsAgo = new Date(new Date().setMonth(new Date().getMonth() - 6))
 
 export default function ReservoirMonitoringPage() {
   const { canViewReservoirReadings } = useReservoirPermissions()
+  const { hasPermission, loading: permissionsLoading } = usePermissionChecker()
   const router = useRouter()
   const [selectedComplex, setSelectedComplex] = useState<Complex | undefined>()
   const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: sixMonthsAgo, to: new Date() })
@@ -50,8 +52,31 @@ export default function ReservoirMonitoringPage() {
     enabled: !!selectedComplex
   })
 
-  // Verificação de permissões - precisa ter permissão para ver leituras dos reservatórios
-  if (!canViewReservoirReadings()) {
+  // Verificação de permissões — síndicos devem sempre conseguir acessar a aba
+  // mesmo que o papel não tenha 'reservoirReading' explícito.
+  // Qualquer usuário com acesso a leituras, condomínio ou apartamento pode ver a página
+  // (o conteúdo vazio é mostrado quando não há reservatórios vinculados).
+  const canAccessPage = canViewReservoirReadings()
+    || hasPermission('reading', 'read')
+    || hasPermission('complex', 'read')
+    || hasPermission('apartment', 'read')
+    || hasPermission('dealershipReading', 'read')
+    || hasPermission('apartmentConsumptionReport', 'read')
+
+  // Aguardar carregamento das permissões antes de decidir acesso
+  if (permissionsLoading) {
+    return (
+      <div className="flex-1 space-y-6 p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-muted rounded w-64" />
+          <div className="h-48 bg-muted rounded" />
+        </div>
+      </div>
+    )
+  }
+
+  // Bloquear apenas usuários totalmente sem permissão (sem nenhum contexto)
+  if (!canAccessPage) {
     return (
       <div className="flex-1 space-y-6 p-6">
         <Alert>
@@ -99,12 +124,16 @@ export default function ReservoirMonitoringPage() {
         </Card>
 
         {/* Lista de Condomínios com Reservatórios */}
+        {/* Usa 'reading' como entidade de referência para que síndicos sem
+            permissão explícita de reservoirReading consigam ver seus condomínios.
+            onlyWithReservoirs filtra apenas condomínios que possuem reservatórios cadastrados. */}
         <ComplexesList
-          getAvailableForEntity={PermissionableEntity.reservoirReading}
+          getAvailableForEntity={PermissionableEntity.reading}
           nameQuery={searchText}
           viewType="Cards"
           setSelectedComplex={(complex) => setSelectedComplex(complex)}
           onlyWithReservoirs={true}
+          emptyMessage="Nenhum condomínio com reservatórios cadastrados foi encontrado. Verifique se os reservatórios foram vinculados ao condomínio."
         />
       </div>
     )

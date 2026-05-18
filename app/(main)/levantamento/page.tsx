@@ -5,8 +5,8 @@ import { format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import axios from 'axios';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LineChart, Line, Legend, ReferenceLine,
+  XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, LineChart, Line, ReferenceLine,
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, Minus, Building2, Calendar,
@@ -20,6 +20,8 @@ import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import SelectComplex from '@/components/ComboboxComplex';
+import BlocksCombobox from '@/components/ComboboxBlock';
+import SelectApartment from '@/components/ComboboxApartment';
 import { useUserContext } from '@/hooks/useUserContext';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl } from '@/lib/utils';
@@ -271,6 +273,9 @@ export default function LevantamentoPage() {
 
   const [selectedComplexId, setSelectedComplexId] = useState<string | undefined>();
   const [selectedComplexObj, setSelectedComplexObj] = useState<any>(null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | undefined>();
+  const [selectedBlockObj, setSelectedBlockObj] = useState<any>(null);
+  const [selectedAptObj, setSelectedAptObj] = useState<any>(null);
   const [searchText, setSearchText] = useState('');
   const [expandedApt, setExpandedApt] = useState<string | null>(null);
 
@@ -305,6 +310,18 @@ export default function LevantamentoPage() {
       setSelectedComplexObj(userComplexes[0]);
     }
   }, [ctxLoading, isMorador, userComplexes, selectedComplexId]);
+
+  // Reset block/apt filter when complex changes
+  useEffect(() => {
+    setSelectedBlockId(undefined);
+    setSelectedBlockObj(null);
+    setSelectedAptObj(null);
+  }, [selectedComplexId]);
+
+  // Reset apt filter when block changes
+  useEffect(() => {
+    setSelectedAptObj(null);
+  }, [selectedBlockId]);
 
   // ── Montar lista de meses selecionados ───────────────────────────────────────
   const selectedMonths = useMemo(() => {
@@ -445,33 +462,51 @@ export default function LevantamentoPage() {
     });
   }, [allLoaded, monthsData]);
 
-  // Filtro por texto
+  // Filtro por texto + bloco + apartamento
   const filteredRows = useMemo(() => {
-    if (!searchText.trim()) return aptRows;
-    const q = searchText.toLowerCase();
-    return aptRows.filter(r =>
-      r.aptName.toLowerCase().includes(q) ||
-      r.blockName.toLowerCase().includes(q) ||
-      `bloco ${r.blockName}`.toLowerCase().includes(q) ||
-      `apto ${r.aptName}`.toLowerCase().includes(q)
-    );
-  }, [aptRows, searchText]);
+    let rows = aptRows;
+    // Filtro por bloco selecionado
+    if (selectedBlockObj?.name) {
+      const bName = selectedBlockObj.name.toLowerCase();
+      rows = rows.filter(r => r.blockName.toLowerCase() === bName);
+    }
+    // Filtro por apartamento selecionado via combobox
+    if (selectedAptObj?.name) {
+      const aName = selectedAptObj.name.toLowerCase();
+      rows = rows.filter(r => r.aptName.toLowerCase() === aName);
+    }
+    // Filtro por texto livre
+    if (searchText.trim()) {
+      const q = searchText.toLowerCase();
+      rows = rows.filter(r =>
+        r.aptName.toLowerCase().includes(q) ||
+        r.blockName.toLowerCase().includes(q) ||
+        `bloco ${r.blockName}`.toLowerCase().includes(q) ||
+        `apto ${r.aptName}`.toLowerCase().includes(q)
+      );
+    }
+    return rows;
+  }, [aptRows, searchText, selectedBlockObj, selectedAptObj]);
 
-  // ── Dados para gráfico geral (consumo médio por mês) ─────────────────────────
+  // ── Dados para gráfico — recalculado dinamicamente sobre filteredRows ─────────
+  // Nota: chartData depende de filteredRows (pós-filtro), não de monthsData bruto
   const chartData = useMemo(() => {
-    if (!allLoaded) return [];
-    return monthsData.map(md => {
-      const vals = md.items.map(i => i.consumption).filter(v => v != null) as number[];
+    if (!allLoaded || filteredRows.length === 0) return [];
+    return monthsData.map((md, mIdx) => {
+      // Pega apenas os valores das unidades que passaram pelo filtro
+      const vals = filteredRows
+        .map(row => row.months[mIdx]?.consumption)
+        .filter(v => v != null) as number[];
       const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
       const total = vals.reduce((a, b) => a + b, 0);
       return {
         label: md.label,
         média: parseFloat(avg.toFixed(3)),
         total: parseFloat(total.toFixed(3)),
-        unidades: md.items.length,
+        unidades: vals.length,
       };
     });
-  }, [allLoaded, monthsData]);
+  }, [allLoaded, monthsData, filteredRows]);
 
   const complexDisplayName = selectedComplexObj?.socialName || selectedComplexObj?.aliasName || '';
 
@@ -484,6 +519,9 @@ export default function LevantamentoPage() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
+    <>
+      {/* Página landscape A4 para impressão do levantamento */}
+      <style>{`@media print { @page { size: A4 landscape; margin: 8mm; } }`}</style>
     <div className="flex flex-col gap-6 p-4 md:p-6 print:p-2">
 
       {/* Header */}
@@ -581,10 +619,37 @@ export default function LevantamentoPage() {
           </div>
         )}
 
-        {/* Busca — só para não moradores */}
+        {/* Filtro por Bloco — só para não moradores com condomínio selecionado */}
+        {!isMorador && selectedComplexId && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Bloco</label>
+            <BlocksCombobox
+              complexId={selectedComplexId}
+              block={selectedBlockObj}
+              setSelectedBlock={(blk: any) => {
+                setSelectedBlockId(blk?.id);
+                setSelectedBlockObj(blk ?? null);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Filtro por Apartamento — só quando bloco selecionado */}
+        {!isMorador && selectedBlockId && (
+          <div className="flex flex-col gap-1 min-w-[180px]">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Apartamento</label>
+            <SelectApartment
+              blockId={selectedBlockId}
+              apartment={selectedAptObj}
+              setSelectedApartment={(apt) => setSelectedAptObj(apt ?? null)}
+            />
+          </div>
+        )}
+
+        {/* Busca livre — só para não moradores */}
         {!isMorador && allLoaded && aptRows.length > 0 && (
           <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Buscar unidade</label>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Busca rápida</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
               <Input value={searchText} onChange={e => setSearchText(e.target.value)}
@@ -595,6 +660,22 @@ export default function LevantamentoPage() {
                 </button>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Badge de filtros ativos */}
+        {!isMorador && (selectedBlockObj || selectedAptObj || searchText) && (
+          <div className="flex flex-col gap-1 justify-end">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide invisible">&#8203;</label>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => { setSelectedBlockId(undefined); setSelectedBlockObj(null); setSelectedAptObj(null); setSearchText(''); }}
+            >
+              <X className="w-3.5 h-3.5 mr-1" />
+              Limpar filtros
+            </Button>
           </div>
         )}
       </div>
@@ -731,10 +812,14 @@ export default function LevantamentoPage() {
             <p className="text-xs text-gray-400">Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}</p>
           </div>
 
-          {/* ── KPIs gerais ─────────────────────────────────────────────── */}
+          {/* ── KPIs gerais — dinâmicos conforme filtro ─────────────────── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 print:grid-cols-4">
             {[
-              { label: 'Unidades', value: aptRows.length.toString(), icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50' },
+              {
+                label: 'Unidades',
+                value: `${filteredRows.length}${filteredRows.length !== aptRows.length ? ` / ${aptRows.length}` : ''}`,
+                icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50',
+              },
               { label: 'Meses', value: selectedMonths.length.toString(), icon: Calendar, color: 'text-purple-600', bg: 'bg-purple-50' },
               {
                 label: 'Consumo Médio/Mês',
@@ -757,11 +842,16 @@ export default function LevantamentoPage() {
             ))}
           </div>
 
-          {/* ── Gráfico consumo médio por mês ──────────────────────────── */}
+          {/* ── Gráfico consumo médio por mês — dinâmico conforme filtro ── */}
           <div className="bg-white border rounded-xl p-4 print:border-gray-400">
             <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-teal-500" />
               Evolução do Consumo Médio por Mês (m³)
+              {(selectedBlockObj || selectedAptObj) && (
+                <span className="text-xs text-muted-foreground font-normal ml-1">
+                  — {selectedAptObj ? `Bl.${selectedBlockObj?.name} Ap.${selectedAptObj?.name}` : `Bloco ${selectedBlockObj?.name}`}
+                </span>
+              )}
             </h3>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
@@ -782,22 +872,46 @@ export default function LevantamentoPage() {
             </ResponsiveContainer>
           </div>
 
-          {/* ── Gráfico barras por mês ─────────────────────────────────── */}
-          <div className="bg-white border rounded-xl p-4 print:border-gray-400">
-            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-              <Droplets className="w-4 h-4 text-blue-500" />
-              Consumo Total do Condomínio por Mês (m³)
-            </h3>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} unit=" m³" width={65} />
-                <Tooltip formatter={(val: any) => [`${val} m³`, 'Total']} />
-                <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {/* ── Filipeta inline: cards por mês quando uma única unidade está selecionada ── */}
+          {selectedBlockObj && selectedAptObj && filteredRows.length === 1 && (() => {
+            const singleRow = filteredRows[0];
+            return (
+              <div>
+                <div className="flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 mb-3">
+                  <div className="bg-teal-600 rounded-lg p-2">
+                    <Building2 className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-teal-800 text-sm">
+                      {complexDisplayName} — Bl. {singleRow.blockName} / Ap. {singleRow.aptName}
+                    </p>
+                    <p className="text-xs text-teal-600">
+                      {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'} · Média {singleRow.avgConsumption.toFixed(2)} m³/mês
+                    </p>
+                  </div>
+                </div>
+                <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                  <Camera className="w-4 h-4 text-teal-500" />
+                  Fotos do Medidor por Mês — Bl. {singleRow.blockName} / Ap. {singleRow.aptName}
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {singleRow.months.map((m, mi) => (
+                    <MeterPhotoCard
+                      key={mi}
+                      photoUrl={m.photoUrl}
+                      label={m.label}
+                      currReading={m.currReading}
+                      prevReading={m.prevReading}
+                      consumption={m.consumption}
+                      totalUnit={m.totalUnit}
+                      partial={m.partial}
+                      waterSewage={m.waterSewage}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ── Tabela por unidade ──────────────────────────────────────── */}
           <div className="bg-white border rounded-xl overflow-hidden print:border-gray-400">
@@ -810,11 +924,11 @@ export default function LevantamentoPage() {
             </div>
 
             {/* Tabela scroll horizontal */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+            <div className="overflow-x-auto levantamento-table-wrapper levantamento-detail-container">
+              <table className="w-full text-xs levantamento-detail-table">
                 <thead>
                   <tr className="bg-gray-50 border-b">
-                    <th className="sticky left-0 bg-gray-50 px-3 py-2.5 text-left font-semibold text-gray-700 whitespace-nowrap z-10 min-w-[130px]">
+                    <th className="sticky left-0 bg-gray-50 px-3 py-2.5 text-left font-semibold text-gray-700 whitespace-nowrap z-10 min-w-[130px] print:static print:min-w-0">
                       Unidade
                     </th>
                     {monthsData.map(m => (
@@ -837,7 +951,7 @@ export default function LevantamentoPage() {
                           className={`border-b cursor-pointer transition-colors ${ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/40`}
                           onClick={() => setExpandedApt(isExpanded ? null : row.apartmentId)}
                         >
-                          <td className={`sticky left-0 z-10 px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap ${ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/40`}>
+                          <td className={`sticky left-0 z-10 px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap print:static print:whitespace-normal ${ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/40`}>
                             <div className="flex items-center gap-1.5">
                               {isExpanded
                                 ? <ChevronUp className="w-3.5 h-3.5 text-blue-500 shrink-0" />
@@ -863,7 +977,7 @@ export default function LevantamentoPage() {
                               </td>
                             );
                           })}
-                          <td className="px-3 py-2.5 text-center border-l bg-teal-50">
+                          <td className="px-3 py-2.5 text-center border-l bg-teal-50 levantamento-avg-cell">
                             <span className="font-bold text-teal-700">{row.avgConsumption.toFixed(2)}</span>
                             <div className="text-[10px] text-teal-400">m³/mês</div>
                           </td>
@@ -871,7 +985,7 @@ export default function LevantamentoPage() {
 
                         {/* Linha expandida: detalhes completos */}
                         {isExpanded && (
-                          <tr className="border-b bg-blue-50/30">
+                          <tr className="border-b bg-blue-50/30 levantamento-expanded-row">
                             <td colSpan={monthsData.length + 2} className="px-3 py-3">
                               <div className="overflow-x-auto">
                                 <table className="w-full text-xs border-collapse">
@@ -985,5 +1099,6 @@ export default function LevantamentoPage() {
         </>
       )}
     </div>
+    </>
   );
 }

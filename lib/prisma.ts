@@ -33,10 +33,70 @@ const prismaClientSingleton = () => {
     },
     query: {
       $allModels: {
-        async $allOperations({ operation, args, query }) {
-          if (operation === 'findUnique' || operation === 'findMany') {
-            args.where = { ...args.where, deletedAt: null };
+        async $allOperations({ model, operation, args, query }: {
+          model: string;
+          operation: string;
+          args: any;
+          query: (args: any) => Promise<any>;
+        }) {
+          /**
+           * Soft-delete global filter.
+           *
+           * Applies to: findFirst, findMany, count, aggregate.
+           *
+           * NOT applied to findUnique — Prisma requires the where clause of
+           * findUnique to contain ONLY the exact fields of a @unique / @id index.
+           * Adding an AND-wrap breaks unique-index resolution and causes a runtime
+           * error. findUnique callers that need soft-delete awareness must check the
+           * returned value themselves (e.g. `if (!user || user.deletedAt) ...`).
+           *
+           * EXCLUDED models — these have no `deletedAt` field in the schema,
+           * so injecting the filter would always return zero results:
+           *   • ScheduleOverride
+           *   • SupportMessage
+           *   • SuggestionVote
+           *
+           * WHY WRAP INSTEAD OF SPREAD:
+           *   `{ ...args.where, deletedAt: null }` adds `deletedAt: null` as a flat
+           *   sibling key alongside any existing `AND`/`OR` clauses. In MongoDB,
+           *   Prisma treats top-level sibling keys as an implicit AND — so a document
+           *   must satisfy BOTH the existing clause AND `deletedAt: null`. Documents
+           *   where `deletedAt` was never written (absent key) fail that check →
+           *   findMany returns 0 while count (previously unintercepted) returned N.
+           *
+           * WHY OR + isSet:
+           *   Prisma+MongoDB stores optional DateTime fields as an ABSENT key (not
+           *   as explicit null) when the field was never set via `create`. The filter
+           *   `{ deletedAt: null }` only matches documents where the field EXISTS as
+           *   null. We must also accept the "field is not present at all" case.
+           */
+          const MODELS_WITHOUT_DELETED_AT = new Set([
+            'ScheduleOverride',
+            'SupportMessage',
+            'SuggestionVote',
+          ]);
+
+          // findUnique is intentionally excluded — see comment above.
+          const READ_OPS = new Set([
+            'findFirst', 'findMany', 'count', 'aggregate',
+          ]);
+
+          if (READ_OPS.has(operation) && !MODELS_WITHOUT_DELETED_AT.has(model)) {
+            const notDeleted = {
+              OR: [
+                { deletedAt: null },
+                { deletedAt: { isSet: false } },
+              ],
+            };
+            // Wrap: preserve the caller's where intact, add notDeleted as AND sibling.
+            // An empty / absent where gets notDeleted directly (no unnecessary AND).
+            const hasWhere =
+              args.where != null && Object.keys(args.where).length > 0;
+            args.where = hasWhere
+              ? { AND: [args.where, notDeleted] }
+              : notDeleted;
           }
+
           return query(args);
         },
       },

@@ -125,6 +125,13 @@ model User {
 
   preferences Json? // Novo campo para armazenar preferências do usuário
 
+  // Relacionamento com SupportTicket
+  supportTickets SupportTicket[] @relation("UserSupportTickets")
+
+  // Relacionamento com ApiKey e Webhook
+  apiKeys  ApiKey[]
+  webhooks Webhook[]
+
   // Índices
   @@index([deletedAt])
   @@index([resetToken])
@@ -207,6 +214,10 @@ enum PermissionableEntity {
 
   // Entidades legadas (existem no banco mas não implementadas no frontend)
   serviceOrder
+
+  // API Keys e Webhooks
+  apiKey
+  webhook
 }
 
 enum PermissionAction {
@@ -420,6 +431,9 @@ model Complex {
 
   // Relacionamento com Reservoir
   reservoirs Reservoir[]
+
+  // Relacionamento com SupportTicket
+  supportTickets SupportTicket[]
 
   // Mapeamento
   @@map("Complexes")
@@ -1448,4 +1462,342 @@ model ScheduleOverride {
   @@index([originalDate])
   @@index([overrideType])
   @@index([createdAt])
+}
+
+// =====================================================
+// SISTEMA DE CHAT DE SUPORTE PRIVADO
+// =====================================================
+
+enum SupportTicketStatus {
+  open        // Aberto
+  answered    // Respondido
+  closed      // Encerrado
+}
+
+model SupportTicket {
+  id          String              @id @map("_id") @default(uuid())
+  subject     String              // Assunto do chamado
+  status      SupportTicketStatus @default(open)
+
+  // Usuário que abriu o chamado
+  userId      String
+  user        User?               @relation("UserSupportTickets", fields: [userId], references: [id])
+
+  // Condomínio relacionado (opcional)
+  complexId   String?
+  complex     Complex?            @relation(fields: [complexId], references: [id])
+
+  // Mensagens do chat
+  messages    SupportMessage[]
+
+  // Notificações de novas mensagens não lidas
+  unreadByUser  Boolean @default(false)  // Admin respondeu, user não leu
+  unreadByAdmin Boolean @default(false)  // User enviou, admin não leu
+
+  createdAt   DateTime  @default(now()) @db.Timestamp
+  updatedAt   DateTime  @updatedAt @db.Timestamp
+  deletedAt   DateTime? @db.Timestamp
+
+  @@map("SupportTickets")
+  @@index([userId])
+  @@index([complexId])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([userId, deletedAt])
+  @@index([complexId, deletedAt])
+  @@index([status, deletedAt])
+}
+
+model SupportMessage {
+  id        String  @id @map("_id") @default(uuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id])
+
+  senderId  String  // ID do usuário que enviou a mensagem
+  isAdmin   Boolean @default(false)  // true = mensagem do admin
+
+  content   String  // Texto da mensagem
+  attachmentUrl String? // URL de anexo opcional
+
+  createdAt DateTime @default(now()) @db.Timestamp
+  updatedAt DateTime @updatedAt @db.Timestamp
+
+  @@map("SupportMessages")
+  @@index([ticketId])
+  @@index([senderId])
+  @@index([ticketId, createdAt])
+}
+
+// =====================================================
+// SISTEMA DE SUGESTÕES PÚBLICAS (ANÔNIMAS)
+// =====================================================
+
+enum SuggestionStatus {
+  open        // Aberta — aguardando análise
+  analyzing   // Em análise
+  approved    // Aprovada — será implementada
+  implemented // Já implementada
+  rejected    // Recusada
+}
+
+model Suggestion {
+  id        String           @id @map("_id") @default(uuid())
+  content   String           // Texto da sugestão
+  status    SuggestionStatus @default(open)
+
+  // Autor (apenas para moderação — NÃO exposto publicamente)
+  authorId  String?
+
+  // Totalizadores
+  likes     Int @default(0)
+  dislikes  Int @default(0)
+
+  // Votos individuais (para evitar duplicação)
+  votes     SuggestionVote[]
+
+  // Moderação
+  moderatorNote String?  // Nota interna do moderador
+
+  createdAt DateTime  @default(now()) @db.Timestamp
+  updatedAt DateTime  @updatedAt @db.Timestamp
+  deletedAt DateTime? @db.Timestamp
+
+  @@map("Suggestions")
+  @@index([status])
+  @@index([likes])
+  @@index([deletedAt])
+  @@index([status, deletedAt])
+  @@index([likes, deletedAt])
+  @@index([createdAt, deletedAt])
+}
+
+model SuggestionVote {
+  id           String     @id @map("_id") @default(uuid())
+  suggestionId String
+  suggestion   Suggestion @relation(fields: [suggestionId], references: [id])
+
+  // Identificador anônimo (hash do IP/sessão para evitar múltiplos votos)
+  voterHash    String
+
+  isLike       Boolean  // true = like, false = dislike
+
+  createdAt    DateTime @default(now()) @db.Timestamp
+
+  @@unique([suggestionId, voterHash], name: "unique_suggestion_vote")
+  @@map("SuggestionVotes")
+  @@index([suggestionId])
+  @@index([voterHash])
+}
+
+// =====================================================
+// SISTEMA DE API KEYS & INTEGRAÇÕES EXTERNAS
+// =====================================================
+
+enum ApiKeyStatus {
+  active    // Ativa e válida
+  expired   // Expirou automaticamente por data
+  revoked   // Revogada manualmente pelo administrador
+  suspended // Suspensa temporariamente
+}
+
+enum ApiKeyType {
+  permanent    // Sem expiração
+  temporary    // Expira em data definida
+}
+
+enum WebhookStatus {
+  active
+  inactive
+}
+
+enum WebhookEvent {
+  user_created
+  user_updated
+  user_deleted
+  reading_created
+  reading_updated
+  meter_created
+  meter_updated
+  apartment_created
+  block_created
+  complex_created
+  dealership_reading_created
+  report_generated
+  api_key_created
+  api_key_revoked
+}
+
+enum ApiLogMethod {
+  GET
+  POST
+  PUT
+  PATCH
+  DELETE
+}
+
+// Chave de API para integração externa
+model ApiKey {
+  id          String       @id @map("_id") @default(uuid())
+  
+  // Identificação
+  name        String       // Nome/descrição da chave
+  keyPrefix   String       // Primeiros 8 chars visíveis (ex: "ak_live_")
+  keyHash     String       // Hash bcrypt da chave completa (nunca armazenamos plain)
+  
+  // Proprietário
+  ownerId     String       // ID do usuário responsável
+  owner       User         @relation(fields: [ownerId], references: [id])
+  
+  // Escopo (para chaves de não-admins — restringe ao contexto do usuário)
+  scopeComplexId   String? // Se definido, chave só acessa dados deste condomínio
+  scopeCompanyId   String? // Se definido, chave só acessa dados desta administradora
+  
+  // Tipo e validade
+  keyType     ApiKeyType   @default(permanent)
+  status      ApiKeyStatus @default(active)
+  expiresAt   DateTime?    @db.Timestamp
+  lastUsedAt  DateTime?    @db.Timestamp
+  
+  // Rate limit customizado (null = usa padrão global)
+  rateLimit   Int?         // requisições por minuto
+  
+  // Bloqueio por IP (JSON array de CIDRs/IPs, null = sem restrição)
+  allowedIps  String?      // JSON: ["192.168.1.0/24", "10.0.0.1"]
+  
+  // Permissões (JSON: { "users": ["read"], "meters": ["read","create"], ... })
+  permissions String       @default("{}")
+  
+  // Metadados
+  description String?
+  createdAt   DateTime  @default(now()) @db.Timestamp
+  updatedAt   DateTime  @updatedAt @db.Timestamp
+  deletedAt   DateTime? @db.Timestamp
+  
+  createdByUserId String?
+  revokedByUserId String?
+  revokedAt       DateTime? @db.Timestamp
+  
+  // Logs de uso
+  logs        ApiLog[]
+  
+  @@map("ApiKeys")
+  @@index([ownerId])
+  @@index([status])
+  @@index([keyPrefix])
+  @@index([expiresAt])
+  @@index([deletedAt])
+  @@index([ownerId, deletedAt])
+  @@index([status, deletedAt])
+}
+
+// Log de cada requisição feita com uma API Key
+model ApiLog {
+  id          String       @id @map("_id") @default(uuid())
+  
+  apiKeyId    String
+  apiKey      ApiKey       @relation(fields: [apiKeyId], references: [id])
+  
+  // Dados da requisição
+  method      ApiLogMethod
+  endpoint    String       // Ex: "/api/v1/users"
+  statusCode  Int          // HTTP status code
+  ipAddress   String?
+  userAgent   String?
+  
+  // Tempo de resposta em ms
+  responseTimeMs Int?
+  
+  // Erro (se houver)
+  errorMessage String?
+  
+  // Parâmetros (sem dados sensíveis)
+  queryParams  String?     // JSON dos query params
+  
+  createdAt   DateTime  @default(now()) @db.Timestamp
+  
+  @@map("ApiLogs")
+  @@index([apiKeyId])
+  @@index([apiKeyId, createdAt])
+  @@index([endpoint])
+  @@index([statusCode])
+  @@index([createdAt])
+  @@index([ipAddress])
+}
+
+// Webhook: URL externa que recebe eventos do sistema
+model Webhook {
+  id          String        @id @map("_id") @default(uuid())
+  
+  // Identificação
+  name        String
+  url         String        // URL de destino
+  secret      String?       // Secret para assinar payload (HMAC-SHA256)
+  
+  // Proprietário
+  ownerId     String
+  owner       User          @relation(fields: [ownerId], references: [id])
+  
+  // Escopo
+  scopeComplexId  String?
+  scopeCompanyId  String?
+  
+  // Status e eventos
+  status      WebhookStatus @default(active)
+  events      String        // JSON: ["user_created", "reading_created"]
+  
+  // Cabeçalhos customizados (JSON)
+  headers     String?       // JSON: {"X-Custom": "value"}
+  
+  // Configuração de retry
+  maxRetries  Int           @default(3)
+  
+  // Metadados
+  description String?
+  createdAt   DateTime  @default(now()) @db.Timestamp
+  updatedAt   DateTime  @updatedAt @db.Timestamp
+  deletedAt   DateTime? @db.Timestamp
+  
+  createdByUserId String?
+  
+  // Logs de disparo
+  deliveries  WebhookDelivery[]
+  
+  @@map("Webhooks")
+  @@index([ownerId])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([ownerId, deletedAt])
+}
+
+// Registro de cada tentativa de entrega de webhook
+model WebhookDelivery {
+  id          String   @id @map("_id") @default(uuid())
+  
+  webhookId   String
+  webhook     Webhook  @relation(fields: [webhookId], references: [id])
+  
+  // Evento disparado
+  event       String   // Ex: "user_created"
+  payload     String   // JSON do payload enviado
+  
+  // Resultado
+  statusCode  Int?     // HTTP status da resposta externa
+  responseBody String? // Corpo da resposta (truncado)
+  errorMessage String?
+  
+  // Tentativa
+  attempt     Int      @default(1)
+  success     Boolean  @default(false)
+  
+  // Próxima tentativa (para retry)
+  nextRetryAt DateTime? @db.Timestamp
+  
+  createdAt   DateTime  @default(now()) @db.Timestamp
+  
+  @@map("WebhookDeliveries")
+  @@index([webhookId])
+  @@index([webhookId, createdAt])
+  @@index([event])
+  @@index([success])
+  @@index([nextRetryAt])
 }

@@ -81,8 +81,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         return NextResponse.json({ list: entity, totalCount: totalCount })
 
     } catch (error: any) {
-        console.error("Error fetching blocks:", error)
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+        console.error("[blocks/GET] Error fetching blocks:", error)
+        return NextResponse.json({ error: error?.message || 'Internal Server Error' }, { status: 500 })
     }
 }
 
@@ -186,7 +186,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     } catch (error: any) {
         // Log and handle unexpected errors
-        console.error("Error creating block:", error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        console.error("[blocks/POST] Error creating block:", error);
+        const msg = error?.message || 'Erro interno ao criar bloco.';
+        return NextResponse.json({ error: msg }, { status: 500 });
     }
 }

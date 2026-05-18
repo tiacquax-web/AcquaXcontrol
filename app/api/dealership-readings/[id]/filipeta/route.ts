@@ -32,6 +32,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Bad Request: Dealership Reading ID is required' }, { status: 400 });
     }
 
+    // Optional filters: block and apartment
+    const blockId = req.nextUrl.searchParams.get('block_id') || undefined;
+    const apartmentId = req.nextUrl.searchParams.get('apartment_id') || undefined;
+    // meta_only=1 → return only the dealershipReading record (no apartment queries)
+    // Used by the pre-load filter pattern so the page knows complexId immediately.
+    const metaOnly = req.nextUrl.searchParams.get('meta_only') === '1';
+
     const dealershipReading = await prisma.dealershipReading.findUnique({
       where: { id: dealershipReadingId },
       include: { complex: { include: { company: true } }, dealership: true },
@@ -41,8 +48,34 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Not Found: Dealership reading not found' }, { status: 404 });
     }
 
+    // Fast path: caller only needs metadata (e.g. complexId for pre-loading filters)
+    if (metaOnly) {
+      return NextResponse.json({
+        list: [],
+        totalCount: 0,
+        dealershipReading,
+      });
+    }
+
+    // Build apartment filter.
+    // When BOTH blockId and apartmentId are provided, enforce both constraints so
+    // the two dropdowns behave as fully independent, AND-combined filters.
+    // When only one is provided, filter by that one alone.
+    const apartmentFilter = apartmentId && blockId
+      ? { id: apartmentId, blockId: blockId }   // both selected → AND-filter
+      : apartmentId
+        ? { id: apartmentId }                   // only apartment selected
+        : blockId
+          ? { blockId: blockId }                // only block selected
+          : undefined;                          // no filter
+
+    // deletedAt filter is handled globally by the Prisma soft-delete middleware —
+    // do NOT add explicit { deletedAt: null } here (absent-key docs would be excluded).
     const currentReports = await prisma.apartmentConsumptionReport.findMany({
-      where: { dealershipReadingId: dealershipReadingId, deletedAt: null },
+      where: {
+        dealershipReadingId: dealershipReadingId,
+        ...(apartmentFilter ? { apartment: apartmentFilter } : {}),
+      },
       include: {
         apartment: { include: { block: { include: { complex: { include: { company: true } } } } } },
         lastReading: true,
@@ -50,7 +83,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     if (!currentReports || currentReports.length === 0) {
-      return NextResponse.json({ error: 'Not Found: No apartment reports found for this dealership reading' }, { status: 404 });
+      // Return empty list (not 404) when filters narrow to zero results so the
+      // UI can display "nenhuma filipeta encontrada" rather than crashing.
+      return NextResponse.json({ list: [], totalCount: 0, dealershipReading });
     }
 
     const order = req.nextUrl.searchParams.get('order') || 'block_apartment';
@@ -84,7 +119,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const historicalReports = await prisma.apartmentConsumptionReport.findMany({
       where: {
         apartmentId: { in: apartmentIds },
-        deletedAt: null,
         OR: previousMonthRefs.map(ref => ({
           monthRef: ref.monthRef,
           yearRef: ref.yearRef,
