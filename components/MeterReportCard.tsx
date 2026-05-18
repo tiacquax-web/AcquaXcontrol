@@ -121,7 +121,11 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
 
   const emissionDate = format(new Date(), "dd/MM/yyyy 'às' HH:mm");
 
-  const photoUrl = lastReading?.urlCover ? sanitizeImageUrl(lastReading.urlCover) : null;
+  // data URLs (base64) não precisam de sanitização
+  const rawPhotoUrl = lastReading?.urlCover ?? null;
+  const photoUrl = rawPhotoUrl
+    ? (rawPhotoUrl.startsWith('data:') ? rawPhotoUrl : sanitizeImageUrl(rawPhotoUrl))
+    : null;
 
   return (
     <>
@@ -183,14 +187,24 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
 
               {/* ── Versão TELA (oculta no print via CSS) ── */}
               <div className="meter-photo-screen relative w-full h-[280px] sm:h-[200px] overflow-hidden bg-black">
-                <Image
-                  src={photoUrl}
-                  alt="Foto do medidor"
-                  fill
-                  sizes="(max-width: 640px) 100vw, 176px"
-                  className="object-contain transition-transform duration-300 group-hover:scale-105"
-                  priority
-                />
+                {photoUrl.startsWith('data:') ? (
+                  // data URL (base64) — next/image não aceita, usa img nativo
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={photoUrl}
+                    alt="Foto do medidor"
+                    className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+                  />
+                ) : (
+                  <Image
+                    src={photoUrl}
+                    alt="Foto do medidor"
+                    fill
+                    sizes="(max-width: 640px) 100vw, 176px"
+                    className="object-contain transition-transform duration-300 group-hover:scale-105"
+                    priority
+                  />
+                )}
                 {/* Overlay hover + ícone de zoom */}
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/50 rounded-full p-3">

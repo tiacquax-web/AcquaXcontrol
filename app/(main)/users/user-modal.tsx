@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { User, Company, Complex, Block, Apartment, RoleAssignment } from "@prisma/client"
 import { useRoleAssignmentMutations, useRoleAssignments } from "@/hooks/useRoleAssignments"
-import { Loader2, X, CheckCircle2 } from "lucide-react"
+import { Loader2, X, CheckCircle2, RefreshCw, KeyRound, AlertTriangle, Copy } from "lucide-react"
 import { useRoles } from "@/hooks/useRoles"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ContextType, Role } from "@prisma/client"
@@ -20,13 +20,15 @@ import SelectCompany from "@/components/ComboboxCompany"
 import { mapContextType } from "@/types/types"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useComplexes } from "@/hooks/useComplexes"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import axios from "axios"
 
 interface UserModalProps {
     isOpen: boolean
@@ -217,6 +219,8 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
                                         onChange={handleChange}
                                     />
                                 </div>
+                                <Separator />
+                                {user?.id && <ResetUserSection userId={user.id} userName={user.name} />}
                             </div>
                         </TabsContent>
 
@@ -233,6 +237,168 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
     )
 }
 
+// ─── ResetUserSection ─────────────────────────────────────────────────────────
+function ResetUserSection({ userId, userName }: { userId: string; userName: string | null }) {
+    const { toast } = useToast()
+    const [open, setOpen] = useState(false)
+    const [loading, setLoading] = useState(false)
+    const [newPassword, setNewPassword] = useState('')
+    const [tempPassword, setTempPassword] = useState<string | null>(null)
+    const [copied, setCopied] = useState(false)
+
+    const handleReset = async () => {
+        setLoading(true)
+        try {
+            const res = await axios.post(`/api/user/users/${userId}/reset`, {
+                newPassword: newPassword.trim() || undefined,
+                mustUpdateCredentials: true,
+            })
+            const { tempPassword: tp } = res.data
+            setTempPassword(tp || newPassword.trim() || null)
+            setNewPassword('')
+            toast({ title: 'Usuário redefinido', description: 'O acesso do usuário foi restaurado com sucesso.' })
+        } catch (err: any) {
+            const msg = err?.response?.data?.error || 'Erro ao redefinir usuário'
+            toast({ title: 'Erro', description: msg, variant: 'destructive' })
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleCopy = () => {
+        if (!tempPassword) return
+        navigator.clipboard.writeText(tempPassword)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+    }
+
+    const handleClose = () => {
+        setOpen(false)
+        setNewPassword('')
+        setTempPassword(null)
+        setCopied(false)
+    }
+
+    return (
+        <>
+            <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                    <RefreshCw className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                        <p className="font-semibold text-amber-900 dark:text-amber-200 text-sm">Redefinir / Restaurar Usuário</p>
+                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                            Redefine a senha e força a troca de credenciais no próximo acesso.
+                            Utilize caso o usuário esteja bloqueado ou tenha perdido o acesso.
+                        </p>
+                    </div>
+                </div>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-amber-400 dark:border-amber-600 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                    onClick={() => setOpen(true)}
+                >
+                    <KeyRound className="h-4 w-4 mr-2" />
+                    Redefinir Usuário
+                </Button>
+            </div>
+
+            <Dialog open={open} onOpenChange={handleClose}>
+                <DialogContent className="sm:max-w-[440px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <RefreshCw className="h-5 w-5 text-amber-500" />
+                            Redefinir Usuário
+                        </DialogTitle>
+                        <DialogDescription>
+                            Restaurar acesso de <strong>{userName || 'usuário'}</strong>.
+                            O usuário será obrigado a trocar a senha no próximo login.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {tempPassword ? (
+                        /* ── Resultado: mostrar senha temporária ── */
+                        <div className="space-y-4 py-2">
+                            <Alert className="border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/40">
+                                <AlertDescription className="text-green-800 dark:text-green-300 text-sm">
+                                    Usuário redefinido com sucesso! Compartilhe a senha temporária abaixo com o usuário.
+                                </AlertDescription>
+                            </Alert>
+                            <div className="space-y-1.5">
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Senha Temporária</p>
+                                <div className="flex items-center gap-2">
+                                    <code className="flex-1 rounded-md border bg-muted px-3 py-2 text-sm font-mono font-semibold tracking-wide">
+                                        {tempPassword}
+                                    </code>
+                                    <Button type="button" size="icon" variant="outline" onClick={handleCopy} title="Copiar senha">
+                                        {copied
+                                            ? <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                            : <Copy className="h-4 w-4" />
+                                        }
+                                    </Button>
+                                </div>
+                            </div>
+                            <Alert className="border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40">
+                                <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />
+                                <AlertDescription className="text-amber-800 dark:text-amber-300 text-xs">
+                                    Esta senha é exibida apenas uma vez. Certifique-se de anotá-la antes de fechar.
+                                </AlertDescription>
+                            </Alert>
+                            <DialogFooter>
+                                <Button type="button" onClick={handleClose}>Fechar</Button>
+                            </DialogFooter>
+                        </div>
+                    ) : (
+                        /* ── Formulário de redefinição ── */
+                        <div className="space-y-4 py-2">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="reset-password" className="text-sm">
+                                    Nova Senha <span className="text-muted-foreground font-normal">(opcional)</span>
+                                </Label>
+                                <Input
+                                    id="reset-password"
+                                    type="password"
+                                    placeholder="Deixe em branco para gerar automaticamente"
+                                    value={newPassword}
+                                    onChange={e => setNewPassword(e.target.value)}
+                                    disabled={loading}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Se não informada, uma senha temporária segura será gerada automaticamente.
+                                </p>
+                            </div>
+                            <Alert className="border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40">
+                                <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />
+                                <AlertDescription className="text-amber-800 dark:text-amber-300 text-xs">
+                                    O usuário deverá alterar a senha no próximo acesso ao sistema.
+                                </AlertDescription>
+                            </Alert>
+                            <DialogFooter className="gap-2">
+                                <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={handleReset}
+                                    disabled={loading}
+                                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                                >
+                                    {loading
+                                        ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Redefinindo...</>
+                                        : <><RefreshCw className="h-4 w-4 mr-2" />Confirmar Redefinição</>
+                                    }
+                                </Button>
+                            </DialogFooter>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+        </>
+    )
+}
+
+// ─── ManageUserRoles ──────────────────────────────────────────────────────────
 function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, handleDeleteRoleAssignment: (roleAssignmentId: string) => Promise<void> }) {
     const { roleAssignments, error, loading, refetch } = useRoleAssignments({ userId: user.id });
     const { roles, error: rolesError, loading: rolesLoading } = useRoles({});

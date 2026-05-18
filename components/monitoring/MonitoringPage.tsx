@@ -33,7 +33,14 @@ const MAX_RANGE_DAYS = 60
 export default function MonitoringPage() {
   const { prefs, update, ready } = useMonitoringLocalPreferences()
   const { hasPermission, loading: permissionsLoading } = usePermissionChecker()
+  // Monitoramento é acessível para qualquer usuário com permissão de leitura
+  // (reading, complex, apartment, etc.) — síndicos devem ver a aba sem restrição.
+  // Verificamos se o usuário tem QUALQUER permissão (não apenas monitoringDashboard).
   const canAccessMonitoring = hasPermission('monitoringDashboard', 'read')
+    || hasPermission('reading', 'read')
+    || hasPermission('complex', 'read')
+    || hasPermission('apartmentConsumptionReport', 'read')
+    || hasPermission('dealershipReading', 'read')
   const [companyObj, setCompanyObj] = useState<any | undefined>()
   const [complexObj, setComplexObj] = useState<any | undefined>()
   const [blockObj, setBlockObj] = useState<any | undefined>()

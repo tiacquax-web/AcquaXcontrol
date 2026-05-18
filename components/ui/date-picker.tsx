@@ -17,7 +17,23 @@ interface DatePickerProps {
   className?: string
 }
 
+/**
+ * ✅ CORREÇÃO TIMEZONE (America/Sao_Paulo):
+ * O react-day-picker retorna um Date com horário 00:00:00 em UTC local.
+ * Para evitar que ao serializar para ISO string ocorra deslocamento de -3h
+ * e a data apareça como D-1, normalizamos o Date para meio-dia local.
+ */
+function normalizeDateToLocalNoon(date: Date | undefined): Date | undefined {
+  if (!date) return undefined;
+  // Criar novo Date com hora 12:00:00 no horário local para evitar offsets UTC
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
+}
+
 export function DatePicker({ selected, onSelect, disabled, locale = ptBR, className }: DatePickerProps) {
+  const handleSelect = (date: Date | undefined) => {
+    onSelect(normalizeDateToLocalNoon(date));
+  };
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -33,7 +49,7 @@ export function DatePicker({ selected, onSelect, disabled, locale = ptBR, classN
         <Calendar
           mode="single"
           selected={selected}
-          onSelect={onSelect}
+          onSelect={handleSelect}
           disabled={disabled}
           locale={locale}
           initialFocus

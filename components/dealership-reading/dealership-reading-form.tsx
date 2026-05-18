@@ -76,6 +76,20 @@ const formSchema = z.object({
 
 export type FormValues = z.infer<typeof formSchema>
 
+/**
+ * Parses a YYYY-MM-DD date string using local time components.
+ *
+ * WHY: new Date("YYYY-MM-DD") treats the string as UTC midnight.
+ * In UTC-3 (America/Sao_Paulo) that resolves to 21:00 the previous local
+ * day → getDate() / getMonth() / getFullYear() all return the wrong values.
+ * Using new Date(year, month-1, day) constructs the Date in local time,
+ * so the selected calendar day is preserved exactly.
+ */
+function parseDateStringLocal(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
 interface DealershipReadingFormProps {
   mode: "create" | "edit" | "view"
   initialData?: DealershipReadingFull
@@ -102,8 +116,12 @@ export function DealershipReadingForm({ mode, initialData, id }: DealershipReadi
         complexId: initialData.complexId || "",
         dealershipId: initialData.dealershipId || "",
         type: (initialData.type as DealershipType) || "water",
-        readingDate: initialData.readingDate ? new Date(initialData.readingDate) : new Date(),
-        readingDateNext: initialData.readingDateNext ? new Date(initialData.readingDateNext) : new Date(),
+        // ✅ TIMEZONE FIX: parse YYYY-MM-DD string using local components, NOT new Date(string).
+        // new Date("YYYY-MM-DD") interprets the string as UTC midnight → in UTC-3 (São Paulo)
+        // that becomes 21:00 the previous local day → getDate() returns the wrong day.
+        // Splitting and building via new Date(year, month-1, day) uses local time → correct.
+        readingDate: initialData.readingDate ? parseDateStringLocal(initialData.readingDate) : new Date(),
+        readingDateNext: initialData.readingDateNext ? parseDateStringLocal(initialData.readingDateNext) : new Date(),
         monthRef: initialData.monthRef || "",
         yearRef: initialData.yearRef || "",
         totalDays: initialData.totalDays || 0,
@@ -163,11 +181,21 @@ export function DealershipReadingForm({ mode, initialData, id }: DealershipReadi
   // Função para lidar com o envio do formulário
   async function onSubmit(data: FormValues) {
     try {
-      // Formata as datas para o formato esperado pelo backend (YYYY-MM-DD)
+      // ✅ CORREÇÃO TIMEZONE: Formata datas localmente para evitar problema de UTC (-1 dia)
+      // O objeto Date do JS é UTC, mas o usuário selecionou uma data local (America/Sao_Paulo).
+      // Usar format() diretamente causaria retorno de 1 dia a menos em horários noturnos.
+      // A solução é extrair ano/mês/dia diretamente dos valores locais do objeto Date.
+      const formatLocalDate = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
       const formattedData = {
         ...data,
-        readingDate: format(data.readingDate, "yyyy-MM-dd"),
-        readingDateNext: format(data.readingDateNext, "yyyy-MM-dd"),
+        readingDate: formatLocalDate(data.readingDate),
+        readingDateNext: formatLocalDate(data.readingDateNext),
       }
 
       let result

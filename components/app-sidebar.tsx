@@ -10,6 +10,7 @@ import {
   Gauge, ShieldCheck, HousePlus, ReceiptText,
   ChartBarIncreasing, LayoutDashboard, GaugeCircle,
   Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen, ClipboardList,
+  MessageSquare, Lightbulb, Key,
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
@@ -81,6 +82,25 @@ const items = [
     icon: BookOpen,
     group: 'Geral',
   },
+  {
+    title: "Suporte",
+    url: "/suporte",
+    icon: MessageSquare,
+    group: 'Geral',
+  },
+  {
+    title: "Sugestões",
+    url: "/sugestoes",
+    icon: Lightbulb,
+    group: 'Geral',
+  },
+  {
+    title: "API",
+    url: "/api-manager",
+    icon: Key,
+    group: 'Integrações',
+    requiresCreate: true, // Somente admins/gestores com permissão de criação
+  },
 
   // ── Cadastros: só para perfis com permissão de criar ──
   {
@@ -137,7 +157,9 @@ const items = [
     url: "/users",
     icon: UsersRound,
     group: 'Cadastros',
-    requiresCreate: true,
+    // sem requiresCreate, sem mapeamento em sidebarPermissionMap:
+    // visível para qualquer usuário autenticado com qualquer permissão
+    // (síndico, administradora, admin). Escopo de dados controlado pelo backend.
   },
   {
     title: "Papéis",

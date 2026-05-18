@@ -569,7 +569,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     } catch (error: any) {
         // Log and handle unexpected errors
-        console.error("Erro para criar medidor:", error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        console.error("[meters/POST] Erro para criar medidor:", error);
+        const msg = error?.message || 'Erro interno ao criar medidor.';
+        return NextResponse.json({ error: msg }, { status: 500 });
     }
 }
