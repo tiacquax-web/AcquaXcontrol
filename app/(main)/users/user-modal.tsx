@@ -27,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useComplexes } from "@/hooks/useComplexes"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 
 interface UserModalProps {
     isOpen: boolean
@@ -82,8 +83,13 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>{userExists ? "Editar Usuário" : "Novo Usuário"}</DialogTitle>
-                </DialogHeader>
+    <DialogTitle>{userExists ? "Editar Usuário" : "Novo Usuário"}</DialogTitle>
+    <DialogDescription>
+        {userExists 
+            ? "Edite as informações do usuário abaixo" 
+            : "Preencha os dados para criar um novo usuário"}
+    </DialogDescription>
+</DialogHeader>
                 <form onSubmit={handleSubmit}>
                     <Tabs defaultValue={openTab}>
                         <TabsList className={`grid w-full ${userExists ? 'grid-cols-4' : 'grid-cols-3'}`}> 
