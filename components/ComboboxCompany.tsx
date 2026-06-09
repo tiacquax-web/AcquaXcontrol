@@ -113,7 +113,6 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
           sideOffset={4}
           avoidCollisions={true}
           collisionPadding={20}
-          forceMount
         >
           <Command shouldFilter={false}>
             <CommandInput
@@ -121,7 +120,6 @@ const SelectCompany = forwardRef<HTMLButtonElement, SelectCompanyProps>(
               value={search}
               onValueChange={setSearch}
               className="h-9"
-              autoFocus
             />
             {loading ? (
               <div className="py-6 text-center flex items-center justify-center">

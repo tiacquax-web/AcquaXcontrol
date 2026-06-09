@@ -120,7 +120,7 @@ async function validateApartmentsBatch(reqBody: any[]): Promise<ValidationResult
             name: rowName,
             blockId: blockId,
             rowIndex: idx,
-            data: apartmentData
+            data: apartmentData,
         });
     }
 
@@ -298,24 +298,33 @@ export async function GET(req: NextRequest): Promise<Response> {
         const contextType: ContextType | undefined = blockId ? 'block' : complexId ? 'complex' : companyId ? 'company' : undefined
         const contextId = contextType === 'block' ? blockId : contextType === 'complex' ? complexId : contextType === 'company' ? companyId : undefined
 
-        const include = withBlock || withComplex || withCompany ? {
-            block: withBlock ? {
-                include: withComplex || withCompany ? {
-                    complex: withComplex ? {
-                        select: {
-                            id: true,
-                            socialName: true,
-                            company: withCompany ? {
+        // Monta include do Prisma de forma segura
+        let include: any = undefined;
+        if (withBlock || withComplex || withCompany) {
+            if (withComplex || withCompany) {
+                // Inclui block com complex (e opcionalmente company) aninhado
+                include = {
+                    block: {
+                        include: {
+                            complex: withComplex || withCompany ? {
                                 select: {
                                     id: true,
-                                    name: true
+                                    socialName: true,
+                                    ...(withCompany ? {
+                                        company: {
+                                            select: { id: true, name: true }
+                                        }
+                                    } : {})
                                 }
                             } : undefined
                         }
-                    } : undefined
-                } : undefined
-            } : undefined
-        } : undefined
+                    }
+                };
+            } else if (withBlock) {
+                // Apenas block, sem sub-includes
+                include = { block: true };
+            }
+        }
 
 
         // return available apartments for entity if requested
@@ -336,8 +345,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         return NextResponse.json({ list: entity, totalCount: totalCount })
 
     } catch (error: any) {
-        console.error("Error fetching apartments:", error)
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+        console.error("[apartments/GET] Error fetching apartments:", error)
+        return NextResponse.json({ error: error?.message || 'Internal Server Error' }, { status: 500 })
     }
 }
 
@@ -404,7 +413,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     } catch (error: any) {
         // Log and handle unexpected errors
-        console.error("Error creating apartment:", error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        console.error("[apartments/POST] Error creating apartment:", error);
+        const msg = error?.message || 'Erro interno ao criar apartamento.';
+        return NextResponse.json({ error: msg }, { status: 500 });
     }
 }

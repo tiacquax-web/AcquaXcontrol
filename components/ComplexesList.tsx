@@ -17,9 +17,11 @@ interface ComplexesListProps {
   setSelectedComplex: (complex: Complex) => void
   getAvailableForEntity?: PermissionableEntity
   onlyWithReservoirs?: boolean
+  /** Mensagem exibida quando não há condomínios encontrados (estado vazio) */
+  emptyMessage?: string
 }
 
-export default function ComplexesList({ nameQuery, viewType, setSelectedComplex, getAvailableForEntity = PermissionableEntity.apartmentConsumptionReport, onlyWithReservoirs = false }: ComplexesListProps) {
+export default function ComplexesList({ nameQuery, viewType, setSelectedComplex, getAvailableForEntity = PermissionableEntity.apartmentConsumptionReport, onlyWithReservoirs = false, emptyMessage }: ComplexesListProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(12)
   
@@ -69,6 +71,18 @@ export default function ComplexesList({ nameQuery, viewType, setSelectedComplex,
         <AlertTitle>Error</AlertTitle>
         <AlertDescription>Failed to load complexes.</AlertDescription>
       </Alert>
+    )
+  }
+
+  // Estado vazio — sem erros, mas sem dados
+  if (!loading && !error && complexes.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
+        <Building2 className="h-12 w-12 text-muted-foreground/40" />
+        <p className="text-muted-foreground text-sm">
+          {emptyMessage || "Nenhum condomínio encontrado."}
+        </p>
+      </div>
     )
   }
 

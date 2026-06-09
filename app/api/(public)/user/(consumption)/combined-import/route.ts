@@ -388,7 +388,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         result.warnings.push({ row: rc.lineNumber, type: 'reading', message: `Leitura existente será substituída (${rc.readAtDate}).` });
         return true; // cria nova após soft-delete
       }
-      // skip (padrão)
+      // skip (padrão) — leitura não é recriada, mas mapeamos o id existente
+      // para que o lastReadingId do relatório seja vinculado corretamente.
+      const exId = existingReadingsIdMap.get(rc.key);
+      if (exId) {
+        readingKeyToId.set(rc.key, exId);
+      }
       result.warnings.push({
         row: rc.lineNumber,
         type: 'reading',

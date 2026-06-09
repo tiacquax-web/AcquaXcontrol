@@ -1,12 +1,69 @@
 'use client';
 
-import React from 'react';
-import Image from 'next/image';
+import React, { useState } from 'react';
+import Image from 'next/image'; // usado apenas para o logo (/logo-quadrada-2.jpg)
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ApartmentWithConsumptionReport, EnrichedApartmentReport } from '@/types/apartment';
 import { sanitizeImageUrl } from '@/lib/utils';
 
+
+// ─── MeterPhoto ──────────────────────────────────────────────────────────────
+// Usa <img> nativo com loading="lazy" para carregar diretamente do CDN Cloudflare.
+//
+// Por que NÃO usamos next/image aqui:
+//   - Filipetas renderizam até 500+ imagens de uma vez (ex: America Clube = 452 unidades).
+//   - next/image roteia tudo pelo proxy Vercel /_next/image → 452 requisições simultâneas
+//     ao servidor → fila → timeout → imagens não aparecem.
+//   - As imagens já estão em cache no Cloudflare CDN (max-age=14400, cf-cache-status=HIT)
+//     e servem JPEGs perfeitamente legíveis para impressão.
+//   - loading="lazy" garante que apenas imagens visíveis no viewport são carregadas,
+//     evitando sobrecarga no browser durante a renderização da lista completa.
+//   - decoding="async" libera o thread principal durante a decodificação.
+//
+// sanitizeImageUrl: normaliza // no path (ex: //Bacarrini → /Bacarrini)
+// onError: exibe placeholder com ícone de câmera se a imagem falhar.
+interface MeterPhotoProps {
+  urlCover: string | null;
+}
+
+const MeterPhoto: React.FC<MeterPhotoProps> = ({ urlCover }) => {
+  const [imgError, setImgError] = useState(false);
+  const src = urlCover ? sanitizeImageUrl(urlCover) : null;
+
+  if (!src || imgError) {
+    return (
+      <div
+        className="border-r-2 border-black p-1 flex flex-col items-center justify-center bg-gray-50 gap-1"
+        style={{ minHeight: '120px' }}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        <p className="text-gray-400 text-[10px] text-center leading-tight">Sem imagem</p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="border-r-2 border-black p-1 flex items-center justify-center bg-gray-50"
+      style={{ minHeight: '120px' }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt="Foto do medidor"
+        loading="lazy"
+        decoding="async"
+        onError={() => setImgError(true)}
+        style={{ width: '100%', maxHeight: '160px', objectFit: 'contain', display: 'block' }}
+      />
+    </div>
+  );
+};
+
+// ─── FilipetaGridReport ───────────────────────────────────────────────────────
 
 interface FilipetaGridReportProps {
   report: EnrichedApartmentReport;
@@ -141,23 +198,7 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
         <div className="grid grid-cols-3 border-b-2 border-black">
           
           {/* Left: Meter Photo */}
-          <div className="border-r-2 border-black py-1 px-1 flex items-center justify-center bg-gray-50" style={{ minHeight: '100px' }}>
-            {lastReading?.urlCover ? (
-              <div className="relative w-full h-full aspect-square overflow-hidden">
-                <Image
-                  src={sanitizeImageUrl(lastReading.urlCover)}
-                  alt="Foto do medidor"
-                  fill
-                  sizes="140px"
-                  className="object-contain"
-                />
-              </div>
-            ) : (
-              <div className="flex items-center justify-center w-full h-full max-w-[140px] max-h-[140px] aspect-square border-2 border-gray-400 bg-gray-200">
-                <p className="text-gray-600 text-xs text-center">Sem imagem</p>
-              </div>
-            )}
-          </div>
+          <MeterPhoto urlCover={lastReading?.urlCover ?? null} />
 
           {/* Right: All Information */}
           <div className="col-span-2">
