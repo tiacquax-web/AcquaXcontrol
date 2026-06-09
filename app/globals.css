@@ -345,6 +345,85 @@
   .filipeta-layout-container {
     flex-direction: row !important;
   }
+
+  /* ── Levantamento: Detalhamento por Unidade — fix corte lateral ── */
+
+  /* Remove overflow hidden/scroll da div wrapper da tabela */
+  .levantamento-table-wrapper {
+    overflow: visible !important;
+    overflow-x: visible !important;
+  }
+
+  /* Garante que a tabela nunca ultrapasse a página — escala proporcional */
+  .levantamento-detail-table {
+    width: 100% !important;
+    table-layout: auto !important;
+    font-size: 7pt !important;
+    border-collapse: collapse !important;
+  }
+
+  /* Remove sticky positioning das células (quebra no print) */
+  .levantamento-detail-table th,
+  .levantamento-detail-table td {
+    position: static !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    padding: 2pt 3pt !important;
+    font-size: 7pt !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  /* Coluna de unidade: levemente maior */
+  .levantamento-detail-table th:first-child,
+  .levantamento-detail-table td:first-child {
+    min-width: 60pt !important;
+    font-weight: 600 !important;
+  }
+
+  /* Container da tabela de detalhamento */
+  .levantamento-detail-container {
+    overflow: visible !important;
+    page-break-inside: auto !important;
+  }
+
+  /* Cada linha da tabela pode quebrar para próxima página mas não corta */
+  .levantamento-detail-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Linha expandida (detalhes): pode ocupar nova página */
+  .levantamento-detail-table tr.levantamento-expanded-row {
+    page-break-before: auto !important;
+    break-before: auto !important;
+  }
+
+  /* Ocultar linhas expandidas (detalhes inline) no print — muito complexas */
+  .levantamento-expanded-row {
+    display: none !important;
+  }
+
+  /* Ocultar ícones de chevron na impressão */
+  .levantamento-detail-table .lucide-chevron-down,
+  .levantamento-detail-table .lucide-chevron-up {
+    display: none !important;
+  }
+
+  /* Forçar cores nos cabeçalhos da tabela */
+  .levantamento-detail-table thead tr {
+    background-color: #f9fafb !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Células de média: manter cor de fundo teal */
+  .levantamento-detail-table td.levantamento-avg-cell {
+    background-color: #f0fdfa !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
 }
 
 /* ── Levantamento: fotos ocultas na TELA (só aparecem no @media print) ── */

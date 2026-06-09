@@ -12,12 +12,13 @@ interface getUsersProps {
     contextId?: string;
     complexId?: string;
     blockId?: string;
+    apartmentId?: string;
     roleId?: string;
     take?: number;
     skip?: number;
 }
 
-export const getUsers = async ({ userId, searchQuery, documentUser, roleName, contextType, contextId, complexId, blockId, roleId, take = 10, skip = 0 }: getUsersProps) => {
+export const getUsers = async ({ userId, searchQuery, documentUser, roleName, contextType, contextId, complexId, blockId, apartmentId, roleId, take = 10, skip = 0 }: getUsersProps) => {
   try {
     const params: any = {};
     if (searchQuery) params.search = searchQuery;
@@ -28,6 +29,7 @@ export const getUsers = async ({ userId, searchQuery, documentUser, roleName, co
     if (contextId) params.role_context_id = contextId;
     if (complexId) params.complex_id = complexId;
     if (blockId) params.block_id = blockId;
+    if (apartmentId) params.apartment_id = apartmentId;
     if (roleId) params.role_id = roleId;
     if (take) params.take = take;
     if (skip) params.skip = skip;

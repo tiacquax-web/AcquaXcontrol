@@ -146,20 +146,25 @@ export async function POST(req: NextRequest): Promise<Response> {
     try {
         // Validate user session
         const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
-        if (sessionError) return NextResponse.json({ sessionError }, { status: sessionStatus });
+        if (sessionError) return NextResponse.json({ error: sessionError }, { status: sessionStatus });
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         // Check if user is a system-level user (can manage role assignments)
+        // Usa soft-delete filter para não pegar assignments revogados
         const systemAssignment = await prisma.roleAssignment.findFirst({
             where: {
                 userId,
                 contextType: ContextType.system,
+                OR: [
+                    { deletedAt: null },
+                    { deletedAt: { isSet: false } },
+                ],
             },
-            select: { id: true, deletedAt: true },
+            select: { id: true },
         });
-        const isSystemUser = !!systemAssignment && (systemAssignment.deletedAt === null || systemAssignment.deletedAt === undefined);
+        const isSystemUser = !!systemAssignment;
         if (!isSystemUser) {
-            return NextResponse.json({ error: 'Não autorizado: apenas usuários do sistema podem gerenciar papéis.' }, { status: 401 });
+            return NextResponse.json({ error: 'Não autorizado: apenas usuários do sistema podem gerenciar papéis.' }, { status: 403 });
         }
 
         // Parse request body
@@ -167,15 +172,26 @@ export async function POST(req: NextRequest): Promise<Response> {
         const body = cleanEntityBody(reqBody); // Clean the body to remove unwanted fields
 
         // Validate request body
-        if (!body) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
-        if (Object.keys(body).length === 0) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
+        if (!body) return NextResponse.json({ error: 'Corpo da requisição não informado.' }, { status: 400 });
+        if (Object.keys(body).length === 0) return NextResponse.json({ error: 'Corpo da requisição vazio.' }, { status: 400 });
+
+        // Validar campos obrigatórios
+        if (!body.userId) return NextResponse.json({ error: 'userId é obrigatório.' }, { status: 400 });
+        if (!body.roleId) return NextResponse.json({ error: 'roleId é obrigatório.' }, { status: 400 });
+        if (!body.contextType) return NextResponse.json({ error: 'contextType é obrigatório.' }, { status: 400 });
+
+        // Para contextType 'system', contextId deve ser 'system'
+        const contextId: string = body.contextId || (body.contextType === ContextType.system ? 'system' : '');
+        if (!contextId) {
+            return NextResponse.json({ error: 'contextId é obrigatório para este tipo de contexto.' }, { status: 400 });
+        }
 
         // Check for duplicate assignment (active - not deleted)
         const alreadyCreated = await prisma.roleAssignment.findFirst({
             where: {
                 userId: body.userId,
                 roleId: body.roleId,
-                contextId: body.contextId,
+                contextId,
                 contextType: body.contextType,
                 OR: [
                     { deletedAt: null },
@@ -184,7 +200,7 @@ export async function POST(req: NextRequest): Promise<Response> {
             }
         });
         if (alreadyCreated) {
-            return NextResponse.json({ error: 'Esta função já está atribuída ao usuário no contexto informado.' }, { status: 409 });
+            return NextResponse.json({ error: 'Este papel já está atribuído ao usuário no contexto informado.' }, { status: 409 });
         }
 
         // Create role assignment
@@ -192,7 +208,7 @@ export async function POST(req: NextRequest): Promise<Response> {
             data: {
                 userId: body.userId,
                 roleId: body.roleId,
-                contextId: body.contextId,
+                contextId,
                 contextType: body.contextType,
                 createdByUserId: userId,
                 deletedAt: null,
@@ -205,6 +221,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     } catch (error: any) {
         // Log and handle unexpected errors
         console.error("Error creating role assignment:", error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        const msg = error?.message || 'Erro interno ao criar vínculo de papel.';
+        return NextResponse.json({ error: msg }, { status: 500 });
     }
 }

@@ -140,11 +140,36 @@ export async function GET(req: NextRequest): Promise<Response> {
       })
     );
 
-    const enrichedReports = currentReports.map(r => ({
-      ...r,
-      history: historicalByApartment[r.apartmentId] || [],
-      dealershipReading: r.dealershipReadingId ? drById[r.dealershipReadingId] || null : null,
-    }));
+    const enrichedReports = currentReports.map(r => {
+      // Converte coverBase64 (Buffer) para data URL se não houver urlCover
+      let lastReading: any = r.lastReading;
+      if (lastReading) {
+        if (!lastReading.urlCover && lastReading.coverBase64) {
+          try {
+            const b64 = Buffer.isBuffer(lastReading.coverBase64)
+              ? lastReading.coverBase64.toString('base64')
+              : Buffer.from(lastReading.coverBase64).toString('base64');
+            lastReading = {
+              ...lastReading,
+              urlCover: `data:image/jpeg;base64,${b64}`,
+              coverBase64: undefined, // não enviar bytes ao frontend
+            };
+          } catch (_) {
+            // fallback: mantém sem foto
+          }
+        } else {
+          // Remove coverBase64 da resposta para não pesar o JSON
+          const { coverBase64, ...rest } = lastReading as any;
+          lastReading = rest;
+        }
+      }
+      return {
+        ...r,
+        lastReading,
+        history: historicalByApartment[r.apartmentId] || [],
+        dealershipReading: r.dealershipReadingId ? drById[r.dealershipReadingId] || null : null,
+      };
+    });
 
     return NextResponse.json({
       list: enrichedReports,

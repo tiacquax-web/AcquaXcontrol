@@ -363,24 +363,31 @@ function isBrazilianDateFormat(day: number, month: number): boolean {
 }
 
 /**
- * Sanitizes a URL for use in Next.js Image component by encoding special characters.
- * Ensures the URL is properly formatted for stricter image components.
- * @param url The raw URL string.
- * @returns The encoded URL string.
+ * Sanitizes a URL for use in img/Image components:
+ * - Decodes then re-encodes to avoid double-encoding
+ * - Collapses double-slash after origin (//path → /path) — URLs from Backblaze B2
+ *   sometimes have a leading double-slash that can trip up some CDN proxies
+ * - Returns '' for null/undefined/invalid values
  */
 export function sanitizeImageUrl(url: string | null | undefined): string {
   if (!url) {
     return '';
   }
-  // encodeURI encodes most characters but preserves characters like /, ?, &, =, #
-  // which are valid in a URI.
-  // We use decodeURIComponent first to prevent double encoding if the URL is already partially encoded.
-  // Then encodeURI to ensure it's fully encoded for next/image.
   try {
-    const decodedUrl = decodeURIComponent(url);
-    return encodeURI(decodedUrl);
+    // 1. Decode first to prevent double-encoding of already-encoded URLs
+    const decoded = decodeURIComponent(url);
+    // 2. Re-encode to handle literal spaces and other unsafe chars
+    const encoded = encodeURI(decoded);
+    // 3. Normalize double-slash in path: https://host//path → https://host/path
+    //    Use URL constructor to split origin from path, then fix the path
+    const parsed = new URL(encoded);
+    // Replace leading // in pathname with single /
+    if (parsed.pathname.startsWith('//')) {
+      parsed.pathname = parsed.pathname.replace(/^\/\/+/, '/');
+    }
+    return parsed.toString();
   } catch (e) {
-    console.error("Failed to sanitize URL, returning original:", url, e);
-    return url; // Fallback to original if encoding fails
+    // Not a valid absolute URL — return as-is (e.g. data: URIs, relative paths)
+    return url;
   }
 }
