@@ -5,6 +5,7 @@ import { validateUserSession } from '@/lib/users';
 import prisma from '@/lib/prisma';
 import { serverError } from '@/lib/safeError';
 
+
 export async function GET(req: NextRequest): Promise<Response> {
     try {
         const { userId, error: sessionError } = await validateUserSession(req);
