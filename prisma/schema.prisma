@@ -608,6 +608,9 @@ model Meter {
   main                      Boolean     @default(true)
   rotation                  String      @default("Crescente") // "Crescente" ou "Decrescente"
 
+  // Identificador externo Group Link — medidores sem este campo são ignorados na importação GL
+  glId                      String?
+
   apartmentId               String
   apartment                 Apartment   @relation(fields: [apartmentId], references: [id]) // Relacionamento com Apartment
 
@@ -663,6 +666,7 @@ model Meter {
   @@index([deletedAt, companyId])   // Para queries por empresa (desnormalizado)
   @@index([register, deletedAt])    // Para busca por registro
   @@index([status, deletedAt])      // Para filtros de status
+  @@index([glId])                   // Para busca eficiente por GL Id (exportação Group Link)
 }
 
 model MeterDeviceLink {
@@ -1800,4 +1804,48 @@ model WebhookDelivery {
   @@index([event])
   @@index([success])
   @@index([nextRetryAt])
+}
+
+// ─── Group Link Integration ───────────────────────────────────────────────────
+
+/**
+ * GlImportLog — Registro de cada execução do cron de importação GL.
+ *
+ * Gravado automaticamente ao final de cada execução (07:00 e 19:00 BRT).
+ * Permite auditoria, debugging e alertas operacionais.
+ */
+model GlImportLog {
+  id              String    @id @map("_id") @default(uuid())
+
+  /** Momento em que o cron foi disparado */
+  executedAt      DateTime  @db.Timestamp
+
+  /** Arquivos .csv encontrados no S3 para o dia */
+  filesFound      Int       @default(0)
+
+  /** Arquivos processados sem erro de download/parse */
+  filesProcessed  Int       @default(0)
+
+  /** Total de linhas lidas nos CSVs */
+  rowsTotal       Int       @default(0)
+
+  /** Leituras gravadas com sucesso no banco */
+  imported        Int       @default(0)
+
+  /** Linhas descartadas (glId não encontrado no banco) */
+  skipped         Int       @default(0)
+
+  /** Linhas/arquivos com erro de parse ou gravação */
+  errors          Int       @default(0)
+
+  /** Log detalhado de descartes e erros (primeiros 500) */
+  skipLog         String[]  @default([])
+
+  /** Mensagem de erro crítico, se a execução falhou completamente */
+  errorMessage    String?
+
+  createdAt       DateTime  @default(now()) @db.Timestamp
+
+  @@map("GlImportLogs")
+  @@index([executedAt])
 }

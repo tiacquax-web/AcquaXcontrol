@@ -5,7 +5,17 @@
   "framework": "nextjs",
   "env": {
     "NEXT_PUBLIC_API_URL": "/api"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/gl-import",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/gl-import",
+      "schedule": "0 22 * * *"
+    }
+  ]
 }
 
 
