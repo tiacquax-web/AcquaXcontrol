@@ -120,34 +120,48 @@ export async function POST(req: NextRequest) {
     const registerToMeterId = new Map(meters.map((m) => [m.register.toUpperCase(), m.id]));
     const registers = meters.map((m) => m.register.toUpperCase());
 
-    // ── Buscar leituras do período ────────────────────────────────────────────
-    // Busca por meterId (leituras vinculadas) E por registerName (leituras IoT sem meterId)
-    const [byMeterIdReadings, byRegisterReadings] = await Promise.all([
-      prisma.reading.findMany({
-        where: { meterId: { in: meterIds }, readAt: { gte: from, lte: to }, deletedAt: null },
-        select: { id: true, meterId: true, registerName: true, reading: true, readAt: true, isManualReading: true, alerts: true },
-        orderBy: { readAt: 'asc' },
-      }),
+    // ── Buscar deviceIds vinculados (MeterDeviceLink ativo no período) ────────
+    const meterDeviceLinks = await prisma.meterDeviceLink.findMany({
+      where: {
+        meterId:   { in: meterIds },
+        deletedAt: null,
+        startDate: { lte: to },
+        OR: [{ endDate: null }, { endDate: { gte: from } }],
+      },
+      select: { meterId: true, deviceId: true },
+    });
+    const deviceIdToMeterId = new Map<string, string>();
+    for (const link of meterDeviceLinks) deviceIdToMeterId.set(link.deviceId, link.meterId);
+    const linkedDeviceIds = Array.from(deviceIdToMeterId.keys());
+
+    // ── Buscar leituras do período (3 caminhos em paralelo) ───────────────────
+    const baseWhere = { readAt: { gte: from, lte: to }, deletedAt: null };
+    const sel = { id: true, meterId: true, deviceId: true, registerName: true, reading: true, readAt: true, isManualReading: true, alerts: true };
+
+    const [byMeterIdReadings, byDeviceIdReadings, byRegisterReadings] = await Promise.all([
+      prisma.reading.findMany({ where: { ...baseWhere, meterId: { in: meterIds } }, select: sel, orderBy: { readAt: 'asc' } }),
+      linkedDeviceIds.length > 0
+        ? prisma.reading.findMany({ where: { ...baseWhere, meterId: null, deviceId: { in: linkedDeviceIds } }, select: sel, orderBy: { readAt: 'asc' } })
+        : Promise.resolve([]),
       registers.length > 0
-        ? prisma.reading.findMany({
-            where: { meterId: null, registerName: { in: registers }, readAt: { gte: from, lte: to }, deletedAt: null },
-            select: { id: true, meterId: true, registerName: true, reading: true, readAt: true, isManualReading: true, alerts: true },
-            orderBy: { readAt: 'asc' },
-          })
+        ? prisma.reading.findMany({ where: { ...baseWhere, meterId: null, deviceId: null, registerName: { in: registers } }, select: sel, orderBy: { readAt: 'asc' } })
         : Promise.resolve([]),
     ]);
 
-    // Normalizar leituras por registerName → mapear meterId
-    const normalizedRegisterReadings = byRegisterReadings.map((r) => ({
-      ...r,
-      meterId: registerToMeterId.get((r.registerName ?? '').toUpperCase()) ?? null,
-    })).filter((r) => r.meterId !== null);
-
-    // Juntar e deduplicar
+    // Normalizar e deduplicar
     const allReadingsMap = new Map<string, any>();
-    for (const r of [...byMeterIdReadings, ...normalizedRegisterReadings]) {
-      if (!r.meterId) continue;
-      if (!allReadingsMap.has(r.id)) allReadingsMap.set(r.id, r);
+    for (const r of byMeterIdReadings) {
+      if (!allReadingsMap.has(r.id)) allReadingsMap.set(r.id, { ...r });
+    }
+    for (const r of byDeviceIdReadings) {
+      if (allReadingsMap.has(r.id)) continue;
+      const mid = deviceIdToMeterId.get(r.deviceId ?? '') ?? null;
+      if (mid) allReadingsMap.set(r.id, { ...r, meterId: mid });
+    }
+    for (const r of byRegisterReadings) {
+      if (allReadingsMap.has(r.id)) continue;
+      const mid = registerToMeterId.get((r.registerName ?? '').toUpperCase()) ?? null;
+      if (mid) allReadingsMap.set(r.id, { ...r, meterId: mid });
     }
     const rawReadings = Array.from(allReadingsMap.values());
 
