@@ -117,24 +117,39 @@ export async function POST(req: NextRequest) {
 
     const meterIds = meters.map((m) => m.id);
     const meterMap = new Map(meters.map((m) => [m.id, m]));
+    const registerToMeterId = new Map(meters.map((m) => [m.register.toUpperCase(), m.id]));
+    const registers = meters.map((m) => m.register.toUpperCase());
 
-    // ── Buscar leituras do período ───────────────────────────────────────────
-    const rawReadings = await prisma.reading.findMany({
-      where: {
-        meterId: { in: meterIds },
-        readAt:  { gte: from, lte: to },
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        meterId: true,
-        reading: true,
-        readAt: true,
-        isManualReading: true,
-        alerts: true,
-      },
-      orderBy: { readAt: 'asc' },
-    });
+    // ── Buscar leituras do período ────────────────────────────────────────────
+    // Busca por meterId (leituras vinculadas) E por registerName (leituras IoT sem meterId)
+    const [byMeterIdReadings, byRegisterReadings] = await Promise.all([
+      prisma.reading.findMany({
+        where: { meterId: { in: meterIds }, readAt: { gte: from, lte: to }, deletedAt: null },
+        select: { id: true, meterId: true, registerName: true, reading: true, readAt: true, isManualReading: true, alerts: true },
+        orderBy: { readAt: 'asc' },
+      }),
+      registers.length > 0
+        ? prisma.reading.findMany({
+            where: { meterId: null, registerName: { in: registers }, readAt: { gte: from, lte: to }, deletedAt: null },
+            select: { id: true, meterId: true, registerName: true, reading: true, readAt: true, isManualReading: true, alerts: true },
+            orderBy: { readAt: 'asc' },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    // Normalizar leituras por registerName → mapear meterId
+    const normalizedRegisterReadings = byRegisterReadings.map((r) => ({
+      ...r,
+      meterId: registerToMeterId.get((r.registerName ?? '').toUpperCase()) ?? null,
+    })).filter((r) => r.meterId !== null);
+
+    // Juntar e deduplicar
+    const allReadingsMap = new Map<string, any>();
+    for (const r of [...byMeterIdReadings, ...normalizedRegisterReadings]) {
+      if (!r.meterId) continue;
+      if (!allReadingsMap.has(r.id)) allReadingsMap.set(r.id, r);
+    }
+    const rawReadings = Array.from(allReadingsMap.values());
 
     // ── Agrupar por medidor ──────────────────────────────────────────────────
     const byMeter: Record<string, typeof rawReadings> = {};
@@ -280,6 +295,7 @@ export async function POST(req: NextRequest) {
       metersWithAlerts: alertsResult.length,
       totalAnomalies,
       sigma,
+      totalReadingsFound: rawReadings.length, // diagnóstico: quantas leituras foram encontradas
       alerts: alertsResult,
     });
 
