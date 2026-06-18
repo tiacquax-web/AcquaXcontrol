@@ -1846,6 +1846,15 @@ model GlImportLog {
 
   createdAt       DateTime  @default(now()) @db.Timestamp
 
+  /**
+   * Campo obrigatório para compatibilidade com o middleware de soft-delete global.
+   * O middleware Prisma injeta automaticamente `WHERE deletedAt IS NULL` em todas
+   * as queries — sem este campo o Prisma lança PrismaClientValidationError.
+   * GlImportLogs nunca são deletados, portanto o valor permanece null.
+   */
+  deletedAt       DateTime? @db.Timestamp
+
   @@map("GlImportLogs")
   @@index([executedAt])
+  @@index([deletedAt])
 }

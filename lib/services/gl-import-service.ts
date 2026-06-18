@@ -72,12 +72,13 @@ let s3Client: S3Client | null = null;
 function getS3Client(): S3Client {
   if (!s3Client) {
     const region = process.env.GL_S3_REGION;
-    const accessKeyId = process.env.GL_S3_ACCESS_KEY_ID;
-    const secretAccessKey = process.env.GL_S3_SECRET_ACCESS_KEY;
+    // Suporte aos dois nomes possíveis cadastrados no Vercel
+    const accessKeyId = process.env.GL_S3_ACCESS_KEY_ID ?? process.env.GL_ACESS_KEY_ID;
+    const secretAccessKey = process.env.GL_S3_SECRET_ACCESS_KEY ?? process.env.GL_S3_SECRET_ACESS_KEY;
 
     if (!region || !accessKeyId || !secretAccessKey) {
       throw new Error(
-        '[GL Import] Credenciais S3 ausentes. Configure GL_S3_REGION, GL_S3_ACCESS_KEY_ID e GL_S3_SECRET_ACCESS_KEY.',
+        '[GL Import] Credenciais S3 ausentes. Configure GL_S3_REGION, GL_ACESS_KEY_ID e GL_S3_SECRET_ACESS_KEY.',
       );
     }
 
@@ -318,10 +319,16 @@ export class GlImportService {
         continue;
       }
 
+      // monthRef / yearRef: necessários para relatórios de consumo mensal
+      const yyyy = String(row.readAt.getUTCFullYear());
+      const mm   = String(row.readAt.getUTCMonth() + 1).padStart(2, '0');
+
       readingsToCreate.push({
         reading: row.reading,
         readAt: row.readAt,
         readAtDate: row.readAtDate,
+        monthRef: mm,
+        yearRef: yyyy,
         meterId,
         registerName: row.remote_id,
         remoteId: row.device_id,

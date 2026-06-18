@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building, Building2, DoorClosed, Download, Gauge, HousePlus, Plus, Search, Upload } from "lucide-react"
+import { Building, Building2, DoorClosed, Download, Gauge, HousePlus, Link2, Plus, Search, Upload } from "lucide-react"
 import { useMeters, useMeterMutations } from "@/hooks/useMeters"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -73,6 +73,7 @@ export default function MetersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [currentMeter, setCurrentMeter] = useState<Partial<Meter> | undefined>(undefined)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [isUpdateGlIdDialogOpen, setIsUpdateGlIdDialogOpen] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
   const { toast } = useToast()
 
@@ -196,6 +197,9 @@ export default function MetersPage() {
               </Button>
               <Button variant="secondary" onClick={() => setIsImportDialogOpen(true)}>
                 <Upload className="mr-2 h-4 w-4" /> Importar Medidores
+              </Button>
+              <Button variant="outline" onClick={() => setIsUpdateGlIdDialogOpen(true)} title="Atualizar glId de medidores existentes via planilha chassi+gl_id">
+                <Link2 className="mr-2 h-4 w-4" /> Vincular glId
               </Button>
             </div>
           </CardHeader>
@@ -548,6 +552,18 @@ export default function MetersPage() {
             const hasContext = filters.company?.id || filters.complex?.id || filters.block?.id || filters.apartment?.id;
             if (hasContext) refetch();
             setIsImportDialogOpen(false);
+          }}
+        />
+      )}
+      {/* Dialog para vincular glId em medidores existentes (apenas chassi + gl_id) */}
+      {isUpdateGlIdDialogOpen && (
+        <ImportMetersDialog
+          open={isUpdateGlIdDialogOpen}
+          onOpenChange={setIsUpdateGlIdDialogOpen}
+          updateOnly
+          onImportComplete={() => {
+            const hasContext = filters.company?.id || filters.complex?.id || filters.block?.id || filters.apartment?.id;
+            if (hasContext) refetch();
           }}
         />
       )}

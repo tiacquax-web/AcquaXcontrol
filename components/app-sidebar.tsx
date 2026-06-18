@@ -10,7 +10,7 @@ import {
   Gauge, ShieldCheck, HousePlus, ReceiptText,
   ChartBarIncreasing, LayoutDashboard, GaugeCircle,
   Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen, ClipboardList,
-  MessageSquare, Lightbulb, Key, Calculator,
+  MessageSquare, Lightbulb, Key, Calculator, DatabaseZap, BellDot,
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
@@ -64,6 +64,12 @@ const items = [
     group: 'Geral',
   },
   {
+    title: "Central de Alertas",
+    url: "/alerts",
+    icon: BellDot,
+    group: 'Geral',
+  },
+  {
     title: "Medidores de Nível",
     url: "/reservoir-monitoring",
     icon: Droplets,
@@ -109,6 +115,7 @@ const items = [
     requiresCreate: true, // Somente admins/gestores com permissão de criação
   },
 
+
   // ── Cadastros: só para perfis com permissão de criar ──
   {
     title: "Administradoras",
@@ -151,6 +158,13 @@ const items = [
     icon: Radio,
     group: 'Cadastros',
     requiresCreate: true,
+  },
+  {
+    title: "GroupLink (GL)",
+    url: "/gl-integration",
+    icon: DatabaseZap,
+    group: 'Cadastros',
+    requiresCreate: true, // Somente admins/programador (entity=system)
   },
   {
     title: "Reservatórios",
