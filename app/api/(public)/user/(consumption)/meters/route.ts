@@ -155,6 +155,12 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
         const rowAnoFabricacao = row.ano_fabricacao !== undefined && row.ano_fabricacao !== null && row.ano_fabricacao !== '' ? Number(row.ano_fabricacao) : undefined;
         const rowPrincipal = typeof row.principal === 'string' ? row.principal.trim().toLowerCase() === 'sim' : !!row.principal;
         const rowRotacao = row.rotacao === 'Crescente' || row.rotacao === 'Decrescente' ? row.rotacao : undefined;
+        // glId — coluna opcional para vincular integração GroupLink (e futuras integrações)
+        const rowGlId = (row.gl_id !== undefined && row.gl_id !== null && String(row.gl_id).trim() !== '')
+            ? String(row.gl_id).trim()
+            : (row.glId !== undefined && row.glId !== null && String(row.glId).trim() !== '')
+                ? String(row.glId).trim()
+                : undefined;
 
         // Validação dos obrigatórios
         if (!rowChassi || rowChassi === '') {
@@ -228,6 +234,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
             main: rowPrincipal,
             rotation: rowRotacao,
             status: row.status || 'Ativo',
+            ...(rowGlId !== undefined ? { glId: rowGlId } : {}),
         };
 
         validMeterData.push({ register: rowChassi.toUpperCase(), apartmentId: apartment.id, rowIndex: idx, data: meterData });
@@ -245,7 +252,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
             register: { in: allRegistersUpper },
             deletedAt: null
         },
-        select: { id: true, register: true, apartmentId: true, status: true, location: true, initialReading: true, yearManufacture: true, main: true, rotation: true }
+        select: { id: true, register: true, apartmentId: true, status: true, location: true, initialReading: true, yearManufacture: true, main: true, rotation: true, glId: true }
     });
 
     // Criar Map para busca O(1) otimizada - usando uppercase para chave
@@ -266,7 +273,9 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
                 existing.initialReading !== item.data.initialReading ||
                 existing.yearManufacture !== item.data.yearManufacture ||
                 existing.main !== item.data.main ||
-                existing.rotation !== item.data.rotation;
+                existing.rotation !== item.data.rotation ||
+                // Atualiza glId se foi fornecido na planilha e é diferente do atual
+                (item.data.glId !== undefined && existing.glId !== item.data.glId);
 
             if (needsUpdate) {
                 toUpdate.push({ 
@@ -277,7 +286,8 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
                         initialReading: item.data.initialReading,
                         yearManufacture: item.data.yearManufacture,
                         main: item.data.main,
-                        rotation: item.data.rotation
+                        rotation: item.data.rotation,
+                        ...(item.data.glId !== undefined ? { glId: item.data.glId } : {}),
                     }, 
                     existingId: existing.id 
                 });

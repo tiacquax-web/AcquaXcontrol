@@ -11,6 +11,7 @@ export const sidebarPermissionMap: Record<string, string> = {
   // Usando 'reading' como proxy para não bloquear síndicos que não têm entidade
   // 'monitoringDashboard' ou 'reservoirReading' explicitamente em seu papel.
   '/monitoring': 'reading',
+  '/alerts': 'reading',
   '/reservoir-monitoring': 'reading',
   '/reservoirs': 'reservoir',
   '/companies': 'company',
@@ -32,4 +33,6 @@ export const sidebarPermissionMap: Record<string, string> = {
   // a lógica do sidebar checa p.entity === 'system' && p.action === 'create'
   // que equivale a admins do sistema.
   '/api-manager': 'system',
+  // GL Integration: somente admin/programador (entity=system, requiresCreate=true)
+  '/gl-integration': 'system',
 };

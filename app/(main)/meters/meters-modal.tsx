@@ -43,6 +43,7 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
         rotation: "Crescente",
         apartmentId: "",
         typeMeterId: "",
+        glId: undefined,
     })
 
     // Estado para rastrear valores originais e detectar mudanças
@@ -172,6 +173,7 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
                 rotation: "Crescente",
                 apartmentId: "",
                 typeMeterId: "",
+                glId: undefined,
             }
             setFormData(defaultData)
             setOriginalData(defaultData) // Para novo medidor, dados originais são os padrão
@@ -428,6 +430,19 @@ export default function MeterModal({ isOpen, onClose, onSave, meter }: MeterModa
                                                 value={formData.yearManufacture || ""}
                                                 onChange={handleChange}
                                             />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="glId">ID GroupLink (GL)</Label>
+                                            <Input
+                                                id="glId"
+                                                name="glId"
+                                                placeholder="Ex: bl2202manicaria"
+                                                value={formData.glId || ""}
+                                                onChange={handleChange}
+                                            />
+                                            <p className="text-[11px] text-muted-foreground">
+                                                Identificador <code>remote_id</code> do medidor na GroupLink. Necessário para importação automática de leituras.
+                                            </p>
                                         </div>
                                     </div>
                                 </TabsContent>
