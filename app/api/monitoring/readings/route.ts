@@ -58,30 +58,86 @@ export async function POST(req: NextRequest) {
     const includeStats = body.includeStats !== false // default true
     const sigma = body.outlierSigma || 2
 
-    // Busca leituras brutas
-    const rawReadings = await prisma.reading.findMany({
-      where: {
-        meterId: { in: body.meterIds },
-        readAt: { gte: from, lte: to },
-        deletedAt: null,
-        ...(alertsOnly ? { alerts: { not: null } } : {})
-      },
-      select: {
-        id: true,
-        meterId: true,
-        reading: true,
-        readAt: true,
-        isManualReading: true,
-        alerts: true,
-        meter: { select: { register: true, rotation: true } }
-      },
-      orderBy: { readAt: 'asc' }
+    // Busca dados dos medidores solicitados (register + rotation) para poder
+    // localizar leituras por registerName quando meterId não estiver preenchido
+    const meters = await prisma.meter.findMany({
+      where: { id: { in: body.meterIds }, deletedAt: null },
+      select: { id: true, register: true, rotation: true }
     })
+    const meterById = new Map(meters.map(m => [m.id, m]))
+    const registerToMeterId = new Map(meters.map(m => [m.register.toUpperCase(), m.id]))
+
+    // Busca leituras brutas:
+    // 1ª tentativa: por meterId (leituras já vinculadas)
+    // 2ª tentativa: por registerName (leituras IoT salvas pelo chassi, sem meterId)
+    const registers = meters.map(m => m.register.toUpperCase())
+
+    const [byMeterIdReadings, byRegisterReadings] = await Promise.all([
+      prisma.reading.findMany({
+        where: {
+          meterId: { in: body.meterIds },
+          readAt: { gte: from, lte: to },
+          deletedAt: null,
+          ...(alertsOnly ? { alerts: { not: null } } : {})
+        },
+        select: {
+          id: true,
+          meterId: true,
+          registerName: true,
+          reading: true,
+          readAt: true,
+          isManualReading: true,
+          alerts: true,
+        },
+        orderBy: { readAt: 'asc' }
+      }),
+      registers.length > 0
+        ? prisma.reading.findMany({
+            where: {
+              meterId: null,          // não vinculada a medidor
+              registerName: { in: registers },
+              readAt: { gte: from, lte: to },
+              deletedAt: null,
+              ...(alertsOnly ? { alerts: { not: null } } : {})
+            },
+            select: {
+              id: true,
+              meterId: true,
+              registerName: true,
+              reading: true,
+              readAt: true,
+              isManualReading: true,
+              alerts: true,
+            },
+            orderBy: { readAt: 'asc' }
+          })
+        : Promise.resolve([])
+    ])
+
+    // Normalizar: para leituras por registerName, mapear ao meterId correspondente
+    const normalizedRegisterReadings = byRegisterReadings.map(r => ({
+      ...r,
+      meterId: registerToMeterId.get((r.registerName ?? '').toUpperCase()) ?? null
+    })).filter(r => r.meterId !== null)
+
+    // Juntar as duas listas, deduplicar pelo id da reading
+    const allReadingsMap = new Map<string, any>()
+    for (const r of [...byMeterIdReadings, ...normalizedRegisterReadings]) {
+      if (!r.meterId) continue
+      if (!allReadingsMap.has(r.id)) allReadingsMap.set(r.id, r)
+    }
+    const rawReadings = Array.from(allReadingsMap.values())
+
+    // Enriquecer com register e rotation do meter
+    const rawReadingsEnriched = rawReadings.map(r => ({
+      ...r,
+      meter: meterById.get(r.meterId!) ?? { register: r.registerName ?? '', rotation: 'Crescente' }
+    }))
 
     // Agrupar por meter
     const byMeter: Record<string, any[]> = {}
-    rawReadings.forEach(r => {
-      if (!r.meterId) return // segurança: ignorar leituras sem meterId
+    rawReadingsEnriched.forEach(r => {
+      if (!r.meterId) return
       if (!byMeter[r.meterId]) byMeter[r.meterId] = []
       byMeter[r.meterId].push(r)
     })
