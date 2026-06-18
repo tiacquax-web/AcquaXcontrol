@@ -5,7 +5,6 @@ import { PermissionAction, PermissionableEntity } from '@prisma/client'
 import { userHasPermission } from '@/lib/userContexts'
 
 /*
-  Fase 1 - Endpoint de agregação para dashboard de monitoramento de leituras.
   POST /api/monitoring/readings
   Body:
   {
@@ -18,6 +17,12 @@ import { userHasPermission } from '@/lib/userContexts'
     includeStats?: boolean
     outlierSigma?: number (default 2)
   }
+
+  Estratégia de busca de leituras (3 caminhos):
+  1. meterId direto     — leituras manuais e GL já vinculadas
+  2. deviceId via link  — leituras IoT cujo device tem MeterDeviceLink ativo no período
+  3. registerName       — fallback: leituras salvas com registerName = chassi do medidor
+     (cobre casos de importação IoT antiga sem deviceId correto)
 */
 
 interface MonitoringRequestBody {
@@ -31,15 +36,17 @@ interface MonitoringRequestBody {
   outlierSigma?: number
 }
 
+function isoDay(d: Date) { return d.toISOString().split('T')[0] }
+
 export async function POST(req: NextRequest) {
   try {
     const session = req.cookies.get('session')?.value
     const validSession = session ? await isSessionValid(session) : false
     if (!validSession) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-  const userId = validSession.userId
+    const userId = validSession.userId
 
-  const allowed = await userHasPermission(userId, PermissionableEntity.monitoringDashboard, PermissionAction.read)
-  if (!allowed) return NextResponse.json({ error: 'Proibido' }, { status: 403 })
+    const allowed = await userHasPermission(userId, PermissionableEntity.monitoringDashboard, PermissionAction.read)
+    if (!allowed) return NextResponse.json({ error: 'Proibido' }, { status: 403 })
 
     const body: MonitoringRequestBody = await req.json()
     if (!body.meterIds || body.meterIds.length === 0) {
@@ -47,103 +54,114 @@ export async function POST(req: NextRequest) {
     }
 
     const from = new Date(body.fromDate)
-    const to = new Date(body.toDate)
+    const to   = new Date(body.toDate)
     if (isNaN(from.getTime()) || isNaN(to.getTime())) {
       return NextResponse.json({ error: 'fromDate ou toDate inválido' }, { status: 400 })
     }
 
-    const mode = body.mode || 'dailyLast'
-    const view = body.view || 'cumulative'
-    const alertsOnly = body.alertsOnly || false
-    const includeStats = body.includeStats !== false // default true
-    const sigma = body.outlierSigma || 2
+    const mode         = body.mode         || 'dailyLast'
+    const view         = body.view         || 'cumulative'
+    const alertsOnly   = body.alertsOnly   || false
+    const includeStats = body.includeStats !== false
+    const sigma        = body.outlierSigma || 2
 
-    // Busca dados dos medidores solicitados (register + rotation) para poder
-    // localizar leituras por registerName quando meterId não estiver preenchido
+    // ── 1. Busca metadados dos medidores ────────────────────────────────────────
     const meters = await prisma.meter.findMany({
       where: { id: { in: body.meterIds }, deletedAt: null },
       select: { id: true, register: true, rotation: true }
     })
-    const meterById = new Map(meters.map(m => [m.id, m]))
-    const registerToMeterId = new Map(meters.map(m => [m.register.toUpperCase(), m.id]))
+    if (meters.length === 0) return NextResponse.json({ meters: [], distinctAlerts: [] })
 
-    // Busca leituras brutas:
-    // 1ª tentativa: por meterId (leituras já vinculadas)
-    // 2ª tentativa: por registerName (leituras IoT salvas pelo chassi, sem meterId)
-    const registers = meters.map(m => m.register.toUpperCase())
+    const meterById          = new Map(meters.map(m => [m.id, m]))
+    const registerToMeterId  = new Map(meters.map(m => [m.register.toUpperCase(), m.id]))
+    const registers          = meters.map(m => m.register.toUpperCase())
 
-    const [byMeterIdReadings, byRegisterReadings] = await Promise.all([
+    // ── 2. Busca deviceIds vinculados (MeterDeviceLink ativo no período) ────────
+    const meterDeviceLinks = await prisma.meterDeviceLink.findMany({
+      where: {
+        meterId: { in: body.meterIds },
+        deletedAt: null,
+        startDate: { lte: to },
+        OR: [{ endDate: null }, { endDate: { gte: from } }]
+      },
+      select: { meterId: true, deviceId: true, startDate: true, endDate: true }
+    })
+
+    // Map: deviceId → meterId (para enriquecer leituras por deviceId)
+    const deviceIdToMeterId = new Map<string, string>()
+    for (const link of meterDeviceLinks) {
+      deviceIdToMeterId.set(link.deviceId, link.meterId)
+    }
+    const linkedDeviceIds = Array.from(deviceIdToMeterId.keys())
+
+    // ── 3. Busca leituras (3 caminhos em paralelo) ──────────────────────────────
+    const baseWhere = {
+      readAt:    { gte: from, lte: to },
+      deletedAt: null,
+      ...(alertsOnly ? { alerts: { not: null } } : {})
+    }
+    const readingSelect = {
+      id: true, meterId: true, deviceId: true, registerName: true,
+      reading: true, readAt: true, isManualReading: true, alerts: true,
+    }
+
+    const [byMeterIdRows, byDeviceIdRows, byRegisterNameRows] = await Promise.all([
+      // Caminho 1: meterId
       prisma.reading.findMany({
-        where: {
-          meterId: { in: body.meterIds },
-          readAt: { gte: from, lte: to },
-          deletedAt: null,
-          ...(alertsOnly ? { alerts: { not: null } } : {})
-        },
-        select: {
-          id: true,
-          meterId: true,
-          registerName: true,
-          reading: true,
-          readAt: true,
-          isManualReading: true,
-          alerts: true,
-        },
+        where: { ...baseWhere, meterId: { in: body.meterIds } },
+        select: readingSelect,
         orderBy: { readAt: 'asc' }
       }),
+      // Caminho 2: deviceId via link
+      linkedDeviceIds.length > 0
+        ? prisma.reading.findMany({
+            where: { ...baseWhere, meterId: null, deviceId: { in: linkedDeviceIds } },
+            select: readingSelect,
+            orderBy: { readAt: 'asc' }
+          })
+        : Promise.resolve([]),
+      // Caminho 3: registerName = chassi do medidor (fallback)
       registers.length > 0
         ? prisma.reading.findMany({
-            where: {
-              meterId: null,          // não vinculada a medidor
-              registerName: { in: registers },
-              readAt: { gte: from, lte: to },
-              deletedAt: null,
-              ...(alertsOnly ? { alerts: { not: null } } : {})
-            },
-            select: {
-              id: true,
-              meterId: true,
-              registerName: true,
-              reading: true,
-              readAt: true,
-              isManualReading: true,
-              alerts: true,
-            },
+            where: { ...baseWhere, meterId: null, deviceId: null, registerName: { in: registers } },
+            select: readingSelect,
             orderBy: { readAt: 'asc' }
           })
         : Promise.resolve([])
     ])
 
-    // Normalizar: para leituras por registerName, mapear ao meterId correspondente
-    const normalizedRegisterReadings = byRegisterReadings.map(r => ({
-      ...r,
-      meterId: registerToMeterId.get((r.registerName ?? '').toUpperCase()) ?? null
-    })).filter(r => r.meterId !== null)
-
-    // Juntar as duas listas, deduplicar pelo id da reading
+    // ── 4. Normalizar e deduplicar ──────────────────────────────────────────────
     const allReadingsMap = new Map<string, any>()
-    for (const r of [...byMeterIdReadings, ...normalizedRegisterReadings]) {
-      if (!r.meterId) continue
-      if (!allReadingsMap.has(r.id)) allReadingsMap.set(r.id, r)
-    }
-    const rawReadings = Array.from(allReadingsMap.values())
 
-    // Enriquecer com register e rotation do meter
-    const rawReadingsEnriched = rawReadings.map(r => ({
+    for (const r of byMeterIdRows) {
+      if (!allReadingsMap.has(r.id)) allReadingsMap.set(r.id, { ...r })
+    }
+    for (const r of byDeviceIdRows) {
+      if (allReadingsMap.has(r.id)) continue
+      const mid = deviceIdToMeterId.get(r.deviceId ?? '') ?? null
+      if (mid) allReadingsMap.set(r.id, { ...r, meterId: mid })
+    }
+    for (const r of byRegisterNameRows) {
+      if (allReadingsMap.has(r.id)) continue
+      const mid = registerToMeterId.get((r.registerName ?? '').toUpperCase()) ?? null
+      if (mid) allReadingsMap.set(r.id, { ...r, meterId: mid })
+    }
+
+    // Enriquecer com dados do meter (register + rotation)
+    const allReadings = Array.from(allReadingsMap.values()).map(r => ({
       ...r,
-      meter: meterById.get(r.meterId!) ?? { register: r.registerName ?? '', rotation: 'Crescente' }
+      meter: meterById.get(r.meterId) ?? { register: r.registerName ?? r.deviceId ?? '', rotation: 'Crescente' }
     }))
 
-    // Agrupar por meter
+    // ── 5. Agrupar por meterId ──────────────────────────────────────────────────
     const byMeter: Record<string, any[]> = {}
-    rawReadingsEnriched.forEach(r => {
-      if (!r.meterId) return
+    for (const r of allReadings) {
+      if (!r.meterId) continue
       if (!byMeter[r.meterId]) byMeter[r.meterId] = []
       byMeter[r.meterId].push(r)
-    })
+    }
 
-    function isoDay(d: Date) { return d.toISOString().split('T')[0] }
-
+    // ── 6. Calcular séries e estatísticas ───────────────────────────────────────
     const metersResult: any[] = []
     const distinctAlertsSet = new Set<string>()
 
@@ -151,40 +169,33 @@ export async function POST(req: NextRequest) {
       let readings = byMeter[meterId]
 
       if (mode === 'dailyLast') {
-        // Pegar última leitura do dia
         const map = new Map<string, any>()
         readings.forEach(r => {
           const day = isoDay(r.readAt)
-          const existing = map.get(day)
-          if (!existing || existing.readAt < r.readAt) {
-            map.set(day, r)
-          }
+          const ex = map.get(day)
+          if (!ex || r.readAt > ex.readAt) map.set(day, r)
         })
         readings = Array.from(map.values()).sort((a, b) => a.readAt.getTime() - b.readAt.getTime())
       }
 
       if (readings.length === 0) continue
 
-      // Parse alerts para array
+      // Parse alerts
       readings = readings.map(r => {
         let parsedAlerts: string[] = []
-        if (r.alerts) {
-          try { parsedAlerts = JSON.parse(r.alerts) } catch { parsedAlerts = [] }
-        }
+        if (r.alerts) { try { parsedAlerts = JSON.parse(r.alerts) } catch { parsedAlerts = [] } }
         parsedAlerts.forEach(a => distinctAlertsSet.add(a))
         return { ...r, alertsArr: parsedAlerts }
       })
 
-      // Calcular deltas (consumo entre leituras)
-      let deltas: number[] = []
-      const rotation = readings[0].meter.rotation || 'Crescente'
+      const rotation = readings[0].meter?.rotation || 'Crescente'
+
+      // Deltas
+      const deltas: number[] = []
       for (let i = 1; i < readings.length; i++) {
-        const prev = readings[i - 1]
-        const curr = readings[i]
-        const prevVal = Number(prev.reading ?? 0)
-        const currVal = Number(curr.reading ?? 0)
-        const delta = rotation === 'Decrescente' ? prevVal - currVal : currVal - prevVal
-        deltas.push(delta)
+        const prev = Number(readings[i - 1].reading ?? 0)
+        const curr = Number(readings[i].reading   ?? 0)
+        deltas.push(rotation === 'Decrescente' ? prev - curr : curr - prev)
       }
 
       // Estatísticas
@@ -193,41 +204,34 @@ export async function POST(req: NextRequest) {
         const positive = deltas.filter(d => d > 0)
         const negative = deltas.filter(d => d < 0)
         const totalConsumed = rotation === 'Decrescente'
-          ? (Number(readings[0].reading ?? 0) - Number(readings[readings.length - 1].reading ?? 0))
-          : (Number(readings[readings.length - 1].reading ?? 0) - Number(readings[0].reading ?? 0))
+          ? Number(readings[0].reading ?? 0) - Number(readings[readings.length - 1].reading ?? 0)
+          : Number(readings[readings.length - 1].reading ?? 0) - Number(readings[0].reading ?? 0)
         const avgDelta = positive.length ? positive.reduce((a, b) => a + b, 0) / positive.length : null
         let stdDev: number | null = null
         if (positive.length >= 3 && avgDelta !== null) {
-          const variance = positive.reduce((acc, d) => acc + Math.pow(d - avgDelta, 2), 0) / positive.length
+          const variance = positive.reduce((acc, d) => acc + (d - avgDelta) ** 2, 0) / positive.length
           stdDev = Math.sqrt(variance)
         }
-        const minDelta = positive.length ? Math.min(...positive) : null
-        const maxDelta = positive.length ? Math.max(...positive) : null
 
-        // Identificar anomalias
         const anomalies: any[] = []
         for (let i = 1; i < readings.length; i++) {
           const delta = deltas[i - 1]
-          const base = readings[i]
-          const anomalyTypes: string[] = []
-          if (delta < 0) anomalyTypes.push('NEGATIVE_CONSUMPTION')
+          const base  = readings[i]
+          const types: string[] = []
+          if (delta < 0) types.push('NEGATIVE_CONSUMPTION')
           if (stdDev !== null && avgDelta !== null) {
-            if (delta > avgDelta + sigma * stdDev) anomalyTypes.push('OUTLIER_HIGH')
-            if (delta > 0 && delta < avgDelta - sigma * stdDev) anomalyTypes.push('OUTLIER_LOW')
+            if (delta > avgDelta + sigma * stdDev) types.push('OUTLIER_HIGH')
+            if (delta > 0 && delta < avgDelta - sigma * stdDev) types.push('OUTLIER_LOW')
           }
-          if (base.alertsArr.length) {
-            anomalyTypes.push('HAS_ALERT', ...base.alertsArr)
-          }
-          if (anomalyTypes.length) {
-            anomalies.push({ readingId: base.id, readAt: base.readAt, delta, anomalyTypes })
-          }
+          if (base.alertsArr.length) types.push('HAS_ALERT', ...base.alertsArr)
+          if (types.length) anomalies.push({ readingId: base.id, readAt: base.readAt, delta, anomalyTypes: types })
         }
 
         stats = {
           totalConsumed,
           avgDelta,
-          minDelta,
-          maxDelta,
+          minDelta: positive.length ? Math.min(...positive) : null,
+          maxDelta: positive.length ? Math.max(...positive) : null,
           stdDev,
           negativeCount: negative.length,
           alertCount: readings.filter(r => r.alertsArr.length).length,
@@ -235,41 +239,26 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Formatar dados para gráfico: dependente do view
-      const seriesData = readings.map((r, idx) => {
-        const dateKey = mode === 'raw' ? r.readAt.toISOString() : isoDay(r.readAt)
-        let value: number | string
-        if (view === 'cumulative') {
-          value = Number(r.reading ?? 0)
-        } else {
-          if (idx === 0) value = '-'
-          else value = deltas[idx - 1]
-        }
-        return {
-          readingId: r.id,
-          meterId,
-          register: readings[0].meter.register,
-          date: dateKey,
-          readAt: r.readAt.toISOString(),
-          value,
-          alerts: r.alertsArr,
-          isManualReading: r.isManualReading,
-        }
-      })
-
-      metersResult.push({
+      const register = readings[0].meter?.register ?? ''
+      const seriesData = readings.map((r, idx) => ({
+        readingId: r.id,
         meterId,
-        register: readings[0].meter.register,
-        rotation,
-        readings: seriesData,
-        stats
-      })
+        register,
+        date:     mode === 'raw' ? r.readAt.toISOString() : isoDay(r.readAt),
+        readAt:   r.readAt.toISOString(),
+        value:    view === 'cumulative' ? Number(r.reading ?? 0) : (idx === 0 ? '-' : deltas[idx - 1]),
+        alerts:   r.alertsArr,
+        isManualReading: r.isManualReading,
+      }))
+
+      metersResult.push({ meterId, register, rotation, readings: seriesData, stats })
     }
 
     return NextResponse.json({
       meters: metersResult,
       distinctAlerts: Array.from(distinctAlertsSet)
     })
+
   } catch (error: any) {
     console.error('Erro em /api/monitoring/readings', error)
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
