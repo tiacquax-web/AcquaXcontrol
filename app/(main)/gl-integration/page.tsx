@@ -154,6 +154,20 @@ export default function GlIntegrationPage() {
   const [loadingCleanup, setLoadingCleanup] = useState(false);
   const [cleanupExecuted, setCleanupExecuted] = useState(false);
 
+  // ── estado: test-full ─────────────────────────────────────────────────────
+  const [testFullResult, setTestFullResult] = useState<any | null>(null);
+  const [loadingTestFull, setLoadingTestFull] = useState(false);
+  const [testFullDate, setTestFullDate] = useState(
+    new Date(Date.now() - 86400000).toISOString().slice(0, 10) // ontem
+  );
+
+  // ── estado: import-debug ──────────────────────────────────────────────────
+  const [importDebugResult, setImportDebugResult] = useState<any | null>(null);
+  const [loadingImportDebug, setLoadingImportDebug] = useState(false);
+  const [importDebugDate, setImportDebugDate] = useState(
+    new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+  );
+
   // ── buscar preview do condomínio ───────────────────────────────────────────
   const fetchPreview = useCallback(async (id: string) => {
     if (!id) return;
@@ -208,6 +222,44 @@ export default function GlIntegrationPage() {
       setLoadingDiag(false);
     }
   }, [diagDate, toast]);
+
+  // ── test-full ─────────────────────────────────────────────────────────────
+  const runTestFull = useCallback(async () => {
+    setLoadingTestFull(true);
+    setTestFullResult(null);
+    try {
+      const res = await fetch(`/api/admin/gl/test-full?date=${testFullDate}`);
+      const data = await res.json();
+      setTestFullResult(data);
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setLoadingTestFull(false);
+    }
+  }, [testFullDate, toast]);
+
+  // ── import-debug ──────────────────────────────────────────────────────────
+  const runImportDebug = useCallback(async (dryRun: boolean) => {
+    setLoadingImportDebug(true);
+    setImportDebugResult(null);
+    try {
+      const res = await fetch("/api/admin/gl/import-debug", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: importDebugDate, dryRun }),
+      });
+      const data = await res.json();
+      setImportDebugResult(data);
+      if (data.ok && !dryRun) {
+        toast({ title: `✅ ${data.imported} leituras importadas!`, description: "Recarregue o monitoramento para ver os dados." });
+        fetchLogs();
+      }
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setLoadingImportDebug(false);
+    }
+  }, [importDebugDate, toast, fetchLogs]);
 
   // ── deep diagnostics ───────────────────────────────────────────────────────
   const fetchDeepDiagnostics = useCallback(async () => {
@@ -855,6 +907,89 @@ export default function GlIntegrationPage() {
 
         {/* ── ABA 4: Manutenção ────────────────────────────────────────────── */}
         <TabsContent value="manutencao" className="space-y-4 mt-4">
+
+          {/* === TEST FULL: diagnóstico E2E === */}
+          <Card className="border-blue-300">
+            <CardHeader>
+              <CardTitle className="text-base text-blue-800 flex items-center gap-2">
+                <Search className="h-5 w-5" />
+                🔬 Teste E2E da Integração GL (use isso primeiro!)
+              </CardTitle>
+              <CardDescription>
+                Testa cada etapa em sequência e diz exatamente onde para: S3 → CSV → glId lookup → escrita no banco.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-end gap-3">
+                <div>
+                  <Label>Data para testar</Label>
+                  <Input type="date" value={testFullDate} onChange={e => setTestFullDate(e.target.value)} className="w-44" />
+                </div>
+                <Button onClick={runTestFull} disabled={loadingTestFull} className="bg-blue-600 hover:bg-blue-700">
+                  {loadingTestFull ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Search className="h-4 w-4 mr-1" />}
+                  Executar Teste E2E
+                </Button>
+              </div>
+              {testFullResult && (
+                <div className="space-y-2">
+                  {testFullResult.PAROU_EM && (
+                    <div className="rounded-md p-3 border border-red-300 bg-red-50 text-red-800 font-medium">
+                      ❌ Parou em: {testFullResult.PAROU_EM}
+                    </div>
+                  )}
+                  {testFullResult.CONCLUSAO && (
+                    <div className="rounded-md p-3 border border-green-300 bg-green-50 text-green-800 font-medium">
+                      {testFullResult.CONCLUSAO}
+                    </div>
+                  )}
+                  <pre className="text-xs font-mono bg-muted rounded-md p-3 max-h-96 overflow-auto whitespace-pre-wrap">
+                    {JSON.stringify(testFullResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* === IMPORT DEBUG: importa UM dia com log verboso === */}
+          <Card className="border-orange-300">
+            <CardHeader>
+              <CardTitle className="text-base text-orange-800 flex items-center gap-2">
+                <Upload className="h-5 w-5" />
+                🛠️ Importar Dia com Log Detalhado
+              </CardTitle>
+              <CardDescription>
+                Importa um único dia mostrando cada passo. Use "Dry Run" primeiro para verificar sem salvar, depois "Importar de Verdade".
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-end gap-3 flex-wrap">
+                <div>
+                  <Label>Data</Label>
+                  <Input type="date" value={importDebugDate} onChange={e => setImportDebugDate(e.target.value)} className="w-44" />
+                </div>
+                <Button variant="outline" onClick={() => runImportDebug(true)} disabled={loadingImportDebug}>
+                  {loadingImportDebug ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Search className="h-4 w-4 mr-1" />}
+                  Dry Run (só verifica)
+                </Button>
+                <Button onClick={() => runImportDebug(false)} disabled={loadingImportDebug} className="bg-orange-600 hover:bg-orange-700">
+                  {loadingImportDebug ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
+                  Importar de Verdade
+                </Button>
+              </div>
+              {importDebugResult && (
+                <div className="space-y-2">
+                  <div className={`rounded-md p-3 border font-medium ${importDebugResult.ok ? 'border-green-300 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800'}`}>
+                    {importDebugResult.ok ? `✅ OK — ${importDebugResult.dryRun ? `Dry run: ${importDebugResult.would_import ?? 0} seriam importadas` : `${importDebugResult.imported ?? 0} leituras importadas`}` : `❌ ERRO: ${importDebugResult.error}`}
+                  </div>
+                  {importDebugResult.log && (
+                    <pre className="text-xs font-mono bg-muted rounded-md p-3 max-h-64 overflow-auto whitespace-pre-wrap">
+                      {(importDebugResult.log as string[]).join('\n')}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Deep Diagnostics */}
           <Card>
