@@ -52,7 +52,7 @@ export async function GET(req: NextRequest): Promise<Response> {
                 orderBy: { readingDate: 'desc' },
                 select: {
                     id: true,
-                    value: true,
+                    reading: true,
                     readingDate: true,
                     createdAt: true,
                     meter: {

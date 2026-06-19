@@ -37,12 +37,13 @@ export async function POST(req: NextRequest): Promise<Response> {
                 documentCompany: true,
                 city: true,
                 state: true,
-                address: true,
+                street: true,
+                number: true,
                 telephone: true,
                 cell: true,
                 status: true,
                 createdAt: true,
-                _count: { select: { blocks: true, Apartment: true, meters: true } }
+                _count: { select: { blocks: true } }
             },
             orderBy: { socialName: 'asc' },
         });
@@ -55,13 +56,11 @@ export async function POST(req: NextRequest): Promise<Response> {
             'CNPJ': c.documentCompany || '',
             'Cidade': c.city || '',
             'Estado': c.state || '',
-            'Endereço': c.address || '',
+            'Endereço': [c.street, c.number].filter(Boolean).join(', ') || '',
             'Telefone': c.telephone || '',
             'Celular': c.cell || '',
             'Status': c.status || '',
             'Blocos': c._count.blocks,
-            'Apartamentos': c._count.Apartment,
-            'Medidores': c._count.meters,
             'Cadastrado em': c.createdAt?.toLocaleDateString('pt-BR') || '',
         }));
 

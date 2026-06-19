@@ -133,10 +133,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     const historicalReportsByApartment = historicalReports.reduce((acc, report) => {
-      if (!acc[report.apartmentId]) {
-        acc[report.apartmentId] = [];
+      if (!acc[report.apartmentId!]) {
+        acc[report.apartmentId!] = [];
       }
-      acc[report.apartmentId].push(report);
+      acc[report.apartmentId!].push(report);
       return acc;
     }, {} as Record<string, any[]>);
 
@@ -181,8 +181,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
       // Manter apenas a leitura mais recente por apartamento (já está ordenado por readAt desc)
       for (const r of fallbackReadings) {
-        if (!fallbackReadingsByApartment[r.apartmentId]) {
-          fallbackReadingsByApartment[r.apartmentId] = r;
+        if (!fallbackReadingsByApartment[r.apartmentId!]) {
+          fallbackReadingsByApartment[r.apartmentId!] = r;
         }
       }
     }

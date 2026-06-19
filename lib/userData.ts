@@ -10,7 +10,7 @@ const notDeleted = {
         { deletedAt: null },
         { deletedAt: { isSet: false } },
     ],
-} as const;
+};
 
 // Função para normalizar email removendo acentos e caracteres especiais
 function normalizeEmail(email: string): string {
