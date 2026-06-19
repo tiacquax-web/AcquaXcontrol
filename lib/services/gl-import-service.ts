@@ -39,6 +39,11 @@ import {
 } from '@aws-sdk/client-s3';
 import { gunzipSync } from 'zlib';
 
+// NOTA: Usamos prisma.reading.createMany diretamente (não bulkCreateEntity) para
+// evitar o bug de permissão: bulkCreateEntity verifica se o usuário do sistema
+// tem contexto sobre os meterIds, mas o usuário do cron pode não ter esses
+// contextos configurados, silenciosamente descartando todas as leituras GL.
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 export interface GlImportResult {
@@ -308,9 +313,15 @@ export class GlImportService {
    * registros de uma vez causava "Transaction failed due to a write conflict
    * or a deadlock" e NENHUMA leitura era gravada.
    *
-   * Também busca os dados desnormalizados (apartmentId, blockId, complexId,
-   * companyId) dos meters diretamente, em vez de usar bulkCreateEntity (que
-   * dava throw se um único meter não fosse encontrado, derrubando todo o lote).
+   * Usa prisma.reading.createMany diretamente (não bulkCreateEntity) com
+   * skipDuplicates:true, para evitar o bug de permissão que silenciosamente
+   * descartava todas as leituras quando o usuário do cron não tinha contextos
+   * configurados para os meters, e para não falhar em importações retroativas
+   * repetidas.
+   *
+   * Busca os campos desnormalizados (apartmentId, blockId, complexId,
+   * companyId) dos meters diretamente para populá-los nas readings
+   * (necessário para queries de consumo por condomínio/bloco).
    */
   static async importRows(
     rows: GlCsvRow[],
