@@ -394,13 +394,18 @@ export class GlImportService {
       };
     });
 
-    // 4. Inserir em lotes (batched createMany)
+    // 4. Inserir em lotes (batched createMany) com skipDuplicates
     let imported = 0;
     for (let i = 0; i < readingsWithAllFields.length; i += INSERT_BATCH_SIZE) {
       const batch = readingsWithAllFields.slice(i, i + INSERT_BATCH_SIZE);
       try {
-        const result = await prisma.reading.createMany({ data: batch });
-        imported += result.count;
+        // Cast para any: o $extends do Prisma client perde a tipagem de skipDuplicates
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = await (prisma as any).reading.createMany({
+          data: batch,
+          skipDuplicates: true,   // evita falhar se houver duplicatas (importação retroativa repetida)
+        });
+        imported += result.count ?? batch.length;
         process.stdout.write('.');
       } catch (e: any) {
         const batchErrors = batch.length;

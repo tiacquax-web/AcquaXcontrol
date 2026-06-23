@@ -216,7 +216,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
 
     try {
-      const result = await prisma.reading.createMany({ data: readingsData, skipDuplicates: true });
+      // Cast para any: o $extends do Prisma client perde a tipagem de skipDuplicates
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (prisma as any).reading.createMany({ data: readingsData, skipDuplicates: true });
       step(`✅ Salvo com sucesso: ${result.count} readings inseridas`);
       return NextResponse.json({ ok: true, imported: result.count, skipped: skippedRows.length, log });
     } catch (e: any) {

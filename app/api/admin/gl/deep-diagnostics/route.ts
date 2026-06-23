@@ -34,7 +34,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         apartment: {
           block: {
             complex: {
-              name: { contains: 'east', mode: 'insensitive' },
+              socialName: { contains: 'east', mode: 'insensitive' },
             },
           },
         },
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
             block: {
               select: {
                 name: true,
-                complex: { select: { name: true } },
+                complex: { select: { socialName: true } },
               },
             },
           },
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         apartment: {
           block: {
             complex: {
-              name: { contains: 'east', mode: 'insensitive' },
+              socialName: { contains: 'east', mode: 'insensitive' },
             },
           },
         },
@@ -167,7 +167,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // ── 6. Todos os condomínios (para verificar o nome) ─────────────────────────
     const complexes = await prisma.complex.findMany({
       where: { deletedAt: null },
-      select: { id: true, name: true },
+      select: { id: true, socialName: true, aliasName: true },
     });
 
     // ── Resposta ─────────────────────────────────────────────────────────────────
