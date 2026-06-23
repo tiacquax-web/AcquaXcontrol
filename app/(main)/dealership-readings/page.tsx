@@ -1,6 +1,6 @@
 "use client"
 
-import { Building, Building2, BuildingIcon, BuildingIcon as Buildings, ChevronDown, ChevronRight, Download, Eye, Filter, House, HousePlus, Plus, Flame, Droplets } from "lucide-react"
+import { Building, Building2, BuildingIcon, BuildingIcon as Buildings, ChevronDown, ChevronRight, Download, Eye, Filter, House, HousePlus, Plus, Flame, Droplets, AlertTriangle, Trash2, Loader2, RefreshCw, ExternalLink } from "lucide-react"
 import { useState } from "react"
 import { Company, PermissionableEntity, type Block, type Complex } from "@prisma/client"
 import { Separator } from "@/components/ui/separator"
@@ -21,6 +21,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import axios from "axios"
 
 const viewTypeNames = {
     Cards: "Cards",
@@ -28,6 +30,18 @@ const viewTypeNames = {
 }
 
 const sixtyDaysAgo = new Date(new Date().setDate(new Date().getDate() - 60))
+
+interface DuplicateGroup {
+    key: string
+    complexId: string
+    complexName: string
+    monthRef: string
+    yearRef: string
+    type: string
+    count: number
+    suggestedKeepId: string
+    records: { id: string; readingDate: string; createdAt: string }[]
+}
 
 export default function ReadingsPage() {
     const router = useRouter()
@@ -91,6 +105,45 @@ export default function ReadingsPage() {
 
     const handleDateRangeChange = (range: { from: Date, to: Date }) => {
         setDateRange(range)
+    }
+
+    // ── Duplicate cleanup state ────────────────────────────────────────────────
+    const [duplicates, setDuplicates] = useState<DuplicateGroup[] | null>(null)
+    const [loadingDuplicates, setLoadingDuplicates] = useState(false)
+    const [cleanupResult, setCleanupResult] = useState<string | null>(null)
+    const [cleaningGroupKey, setCleaningGroupKey] = useState<string | null>(null)
+
+    const fetchDuplicates = async () => {
+        setLoadingDuplicates(true)
+        setCleanupResult(null)
+        try {
+            const res = await axios.get('/api/admin/dealership-readings/duplicates', { withCredentials: true })
+            setDuplicates(res.data.groups)
+        } catch (e: any) {
+            setCleanupResult('Erro ao buscar duplicatas: ' + (e?.response?.data?.error || e.message))
+            setDuplicates(null)
+        } finally {
+            setLoadingDuplicates(false)
+        }
+    }
+
+    const fixDuplicateGroup = async (group: DuplicateGroup) => {
+        setCleaningGroupKey(group.key)
+        setCleanupResult(null)
+        try {
+            const res = await axios.post(
+                '/api/admin/dealership-readings/duplicates',
+                { keepId: group.suggestedKeepId },
+                { withCredentials: true }
+            )
+            setCleanupResult(res.data.message)
+            // Remove the resolved group from the list
+            setDuplicates(prev => prev ? prev.filter(g => g.key !== group.key) : null)
+        } catch (e: any) {
+            setCleanupResult('Erro: ' + (e?.response?.data?.error || e.message))
+        } finally {
+            setCleaningGroupKey(null)
+        }
     }
 
     const TypeFilter = (
@@ -320,6 +373,86 @@ export default function ReadingsPage() {
             </section>
 
 
+            {/* ── Painel de limpeza de duplicatas ──────────────────────────────────── */}
+            <section className="container mx-auto px-4 md:px-6">
+                <Card className="border-orange-200">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-orange-800">
+                            <AlertTriangle className="h-5 w-5 text-orange-500" />
+                            Lançamentos Duplicados
+                        </CardTitle>
+                        <CardDescription>
+                            Verifica e remove lançamentos repetidos do mesmo condomínio/mês/tipo que impedem o levantamento de exibir dados corretamente.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={fetchDuplicates}
+                            disabled={loadingDuplicates}
+                            className="border-orange-300 text-orange-800 hover:bg-orange-50"
+                        >
+                            {loadingDuplicates
+                                ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Verificando...</>
+                                : <><RefreshCw className="h-4 w-4 mr-2" /> Verificar Duplicatas</>}
+                        </Button>
+
+                        {cleanupResult && (
+                            <Alert className="border-green-200 bg-green-50">
+                                <AlertDescription className="text-green-800">{cleanupResult}</AlertDescription>
+                            </Alert>
+                        )}
+
+                        {duplicates !== null && (
+                            duplicates.length === 0 ? (
+                                <Alert className="border-green-200 bg-green-50">
+                                    <AlertDescription className="text-green-800">✅ Nenhum lançamento duplicado encontrado.</AlertDescription>
+                                </Alert>
+                            ) : (
+                                <div className="space-y-3">
+                                    <p className="text-sm text-muted-foreground">
+                                        Encontrados <strong>{duplicates.length}</strong> grupo(s) com duplicatas.
+                                        Ao clicar em <em>Corrigir</em>, o lançamento mais recente é mantido e os demais são removidos.
+                                    </p>
+                                    {duplicates.map(group => (
+                                        <div key={group.key} className="flex items-center justify-between p-3 rounded-lg border border-orange-200 bg-orange-50 gap-4 flex-wrap">
+                                            <div className="flex flex-col gap-1 text-sm">
+                                                <span className="font-semibold text-orange-900">{group.complexName}</span>
+                                                <span className="text-orange-700">
+                                                    {group.type === 'gas' ? 'Gás' : 'Água'} — {group.monthRef}/{group.yearRef} &nbsp;·&nbsp; {group.count} registros
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => router.push(`/dealership-readings/${group.suggestedKeepId}`)}
+                                                    className="text-orange-700 hover:bg-orange-100"
+                                                    title="Ver lançamento que será mantido"
+                                                >
+                                                    <ExternalLink className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => fixDuplicateGroup(group)}
+                                                    disabled={cleaningGroupKey === group.key}
+                                                    className="border-orange-400 text-orange-800 hover:bg-orange-100"
+                                                >
+                                                    {cleaningGroupKey === group.key
+                                                        ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Corrigindo...</>
+                                                        : <><Trash2 className="h-3.5 w-3.5 mr-1" /> Corrigir</>}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )
+                        )}
+                    </CardContent>
+                </Card>
+            </section>
         </div>
     )
 }
