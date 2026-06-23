@@ -79,7 +79,7 @@ async function handler(req: NextRequest, isGet: boolean): Promise<NextResponse> 
                     block: {
                       select: {
                         complex: {
-                          select: { id: true, name: true },
+                          select: { id: true, socialName: true },
                         },
                       },
                     },
@@ -112,7 +112,7 @@ async function handler(req: NextRequest, isGet: boolean): Promise<NextResponse> 
 
       // Verifica se pelo menos um link aponta para um complexo East Side Méier
       const isEastSider = device.meterDeviceLinks.some((link) => {
-        const complexName = link.meter?.apartment?.block?.complex?.name ?? '';
+        const complexName = link.meter?.apartment?.block?.complex?.socialName ?? '';
         return eastSiderNames.some((n) => complexName.toLowerCase().includes(n));
       });
 
@@ -137,7 +137,7 @@ async function handler(req: NextRequest, isGet: boolean): Promise<NextResponse> 
         remoteId: d.remoteId,
         links: d.meterDeviceLinks.length,
         complexos: [...new Set(d.meterDeviceLinks.map(
-          (l) => l.meter?.apartment?.block?.complex?.name ?? '?'
+          (l) => l.meter?.apartment?.block?.complex?.socialName ?? '?'
         ))],
       })),
       dispositivosParaDeletar: toDelete.map((d) => ({
@@ -146,7 +146,7 @@ async function handler(req: NextRequest, isGet: boolean): Promise<NextResponse> 
         remoteId: d.remoteId,
         links: d.meterDeviceLinks.length,
         complexos: [...new Set(d.meterDeviceLinks.map(
-          (l) => l.meter?.apartment?.block?.complex?.name ?? 'sem link'
+          (l) => l.meter?.apartment?.block?.complex?.socialName ?? 'sem link'
         ))],
       })),
     };

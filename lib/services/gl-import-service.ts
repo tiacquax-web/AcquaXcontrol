@@ -376,7 +376,9 @@ export class GlImportService {
 
     // ── 4. Inserir em lote (direto no Prisma, sem verificação de permissão) ───
     try {
-      await prisma.reading.createMany({
+      // Cast para any: o $extends do Prisma client perde a tipagem de skipDuplicates
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (prisma as any).reading.createMany({
         data: readingsToCreate,
         skipDuplicates: true,   // evita falhar se houver duplicatas (importação retroativa repetida)
       });
