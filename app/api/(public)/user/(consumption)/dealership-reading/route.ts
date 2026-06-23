@@ -3,6 +3,7 @@ import { createEntity, deleteEntity, getEntityListData, updateEntityData } from 
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ContextType, DealershipReading } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
 
 function getQueryParams(req: NextRequest) {
     // query params - custom
@@ -135,6 +136,34 @@ export async function POST(req: NextRequest): Promise<Response> {
             valuePerKiteCar: body.valuePerKiteCar,
             yearRef: body.yearRef,
         }
+
+        // ── Duplicate guard ──────────────────────────────────────────────────────
+        // Block creation if a non-deleted record already exists for the same
+        // complex + month + year + type combination.
+        if (bodyData.complexId && bodyData.monthRef && bodyData.yearRef && bodyData.type) {
+            const existing = await prisma.dealershipReading.findFirst({
+                where: {
+                    complexId: bodyData.complexId,
+                    monthRef: bodyData.monthRef,
+                    yearRef: bodyData.yearRef,
+                    type: bodyData.type,
+                    deletedAt: null,
+                },
+                select: { id: true },
+            });
+            if (existing) {
+                const typeLabel = bodyData.type === 'gas' ? 'Gás' : 'Água';
+                return NextResponse.json(
+                    {
+                        error: `Já existe um lançamento de ${typeLabel} para este condomínio em ${bodyData.monthRef}/${bodyData.yearRef}. Edite o lançamento existente em vez de criar um novo.`,
+                        existingId: existing.id,
+                        code: 'DUPLICATE_DEALERSHIP_READING',
+                    },
+                    { status: 409 }
+                );
+            }
+        }
+        // ────────────────────────────────────────────────────────────────────────
 
         // Attempt to create the entity
         const { entity, error: creationError, status: creationStatus } = await createEntity(userId, 'dealershipReading', bodyData);
