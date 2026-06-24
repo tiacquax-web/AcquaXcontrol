@@ -28,14 +28,17 @@
  */
 
 import prisma from '@/lib/prisma';
-import { bulkCreateEntity } from '@/lib/userData';
-import { PermissionableEntity } from '@prisma/client';
 import {
   S3Client,
   ListObjectsV2Command,
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { gunzipSync } from 'zlib';
+
+// NOTA: Usamos prisma.reading.createMany diretamente (não bulkCreateEntity) para
+// evitar o bug de permissão: bulkCreateEntity verifica se o usuário do sistema
+// tem contexto sobre os meterIds, mas o usuário do cron pode não ter esses
+// contextos configurados, silenciosamente descartando todas as leituras GL.
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -294,6 +297,13 @@ export class GlImportService {
 
   /**
    * Cria registros de Reading para as linhas com remote_id válido.
+   *
+   * IMPORTANTE: Usa prisma.reading.createMany diretamente (não bulkCreateEntity)
+   * para evitar o bug de permissão que silenciosamente descartava todas as leituras
+   * quando o usuário do cron não tinha contextos configurados para os meters.
+   *
+   * Busca os campos desnormalizados (apartmentId, blockId, complexId, companyId)
+   * dos meters para populá-los nas readings (necessário para queries de consumo).
    */
   static async importRows(
     rows: GlCsvRow[],
@@ -304,7 +314,9 @@ export class GlImportService {
     let skipped = 0;
     let errors = 0;
 
-    const readingsToCreate: object[] = [];
+    // ── 1. Filtrar linhas com meterId válido ──────────────────────────────────
+    const meterIdSet = new Set<string>();
+    const validRows: Array<{ row: GlCsvRow; meterId: string }> = [];
 
     for (const row of rows) {
       const meterId = glIdToMeterId.get(row.remote_id.trim());
@@ -319,38 +331,66 @@ export class GlImportService {
         continue;
       }
 
-      // monthRef / yearRef: necessários para relatórios de consumo mensal
-      const yyyy = String(row.readAt.getUTCFullYear());
-      const mm   = String(row.readAt.getUTCMonth() + 1).padStart(2, '0');
-
-      readingsToCreate.push({
-        reading: row.reading,
-        readAt: row.readAt,
-        readAtDate: row.readAtDate,
-        monthRef: mm,
-        yearRef: yyyy,
-        meterId,
-        registerName: row.remote_id,
-        remoteId: row.device_id,
-        isManualReading: false,
-        isPreReading: false,
-      });
+      meterIdSet.add(meterId);
+      validRows.push({ row, meterId });
     }
 
-    if (readingsToCreate.length === 0) {
+    if (validRows.length === 0) {
       return { imported: 0, skipped, errors };
     }
 
-    const result = await bulkCreateEntity(
-      userId,
-      PermissionableEntity.reading,
-      readingsToCreate,
-    );
+    // ── 2. Buscar campos desnormalizados dos meters (em batch único) ──────────
+    const meters = await prisma.meter.findMany({
+      where: { id: { in: Array.from(meterIdSet) }, deletedAt: null },
+      select: { id: true, apartmentId: true, blockId: true, complexId: true, companyId: true },
+    });
 
-    if (result.error) {
-      console.error(`[GL Import] Erro ao salvar leituras: ${result.error}`);
+    const meterMap = new Map(meters.map((m) => [m.id, m]));
+
+    // ── 3. Montar objetos de leitura ──────────────────────────────────────────
+    const readingsToCreate = validRows.map(({ row, meterId }) => {
+      const meterData = meterMap.get(meterId);
+      const yyyy = String(row.readAt.getUTCFullYear());
+      const mm   = String(row.readAt.getUTCMonth() + 1).padStart(2, '0');
+
+      return {
+        reading:          row.reading,
+        readAt:           row.readAt,
+        readAtDate:       row.readAtDate,
+        monthRef:         mm,
+        yearRef:          yyyy,
+        meterId,
+        registerName:     row.remote_id,   // glId string (remote_id do CSV GL)
+        remoteId:         row.device_id,   // device_id do CSV GL (rastreabilidade)
+        isManualReading:  false,
+        isPreReading:     false,
+        createdByUserId:  userId,
+        deletedAt:        null,
+        // Campos desnormalizados — necessários para queries de consumo por condomínio/bloco
+        apartmentId:      meterData?.apartmentId ?? null,
+        blockId:          meterData?.blockId ?? null,
+        complexId:        meterData?.complexId ?? null,
+        companyId:        meterData?.companyId ?? null,
+      };
+    });
+
+    // ── 4. Inserir em lote (direto no Prisma, sem verificação de permissão) ───
+    try {
+      // Cast para any: o $extends do Prisma client perde a tipagem de skipDuplicates
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (prisma as any).reading.createMany({
+        data: readingsToCreate,
+        skipDuplicates: true,   // evita falhar se houver duplicatas (importação retroativa repetida)
+      });
+    } catch (e: any) {
+      console.error(`[GL Import] Erro ao salvar leituras: ${e.message}`);
       return { imported: 0, skipped, errors: errors + readingsToCreate.length };
     }
+
+    console.log(
+      `[GL Import] ${readingsToCreate.length} leituras salvas no banco ` +
+      `(${skipped} descartadas por glId não encontrado)`,
+    );
 
     return { imported: readingsToCreate.length, skipped, errors };
   }
@@ -383,7 +423,7 @@ export class GlImportService {
    *   2. Baixa e descompacta cada arquivo (GetObject + gunzip)
    *   3. Faz parse do CSV (separador ;)
    *   4. Constrói mapa remote_id → meterId (query única Prisma)
-   *   5. Cria Reading records (bulkCreateEntity)
+   *   5. Cria Reading records (prisma.reading.createMany direto)
    *   6. Grava GlImportLog
    */
   static async runImport(now: Date = new Date()): Promise<GlImportResult> {

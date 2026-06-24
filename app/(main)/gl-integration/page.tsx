@@ -27,7 +27,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertCircle, CheckCircle2, Clock, DatabaseZap, FileDown,
-  Link2, Loader2, RefreshCw, Upload, Stethoscope,
+  Link2, Loader2, RefreshCw, Upload, Stethoscope, Wrench, Trash2, Search,
 } from "lucide-react";
 import SelectComplex from "@/components/ComboboxComplex";
 import type { Complex } from "@prisma/client";
@@ -145,6 +145,29 @@ export default function GlIntegrationPage() {
   const [loadingDiag, setLoadingDiag] = useState(false);
   const [diagDate, setDiagDate] = useState(new Date().toISOString().slice(0, 10));
 
+  // ── estado: deep diagnostics ──────────────────────────────────────────────
+  const [deepDiag, setDeepDiag] = useState<any | null>(null);
+  const [loadingDeepDiag, setLoadingDeepDiag] = useState(false);
+
+  // ── estado: device cleanup ────────────────────────────────────────────────
+  const [cleanupPreview, setCleanupPreview] = useState<any | null>(null);
+  const [loadingCleanup, setLoadingCleanup] = useState(false);
+  const [cleanupExecuted, setCleanupExecuted] = useState(false);
+
+  // ── estado: test-full ─────────────────────────────────────────────────────
+  const [testFullResult, setTestFullResult] = useState<any | null>(null);
+  const [loadingTestFull, setLoadingTestFull] = useState(false);
+  const [testFullDate, setTestFullDate] = useState(
+    new Date(Date.now() - 86400000).toISOString().slice(0, 10) // ontem
+  );
+
+  // ── estado: import-debug ──────────────────────────────────────────────────
+  const [importDebugResult, setImportDebugResult] = useState<any | null>(null);
+  const [loadingImportDebug, setLoadingImportDebug] = useState(false);
+  const [importDebugDate, setImportDebugDate] = useState(
+    new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+  );
+
   // ── buscar preview do condomínio ───────────────────────────────────────────
   const fetchPreview = useCallback(async (id: string) => {
     if (!id) return;
@@ -199,6 +222,101 @@ export default function GlIntegrationPage() {
       setLoadingDiag(false);
     }
   }, [diagDate, toast]);
+
+  // ── test-full ─────────────────────────────────────────────────────────────
+  const runTestFull = useCallback(async () => {
+    setLoadingTestFull(true);
+    setTestFullResult(null);
+    try {
+      const res = await fetch(`/api/admin/gl/test-full?date=${testFullDate}`);
+      const data = await res.json();
+      setTestFullResult(data);
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setLoadingTestFull(false);
+    }
+  }, [testFullDate, toast]);
+
+  // ── import-debug ──────────────────────────────────────────────────────────
+  const runImportDebug = useCallback(async (dryRun: boolean) => {
+    setLoadingImportDebug(true);
+    setImportDebugResult(null);
+    try {
+      const res = await fetch("/api/admin/gl/import-debug", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: importDebugDate, dryRun }),
+      });
+      const data = await res.json();
+      setImportDebugResult(data);
+      if (data.ok && !dryRun) {
+        toast({ title: `✅ ${data.imported} leituras importadas!`, description: "Recarregue o monitoramento para ver os dados." });
+        fetchLogs();
+      }
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setLoadingImportDebug(false);
+    }
+  }, [importDebugDate, toast, fetchLogs]);
+
+  // ── deep diagnostics ───────────────────────────────────────────────────────
+  const fetchDeepDiagnostics = useCallback(async () => {
+    setLoadingDeepDiag(true);
+    setDeepDiag(null);
+    try {
+      const res = await fetch("/api/admin/gl/deep-diagnostics");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro");
+      setDeepDiag(data);
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setLoadingDeepDiag(false);
+    }
+  }, [toast]);
+
+  // ── device cleanup ─────────────────────────────────────────────────────────
+  const fetchCleanupPreview = useCallback(async () => {
+    setLoadingCleanup(true);
+    setCleanupPreview(null);
+    setCleanupExecuted(false);
+    try {
+      const res = await fetch("/api/admin/devices/cleanup");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro");
+      setCleanupPreview(data);
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setLoadingCleanup(false);
+    }
+  }, [toast]);
+
+  const executeCleanup = useCallback(async () => {
+    if (!confirm(`Confirma a exclusão de ${cleanupPreview?.deletar ?? 0} dispositivos IoT não-East-Sider? Esta ação não pode ser desfeita facilmente.`)) return;
+    setLoadingCleanup(true);
+    try {
+      const res = await fetch("/api/admin/devices/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dryRun: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro");
+      setCleanupPreview(data);
+      setCleanupExecuted(true);
+      toast({
+        title: `✅ ${data.deletados} dispositivos removidos`,
+        description: `${data.mantidos} dispositivos East Sider mantidos.`,
+      });
+    } catch (e: any) {
+      toast({ title: "Erro na limpeza", description: e.message, variant: "destructive" });
+    } finally {
+      setLoadingCleanup(false);
+    }
+  }, [cleanupPreview, toast]);
 
   // ── vincular glIds em massa ────────────────────────────────────────────────
   const handleSetMeterIds = async () => {
@@ -352,6 +470,10 @@ export default function GlIntegrationPage() {
           <TabsTrigger value="historico">
             <Clock className="h-4 w-4 mr-1" />
             Histórico
+          </TabsTrigger>
+          <TabsTrigger value="manutencao">
+            <Wrench className="h-4 w-4 mr-1" />
+            Manutenção
           </TabsTrigger>
         </TabsList>
 
@@ -777,6 +899,297 @@ export default function GlIntegrationPage() {
                       </TableBody>
                     </Table>
                   </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── ABA 4: Manutenção ────────────────────────────────────────────── */}
+        <TabsContent value="manutencao" className="space-y-4 mt-4">
+
+          {/* === TEST FULL: diagnóstico E2E === */}
+          <Card className="border-blue-300">
+            <CardHeader>
+              <CardTitle className="text-base text-blue-800 flex items-center gap-2">
+                <Search className="h-5 w-5" />
+                🔬 Teste E2E da Integração GL (use isso primeiro!)
+              </CardTitle>
+              <CardDescription>
+                Testa cada etapa em sequência e diz exatamente onde para: S3 → CSV → glId lookup → escrita no banco.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-end gap-3">
+                <div>
+                  <Label>Data para testar</Label>
+                  <Input type="date" value={testFullDate} onChange={e => setTestFullDate(e.target.value)} className="w-44" />
+                </div>
+                <Button onClick={runTestFull} disabled={loadingTestFull} className="bg-blue-600 hover:bg-blue-700">
+                  {loadingTestFull ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Search className="h-4 w-4 mr-1" />}
+                  Executar Teste E2E
+                </Button>
+              </div>
+              {testFullResult && (
+                <div className="space-y-2">
+                  {testFullResult.PAROU_EM && (
+                    <div className="rounded-md p-3 border border-red-300 bg-red-50 text-red-800 font-medium">
+                      ❌ Parou em: {testFullResult.PAROU_EM}
+                    </div>
+                  )}
+                  {testFullResult.CONCLUSAO && (
+                    <div className="rounded-md p-3 border border-green-300 bg-green-50 text-green-800 font-medium">
+                      {testFullResult.CONCLUSAO}
+                    </div>
+                  )}
+                  <pre className="text-xs font-mono bg-muted rounded-md p-3 max-h-96 overflow-auto whitespace-pre-wrap">
+                    {JSON.stringify(testFullResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* === IMPORT DEBUG: importa UM dia com log verboso === */}
+          <Card className="border-orange-300">
+            <CardHeader>
+              <CardTitle className="text-base text-orange-800 flex items-center gap-2">
+                <Upload className="h-5 w-5" />
+                🛠️ Importar Dia com Log Detalhado
+              </CardTitle>
+              <CardDescription>
+                Importa um único dia mostrando cada passo. Use "Dry Run" primeiro para verificar sem salvar, depois "Importar de Verdade".
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-end gap-3 flex-wrap">
+                <div>
+                  <Label>Data</Label>
+                  <Input type="date" value={importDebugDate} onChange={e => setImportDebugDate(e.target.value)} className="w-44" />
+                </div>
+                <Button variant="outline" onClick={() => runImportDebug(true)} disabled={loadingImportDebug}>
+                  {loadingImportDebug ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Search className="h-4 w-4 mr-1" />}
+                  Dry Run (só verifica)
+                </Button>
+                <Button onClick={() => runImportDebug(false)} disabled={loadingImportDebug} className="bg-orange-600 hover:bg-orange-700">
+                  {loadingImportDebug ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
+                  Importar de Verdade
+                </Button>
+              </div>
+              {importDebugResult && (
+                <div className="space-y-2">
+                  <div className={`rounded-md p-3 border font-medium ${importDebugResult.ok ? 'border-green-300 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800'}`}>
+                    {importDebugResult.ok ? `✅ OK — ${importDebugResult.dryRun ? `Dry run: ${importDebugResult.would_import ?? 0} seriam importadas` : `${importDebugResult.imported ?? 0} leituras importadas`}` : `❌ ERRO: ${importDebugResult.error}`}
+                  </div>
+                  {importDebugResult.log && (
+                    <pre className="text-xs font-mono bg-muted rounded-md p-3 max-h-64 overflow-auto whitespace-pre-wrap">
+                      {(importDebugResult.log as string[]).join('\n')}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Deep Diagnostics */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Diagnóstico Profundo do Banco</CardTitle>
+              <CardDescription>
+                Verifica exatamente o que está no banco: medidores com glId, leituras GL, devices IoT e MeterDeviceLinks.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button onClick={fetchDeepDiagnostics} disabled={loadingDeepDiag}>
+                {loadingDeepDiag
+                  ? <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  : <Search className="h-4 w-4 mr-1" />}
+                Executar Diagnóstico Profundo
+              </Button>
+
+              {deepDiag && (
+                <div className="space-y-5">
+                  {/* Condomínios */}
+                  <div>
+                    <p className="font-semibold text-sm mb-1">Condomínios no banco:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {deepDiag.condomínios.map((c: any) => (
+                        <Badge key={c.id} variant="outline">{c.name}</Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* East Sider meters */}
+                  <div className={`rounded-md p-3 text-sm border ${
+                    deepDiag.eastSiderMeters.total > 0
+                      ? "border-green-300 bg-green-50 text-green-800"
+                      : "border-red-300 bg-red-50 text-red-800"
+                  }`}>
+                    <p className="font-medium">Medidores East Sider com glId: <strong>{deepDiag.eastSiderMeters.total}</strong></p>
+                    {deepDiag.eastSiderMeters.total === 0 && (
+                      <p className="text-xs mt-1">❌ Nenhum medidor East Sider com glId — use a aba Vincular glIds para mapear.</p>
+                    )}
+                  </div>
+
+                  {/* Readings GL */}
+                  <div className={`rounded-md p-3 text-sm border ${
+                    deepDiag.readingsGL.total > 0
+                      ? "border-green-300 bg-green-50 text-green-800"
+                      : "border-red-300 bg-red-50 text-red-800"
+                  }`}>
+                    <p className="font-medium">{deepDiag.readingsGL.alerta}</p>
+                    {deepDiag.readingsGL.maisRecentes?.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs font-medium mb-1">Últimas 5 leituras GL:</p>
+                        <div className="space-y-1">
+                          {deepDiag.readingsGL.maisRecentes.slice(0, 5).map((r: any) => (
+                            <p key={r.id} className="text-xs font-mono">
+                              {new Date(r.readAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} | meter: {r.meterId?.slice(-8)} | {r.reading} m³ | reg: {r.registerName}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Todas as readings */}
+                  <div className="rounded-md p-3 text-sm border">
+                    <p className="font-medium">Total de leituras no banco (qualquer tipo): <strong>{deepDiag.todasReadings.total}</strong></p>
+                    {deepDiag.todasReadings.maisRecentes?.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs font-medium mb-1">Últimas 5 leituras (qualquer):</p>
+                        <div className="space-y-1">
+                          {deepDiag.todasReadings.maisRecentes.slice(0, 5).map((r: any) => (
+                            <p key={r.id} className="text-xs font-mono">
+                              {new Date(r.readAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} | meterId: {r.meterId ? r.meterId.slice(-8) : "null"} | deviceId: {r.deviceId ?? "null"} | reg: {r.registerName ?? "null"}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* IoT Devices */}
+                  <div className="rounded-md p-3 text-sm border">
+                    <p className="font-medium">Dispositivos IoT ativos: <strong>{deepDiag.iotDevices.total}</strong></p>
+                    {deepDiag.iotDevices.amostra?.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {deepDiag.iotDevices.amostra.map((d: any) => (
+                          <p key={d.id} className="text-xs font-mono">
+                            {d.deviceId} | {d.name ?? "sem nome"} | último: {d.lastSeenDate ?? "nunca"}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* MeterDeviceLinks */}
+                  <div className="rounded-md p-3 text-sm border">
+                    <p className="font-medium">MeterDeviceLinks ativos: <strong>{deepDiag.meterDeviceLinks.total}</strong></p>
+                    {deepDiag.meterDeviceLinks.amostra?.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {deepDiag.meterDeviceLinks.amostra.slice(0, 5).map((l: any) => (
+                          <p key={l.id} className="text-xs font-mono">
+                            device: {l.deviceId} → meter: {l.meter?.register ?? l.meterId?.slice(-8)} (glId: {l.meter?.glId ?? "sem glId"})
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Device Cleanup */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Trash2 className="h-5 w-5 text-red-600" />
+                Limpeza de Dispositivos IoT
+              </CardTitle>
+              <CardDescription>
+                Remove dispositivos IoT não vinculados ao East Side Méier.
+                <strong className="text-red-700"> Irreversível!</strong> Mantenha apenas os dispositivos do condomínio ativo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button variant="outline" onClick={fetchCleanupPreview} disabled={loadingCleanup}>
+                {loadingCleanup
+                  ? <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  : <Search className="h-4 w-4 mr-1" />}
+                Preview — O que seria removido?
+              </Button>
+
+              {cleanupPreview && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-3">
+                    <Badge className="bg-green-100 text-green-800 border-green-200">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      {cleanupPreview.manter} manter (East Sider)
+                    </Badge>
+                    <Badge className={cleanupPreview.deletar > 0 ? "bg-red-100 text-red-800 border-red-200" : "bg-muted text-muted-foreground"}>
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      {cleanupPreview.deletar} remover
+                    </Badge>
+                    <Badge variant="outline">{cleanupPreview.orphans} sem vínculo</Badge>
+                  </div>
+
+                  {cleanupPreview.dispositivosParaDeletar?.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-red-700 mb-1">Dispositivos que serão removidos:</p>
+                      <div className="max-h-48 overflow-y-auto border rounded-md">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>deviceId</TableHead>
+                              <TableHead>Nome</TableHead>
+                              <TableHead>Complexo(s)</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {cleanupPreview.dispositivosParaDeletar.map((d: any) => (
+                              <TableRow key={d.deviceId}>
+                                <TableCell className="font-mono text-xs">{d.deviceId}</TableCell>
+                                <TableCell className="text-xs">{d.name ?? "—"}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">{d.complexos.join(", ") || "sem vínculo"}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  )}
+
+                  {cleanupPreview.dispositivosParaManter?.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-green-700 mb-1">Dispositivos East Sider mantidos:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {cleanupPreview.dispositivosParaManter.map((d: any) => (
+                          <Badge key={d.deviceId} variant="outline" className="text-xs font-mono">{d.deviceId}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!cleanupExecuted && cleanupPreview.deletar > 0 && (
+                    <Button
+                      variant="destructive"
+                      onClick={executeCleanup}
+                      disabled={loadingCleanup}
+                    >
+                      {loadingCleanup
+                        ? <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                        : <Trash2 className="h-4 w-4 mr-1" />}
+                      Confirmar Exclusão de {cleanupPreview.deletar} Dispositivos
+                    </Button>
+                  )}
+
+                  {cleanupExecuted && (
+                    <div className="rounded-md p-3 text-sm border border-green-300 bg-green-50 text-green-800">
+                      ✅ Limpeza concluída. {cleanupPreview.deletados} dispositivos removidos.
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>

@@ -1,13 +1,13 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { Droplet, Flame, Loader2 } from "lucide-react"
+import { Droplet, Flame, Loader2, AlertTriangle, ExternalLink } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 
 import SelectCompany from "@/components/ComboboxCompany"
@@ -102,6 +103,8 @@ export function DealershipReadingForm({ mode, initialData, id }: DealershipReadi
   const [activeTab, setActiveTab] = useState("general")
   const [dealershipReadingId, setDealershipReadingId] = useState<string>(id || "")
   const [showApartmentReports, setShowApartmentReports] = useState(!!id)
+  const [duplicateWarning, setDuplicateWarning] = useState<{ existingId: string; message: string } | null>(null)
+  const duplicateCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { dealershipReadings, loading, error } = useDealershipReadings({ id: dealershipReadingId })
   const dealershipReading = dealershipReadings[0] as DealershipReadingFull
 
@@ -210,7 +213,25 @@ export function DealershipReadingForm({ mode, initialData, id }: DealershipReadi
         })
       } else {
         // Cria uma nova leitura
-        result = await createDealershipReading(formattedData)
+        try {
+          result = await createDealershipReading(formattedData)
+        } catch (err: any) {
+          // Verifica se é erro 409 (duplicata)
+          const responseData = err?.response?.data
+          if (err?.response?.status === 409 && responseData?.existingId) {
+            toast({
+              title: "Lançamento duplicado",
+              description: responseData.error || "Já existe um lançamento para este condomínio/mês/tipo.",
+              variant: "destructive",
+            })
+            // Oferece navegação para o registro existente
+            if (confirm(`${responseData.error}\n\nDeseja abrir o lançamento existente para editá-lo?`)) {
+              router.push(`/dealership-readings/${responseData.existingId}`)
+            }
+            return
+          }
+          throw err // re-throw para o catch externo tratar
+        }
         if (!result) return
         toast({
           title: "Leitura criada com sucesso",
@@ -246,6 +267,7 @@ export function DealershipReadingForm({ mode, initialData, id }: DealershipReadi
   const watchComplexId = form.watch("complexId")
   const watchMonthRef = form.watch("monthRef")
   const watchYearRef = form.watch("yearRef")
+  const watchType = form.watch("type")
 
   // Atualiza o valor total quando os valores de consumo, esgoto ou área comum mudam
   const updateTotalValue = () => {
@@ -282,6 +304,45 @@ export function DealershipReadingForm({ mode, initialData, id }: DealershipReadi
   React.useEffect(() => {
     updateTotalValue()
   }, [watchConsumptionValue, watchSewageValue, watchDiffCost])
+
+  // ── Verificação proativa de duplicidade ───────────────────────────────────────
+  // Quando complexId + monthRef + yearRef + type estão preenchidos no modo create,
+  // verifica se já existe um lançamento e exibe aviso inline.
+  useEffect(() => {
+    if (mode !== 'create') return
+    if (!watchComplexId || !watchMonthRef || !watchYearRef || !watchType) {
+      setDuplicateWarning(null)
+      return
+    }
+    // Debounce para evitar chamadas excessivas enquanto o usuário digita
+    if (duplicateCheckTimerRef.current) clearTimeout(duplicateCheckTimerRef.current)
+    duplicateCheckTimerRef.current = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({
+          complex_id: watchComplexId,
+          type: watchType,
+          take: '1',
+        })
+        const res = await fetch(`/api/user/dealership-reading?${params.toString()}`, { credentials: 'include' })
+        if (!res.ok) { setDuplicateWarning(null); return }
+        const data = await res.json()
+        const matches = (data.list as any[]).filter(
+          (dr: any) => dr.monthRef === watchMonthRef && dr.yearRef === watchYearRef && dr.type === watchType
+        )
+        if (matches.length > 0) {
+          const typeLabel = watchType === 'gas' ? 'Gás' : 'Água'
+          setDuplicateWarning({
+            existingId: matches[0].id,
+            message: `Já existe um lançamento de ${typeLabel} para este condomínio em ${watchMonthRef}/${watchYearRef}.`,
+          })
+        } else {
+          setDuplicateWarning(null)
+        }
+      } catch {
+        setDuplicateWarning(null)
+      }
+    }, 600)
+  }, [mode, watchComplexId, watchMonthRef, watchYearRef, watchType])
 
   React.useEffect(() => {
     if (mutationError) {
@@ -1065,12 +1126,30 @@ export function DealershipReadingForm({ mode, initialData, id }: DealershipReadi
             </TabsContent>
           </Tabs>
 
+          {/* Aviso de duplicidade — exibido abaixo das abas, acima dos botões */}
+          {mode === 'create' && duplicateWarning && (
+            <Alert variant="destructive" className="border-orange-400 bg-orange-50 text-orange-900">
+              <AlertTriangle className="h-4 w-4 text-orange-500" />
+              <AlertTitle className="text-orange-800">Lançamento já existe</AlertTitle>
+              <AlertDescription className="flex flex-col gap-2">
+                <span>{duplicateWarning.message} Edite o lançamento existente em vez de criar um novo.</span>
+                <a
+                  href={`/dealership-readings/${duplicateWarning.existingId}`}
+                  className="inline-flex items-center gap-1 font-medium underline text-orange-700 hover:text-orange-900"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Abrir lançamento existente
+                </a>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {!isReadOnly && (
             <div className="flex justify-end gap-4">
               <Button type="button" variant="outline" onClick={() => router.push("/dealership-readings")}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting || (mode === 'create' && !!duplicateWarning)}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {mode === "edit" ? "Atualizar" : "Salvar"} Relatório
               </Button>
