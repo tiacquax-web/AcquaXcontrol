@@ -95,11 +95,18 @@ export default function MeterSelectionPanel({ companyId, complexId, blockId, apa
       </ScrollArea>
       {maxSelectable && <div className='text-[10px] text-muted-foreground text-right'>Máx: {maxSelectable}</div>}
       <div className='flex flex-wrap gap-1 pt-1'>
-        {selected.slice(0,6).map(id => {
-          const m = meters.find(mm=>mm.id===id)
-            return <Badge key={id} variant='secondary' className='text-[10px] px-1 py-0.5'>{m?.register || id}</Badge>
-        })}
-        {selected.length>6 && <Badge variant='outline' className='text-[10px] px-1 py-0.5'>+{selected.length-6}</Badge>}
+        {/* Só exibimos chips de medidores que existem no contexto/lista atual —
+            nunca o UUID cru. Medidores de um contexto anterior que não aparecem
+            mais aqui são ignorados na exibição (a seleção é limpa automaticamente
+            pelo MonitoringPage ao trocar de contexto). */}
+        {selected
+          .map(id => meters.find(mm => mm.id === id))
+          .filter((m): m is NonNullable<typeof m> => !!m)
+          .slice(0, 6)
+          .map(m => (
+            <Badge key={m.id} variant='secondary' className='text-[10px] px-1 py-0.5'>{m.register}</Badge>
+          ))}
+        {selected.length > 6 && <Badge variant='outline' className='text-[10px] px-1 py-0.5'>+{selected.length - 6}</Badge>}
       </div>
     </div>
   )

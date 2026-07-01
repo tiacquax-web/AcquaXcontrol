@@ -123,9 +123,29 @@ export default function MonitoringPage() {
   const metersWithData = recomputed?.meters || []
   const distinctAlerts = data?.distinctAlerts || []
 
-  useEffect(()=>{
-    if (!selectedMeters.length) return
-  }, [selectedMeters])
+  // Ao trocar o contexto (empresa/condomínio/bloco/apartamento), a seleção de
+  // medidores de um contexto anterior deixa de fazer sentido — sem isso, uma
+  // seleção antiga (ex: "Selecionar todos" com 450+ medidores) continuava sendo
+  // enviada à API junto com o novo filtro, deixando a consulta extremamente
+  // lenta e exibindo UUIDs crus nos chips (medidor não encontrado no novo contexto).
+  const contextKey = `${companyId ?? ''}|${complexId ?? ''}|${blockId ?? ''}|${apartmentId ?? ''}`
+  const [prevContextKey, setPrevContextKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!ready) return
+    if (prevContextKey === null) {
+      // Primeira vez que o contexto fica pronto: apenas memoriza, não limpa
+      // (preserva seleção restaurada do localStorage ao abrir a página).
+      setPrevContextKey(contextKey)
+      return
+    }
+    if (prevContextKey !== contextKey) {
+      setPrevContextKey(contextKey)
+      if (selectedMeters.length > 0) {
+        update({ meterIds: [] })
+      }
+    }
+  }, [contextKey, ready])
 
   if (permissionsLoading) {
     return (
