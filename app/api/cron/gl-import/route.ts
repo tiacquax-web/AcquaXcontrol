@@ -22,6 +22,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { GlImportService } from '@/lib/services/gl-import-service';
+import { GlAlarmImportService } from '@/lib/services/gl-alarm-import-service';
 
 export const runtime = 'nodejs';
 // Crons podem demorar — timeout máximo do Vercel Pro é 300s
@@ -70,6 +71,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         `skipped=${result.skipped} | errors=${result.errors}`,
     );
 
+    // ── Alarmes GL (pasta alarms/) — independente do resultado das leituras ──────
+    let alarmResult;
+    try {
+      alarmResult = await GlAlarmImportService.runImport(now);
+      console.log(
+        `[GL Alarm Cron] Importação finalizada | success=${alarmResult.success} | ` +
+          `filesFound=${alarmResult.filesFound} | imported=${alarmResult.imported} | errors=${alarmResult.errors}`,
+      );
+    } catch (alarmError: any) {
+      console.error(`[GL Alarm Cron] Falha: ${alarmError.message}`);
+      alarmResult = { success: false, filesFound: 0, filesProcessed: 0, rowsTotal: 0, imported: 0, errors: 1, skipLog: [], error: alarmError.message };
+    }
+
     return NextResponse.json(
       {
         success: result.success,
@@ -81,6 +95,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         skipped: result.skipped,
         errors: result.errors,
         ...(result.error ? { error: result.error } : {}),
+        alarms: {
+          filesFound: alarmResult.filesFound,
+          imported: alarmResult.imported,
+          errors: alarmResult.errors,
+          ...(alarmResult.error ? { error: alarmResult.error } : {}),
+        },
       },
       { status },
     );

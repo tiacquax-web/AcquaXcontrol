@@ -641,6 +641,9 @@ model Meter {
   // Relacionamento com Readings
   Readings Reading[]
 
+  // Relacionamento com GlAlarms
+  glAlarms GlAlarm[]
+
   // Relacionamento com MeterDeviceLink
   meterDeviceLinks MeterDeviceLink[] @relation("MeterToDeviceLinks")
 
@@ -1859,3 +1862,49 @@ model GlImportLog {
   @@index([deletedAt])
 }
 
+// ─── GL Alarms (device alarms importados da pasta alarms/ no S3) ──────────────
+
+model GlAlarm {
+  id              String    @id @map("_id") @default(uuid())
+
+  /** remote_id do arquivo GL — usado para achar o medidor pelo glId */
+  remoteId        String
+
+  /** device_id GL — rastreabilidade */
+  deviceId        String?
+
+  /** Medidor vinculado (via meter.glId), se encontrado */
+  meterId         String?
+  meter           Meter?    @relation(fields: [meterId], references: [id])
+
+  /** Tipo do alarme (ex: "device") */
+  alarmType       String
+
+  /** Código do alarme (ex: MAX_FLOW, REVERSE_FLOW) */
+  alarmCode       String
+
+  /** Criticidade informada pela GL (ex: LOW, HIGH) */
+  criticality     String?
+
+  /** Data/hora do alarme (UTC) */
+  alarmAt         DateTime  @db.Timestamp
+
+  /** Cidade/unidade informada no CSV (contexto, não confiável para vínculo) */
+  city            String?
+  unity           String?
+
+  /** Se o alarme já foi visto/reconhecido por um usuário */
+  acknowledged    Boolean   @default(false)
+  acknowledgedAt  DateTime? @db.Timestamp
+  acknowledgedBy  String?
+
+  createdAt       DateTime  @default(now()) @db.Timestamp
+  updatedAt       DateTime  @updatedAt @db.Timestamp
+  deletedAt       DateTime?
+
+  @@map("GlAlarms")
+  @@index([alarmAt])
+  @@index([meterId])
+  @@index([remoteId])
+  @@index([deletedAt])
+}
