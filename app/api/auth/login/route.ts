@@ -177,6 +177,7 @@ export async function POST(req: Request) {
   } catch (error) {
     // Erro interno: não expor detalhes ao cliente
     console.error('[login] Erro interno:', error instanceof Error ? error.stack : error);
-    return NextResponse.json({ error: 'Erro interno. Tente novamente mais tarde.' }, { status: 500 });
+    // TEMP DEBUG - remover depois
+    return NextResponse.json({ error: 'Erro interno. Tente novamente mais tarde.', _debug: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }
