@@ -24,9 +24,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    // Verifica permissão (system = admin/programador)
-    const contexts = await getUserContextsForActionOnEntity(userId, 'system', 'create');
-    if (!contexts.system) {
+    // Verifica permissão — somente admins
+    const { isValidPermissionableEntity } = await import('@/lib/prisma');
+    const contexts = await getUserContextsForActionOnEntity(userId, 'meter', 'update');
+    if (!contexts || Object.keys(contexts).length === 0) {
       return NextResponse.json({ error: 'Apenas administradores podem atualizar glIds em lote.' }, { status: 403 });
     }
 
