@@ -436,8 +436,6 @@ model Complex {
   supportTickets SupportTicket[]
 
   // Mapeamento
-  calculationModels ComplexCalculationModel[]
-
   @@map("Complexes")
   @@unique([socialName, deletedAt], name: "unique_socialName_not_deleted")
   @@unique([aliasName, deletedAt], name: "unique_aliasName_not_deleted")
@@ -1861,46 +1859,3 @@ model GlImportLog {
   @@index([deletedAt])
 }
 
-// ── Modelos de Cálculo de Billing ────────────────────────────────────────────
-
-model CalculationModel {
-  id              String    @id @map("_id") @default(uuid())
-  name            String
-  description     String?
-  tariffTiers     String    // JSON: array de faixas de tarifa
-  tariffMode      String    @default("SINGLE") // "SINGLE" | "PROGRESSIVE"
-  sewagePercent   Float     @default(0)
-  commonAreaType  String    @default("NONE") // "NONE" | "EQUAL" | "FRACTION" | "PROPORTIONAL" | "INVERSE_PROPORTIONAL"
-  kiteCarEnabled  Boolean   @default(false)
-  kiteCarType     String?   // "fixed" | "proportional"
-  extraColumns    String?   // JSON: colunas extras (encargos, taxas, etc)
-  sourceFile      String?   // Nome do arquivo .xlsx de origem
-  isActive        Boolean   @default(true)
-  createdByUserId String?
-  updatedByUserId String?
-  createdAt       DateTime  @default(now()) @db.Timestamp
-  updatedAt       DateTime  @updatedAt @db.Timestamp
-  deletedAt       DateTime? @db.Timestamp
-
-  complexModels   ComplexCalculationModel[]
-
-  @@map("CalculationModels")
-  @@index([isActive])
-  @@index([deletedAt])
-}
-
-model ComplexCalculationModel {
-  id                  String   @id @map("_id") @default(uuid())
-  complexId           String
-  complex             Complex  @relation(fields: [complexId], references: [id])
-  calculationModelId  String
-  calculationModel    CalculationModel @relation(fields: [calculationModelId], references: [id])
-  utilityType         String   @default("water") // "water" | "gas"
-  isActive            Boolean  @default(true)
-  createdAt           DateTime @default(now()) @db.Timestamp
-
-  @@unique([complexId, calculationModelId, utilityType], name: "complexId_calculationModelId_utilityType")
-  @@map("ComplexCalculationModels")
-  @@index([complexId])
-  @@index([calculationModelId])
-}

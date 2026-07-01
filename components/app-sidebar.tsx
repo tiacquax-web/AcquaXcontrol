@@ -10,7 +10,7 @@ import {
   Gauge, ShieldCheck, HousePlus, ReceiptText,
   ChartBarIncreasing, LayoutDashboard, GaugeCircle,
   Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen, ClipboardList,
-  MessageSquare, Lightbulb, Key, Calculator, DatabaseZap, BellDot,
+  MessageSquare, Lightbulb, Key, DatabaseZap, BellDot,
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
@@ -81,13 +81,6 @@ const items = [
     icon: ClipboardList,
     group: 'Geral',
     requiresCreate: true, // somente para quem tem permissão de criar condomínios (admin/programador)
-  },
-  {
-    title: "Modelos de Cálculo",
-    url: "/calculation-models",
-    icon: Calculator,
-    group: 'Geral',
-    requiresCreate: true,
   },
   {
     title: "Guia de Uso",

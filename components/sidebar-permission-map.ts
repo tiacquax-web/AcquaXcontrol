@@ -26,7 +26,6 @@ export const sidebarPermissionMap: Record<string, string> = {
   '/roles': 'role',
   '/guia': 'system',
   '/apuracao': 'complex',
-  '/calculation-models': 'complex',
   // '/suporte' and '/sugestoes' intentionally omitted → visible to any authenticated user
   // '/api-manager' → somente usuários com contexto 'system' (admin/programador)
   // Mapeado para 'system' (mesma entidade do /dashboard) mas com requiresCreate:
