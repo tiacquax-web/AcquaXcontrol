@@ -29,10 +29,11 @@ import { sanitizeImageUrl } from '@/lib/utils';
 const API = '/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function buildMonthOptions(count = 24) {
+function buildMonthOptions(pastCount = 24, futureCount = 12) {
   const opts = [];
-  for (let i = 0; i < count; i++) {
-    const d = subMonths(new Date(), i);
+  // Meses futuros primeiro (do mais distante para o mais próximo), depois mês atual e meses passados
+  for (let i = -futureCount; i < pastCount; i++) {
+    const d = subMonths(new Date(), i); // i negativo = subMonths soma meses (mês futuro)
     opts.push({
       value: `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`,
       label: format(d, 'MMM/yyyy', { locale: ptBR }),
@@ -44,7 +45,9 @@ function buildMonthOptions(count = 24) {
   return opts;
 }
 
-const ALL_MONTHS = buildMonthOptions(24);
+const FUTURE_MONTHS_COUNT = 12; // permite selecionar até 12 meses à frente do mês atual
+const ALL_MONTHS = buildMonthOptions(24, FUTURE_MONTHS_COUNT);
+const CURRENT_MONTH_INDEX = FUTURE_MONTHS_COUNT; // índice do mês atual dentro de ALL_MONTHS
 
 function fmt(v: number | null | undefined) {
   return v != null ? v.toFixed(3) : '—';
@@ -268,8 +271,8 @@ export default function LevantamentoPage() {
   const { context, loading: ctxLoading } = useUserContext();
 
   // Período: mês início e mês fim
-  const [fromMonth, setFromMonth] = useState(ALL_MONTHS[5]); // 6 meses atrás
-  const [toMonth, setToMonth] = useState(ALL_MONTHS[0]);     // mês atual
+  const [fromMonth, setFromMonth] = useState(ALL_MONTHS[CURRENT_MONTH_INDEX + 5]); // 5 meses atrás
+  const [toMonth, setToMonth] = useState(ALL_MONTHS[CURRENT_MONTH_INDEX]);     // mês atual
 
   const [selectedComplexId, setSelectedComplexId] = useState<string | undefined>();
   const [selectedComplexObj, setSelectedComplexObj] = useState<any>(null);
