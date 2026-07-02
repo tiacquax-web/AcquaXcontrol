@@ -481,7 +481,7 @@ export function DealershipReadingForm({ mode, initialData, id }: DealershipReadi
                               selected={field.value}
                               onSelect={field.onChange}
                               locale={ptBR}
-                              disabled={(date) => date > new Date()}
+                              disabled={(date) => date > new Date(new Date().getFullYear() + 1, 11, 31)}
                             />
                           )}
                           <FormMessage />

@@ -988,6 +988,9 @@ model ApartmentConsumptionReport {
   // Índices por mês/ano/tipo para agrupamentos por utilitário
   @@index([apartmentId, yearRef, monthRef, utilityType])
 }
+  // Email jobs vinculados a este relatório
+  EmailJobs              EmailJob[]  @relation("EmailJob_Report")
+
 
 enum DealershipType {
   water
@@ -1907,4 +1910,44 @@ model GlAlarm {
   @@index([meterId])
   @@index([remoteId])
   @@index([deletedAt])
+}
+
+// ─── Email Job (fila de envio de filipetas por email) ────────────────────────
+model EmailJob {
+  id                      String      @id @map("_id") @default(uuid())
+
+  // Referência ao relatório de consumo que originou o envio
+  apartmentConsumptionReportId String?
+  apartmentConsumptionReport   ApartmentConsumptionReport? @relation("EmailJob_Report", fields: [apartmentConsumptionReportId], references: [id])
+
+  // Referência à leitura da concessionária (grupo de filipetas)
+  dealershipReadingId     String?
+
+  // Destinatário
+  toEmail                 String
+  toName                  String?
+
+  // Conteúdo
+  subject                 String
+  monthRef                String
+  yearRef                 String
+  complexId               String?
+  apartmentId             String?
+
+  // Status do envio
+  status                  String      @default("pending") // pending | sent | failed | skipped
+  errorMessage            String?
+  attempts                Int         @default(0)
+  sentAt                  DateTime?   @db.Timestamp
+
+  // Auditoria
+  createdByUserId         String?
+  createdAt               DateTime    @default(now()) @db.Timestamp
+  updatedAt               DateTime?   @updatedAt @db.Timestamp
+
+  @@map("EmailJobs")
+  @@index([status, createdAt])
+  @@index([dealershipReadingId])
+  @@index([apartmentConsumptionReportId])
+  @@index([complexId, monthRef, yearRef])
 }

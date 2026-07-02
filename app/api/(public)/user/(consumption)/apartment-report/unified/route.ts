@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateUserSession } from '@/lib/users';
 import prisma from '@/lib/prisma';
+import { createEmailJobsForDealershipReading } from "@/lib/services/filipeta-email-dispatcher";
 
 // Request payload types (kept local to route to avoid broad type coupling)
 interface UnifiedReadingPayload {
@@ -276,6 +277,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (errors.length) r.errors = errors;
       if (warnings.length) r.warnings = warnings;
       results.push(r);
+    }
+
+    // ── Trigger: criar EmailJobs para envio automático de filipetas ────────────
+    // Coleta os dealershipReadingIds únicos dos relatórios processados
+    const dealershipReadingIds = new Set<string>();
+    for (const r of results) {
+      if ((r.createdReport || r.updatedReport) && r.dealershipReadingId) {
+        dealershipReadingIds.add(r.dealershipReadingId);
+      }
+    }
+    // Dispara a criação de jobs em background (não bloqueia a resposta)
+    if (dealershipReadingIds.size > 0 && process.env.ZOHO_SMTP_USER) {
+      try {
+        for (const drId of dealershipReadingIds) {
+          await createEmailJobsForDealershipReading(drId, userId);
+        }
+        console.log(`[Unified Import] EmailJobs criados para ${dealershipReadingIds.size} leitura(ões) de concessionária.`);
+      } catch (emailErr: any) {
+        // Não falha a importação se o email falhar — só loga
+        console.error('[Unified Import] Erro ao criar EmailJobs:', emailErr?.message);
+      }
     }
 
     const response: UnifiedResponse = {
