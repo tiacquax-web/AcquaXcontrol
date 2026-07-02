@@ -1347,6 +1347,18 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                     data.email = normalizeEmail(data.email);
                 }
                 
+                // Verificar se já existe um usuário ATIVO com o mesmo email (ignora soft-deleted)
+                const existingUser = await prisma.user.findFirst({
+                    where: {
+                        email: data.email,
+                        deletedAt: null,
+                    },
+                    select: { id: true },
+                });
+                if (existingUser) {
+                    return { entity: null, error: 'Já existe um usuário ativo com este e-mail.', status: 409 };
+                }
+                
                 const user = await prisma.user.create({ data: { ...data } });
                 return { entity: user, status: 201, error: null };
             case PermissionableEntity.role:

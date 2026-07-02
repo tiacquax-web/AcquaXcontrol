@@ -17,7 +17,7 @@ model User {
   id                        String    @id @map("_id") @default(uuid())
   name                      String
   
-  email                     String    @unique
+  email                     String
   emailVerifiedAt           DateTime? @db.Timestamp
   
   password                  String
@@ -137,7 +137,7 @@ model User {
   @@index([resetToken])
   @@index([createdAt])
   @@index([name])
-  @@index([email, deletedAt]) // Índice composto para otimização de queries
+  @@unique([email, deletedAt], name: "unique_email_not_deleted")
 }
 
 model Session {
@@ -270,7 +270,7 @@ model RoleAssignment {
 
 model Role {
   id                        String    @id @map("_id") @default(uuid())
-  name                      String    @unique
+  name                      String
   description               String?
 
   createdAt                 DateTime  @default(now()) @db.Timestamp
@@ -290,6 +290,7 @@ model Role {
   @@map("Roles")
 
   // Índices
+  @@unique([name, deletedAt], name: "unique_role_name_not_deleted")
   @@index([deletedAt])
 }
 
