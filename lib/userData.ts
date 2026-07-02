@@ -1024,6 +1024,17 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 return { entity: company, status: 201, error: null };
 
             case PermissionableEntity.complex:
+                // Se nenhuma empresa foi informada, vincula automaticamente à empresa padrão "Acqua X do Brasil"
+                // (o usuário pode trocar depois editando o condomínio)
+                if (!data.companyId) {
+                    const defaultCompany = await prisma.company.findFirst({
+                        where: { name: { contains: 'Acqua', mode: 'insensitive' }, deletedAt: null },
+                        orderBy: { createdAt: 'asc' },
+                        select: { id: true },
+                    });
+                    if (defaultCompany) data.companyId = defaultCompany.id;
+                }
+
                 if (!hasSystemPermission && !contexts.companyIds.includes(data.companyId))
                     return { entity: null, error: 'Não autorizado', status: 401 };
 

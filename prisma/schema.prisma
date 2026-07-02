@@ -987,10 +987,10 @@ model ApartmentConsumptionReport {
 
   // Índices por mês/ano/tipo para agrupamentos por utilitário
   @@index([apartmentId, yearRef, monthRef, utilityType])
-}
+
   // Email jobs vinculados a este relatório
   EmailJobs              EmailJob[]  @relation("EmailJob_Report")
-
+}
 
 enum DealershipType {
   water
