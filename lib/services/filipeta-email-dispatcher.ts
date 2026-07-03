@@ -12,6 +12,30 @@
 
 import prisma from '@/lib/prisma';
 
+/**
+ * Domínios internos/da empresa que não devem receber filipetas.
+ * Estes são emails de sistema/administração, não de moradores reais.
+ */
+const BLOCKED_EMAIL_DOMAINS = [
+  'acquaxdobrasil.com.br',
+  'acquaxcontrol.com.br',
+  'acquaxcontrol.com',
+  'acquax.com',
+  'acquax.com.br',
+];
+
+/**
+ * Verifica se um email pertence a um domínio bloqueado (interno/sistema).
+ */
+export function isBlockedEmailDomain(email: string): boolean {
+  if (!email) return true;
+  const domain = email.split('@')[1]?.toLowerCase().trim();
+  if (!domain) return true;
+  return BLOCKED_EMAIL_DOMAINS.some(blocked =>
+    domain === blocked || domain.endsWith('.' + blocked)
+  );
+}
+
 interface ResidentWithApartment {
   userId: string;
   userName: string;
@@ -86,8 +110,8 @@ export async function findResidentsForComplex(complexId: string): Promise<Reside
     const apartment = apartmentMap.get(assignment.contextId);
     if (!user || !apartment) continue;
 
-    // Pular emails de sistema ou óbvios inválidos
-    if (!user.email || user.email.includes('.deleted-')) continue;
+    // Pular emails de sistema, óbvios inválidos ou domínios internos da empresa
+    if (!user.email || user.email.includes('.deleted-') || isBlockedEmailDomain(user.email)) continue;
 
     result.push({
       userId: user.id,

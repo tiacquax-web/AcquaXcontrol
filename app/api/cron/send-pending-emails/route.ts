@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
 import { generateFilipetaEmail } from '@/lib/services/filipeta-email-template';
+import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120; // 2 min — suficiente para 50 emails
@@ -115,10 +116,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     let sent = 0;
     let failed = 0;
+    let skipped = 0;
 
     // Processar cada job
     for (const job of pendingJobs) {
       try {
+        // Pular emails de domínios internos da empresa (sistema/admin)
+        if (isBlockedEmailDomain(job.toEmail)) {
+          await prisma.emailJob.update({
+            where: { id: job.id },
+            data: { status: 'skipped', errorMessage: 'Domínio interno bloqueado', sentAt: new Date() },
+          });
+          skipped++;
+          continue;
+        }
+
         // Incrementar tentativas
         await prisma.emailJob.update({
           where: { id: job.id },
@@ -218,8 +230,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    console.log(`[EmailCron] Processados: ${pendingJobs.length}, enviados: ${sent}, falhas: ${failed}`);
-    return NextResponse.json({ processed: pendingJobs.length, sent, failed });
+    console.log(`[EmailCron] Processados: ${pendingJobs.length}, enviados: ${sent}, falhas: ${failed}, pulados: ${skipped}`);
+    return NextResponse.json({ processed: pendingJobs.length, sent, failed, skipped });
   } catch (error: any) {
     console.error('[EmailCron] Erro fatal:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
