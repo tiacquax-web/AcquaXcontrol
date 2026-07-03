@@ -1,8 +1,12 @@
 /**
  * GET /api/gl-status?complexId=xxx
  *
- * Retorna a data da última leitura automática recebida do GroupLink
- * para um condomínio específico. Usado no dashboard do síndico.
+ * Retorna:
+ * - hasGL: se o condomínio tem medidores com glId vinculado
+ * - lastImport: data da última leitura recebida via GroupLink
+ * - daysSince: dias desde a última leitura
+ *
+ * Usado no dashboard do síndico/admin para mostrar status das leituras automáticas.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -19,8 +23,23 @@ export async function GET(req: NextRequest) {
   const complexId = req.nextUrl.searchParams.get('complexId');
   if (!complexId) return NextResponse.json({ error: 'complexId obrigatório' }, { status: 400 });
 
-  // Buscar a leitura mais recente de medidores deste condomínio
-  // que tenham glId (ou seja, recebidas via GroupLink)
+  // 1. Verificar se o condomínio tem medidores com GL vinculado
+  const glMetersCount = await prisma.meter.count({
+    where: {
+      complexId,
+      deletedAt: null,
+      glId: { not: null },
+    },
+  });
+
+  const hasGL = glMetersCount > 0;
+
+  if (!hasGL) {
+    // Sem GL — retorna hasGL=false, sem datas
+    return NextResponse.json({ hasGL: false, lastImport: null, daysSince: null });
+  }
+
+  // 2. Buscar a leitura mais recente de medidores com GL deste condomínio
   const lastReading = await prisma.reading.findFirst({
     where: {
       deletedAt: null,
@@ -35,29 +54,13 @@ export async function GET(req: NextRequest) {
   });
 
   if (!lastReading) {
-    // Fallback: buscar última leitura de qualquer medidor do condomínio
-    const lastAny = await prisma.reading.findFirst({
-      where: {
-        deletedAt: null,
-        meter: { complexId, deletedAt: null },
-      },
-      orderBy: { readAt: 'desc' },
-      select: { readAt: true },
-    });
-
-    if (!lastAny) {
-      return NextResponse.json({ lastImport: null, daysSince: null });
-    }
-
-    const days = Math.floor((Date.now() - lastAny.readAt.getTime()) / (1000 * 60 * 60 * 24));
-    return NextResponse.json({
-      lastImport: lastAny.readAt.toISOString().slice(0, 10),
-      daysSince: days,
-    });
+    // Tem medidores GL mas nenhuma leitura recebida ainda
+    return NextResponse.json({ hasGL: true, lastImport: null, daysSince: null });
   }
 
   const days = Math.floor((Date.now() - lastReading.readAt.getTime()) / (1000 * 60 * 60 * 24));
   return NextResponse.json({
+    hasGL: true,
     lastImport: lastReading.readAt.toISOString().slice(0, 10),
     daysSince: days,
   });

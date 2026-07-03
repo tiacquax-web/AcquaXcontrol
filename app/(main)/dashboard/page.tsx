@@ -418,10 +418,13 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
 // 3 painéis: Filipetas, Resumo de Consumo, Conta da Concessionária
 
 // ─── GLStatusCard ─────────────────────────────────────────────────────────────
+// Só renderiza se o condomínio tiver medidores com GL (glId) vinculado.
+// Caso contrário retorna null (não aparece nada).
 function GLStatusCard({ complexId }: { complexId: string }) {
-  const [status, setStatus] = useState<{ lastImport: string | null; daysSince: number | null; loading: boolean }>({
+  const [status, setStatus] = useState<{ lastImport: string | null; daysSince: number | null; hasGL: boolean; loading: boolean }>({
     lastImport: null,
     daysSince: null,
+    hasGL: false,
     loading: true,
   });
 
@@ -434,26 +437,18 @@ function GLStatusCard({ complexId }: { complexId: string }) {
         setStatus({
           lastImport: data.lastImport ?? null,
           daysSince: data.daysSince ?? null,
+          hasGL: data.hasGL ?? false,
           loading: false,
         });
       })
-      .catch(() => setStatus({ lastImport: null, daysSince: null, loading: false }));
+      .catch(() => setStatus({ lastImport: null, daysSince: null, hasGL: false, loading: false }));
   }, [complexId]);
 
+  // Se carregou e não tem GL, não renderiza nada
+  if (!status.loading && !status.hasGL) return null;
+
   if (status.loading) {
-    return (
-      <Card className="flex flex-col">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Activity className="w-4 h-4 text-blue-500" />
-            Status das Leituras Automáticas
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-8 w-full" />
-        </CardContent>
-      </Card>
-    );
+    return null; // não mostra skeleton para evitar flash em condomínios sem GL
   }
 
   const days = status.daysSince;
