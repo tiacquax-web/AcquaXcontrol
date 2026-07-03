@@ -6,6 +6,7 @@
  */
 
 import { format } from 'date-fns';
+import type { ConsumptionAnalysis } from './consumption-analysis';
 import { ptBR } from 'date-fns/locale';
 
 const MONTH_NAMES = [
@@ -35,6 +36,8 @@ export interface FilipetaEmailData {
   // Alertas
   hasAlerts?: boolean;
   alertMessage?: string;
+  // Análise de consumo (comparação histórica da própria unidade)
+  analysis?: ConsumptionAnalysis;
 }
 
 export function generateFilipetaEmail(data: FilipetaEmailData): { subject: string; html: string; text: string } {
@@ -168,6 +171,54 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
           <!-- Alertas -->
           ${alertSection}
 
+                    <!-- Análise de consumo -->
+          ${data.analysis ? `
+          <tr>
+            <td style="padding:0 32px 16px 32px;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
+                <tr>
+                  <td style="background:#f8f9fa;color:#333;padding:10px 20px;font-size:13px;font-weight:600;">
+                    📊 Análise do seu consumo
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <p style="margin:0 0 12px 0;font-size:14px;color:#333;line-height:1.5;">
+                      <span style="font-size:16px;">${data.analysis.trendEmoji}</span>
+                      ${data.analysis.trendLabel}
+                    </p>
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      ${data.analysis.previousConsumption !== null ? `
+                      <tr>
+                        <td style="padding:6px 0;font-size:13px;color:#888;">Mês anterior</td>
+                        <td style="padding:6px 0;font-size:13px;color:#333;font-weight:600;text-align:right;">${fmtNumber(data.analysis.previousConsumption)} m³</td>
+                      </tr>` : ''}
+                      ${data.analysis.avg6Months !== null ? `
+                      <tr>
+                        <td style="padding:6px 0;font-size:13px;color:#888;">Média ${data.analysis.monthsAnalyzed > 0 ? 'últimos ' + data.analysis.monthsAnalyzed + ' meses' : 'histórica'}</td>
+                        <td style="padding:6px 0;font-size:13px;color:#333;font-weight:600;text-align:right;">${fmtNumber(data.analysis.avg6Months)} m³</td>
+                      </tr>` : ''}
+                      ${data.analysis.vsPreviousPct !== null ? `
+                      <tr>
+                        <td style="padding:6px 0;font-size:13px;color:#888;">Variação vs mês anterior</td>
+                        <td style="padding:6px 0;font-size:13px;font-weight:600;text-align:right;color:${data.analysis.vsPreviousPct > 10 ? '#e53935' : data.analysis.vsPreviousPct < -10 ? '#43a047' : '#666'};">
+                          ${data.analysis.vsPreviousPct > 0 ? '+' : ''}${data.analysis.vsPreviousPct}%
+                        </td>
+                      </tr>` : ''}
+                      ${data.analysis.vsAvgPct !== null ? `
+                      <tr>
+                        <td style="padding:6px 0;font-size:13px;color:#888;">Variação vs média histórica</td>
+                        <td style="padding:6px 0;font-size:13px;font-weight:600;text-align:right;color:${data.analysis.vsAvgPct > 10 ? '#e53935' : data.analysis.vsAvgPct < -10 ? '#43a047' : '#666'};">
+                          ${data.analysis.vsAvgPct > 0 ? '+' : ''}${data.analysis.vsAvgPct}%
+                        </td>
+                      </tr>` : ''}
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>` : ''}
+
           <!-- CTA -->
           <tr>
             <td style="padding:0 32px 28px 32px;text-align:center;">
@@ -199,6 +250,12 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
 </html>`;
 
   const text = `AcquaX do Brasil - Sistema de Medição e Controle\n\nOlá, ${data.residentName}!\n\nSua filipeta de ${utilityLabel.toLowerCase()} referente a ${monthName}/${data.yearRef} está disponível.\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\nPeríodo: ${periodStr}\nConsumo: ${fmtNumber(data.totalConsumption ?? data.consumption)} m³\nValor Total: ${fmtCurrency(data.totalUnit)}\n\nAcesse ${baseUrl} para ver a filipeta completa.
+${data.analysis ? `
+Análise de consumo:
+${data.analysis.trendLabel}
+${data.analysis.previousConsumption !== null ? `Mês anterior: ${fmtNumber(data.analysis.previousConsumption)} m³` : ''}
+${data.analysis.avg6Months !== null ? `Média: ${fmtNumber(data.analysis.avg6Months)} m³` : ''}
+${data.analysis.vsPreviousPct !== null ? `Variação vs mês anterior: ${data.analysis.vsPreviousPct > 0 ? '+' : ''}${data.analysis.vsPreviousPct}%` : ''}` : ''}
 
 Em caso de dúvidas, entre em contato com medicao@acquaxdobrasil.com.br e/ou 4003-7945.\n\nEste é um email automático. Não responda a esta mensagem.`;
 

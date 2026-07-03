@@ -18,6 +18,7 @@ import prisma from '@/lib/prisma';
 import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
 import { generateFilipetaEmail } from '@/lib/services/filipeta-email-template';
 import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
+import { getConsumptionAnalysis } from '@/lib/services/consumption-analysis';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120; // 2 min — suficiente para 50 emails
@@ -165,6 +166,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           periodStart = undefined; // será calculado pelo template se não fornecido
         }
 
+        // Buscar análise de consumo histórico (comparação da unidade consigo mesma)
+        let analysis = undefined;
+        try {
+          const currentConsumption = report.totalConsumption ?? report.consumption;
+          analysis = await getConsumptionAnalysis(
+            job.apartmentId || apartment.id,
+            report.id,
+            currentConsumption,
+          );
+        } catch (e) {
+          console.warn(`[EmailCron] Erro ao buscar análise para apt ${apartment.id}:`, e);
+        }
+
         const { subject, html, text } = generateFilipetaEmail({
           residentName: job.toName || 'Morador',
           apartmentName: apartment.name || '',
@@ -188,6 +202,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           alertMessage: alertCount > 0
             ? `Sua unidade possui ${alertCount} alerta(s) recente(s) do sistema de monitoramento. Acesse o sistema para visualizar os detalhes.`
             : undefined,
+          analysis,
         });
 
         const result = await sendEmail({
