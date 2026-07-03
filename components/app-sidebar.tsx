@@ -194,13 +194,13 @@ export function AppSidebar() {
   const { context: userContext } = useUserContext();
 
   // Verifica se o usuário tem condomínios com medidores GL vinculados
-  const hasGLComplexes = (() => {
+  // glComplexIds vem da API my-context e contém apenas condomínios que têm
+  // medidores com glId ativo. Isso garante que as abas IoT só apareçam
+  // para usuários que realmente têm acesso a dados de monitoramento.
+  const hasGLAccess = (() => {
     if (!userContext) return false;
-    // Admin/programador sempre pode ver
     if (userContext.isSystem) return true;
-    // Síndico/administradora: verifica se algum condomínio tem GL
-    // (faremos uma estimativa: se tem complexIds ou accessibleComplexIds)
-    return userContext.complexes.length > 0 || userContext.accessibleComplexIds.length > 0;
+    return userContext.glComplexIds && userContext.glComplexIds.length > 0;
   })();
 
   function hasAnyPermission(url: string, requiresCreate?: boolean, requiresGL?: boolean) {
@@ -208,17 +208,10 @@ export function AppSidebar() {
     if (url === '/dashboard') return true;
     if (!permissions) return false;
 
-    // Items que requerem GL: só mostrar se o usuário tem contexto com condomínios
-    // A verificação real de medidores com glId é feita na página.
-    // Aqui no sidebar, ocultamos para moradores e usuários sem condomínio.
+    // Items que requerem GL: só mostrar se o usuário tem condomínios
+    // com medidores GL ativos (verificado via glComplexIds da API my-context)
     if (requiresGL) {
-      // Admin/programador sempre vê
-      if (userContext?.isSystem) {
-        // continha para checar entidade abaixo
-      } else {
-        // Síndico/administradora: só vê se tiver condomínios
-        if (!userContext || userContext.complexes.length === 0) return false;
-      }
+      if (!hasGLAccess) return false;
     }
 
     const entity = sidebarPermissionMap[url];

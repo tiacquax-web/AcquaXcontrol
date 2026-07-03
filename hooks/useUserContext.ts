@@ -46,6 +46,7 @@ export interface UserContext {
   complexes: ComplexWithContext[];
   companyIds: string[];
   accessibleComplexIds: string[];
+  glComplexIds: string[];  // IDs de condomínios com medidores GL ativos
 }
 
 export function useUserContext() {

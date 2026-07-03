@@ -149,19 +149,20 @@ export default function AlertsPage() {
     }
 
     // Síndico/administradora: seleciona o condomínio (se tiver só 1)
+    // Filtra apenas condomínios com GL
     if (!userContext.isSystem && userContext.complexes.length > 0) {
-      if (userContext.complexes.length === 1) {
-        setComplexObj(userContext.complexes[0]);
+      const glComplexes = userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id));
+      if (glComplexes.length === 1) {
+        setComplexObj(glComplexes[0]);
       }
     }
   }, [ctxLoading, userContext, autoSelected]);
 
-  // Verificar se tem GL: morador sem GL não deveria ver a página
+  // Verificar se tem GL: só mostra se o usuário tiver condomínios com medidores GL
   const hasGLAccess = (() => {
     if (!userContext) return false;
     if (userContext.isSystem) return true;
-    // Síndico/administradora: tem condomínios
-    return userContext.complexes.length > 0;
+    return userContext.glComplexIds && userContext.glComplexIds.length > 0;
   })();
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>({

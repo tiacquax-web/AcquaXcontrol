@@ -50,15 +50,18 @@ export default function MonitoringPage() {
     }
 
     // Síndico com 1 condomínio: seleciona automaticamente
-    if (!userContext.isSystem && userContext.complexes.length === 1) {
-      setComplexObj(userContext.complexes[0])
+    if (!userContext.isSystem && userContext.complexes.length > 0) {
+      const glComplexes = userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id))
+      if (glComplexes.length === 1) {
+        setComplexObj(glComplexes[0])
+      }
     }
   }, [ctxLoading, userContext])
 
   const hasGLAccess = (() => {
     if (!userContext) return false
     if (userContext.isSystem) return true
-    return userContext.complexes.length > 0
+    return userContext.glComplexIds && userContext.glComplexIds.length > 0
   })()
   // Monitoramento é acessível para qualquer usuário com permissão de leitura
   const canAccessMonitoring = hasPermission('monitoringDashboard', 'read')

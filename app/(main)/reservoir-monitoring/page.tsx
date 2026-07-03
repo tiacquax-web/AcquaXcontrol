@@ -39,15 +39,18 @@ export default function ReservoirMonitoringPage() {
   // Auto-selecionar condomínio para síndico com 1 condomínio
   useEffect(() => {
     if (ctxLoading || !userContext || selectedComplex) return
-    if (!userContext.isSystem && userContext.complexes.length === 1) {
-      setSelectedComplex(userContext.complexes[0] as Complex)
+    if (!userContext.isSystem && userContext.complexes.length > 0) {
+      const glComplexes = userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id))
+      if (glComplexes.length === 1) {
+        setSelectedComplex(glComplexes[0] as Complex)
+      }
     }
   }, [ctxLoading, userContext, selectedComplex])
 
   const hasGLAccess = (() => {
     if (!userContext) return false
     if (userContext.isSystem) return true
-    return userContext.complexes.length > 0
+    return userContext.glComplexIds && userContext.glComplexIds.length > 0
   })()
   const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: sixMonthsAgo, to: new Date() })
   const [searchText, setSearchText] = useState("")

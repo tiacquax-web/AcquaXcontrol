@@ -748,9 +748,11 @@ export default function UsersPage() {
                 </DialogContent>
             </Dialog>
         </TabsContent>
+            {canBulkImport && (
             <TabsContent value="import">
               <BulkImportTab />
             </TabsContent>
+            )}
           </Tabs>
         </div>
     )
