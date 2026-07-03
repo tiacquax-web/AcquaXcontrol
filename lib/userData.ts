@@ -2953,6 +2953,40 @@ async function deleteEntity(userId: string, entityType: PermissionableEntity, en
                 
                 if (!hasUserDeletePermission) return { error: 'Não autorizado', status: 401, entity: null };
 
+                // 1b. Proteção: Programador não pode deletar usuário com papel "Administrador"
+                if (hasSystemPermission) {
+                    // Buscar os papéis do solicitante para verificar se é Administrador
+                    const requesterAssignments = await prisma.roleAssignment.findMany({
+                        where: {
+                            userId,
+                            contextType: 'system',
+                            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                        },
+                        select: { Role: { select: { name: true } } },
+                    });
+                    const requesterSystemRoles = requesterAssignments.map(a => a.Role?.name).filter(Boolean) as string[];
+                    const isRequesterAdmin = requesterSystemRoles.includes('Administrador');
+
+                    if (!isRequesterAdmin) {
+                        // Solicitante é Programador (ou outro system não-admin)
+                        // Verificar se o usuário-alvo tem papel de Administrador
+                        const targetAssignments = await prisma.roleAssignment.findMany({
+                            where: {
+                                userId: entityId,
+                                contextType: 'system',
+                                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                            },
+                            select: { Role: { select: { name: true } } },
+                        });
+                        const targetSystemRoles = targetAssignments.map(a => a.Role?.name).filter(Boolean) as string[];
+                        const isTargetAdmin = targetSystemRoles.includes('Administrador');
+
+                        if (isTargetAdmin) {
+                            return { error: 'Programadores não podem excluir usuários Administrador', status: 403, entity: null };
+                        }
+                    }
+                }
+
                 // 2. Se não for sistema, verificar se o usuário-alvo está no escopo
                 if (!hasSystemPermission) {
                     const scopeOrConditionsDelete: any[] = [];

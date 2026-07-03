@@ -75,6 +75,8 @@ export default function UsersPage() {
 
     // Só admins/programadores podem ver importação em massa
     const canBulkImport = userContext?.isSystem ?? false
+    // Programador não pode excluir usuários Administrador
+    const isAdministrador = (userContext?.systemRoles ?? []).includes('Administrador')
     const [exportLoading, setExportLoading] = useState(false)
     const [resettingAll, setResettingAll] = useState(false)
     const [showExportModal, setShowExportModal] = useState(false)
@@ -129,17 +131,21 @@ export default function UsersPage() {
     }
 
     const handleDeleteUser = async (id: string) => {
-        if (window.confirm("Tem certeza de que deseja excluir este usuário?")) {
-            try {
-                await deleteUser(id)
-                toast({
-                    title: "Usuário excluído com sucesso",
-                    description: "O usuário foi excluído com sucesso.",
-                })
-                refetch()
-            } catch (error) {
-                console.error("Erro ao excluir usuário:", error)
-            }
+        if (!window.confirm("Tem certeza de que deseja excluir este usuário?")) return
+        try {
+            await deleteUser(id)
+            toast({
+                title: "Usuário excluído com sucesso",
+                description: "O usuário foi excluído com sucesso.",
+            })
+            refetch()
+        } catch (error: any) {
+            const msg = error?.response?.data?.error || error?.message || "Erro ao excluir usuário"
+            toast({
+                title: "Não foi possível excluir",
+                description: msg,
+                variant: "destructive",
+            })
         }
     }
 
