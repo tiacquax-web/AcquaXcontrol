@@ -113,8 +113,8 @@ export async function POST(req: Request) {
     const { email, password } = parsed.data;
 
     // ── 3. Buscar usuário ─────────────────────────────────────────────────────
-    const user = await prisma.user.findUnique({
-      where: { email },
+    const user = await prisma.user.findFirst({
+      where: { email, deletedAt: null },
     });
 
     // Mensagem genérica: não revela se o e-mail existe ou não

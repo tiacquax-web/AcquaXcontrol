@@ -7,7 +7,7 @@ export async function POST(req: Request) {
     try {
         const { email } = await req.json();
 
-        const user = await prisma.user.findUnique({ where: { email } });
+        const user = await prisma.user.findFirst({ where: { email, deletedAt: null } });
 
         if (!user) {
             return NextResponse.json({ error: 'Email not found' }, { status: 404 });
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
         const resetTokenExpiry = new Date(Date.now() + 3600 * 1000); // 1 hour
 
         await prisma.user.update({
-            where: { email },
+            where: { id: user.id },
             data: { resetToken, resetTokenExpiry },
         });
 
