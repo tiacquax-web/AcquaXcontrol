@@ -38,6 +38,44 @@ export interface FilipetaEmailData {
   alertMessage?: string;
   // Análise de consumo (comparação histórica da própria unidade)
   analysis?: ConsumptionAnalysis;
+  // Dica de economia contextual
+  economyTip?: string;
+}
+
+
+/**
+ * Gera uma dica de economia contextual baseada na análise de consumo.
+ */
+function generateEconomyTip(analysis?: ConsumptionAnalysis): string | undefined {
+  if (!analysis) return undefined;
+
+  if (analysis.trend === 'insufficient_data') {
+    return undefined; // não incomodar no primeiro mês
+  }
+
+  if (analysis.trend === 'increase' && analysis.vsPreviousPct !== null) {
+    if (analysis.vsPreviousPct > 30) {
+      return 'Seu consumo subiu significativamente. Recomendamos verificar possíveis vazamentos em torneiras, válvulas de descarga e conexões. Um vazamento pequeno pode desperdiçar até 200 litros por dia.';
+    }
+    if (analysis.vsPreviousPct > 10) {
+      return 'Seu consumo aumentou neste mês. Confira se houve aumento de pessoas em casa ou uso intensivo de equipamentos. Se não houver motivo aparente, vale verificar vazamentos ocultos.';
+    }
+  }
+
+  if (analysis.trend === 'decrease' && analysis.vsPreviousPct !== null) {
+    if (analysis.vsPreviousPct < -20) {
+      return 'Excelente! Seu consumo reduziu bastante este mês. Continue assim — pequenas mudanças de hábito fazem grande diferença no final do ano.';
+    }
+    if (analysis.vsPreviousPct < -10) {
+      return 'Muito bem! Seu consumo diminuiu em relação ao mês anterior. Manter esse padrão ajuda a reduzir custos ao longo do ano.';
+    }
+  }
+
+  if (analysis.trend === 'stable') {
+    return 'Dica: feche a torneira enquanto escova os dentes e ensaboa as mãos. Esse simples hábito economiza até 12 litros por minuto.';
+  }
+
+  return undefined;
 }
 
 export function generateFilipetaEmail(data: FilipetaEmailData): { subject: string; html: string; text: string } {
@@ -92,6 +130,8 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
         <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;font-weight:600;">${fmtCurrency(data.kiteCarCost)}</td>
       </tr>`);
   }
+
+  const economyTip = data.economyTip || generateEconomyTip(data.analysis);
 
   const alertSection = data.hasAlerts ? `
     <tr>
@@ -219,7 +259,17 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
             </td>
           </tr>` : ''}
 
-          <!-- CTA -->
+          ${economyTip ? `
+          <tr>
+            <td style="padding:0 32px 16px 32px;">
+              <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:12px 16px;">
+                <p style="margin:0 0 4px 0;font-size:13px;font-weight:700;color:#2e7d32;">💡 Dica de economia</p>
+                <p style="margin:0;font-size:13px;color:#2e7d32;line-height:1.5;">${economyTip}</p>
+              </div>
+            </td>
+          </tr>` : ''}
+
+                    <!-- CTA -->
           <tr>
             <td style="padding:0 32px 28px 32px;text-align:center;">
               <a href="${baseUrl}/login?redirect=/filipeta&apt=${data.apartmentName}&ref=${data.monthRef}/${data.yearRef}"
@@ -249,7 +299,8 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
 </body>
 </html>`;
 
-  const text = `AcquaX do Brasil - Sistema de Medição e Controle\n\nOlá, ${data.residentName}!\n\nSua filipeta de ${utilityLabel.toLowerCase()} referente a ${monthName}/${data.yearRef} está disponível.\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\nPeríodo: ${periodStr}\nConsumo: ${fmtNumber(data.totalConsumption ?? data.consumption)} m³\nValor Total: ${fmtCurrency(data.totalUnit)}\n\nAcesse ${baseUrl} para ver a filipeta completa.
+  const text = `AcquaX do Brasil - Sistema de Medição e Controle\n\nOlá, ${data.residentName}!\n\nSua filipeta de ${utilityLabel.toLowerCase()} referente a ${monthName}/${data.yearRef} está disponível.\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\nPeríodo: ${periodStr}\nConsumo: ${fmtNumber(data.totalConsumption ?? data.consumption)} m³\nValor Total: ${fmtCurrency(data.totalUnit)}\n\n${economyTip ? `\n💡 Dica de economia: ${economyTip}\n` : ''}
+Acesse ${baseUrl} para ver a filipeta completa.
 ${data.analysis ? `
 Análise de consumo:
 ${data.analysis.trendLabel}

@@ -33,6 +33,7 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { gunzipSync } from 'zlib';
+import { sendEmail } from '@/lib/services/email-service';
 
 export interface GlAlarmImportResult {
   success: boolean;
@@ -249,10 +250,139 @@ export class GlAlarmImportService {
 
     try {
       const result = await prisma.glAlarm.createMany({ data: alarmsToCreate });
+
+      // Notificar moradores sobre alarmes vinculados ao seu medidor
+      GlAlarmImportService.notifyResidentsOfAlarms(alarmsToCreate).catch(err =>
+        console.error('[GL Alarm Import] Erro ao notificar moradores:', err)
+      );
+
       return { imported: result.count, errors: 0 };
     } catch (e: any) {
       console.error(`[GL Alarm Import] Erro ao salvar alarmes: ${e.message}`);
       return { imported: 0, errors: alarmsToCreate.length };
+    }
+  }
+
+  /**
+   * Enfileira notificações por email para moradores cujo medidor disparou alarme.
+   */
+  private static async notifyResidentsOfAlarms(alarms: any[]): Promise<void> {
+    for (const alarm of alarms) {
+      if (!alarm.meterId) continue;
+
+      // Buscar o medidor e apartamento vinculado
+      const meter = await prisma.meter.findUnique({
+        where: { id: alarm.meterId },
+        select: {
+          id: true,
+          register: true,
+          apartment: {
+            select: {
+              id: true,
+              name: true,
+              block: {
+                select: {
+                  name: true,
+                  complex: { select: { id: true, socialName: true } },
+                },
+              },
+              users: {
+                where: { deletedAt: null },
+                select: { email: true, fullName: true },
+              },
+            },
+          },
+        },
+      });
+
+      if (!meter?.apartment) continue;
+
+      const residents = meter.apartment.users.filter(u =>
+        u.email &&
+        !u.email.includes('@acquax') &&
+        !u.email.includes('@acquaxdobrasil') &&
+        !u.email.includes('@acquaxcontrol')
+      );
+
+      if (residents.length === 0) continue;
+
+      const complexName = meter.apartment.block?.complex?.socialName ?? '-';
+      const blockName = meter.apartment.block?.name ?? '-';
+      const aptName = meter.apartment.name ?? '-';
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.acquaxcontrol.com.br';
+
+      const alarmLabels: Record<string, string> = {
+        MAX_FLOW: 'Fluxo máximo excedido',
+        REVERSE_FLOW: 'Fluxo reverso detectado',
+      };
+
+      const alarmText = alarmLabels[alarm.alarmCode] || alarm.alarmCode;
+      const alarmDate = alarm.alarmAt instanceof Date
+        ? alarm.alarmAt.toLocaleDateString('pt-BR')
+        : new Date(alarm.alarmAt).toLocaleDateString('pt-BR');
+
+      const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;min-height:100vh;">
+    <tr><td align="center" style="padding:24px 12px;">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+        <tr><td style="background:#e53935;padding:20px 32px;text-align:center;">
+          <p style="margin:0;color:#fff;font-size:18px;font-weight:700;">Alerta do Medidor - ${complexName}</p>
+        </td></tr>
+        <tr><td style="padding:24px 32px;">
+          <p style="margin:0 0 16px 0;font-size:14px;color:#333;">Olá,</p>
+          <p style="margin:0 0 16px 0;font-size:14px;color:#333;line-height:1.6;">
+            O medidor da sua unidade (<strong>${blockName} / ${aptName}</strong>) registrou um alerta em <strong>${alarmDate}</strong>:
+          </p>
+          <div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+            <p style="margin:0;font-size:15px;font-weight:600;color:#c62828;">${alarmText}</p>
+            ${alarm.criticality ? `<p style="margin:4px 0 0 0;font-size:13px;color:#c62828;">Criticidade: ${alarm.criticality}</p>` : ''}
+          </div>
+          <p style="margin:0 0 16px 0;font-size:13px;color:#666;line-height:1.5;">
+            Recomendamos verificar seu sistema hidráulico. Se o problema persistir, entre em contato com a administração do condomínio.
+          </p>
+        </td></tr>
+        <tr><td style="padding:0 32px 24px 32px;text-align:center;">
+          <a href="${baseUrl}/monitoring" style="display:inline-block;background:#1e88e5;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;">Ver monitoramento</a>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:16px 32px;border-top:1px solid #eee;">
+          <p style="margin:0;font-size:11px;color:#999;text-align:center;">
+            Este e um email automatico. Nao responda.<br>
+            Em caso de duvidas: medicao@acquaxdobrasil.com.br e/ou 4003-7945.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+      const text = `AcquaXControl - Alerta do Medidor - ${complexName}
+
+O medidor da sua unidade (${blockName}/${aptName}) registrou um alerta em ${alarmDate}:
+
+Tipo: ${alarmText}
+${alarm.criticality ? `Criticidade: ${alarm.criticality}` : ''}
+
+Recomendamos verificar seu sistema hidraulico. Se o problema persistir, entre em contato com a administracao.
+
+Acesse ${baseUrl}/monitoring para ver os detalhes.
+
+Em caso de duvidas: medicao@acquaxdobrasil.com.br e/ou 4003-7945.`;
+
+      for (const resident of residents) {
+        try {
+          await sendEmail({
+            to: resident.email,
+            toName: resident.fullName,
+            subject: `Alerta do Medidor - ${complexName} - ${blockName}/${aptName}`,
+            html,
+            text,
+          });
+        } catch (e) {
+          console.error(`[GL Alarm] Erro ao notificar ${resident.email}:`, e);
+        }
+      }
     }
   }
 

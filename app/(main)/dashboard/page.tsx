@@ -416,6 +416,166 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
 // ─── SindicoDashboard ─────────────────────────────────────────────────────────
 // Dashboard para Síndico e Administradora — exibe condomínios vinculados com
 // 3 painéis: Filipetas, Resumo de Consumo, Conta da Concessionária
+
+// ─── GLStatusCard ─────────────────────────────────────────────────────────────
+function GLStatusCard({ complexId }: { complexId: string }) {
+  const [status, setStatus] = useState<{ lastImport: string | null; daysSince: number | null; loading: boolean }>({
+    lastImport: null,
+    daysSince: null,
+    loading: true,
+  });
+
+  useEffect(() => {
+    if (!complexId) return;
+    setStatus(s => ({ ...s, loading: true }));
+    fetch(`/api/gl-status?complexId=${complexId}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        setStatus({
+          lastImport: data.lastImport ?? null,
+          daysSince: data.daysSince ?? null,
+          loading: false,
+        });
+      })
+      .catch(() => setStatus({ lastImport: null, daysSince: null, loading: false }));
+  }, [complexId]);
+
+  if (status.loading) {
+    return (
+      <Card className="flex flex-col">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Activity className="w-4 h-4 text-blue-500" />
+            Status das Leituras Automáticas
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-8 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const days = status.daysSince;
+  const isStale = days !== null && days > 3;
+  const isWarning = days !== null && days > 1 && days <= 3;
+  const isOk = days !== null && days <= 1;
+
+  return (
+    <Card className="flex flex-col">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Activity className="w-4 h-4 text-blue-500" />
+          Status das Leituras Automáticas
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {status.lastImport ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              {isOk && <CheckCircle2 className="w-5 h-5 text-green-500" />}
+              {isWarning && <Clock className="w-5 h-5 text-amber-500" />}
+              {isStale && <AlertTriangle className="w-5 h-5 text-red-500" />}
+              <span className={`text-sm font-medium ${isOk ? 'text-green-600' : isWarning ? 'text-amber-600' : 'text-red-600'}`}>
+                {isOk ? 'Atualizado' : isWarning ? `${days} dias sem nova leitura` : `${days} dias sem receber dados`}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Última leitura recebida: {status.lastImport}
+            </p>
+            {isStale && (
+              <p className="text-xs text-amber-600 mt-1">
+                Pode haver demora na importação automática. Se persistir, entre em contato com o suporte.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-gray-400" />
+            <span className="text-sm text-muted-foreground">Sem leituras automáticas registradas</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+
+// ─── BlockComparisonCard ──────────────────────────────────────────────────────
+function BlockComparisonCard({ complexId, month, year }: { complexId: string; month: string; year: string }) {
+  const [data, setData] = useState<{ blocks: any[]; loading: boolean }>({ blocks: [], loading: true });
+
+  useEffect(() => {
+    if (!complexId) return;
+    setData(s => ({ ...s, loading: true }));
+    fetch(`/api/block-comparison?complexId=${complexId}&month=${month}&year=${year}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => setData({ blocks: d.blocks ?? [], loading: false }))
+      .catch(() => setData({ blocks: [], loading: false }));
+  }, [complexId, month, year]);
+
+  if (data.loading) {
+    return (
+      <Card className="flex flex-col">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-blue-500" />
+            Comparativo entre Blocos
+          </CardTitle>
+        </CardHeader>
+        <CardContent><Skeleton className="h-24 w-full" /></CardContent>
+      </Card>
+    );
+  }
+
+  if (data.blocks.length === 0) {
+    return (
+      <Card className="flex flex-col">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-blue-500" />
+            Comparativo entre Blocos
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground py-4 text-center">Sem dados para este período</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const maxConsumption = Math.max(...data.blocks.map(b => b.totalConsumption));
+
+  return (
+    <Card className="flex flex-col">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-blue-500" />
+          Comparativo entre Blocos
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {data.blocks.map((block) => (
+          <div key={block.blockName} className="space-y-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium">{block.blockName}</span>
+              <span className="text-muted-foreground">
+                {block.totalConsumption.toFixed(1)} m³ / {block.unitCount} un.
+              </span>
+            </div>
+            <div className="h-2 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 rounded-full"
+                style={{ width: `${(block.totalConsumption / maxConsumption) * 100}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 function SindicoDashboard() {
   const { context, loading: ctxLoading } = useUserContext();
 
@@ -513,6 +673,18 @@ function SindicoDashboard() {
           <p className="text-sm font-medium">Nenhum condomínio encontrado</p>
           <p className="text-xs mt-1">Sem condomínios vinculados à sua conta.</p>
         </section>
+      )}
+
+      {/* ── GL Status + Block Comparison ── */}
+      {selectedComplex && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <GLStatusCard complexId={selectedComplex.id} />
+          <BlockComparisonCard
+            complexId={selectedComplex.id}
+            month={statsMonthOpt.month}
+            year={statsMonthOpt.year}
+          />
+        </div>
       )}
 
       {/* ── Three panels ── */}

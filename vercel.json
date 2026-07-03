@@ -18,6 +18,22 @@
     {
       "path": "/api/cron/send-pending-emails",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/send-alert-summary",
+      "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/cron/send-monthly-summary",
+      "schedule": "0 10 5 * *"
+    },
+    {
+      "path": "/api/cron/leak-detection",
+      "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/cron/cleanup-soft-deleted",
+      "schedule": "0 3 1 * *"
     }
   ]
 }
