@@ -186,7 +186,7 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
             <td style="background:#f8f9fa;padding:16px 32px;border-top:1px solid #eee;">
               <p style="margin:0;font-size:11px;color:#999;text-align:center;line-height:1.5;">
                 Este é um email automático do sistema AcquaXControl. Não responda a esta mensagem.<br>
-                Em caso de dúvidas, entre em contato com a administração do seu condomínio.
+                Em caso de dúvidas, entre em contato com medicao@acquaxdobrasil.com.br e/ou 4003-7945.
               </p>
             </td>
           </tr>
@@ -198,7 +198,9 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
 </body>
 </html>`;
 
-  const text = `AcquaX do Brasil - Sistema de Medição e Controle\n\nOlá, ${data.residentName}!\n\nSua filipeta de ${utilityLabel.toLowerCase()} referente a ${monthName}/${data.yearRef} está disponível.\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\nPeríodo: ${periodStr}\nConsumo: ${fmtNumber(data.totalConsumption ?? data.consumption)} m³\nValor Total: ${fmtCurrency(data.totalUnit)}\n\nAcesse ${baseUrl} para ver a filipeta completa.\n\nEste é um email automático. Não responda a esta mensagem.`;
+  const text = `AcquaX do Brasil - Sistema de Medição e Controle\n\nOlá, ${data.residentName}!\n\nSua filipeta de ${utilityLabel.toLowerCase()} referente a ${monthName}/${data.yearRef} está disponível.\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\nPeríodo: ${periodStr}\nConsumo: ${fmtNumber(data.totalConsumption ?? data.consumption)} m³\nValor Total: ${fmtCurrency(data.totalUnit)}\n\nAcesse ${baseUrl} para ver a filipeta completa.
+
+Em caso de dúvidas, entre em contato com medicao@acquaxdobrasil.com.br e/ou 4003-7945.\n\nEste é um email automático. Não responda a esta mensagem.`;
 
   return { subject, html, text };
 }
