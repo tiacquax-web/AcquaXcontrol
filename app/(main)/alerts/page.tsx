@@ -17,7 +17,7 @@
  * (síndico, administradora, admin, programador).
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { addDays, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -40,6 +40,7 @@ import ComboboxCompany from "@/components/ComboboxCompany";
 import ComboboxComplex from "@/components/ComboboxComplex";
 import ComboboxBlock from "@/components/ComboboxBlock";
 import ComboboxApartment from "@/components/ComboboxApartment";
+import { useUserContext } from "@/hooks/useUserContext";
 import { DateRange } from "react-day-picker";
 
 // ─── tipos ─────────────────────────────────────────────────────────────────────
@@ -124,10 +125,44 @@ function AnomalyBadge({ type }: { type: string }) {
 // ─── componente principal ──────────────────────────────────────────────────────
 
 export default function AlertsPage() {
+  const { context: userContext, loading: ctxLoading } = useUserContext();
+
   const [companyObj, setCompanyObj] = useState<any>();
   const [complexObj, setComplexObj] = useState<any>();
   const [blockObj, setBlockObj]     = useState<any>();
   const [apartmentObj, setApartmentObj] = useState<any>();
+  const [autoSelected, setAutoSelected] = useState(false);
+
+  // Auto-selecionar contexto baseado no perfil do usuário
+  useEffect(() => {
+    if (ctxLoading || autoSelected || !userContext) return;
+    setAutoSelected(true);
+
+    // Morador: seleciona diretamente seu apartamento (se tiver só 1)
+    if (!userContext.isSystem && userContext.apartments.length > 0 && userContext.complexes.length === 0) {
+      if (userContext.apartments.length === 1) {
+        const apt = userContext.apartments[0];
+        setComplexObj(apt.block?.complex ?? null);
+        setBlockObj(apt.block ?? null);
+        setApartmentObj(apt);
+      }
+    }
+
+    // Síndico/administradora: seleciona o condomínio (se tiver só 1)
+    if (!userContext.isSystem && userContext.complexes.length > 0) {
+      if (userContext.complexes.length === 1) {
+        setComplexObj(userContext.complexes[0]);
+      }
+    }
+  }, [ctxLoading, userContext, autoSelected]);
+
+  // Verificar se tem GL: morador sem GL não deveria ver a página
+  const hasGLAccess = (() => {
+    if (!userContext) return false;
+    if (userContext.isSystem) return true;
+    // Síndico/administradora: tem condomínios
+    return userContext.complexes.length > 0;
+  })();
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: addDays(new Date(), -30),
@@ -205,6 +240,19 @@ export default function AlertsPage() {
           Anomalias detectadas automaticamente: consumo negativo, picos, falta de consumo e alertas do dispositivo.
         </p>
       </div>
+
+      {/* Aviso para usuários sem acesso GL */}
+      {!ctxLoading && !hasGLAccess && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="pt-6 text-center">
+            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
+            <p className="text-sm font-medium text-amber-800">Central de Alertas indisponível</p>
+            <p className="text-xs text-amber-700 mt-1">
+              Esta funcionalidade está disponível apenas para condomínios com medidores integrados ao GroupLink.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filtros */}
       <Card>

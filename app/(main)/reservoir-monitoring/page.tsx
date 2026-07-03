@@ -11,7 +11,7 @@ import {
   TrendingUp,
   DollarSign
 } from "lucide-react"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -25,14 +25,30 @@ import { usePermissionChecker } from "@/hooks/use-permission-checker"
 import { PermissionableEntity, type Complex } from "@prisma/client"
 import { Badge } from "@/components/ui/badge"
 import { DateRange } from "react-day-picker"
+import { useUserContext } from "@/hooks/useUserContext"
 
 const sixMonthsAgo = new Date(new Date().setMonth(new Date().getMonth() - 6))
 
 export default function ReservoirMonitoringPage() {
   const { canViewReservoirReadings } = useReservoirPermissions()
   const { hasPermission, loading: permissionsLoading } = usePermissionChecker()
+  const { context: userContext, loading: ctxLoading } = useUserContext()
   const router = useRouter()
   const [selectedComplex, setSelectedComplex] = useState<Complex | undefined>()
+
+  // Auto-selecionar condomínio para síndico com 1 condomínio
+  useEffect(() => {
+    if (ctxLoading || !userContext || selectedComplex) return
+    if (!userContext.isSystem && userContext.complexes.length === 1) {
+      setSelectedComplex(userContext.complexes[0] as Complex)
+    }
+  }, [ctxLoading, userContext, selectedComplex])
+
+  const hasGLAccess = (() => {
+    if (!userContext) return false
+    if (userContext.isSystem) return true
+    return userContext.complexes.length > 0
+  })()
   const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: sixMonthsAgo, to: new Date() })
   const [searchText, setSearchText] = useState("")
 
@@ -71,6 +87,20 @@ export default function ReservoirMonitoringPage() {
           <div className="h-8 bg-muted rounded w-64" />
           <div className="h-48 bg-muted rounded" />
         </div>
+      </div>
+    )
+  }
+
+  // Bloquear usuários sem acesso a condomínios com GL
+  if (!ctxLoading && !hasGLAccess) {
+    return (
+      <div className="flex-1 space-y-6 p-6">
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            O monitoramento de nível está disponível apenas para condomínios com medidores integrados ao sistema.
+          </AlertDescription>
+        </Alert>
       </div>
     )
   }

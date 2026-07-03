@@ -22,6 +22,7 @@ import ComplexesCombobox from "@/components/ComboboxComplex"
 import BlocksCombobox from "@/components/ComboboxBlock"
 import SelectApartment from "@/components/ComboboxApartment"
 import { useRoles } from "@/hooks/useRoles"
+import { useUserContext } from "@/hooks/useUserContext"
 import { exportUsers } from "@/services/usersService"
 import axios from "axios"
 import type { Complex, Block, Apartment } from "@prisma/client"
@@ -70,6 +71,10 @@ export default function UsersPage() {
     const { deleteRoleAssignment, error: errorDeleteRoleAssignment, loading: loadingDeleteRoleAssignment } = useRoleAssignmentMutations()
     const { roles } = useRoles({})
     const [currentUser, setCurrentUser] = useState<Partial<User> | undefined>(undefined)
+    const { context: userContext } = useUserContext()
+
+    // Só admins/programadores podem ver importação em massa
+    const canBulkImport = userContext?.isSystem ?? false
     const [exportLoading, setExportLoading] = useState(false)
     const [resettingAll, setResettingAll] = useState(false)
     const [showExportModal, setShowExportModal] = useState(false)
@@ -402,7 +407,7 @@ export default function UsersPage() {
           <Tabs defaultValue="list" className="w-full">
             <TabsList>
               <TabsTrigger value="list">Lista de Usuários</TabsTrigger>
-              <TabsTrigger value="import">Importação em Massa</TabsTrigger>
+              {canBulkImport && <TabsTrigger value="import">Importação em Massa</TabsTrigger>}
             </TabsList>
             <TabsContent value="list" className="space-y-0">
             {!currentUser && (

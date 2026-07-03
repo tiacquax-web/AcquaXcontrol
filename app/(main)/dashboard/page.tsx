@@ -146,7 +146,7 @@ function FilipetaMiniSkeleton() {
 }
 
 // ─── ConsumoAnualGraph ────────────────────────────────────────────────────────
-function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
+function ConsumoAnualGraph({ apartmentId, complexId }: { apartmentId: string; complexId?: string }) {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
   const [chartData, setChartData] = useState<{ month: string; consumption: number }[]>([]);
@@ -170,7 +170,7 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
 
     Promise.all(
       months.map(month =>
-        fetch(`${base}/meter-report?month=${month}&year=${selectedYear}&apartment_id=${apartmentId}`, {
+        fetch(`${base}/meter-report?month=${month}&year=${selectedYear}&apartment_id=${apartmentId}${complexId ? `&complex_id=${complexId}` : ''}`, {
           credentials: 'include',
         })
           .then(r => r.ok ? r.json() : { list: [] })
@@ -191,7 +191,7 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
       setTotalAnual(data.reduce((s, r) => s + r.consumption, 0));
       setLoading(false);
     });
-  }, [apartmentId, selectedYear, currentYear]);
+  }, [apartmentId, selectedYear, currentYear, complexId]);
 
   const maxVal = useMemo(() => Math.max(...chartData.map(d => d.consumption), 1), [chartData]);
   const peakMonth = useMemo(() =>
@@ -303,10 +303,14 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
     if (ctxLoading || apartments.length === 0 || !activeAptId) return;
     setLoadingFilipetas(true);
     const base = '/api';
+    // Buscar o complexId do apartamento ativo para passar como filtro
+    const activeApt = apartments.find(a => a.id === activeAptId);
+    const activeComplexId = (activeApt?.block as any)?.complex?.id;
+
     Promise.all(
       last3.map(m =>
-        fetch(`${base}/meter-report?month=${m.month}&year=${m.year}&apartment_id=${activeAptId}`, { credentials: 'include' })
-          .then(r => r.json())
+        fetch(`${base}/meter-report?month=${m.month}&year=${m.year}&apartment_id=${activeAptId}${activeComplexId ? `&complex_id=${activeComplexId}` : ''}`, { credentials: 'include' })
+          .then(r => r.ok ? r.json() : { list: [] })
           .then(d => ({ key: `${m.month}-${m.year}`, list: (d.list ?? []) as MeterReportItem[] }))
           .catch(() => ({ key: `${m.month}-${m.year}`, list: [] as MeterReportItem[] }))
       )
@@ -316,7 +320,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
       setFilipetasByMonth(map);
       setLoadingFilipetas(false);
     });
-  }, [ctxLoading, apartments.length, activeAptId]);
+  }, [ctxLoading, apartments.length, activeAptId, apartments]);
 
   if (ctxLoading) {
     return (
@@ -368,7 +372,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
         )}
 
         {activeAptId ? (
-          <ConsumoAnualGraph apartmentId={activeAptId} />
+          <ConsumoAnualGraph apartmentId={activeAptId} complexId={apartments.find(a => a.id === activeAptId)?.block?.complex?.id} />
         ) : (
           !singleApartment && apartments.length > 1 && (
             <p className="text-xs text-muted-foreground text-center">Selecione uma unidade para ver o gráfico de consumo.</p>

@@ -25,6 +25,8 @@ import { usePermissionChecker } from '@/hooks/use-permission-checker'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
 import { Calendar as CalendarIcon } from 'lucide-react'
+import { useUserContext } from '@/hooks/useUserContext'
+import { AlertTriangle } from 'lucide-react'
 
 // Fase 1: Placeholder de seleção de medidores manual até integração com UI real de contexto
 const MOCK_METERS: { id: string, register: string }[] = [] // pode ser preenchido futuramente via API de meters
@@ -33,9 +35,32 @@ const MAX_RANGE_DAYS = 60
 export default function MonitoringPage() {
   const { prefs, update, ready } = useMonitoringLocalPreferences()
   const { hasPermission, loading: permissionsLoading } = usePermissionChecker()
+  const { context: userContext, loading: ctxLoading } = useUserContext()
+
+  // Auto-selecionar contexto baseado no perfil
+  useEffect(() => {
+    if (ctxLoading || !userContext || complexObj) return
+
+    // Morador com 1 apto: seleciona automaticamente
+    if (!userContext.isSystem && userContext.apartments.length === 1 && userContext.complexes.length === 0) {
+      const apt = userContext.apartments[0]
+      setComplexObj(apt.block?.complex ?? undefined)
+      setBlockObj(apt.block ?? undefined)
+      setApartmentObj(apt)
+    }
+
+    // Síndico com 1 condomínio: seleciona automaticamente
+    if (!userContext.isSystem && userContext.complexes.length === 1) {
+      setComplexObj(userContext.complexes[0])
+    }
+  }, [ctxLoading, userContext])
+
+  const hasGLAccess = (() => {
+    if (!userContext) return false
+    if (userContext.isSystem) return true
+    return userContext.complexes.length > 0
+  })()
   // Monitoramento é acessível para qualquer usuário com permissão de leitura
-  // (reading, complex, apartment, etc.) — síndicos devem ver a aba sem restrição.
-  // Verificamos se o usuário tem QUALQUER permissão (não apenas monitoringDashboard).
   const canAccessMonitoring = hasPermission('monitoringDashboard', 'read')
     || hasPermission('reading', 'read')
     || hasPermission('complex', 'read')

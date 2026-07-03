@@ -3,6 +3,7 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGrou
 import { FooterSidebar } from "./footer-sidebar"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
+import { useUserContext } from "@/hooks/useUserContext"
 import { Skeleton } from "@/components/ui/skeleton"
 
 import {
@@ -62,18 +63,21 @@ const items = [
     url: "/monitoring",
     icon: Gauge,
     group: 'Geral',
+    requiresGL: true,
   },
   {
     title: "Central de Alertas",
     url: "/alerts",
     icon: BellDot,
     group: 'Geral',
+    requiresGL: true,
   },
   {
     title: "Medidores de Nível",
     url: "/reservoir-monitoring",
     icon: Droplets,
     group: 'Geral',
+    requiresGL: true,
   },
   {
     title: "Apuração",
@@ -187,11 +191,36 @@ const items = [
 export function AppSidebar() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { permissions, loading } = usePermissionsContext();
+  const { context: userContext } = useUserContext();
 
-  function hasAnyPermission(url: string, requiresCreate?: boolean) {
+  // Verifica se o usuário tem condomínios com medidores GL vinculados
+  const hasGLComplexes = (() => {
+    if (!userContext) return false;
+    // Admin/programador sempre pode ver
+    if (userContext.isSystem) return true;
+    // Síndico/administradora: verifica se algum condomínio tem GL
+    // (faremos uma estimativa: se tem complexIds ou accessibleComplexIds)
+    return userContext.complexes.length > 0 || userContext.accessibleComplexIds.length > 0;
+  })();
+
+  function hasAnyPermission(url: string, requiresCreate?: boolean, requiresGL?: boolean) {
     // Dashboard sempre visível
     if (url === '/dashboard') return true;
     if (!permissions) return false;
+
+    // Items que requerem GL: só mostrar se o usuário tem contexto com condomínios
+    // A verificação real de medidores com glId é feita na página.
+    // Aqui no sidebar, ocultamos para moradores e usuários sem condomínio.
+    if (requiresGL) {
+      // Admin/programador sempre vê
+      if (userContext?.isSystem) {
+        // continha para checar entidade abaixo
+      } else {
+        // Síndico/administradora: só vê se tiver condomínios
+        if (!userContext || userContext.complexes.length === 0) return false;
+      }
+    }
+
     const entity = sidebarPermissionMap[url];
     // URL sem mapeamento de entidade → visível se tiver qualquer permissão
     if (!entity) return permissions.length > 0;
@@ -213,7 +242,7 @@ export function AppSidebar() {
 
   const visibleGroups = groups.filter((group) =>
     items.some(
-      (item) => item.group === group && hasAnyPermission(item.url, (item as any).requiresCreate)
+      (item) => item.group === group && hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).requiresGL)
     )
   );
 
@@ -261,7 +290,7 @@ export function AppSidebar() {
                       .filter(
                         (item) =>
                           item.group === group &&
-                          hasAnyPermission(item.url, (item as any).requiresCreate)
+                          hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).requiresGL)
                       )
                       .map((item) => (
                         <SidebarMenuItem key={item.title}>
