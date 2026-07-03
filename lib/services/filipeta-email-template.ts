@@ -111,9 +111,9 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
 
           <!-- Header -->
           <tr>
-            <td style="background:#4a4a4a;padding:24px 32px;text-align:center;">
+            <td style="background:#1e88e5;padding:24px 32px;text-align:center;">
               <p style="margin:0;color:#fff;font-size:20px;font-weight:700;">AcquaX do Brasil</p>
-              <p style="margin:4px 0 0 0;color:#b0b0b0;font-size:13px;">Sistema de Medição e Controle</p>
+              <p style="margin:4px 0 0 0;color:#bbdefb;font-size:13px;">Sistema de Medição e Controle</p>
             </td>
           </tr>
 
@@ -130,7 +130,7 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
           <!-- Resumo do consumo -->
           <tr>
             <td style="padding:0 32px 16px 32px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f0f0;border-radius:8px;padding:16px 20px;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;padding:16px 20px;">
                 <tr>
                   <td style="padding:4px 0;font-size:13px;color:#888;">Condomínio</td>
                   <td style="padding:4px 0;font-size:13px;color:#333;font-weight:600;text-align:right;">${data.complexName}</td>
@@ -158,8 +158,8 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
               <table width="100%" cellpadding="0" cellspacing="0" style="padding:0 20px;">
                 ${costRows.join('')}
                 <tr>
-                  <td style="padding:12px 0;font-size:16px;font-weight:700;color:#4a4a4a;border-top:2px solid #4a4a4a;">Valor Total</td>
-                  <td style="padding:12px 0;font-size:18px;font-weight:700;color:#4a4a4a;border-top:2px solid #4a4a4a;text-align:right;">${fmtCurrency(data.totalUnit)}</td>
+                  <td style="padding:12px 0;font-size:16px;font-weight:700;color:#1e88e5;border-top:2px solid #1e88e5;">Valor Total</td>
+                  <td style="padding:12px 0;font-size:18px;font-weight:700;color:#1e88e5;border-top:2px solid #1e88e5;text-align:right;">${fmtCurrency(data.totalUnit)}</td>
                 </tr>
               </table>
             </td>
@@ -172,7 +172,7 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
           <tr>
             <td style="padding:0 32px 28px 32px;text-align:center;">
               <a href="${baseUrl}/login?redirect=/filipeta&apt=${data.apartmentName}&ref=${data.monthRef}/${data.yearRef}"
-                 style="display:inline-block;background:#4a4a4a;color:#fff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;">
+                 style="display:inline-block;background:#1e88e5;color:#fff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;">
                 Ver filipeta completa
               </a>
               <p style="margin:12px 0 0 0;font-size:12px;color:#999;">
