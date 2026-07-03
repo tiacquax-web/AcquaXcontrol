@@ -26,6 +26,8 @@ import { exportUsers } from "@/services/usersService"
 import axios from "axios"
 import type { Complex, Block, Apartment } from "@prisma/client"
 import * as XLSX from "xlsx"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import BulkImportTab from "./bulk-import-tab"
 
 export default function UsersPage() {
     const [searchQuery, setSearchQuery] = useState("")
@@ -397,6 +399,12 @@ export default function UsersPage() {
 
     return (
         <div className="space-y-6 w-full p-6">
+          <Tabs defaultValue="list" className="w-full">
+            <TabsList>
+              <TabsTrigger value="list">Lista de Usuários</TabsTrigger>
+              <TabsTrigger value="import">Importação em Massa</TabsTrigger>
+            </TabsList>
+            <TabsContent value="list" className="space-y-0">
             {!currentUser && (
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -728,6 +736,11 @@ export default function UsersPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+        </TabsContent>
+            <TabsContent value="import">
+              <BulkImportTab />
+            </TabsContent>
+          </Tabs>
         </div>
     )
 }
