@@ -191,7 +191,7 @@ const items = [
 export function AppSidebar() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { permissions, loading } = usePermissionsContext();
-  const { context: userContext } = useUserContext();
+  const { context: userContext, loading: ctxLoading } = useUserContext();
 
   // Verifica se o usuário tem condomínios com medidores GL vinculados
   // glComplexIds vem da API my-context e contém apenas condomínios que têm
@@ -257,7 +257,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {loading ? (
+              {loading || ctxLoading ? (
                 Array.from({ length: 2 }).map((_, idx) => (
                   <div key={idx} className="mb-6">
                     <div className="flex items-center gap-2 mb-2 pl-2">
