@@ -835,7 +835,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
             case PermissionableEntity.role:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 
-                const whereCondition = {
+                const whereCondition = cleanWhere({
                     AND: [
                         {
                             OR: [
@@ -845,7 +845,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                         },
                         extraWhere,
                     ],
-                };
+                });
 
                 const roles = await prisma.role.findMany({
                     where: whereCondition,
@@ -862,7 +862,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
             case PermissionableEntity.roleAssignment:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 const roleAssignments = await prisma.roleAssignment.findMany({
-                    where: {
+                    where: cleanWhere({
                         AND: [
                             {
                                 OR: [
@@ -872,7 +872,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             },
                             extraWhere,
                         ]
-                    },
+                    }),
                     include: include ? include : undefined,
                     take: take < 200 ? take : 200,
                 });
