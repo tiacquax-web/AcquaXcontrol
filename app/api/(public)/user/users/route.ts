@@ -170,7 +170,12 @@ export async function GET(req: NextRequest): Promise<Response> {
         }
 
         // get users
-        const { entity, error, status, totalCount } = await getEntityListData(userId, 'user', contextType, contextId, search, where, take, {}, skip, orderBy, orderDirection as 'asc' | 'desc')
+        const { entity, error, status, totalCount } = await getEntityListData(userId, 'user', contextType, contextId, search, where, take, {
+            Roles: {
+                where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                select: { id: true, contextType: true, Role: { select: { name: true } } }
+            }
+        }, skip, orderBy, orderDirection as 'asc' | 'desc')
         if (error) return NextResponse.json({ error }, { status })
         if (!entity) return NextResponse.json({ error: 'Internal Server Error - Entity not found' }, { status: 500 })
 

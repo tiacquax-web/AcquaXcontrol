@@ -61,10 +61,45 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
         const { entityId } = await params;
         if (!entityId) return NextResponse.json({ error: 'No entity id was informed. Set "entity_id" in the query params.' }, { status: 400 });
 
-        // 🔒 PROTEÇÃO: impede deleção do usuário admin@acquax.com
+        // 🔒 PROTEÇÃO 1: impede deleção do usuário admin@acquax.com
         const targetUser = await prisma.user.findUnique({ where: { id: entityId } });
         if (targetUser?.email === 'admin@acquax.com') {
             return NextResponse.json({ error: 'Este usuário é protegido e não pode ser excluído.' }, { status: 403 });
+        }
+
+        // 🔒 PROTEÇÃO 2: Programador não pode excluir usuários Administrador
+        // Buscar roles do solicitante
+        const requesterAssignments = await prisma.roleAssignment.findMany({
+            where: {
+                userId,
+                contextType: 'system',
+                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+            },
+            select: { Role: { select: { name: true } } },
+        });
+        const requesterSystemRoles = requesterAssignments.map(a => a.Role?.name).filter(Boolean) as string[];
+        const isRequesterAdministrador = requesterSystemRoles.includes('Administrador');
+        const isRequesterProgramador = requesterSystemRoles.length > 0 && !isRequesterAdministrador;
+
+        if (isRequesterProgramador) {
+            // Buscar roles do usuário alvo
+            const targetAssignments = await prisma.roleAssignment.findMany({
+                where: {
+                    userId: entityId,
+                    contextType: 'system',
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                select: { Role: { select: { name: true } } },
+            });
+            const targetSystemRoles = targetAssignments.map(a => a.Role?.name).filter(Boolean) as string[];
+            const isTargetAdministrador = targetSystemRoles.includes('Administrador');
+
+            if (isTargetAdministrador) {
+                return NextResponse.json(
+                    { error: 'Programadores não podem excluir contas de Administrador.' },
+                    { status: 403 }
+                );
+            }
         }
 
         // Attempt to delete the entity
