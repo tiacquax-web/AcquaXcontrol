@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+import { useUserContext } from '@/hooks/useUserContext';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -73,6 +74,7 @@ function timeAgo(dateStr: string) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SuportePage() {
   const { toast } = useToast();
+  const { context: userContext } = useUserContext();
 
   // ── State: list ─────────────────────────────────────────────────────────────
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -80,7 +82,9 @@ export default function SuportePage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [adminView, setAdminView] = useState(false);
+  // Admin/programador entram automaticamente na visão de todos os chamados
+  const isSystemUser = userContext?.isSystem ?? false;
+  const [adminView, setAdminView] = useState(isSystemUser);
 
   // ── State: selected ticket ───────────────────────────────────────────────────
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
@@ -118,6 +122,10 @@ export default function SuportePage() {
       setTickets(res.data.list);
       setTotalCount(res.data.totalCount);
       setIsAdmin(res.data.isAdmin);
+      // Se descobriu que é admin mas o adminView ainda não foi ligado, liga automaticamente
+      if (res.data.isAdmin && !adminView) {
+        setAdminView(true);
+      }
     } catch {
       if (!silent) toast({ title: 'Erro', description: 'Falha ao carregar chamados.', variant: 'destructive' });
     } finally {
@@ -268,10 +276,12 @@ export default function SuportePage() {
             <p className="text-xs text-muted-foreground">Atendimento privado com a equipe AcquaX</p>
           </div>
         </div>
-        <Button size="sm" onClick={() => setNewTicketOpen(true)}>
-          <Plus className="w-4 h-4 mr-1.5" />
-          Novo Chamado
-        </Button>
+        {!(isAdmin && adminView) && (
+          <Button size="sm" onClick={() => setNewTicketOpen(true)}>
+            <Plus className="w-4 h-4 mr-1.5" />
+            Novo Chamado
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -294,11 +304,11 @@ export default function SuportePage() {
             </Select>
             {isAdmin && (
               <button
-                className={`w-full text-xs flex items-center gap-1.5 px-2 py-1.5 rounded border transition-colors ${adminView ? 'bg-teal-50 border-teal-300 text-teal-700' : 'border-border text-muted-foreground hover:bg-muted'}`}
+                className={`w-full text-xs flex items-center gap-1.5 px-2 py-1.5 rounded border transition-colors font-medium ${adminView ? 'bg-teal-50 border-teal-300 text-teal-700 dark:bg-teal-950/40 dark:border-teal-800 dark:text-teal-400' : 'border-border text-muted-foreground hover:bg-muted'}`}
                 onClick={() => setAdminView(v => !v)}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                {adminView ? 'Visão Admin (todos)' : 'Visão Admin'}
+                {adminView ? '👁 Visão Admin — Todos os chamados' : 'Ativar Visão Admin'}
               </button>
             )}
           </div>
@@ -313,7 +323,7 @@ export default function SuportePage() {
               <div className="flex flex-col items-center justify-center py-16 text-muted-foreground px-4 text-center">
                 <Inbox className="w-10 h-10 mb-3 opacity-30" />
                 <p className="font-medium text-sm">Nenhum chamado encontrado</p>
-                <p className="text-xs mt-1">Clique em "Novo Chamado" para abrir seu primeiro atendimento.</p>
+                <p className="text-xs mt-1">{adminView ? 'Nenhum chamado de usuários no sistema.' : 'Clique em "Novo Chamado" para abrir seu primeiro atendimento.'}</p>
               </div>
             ) : (
               <div className="divide-y">
