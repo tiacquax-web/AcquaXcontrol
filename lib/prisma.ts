@@ -133,6 +133,25 @@ export function cleanEntityBody(body:any) {
     if (body.dealership) delete body.dealership; // Remove dealership object, keep dealershipId
     if (body.typeMeter) delete body.typeMeter; // Remove typeMeter object, keep typeMeterId
 
+    // Remove relation ARRAYS accidentally included in the payload.
+    //
+    // BUG (found 2026-07-07): frontend edit forms often spread the fetched
+    // entity back into the update payload (e.g. `{ ...currentUser, ...formData }`),
+    // and fetched entities frequently include relation lists like
+    // `Roles: RoleAssignment[]` (see GET /api/user/users, which `include`s Roles).
+    // Sending that array straight to `prisma.user.update({ data })` makes Prisma
+    // throw `PrismaClientValidationError: Unknown argument Roles`, which the
+    // generic error handler in updateEntityData surfaces as the unhelpful
+    // "Dados inválidos para atualização" — with no indication of which field
+    // was the culprit.
+    //
+    // There is exactly one scalar array column in the whole schema
+    // (GlImportLog.skipLog: String[]), and it is never written through this
+    // generic body-cleaning path — so it's safe to strip every array field here.
+    for (const key of Object.keys(body)) {
+        if (Array.isArray(body[key])) delete body[key];
+    }
+
     return body;
 }
 
