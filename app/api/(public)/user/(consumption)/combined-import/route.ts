@@ -10,6 +10,7 @@ import {
   MONTH_NAMES_MAP
 } from "@/types/combined-import";
 import { randomUUID } from 'crypto';
+import { createEmailJobsForDealershipReading } from "@/lib/services/filipeta-email-dispatcher";
 
 // Otimização (Alta prioridade implementada):
 // 1. Prefetch de leituras e relatórios existentes.
@@ -686,6 +687,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     // Sucesso se algo foi criado ou atualizado
     result.success = (result.readingsCreated + result.reportsCreated + result.reportsUpdated) > 0;
+
+    // ── Trigger: criar EmailJobs para envio automático de filipetas ────────────
+    if (dealershipReadingId && result.success && process.env.ZOHO_SMTP_USER) {
+      try {
+        await createEmailJobsForDealershipReading(dealershipReadingId, userId);
+        console.log(`[Combined Import] EmailJobs criados para dealershipReading: ${dealershipReadingId}`);
+      } catch (emailErr: any) {
+        console.error('[Combined Import] Erro ao criar EmailJobs:', emailErr?.message);
+      }
+    }
 
     return NextResponse.json(result);
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { isSessionValid } from "@/lib/users"
 import { PrismaClient } from "@prisma/client"
+import { createEmailJobsForDealershipReading } from "@/lib/services/filipeta-email-dispatcher"
 
 const prisma = new PrismaClient()
 
@@ -112,6 +113,16 @@ export async function POST(req: NextRequest): Promise<Response> {
                     }
                 })
                 reports.push(newReport)
+            }
+        }
+
+        // ── Trigger: criar EmailJobs para envio automático de filipetas ────────────
+        if (dealershipReadingId && process.env.ZOHO_SMTP_USER) {
+            try {
+                await createEmailJobsForDealershipReading(dealershipReadingId, userId);
+                console.log(`[Generate Reports] EmailJobs criados para dealershipReading: ${dealershipReadingId}`);
+            } catch (emailErr: any) {
+                console.error('[Generate Reports] Erro ao criar EmailJobs:', emailErr?.message);
             }
         }
 
