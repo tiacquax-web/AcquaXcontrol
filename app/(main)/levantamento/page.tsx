@@ -777,6 +777,15 @@ export default function LevantamentoPage() {
               <Camera className="w-4 h-4 text-teal-500 print:hidden" />
               Fotos do Medidor por Mês
             </h3>
+            <div className="mb-3 flex items-start gap-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2 print:hidden">
+              <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+              <p className="text-[11px] leading-tight text-blue-700">
+                As imagens dos medidores passam por processamento automatizado de aprimoramento óptico
+                para garantir a leitura mais precisa possível. Pequenas diferenças visuais — como linhas,
+                manchas ou variações de tonalidade — são artefatos naturais deste processo e não
+                representam alteração dos valores registrados.
+              </p>
+            </div>
             {/* Grid: 1 col mobile, 2 col sm, 3 col md, 4 col lg */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 morador-cards-grid">
               {moradorRow.months.map((m, mi) => (
@@ -921,6 +930,15 @@ export default function LevantamentoPage() {
                   <Camera className="w-4 h-4 text-teal-500" />
                   Fotos do Medidor por Mês — Bl. {singleRow.blockName} / Ap. {singleRow.aptName}
                 </h3>
+                <div className="mb-3 flex items-start gap-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2 print:hidden">
+                  <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+                  <p className="text-[11px] leading-tight text-blue-700">
+                    As imagens dos medidores passam por processamento automatizado de aprimoramento óptico
+                    para garantir a leitura mais precisa possível. Pequenas diferenças visuais — como linhas,
+                    manchas ou variações de tonalidade — são artefatos naturais deste processo e não
+                    representam alteração dos valores registrados.
+                  </p>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {singleRow.months.map((m, mi) => (
                     <MeterPhotoCard

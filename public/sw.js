@@ -10,7 +10,7 @@
  * Versionamento: bump CACHE_VERSION para invalidar cache de todos os clientes
  */
 
-const CACHE_VERSION = 'v3-2026-07-02';
+const CACHE_VERSION = 'v4-2026-07-15';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const OFFLINE_CACHE = `offline-${CACHE_VERSION}`;
 const OFFLINE_URLS = ['/', '/offline'];
