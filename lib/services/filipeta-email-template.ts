@@ -282,6 +282,21 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
             </td>
           </tr>
 
+          <!-- Aviso de processamento de imagem -->
+          <tr>
+            <td style="padding:0 32px 12px 32px;">
+              <div style="background:#f0f4f8;border:1px solid #d0d8e0;border-radius:6px;padding:10px 14px;">
+                <p style="margin:0;font-size:11px;color:#666;line-height:1.5;text-align:left;">
+                  <strong>ℹ️ Sobre as imagens dos medidores:</strong> As imagens passam por processamento automatizado
+                  de aprimoramento óptico (ajuste de contraste, nitidez e reconhecimento de caracteres) para garantir
+                  a leitura mais precisa possível. Pequenas diferenças visuais entre a imagem e o medidor físico —
+                  como linhas, manchas ou variações de tonalidade — são artefatos naturais deste processo e não
+                  representam alteração dos valores registrados.
+                </p>
+              </div>
+            </td>
+          </tr>
+
           <!-- Footer -->
           <tr>
             <td style="background:#f8f9fa;padding:16px 32px;border-top:1px solid #eee;">

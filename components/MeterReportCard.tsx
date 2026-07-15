@@ -7,7 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { Droplets, Calendar, Building2, DoorClosed, ZoomIn, X, Printer } from 'lucide-react';
+import { Droplets, Calendar, Building2, DoorClosed, ZoomIn, X, Printer, Info } from 'lucide-react';
 
 interface MeterReportCardProps {
   report: MeterReportItem;
