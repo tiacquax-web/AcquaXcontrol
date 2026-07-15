@@ -10,9 +10,9 @@ import {
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, Minus, Building2, Calendar,
-  Droplets, Loader2, AlertCircle, Info, Search, X,
+  Droplets, Loader2, AlertCircle, Search, X,
   Printer, ChevronDown, ChevronUp, Camera, ZoomIn,
-} from 'lucide-react';
+  Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -117,11 +117,23 @@ function MeterPhoto({ url, alt, monthLabel }: { url: string; alt?: string; month
           <img
             src={url}
             alt={alt ?? 'Medidor'}
-            className="max-w-full max-h-[85vh] rounded-xl object-contain shadow-2xl"
+            className="max-w-full max-h-[80vh] rounded-xl object-contain shadow-2xl"
             onClick={e => e.stopPropagation()}
           />
+          {/* Aviso de processamento de imagem */}
+          <div
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-md flex items-start gap-2 rounded-lg bg-black/70 backdrop-blur-sm px-3 py-2"
+            onClick={e => e.stopPropagation()}
+          >
+            <Info className="w-3.5 h-3.5 text-white/60 shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-tight text-white/70">
+              Imagem processada com tecnologia de aprimoramento óptico para garantir precisão na leitura.
+              Pequenas diferenças visuais (linhas, manchas, tonalidade) são artefatos do processamento e
+              não alteram o valor registrado.
+            </p>
+          </div>
           {monthLabel && (
-            <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/80 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
+            <p className="absolute bottom-24 left-1/2 -translate-x-1/2 text-white/80 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
               {monthLabel}
             </p>
           )}
@@ -245,10 +257,22 @@ function MeterPhotoCard({
           <img
             src={photoUrl}
             alt={`Medidor ${label}`}
-            className="max-w-full max-h-[85vh] rounded-xl object-contain shadow-2xl"
+            className="max-w-full max-h-[80vh] rounded-xl object-contain shadow-2xl"
             onClick={e => e.stopPropagation()}
           />
-          <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/80 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
+          {/* Aviso de processamento de imagem */}
+          <div
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-md flex items-start gap-2 rounded-lg bg-black/70 backdrop-blur-sm px-3 py-2"
+            onClick={e => e.stopPropagation()}
+          >
+            <Info className="w-3.5 h-3.5 text-white/60 shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-tight text-white/70">
+              Imagem processada com tecnologia de aprimoramento óptico para garantir precisão na leitura.
+              Pequenas diferenças visuais (linhas, manchas, tonalidade) são artefatos do processamento e
+              não alteram o valor registrado.
+            </p>
+          </div>
+          <p className="absolute bottom-24 left-1/2 -translate-x-1/2 text-white/80 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
             {label}
           </p>
         </div>

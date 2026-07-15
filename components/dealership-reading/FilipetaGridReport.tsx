@@ -197,8 +197,17 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
         {/* MIDDLE SECTION: Meter photo on left, all info on right */}
         <div className="grid grid-cols-3 border-b-2 border-black">
           
-          {/* Left: Meter Photo */}
-          <MeterPhoto urlCover={lastReading?.urlCover ?? null} />
+          {/* Left: Meter Photo + Aviso */}
+          <div className="flex flex-col">
+            <MeterPhoto urlCover={lastReading?.urlCover ?? null} />
+            <div className="flex items-start gap-1 px-1 py-1 bg-gray-50 print:hidden">
+              <Info className="w-2.5 h-2.5 text-gray-400 shrink-0 mt-0.5" />
+              <p className="text-[8px] leading-tight text-gray-500">
+                Imagem processada com aprimoramento óptico para garantir precisão na leitura.
+                Pequenas diferenças visuais são artefatos do processamento e não alteram o valor.
+              </p>
+            </div>
+          </div>
 
           {/* Right: All Information */}
           <div className="col-span-2">
