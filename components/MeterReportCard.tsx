@@ -71,6 +71,19 @@ const PhotoModal: React.FC<PhotoModalProps> = ({ url, onClose }) => {
           style={{ maxHeight: '85vh' }}
         />
       </div>
+
+      {/* Aviso de processamento de imagem */}
+      <div
+        className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-md flex items-start gap-2 rounded-lg bg-black/70 backdrop-blur-sm px-3 py-2"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Info className="w-3.5 h-3.5 text-white/60 shrink-0 mt-0.5" />
+        <p className="text-[11px] leading-tight text-white/70">
+          Imagem processada com tecnologia de aprimoramento óptico para garantir precisão na leitura.
+          Pequenas diferenças visuais (linhas, manchas, tonalidade) são artefatos do processamento e
+          não alteram o valor registrado.
+        </p>
+      </div>
     </div>
   );
 };
