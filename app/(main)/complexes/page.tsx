@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building2, Download, Loader2, MapPin, Phone, Plus, Search, Upload } from "lucide-react"
+import { Building2, Download, Loader2, MapPin, Phone, Plus, Search, Upload, Ban, CheckCircle2, Lock } from "lucide-react"
 import { useComplexes, useComplexMutations } from "@/hooks/useComplexes"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -196,6 +196,33 @@ export default function ComplexesPage() {
         }
     }
 
+    const handleToggleSuspension = async (complex: ComplexFull) => {
+        const isSuspended = complex.status === 'Suspenso'
+        const action = isSuspended ? 'reativar o acesso de' : 'suspender o acesso de'
+        if (!window.confirm(`Tem certeza que deseja ${action} "${complex.socialName}"?${!isSuspended ? '\n\nTodos os usuários vinculados a este condomínio perderão o acesso ao sistema.' : ''}`)) {
+            return
+        }
+        try {
+            const res = await axios.patch(`/api/user/complexes/${complex.id}/suspend`, {
+                suspend: !isSuspended
+            })
+            // Atualiza a lista local
+            setLocalComplexes((prev) => prev.map((c) => c.id === complex.id ? { ...c, status: isSuspended ? 'Ativo' : 'Suspenso' } : c))
+            toast({
+                title: res.data.message,
+                description: isSuspended
+                    ? 'Os usuários vinculados já podem acessar o sistema.'
+                    : 'Os usuários vinculados perderão o acesso ao sistema.',
+            })
+        } catch (err: any) {
+            toast({
+                title: 'Erro',
+                description: err.response?.data?.error || 'Erro ao alterar status do condomínio.',
+                variant: 'destructive',
+            })
+        }
+    }
+
     useEffect(() => {
         if (mutationError) {
             toast({
@@ -324,7 +351,8 @@ export default function ComplexesPage() {
                                                     </TableCell>
                                                     <TableCell>{complex.documentCompany || "-"}</TableCell>
                                                     <TableCell>
-                                                        <Badge variant={complex.status === "Ativo" ? "success" : "secondary"}>
+                                                        <Badge variant={complex.status === "Ativo" ? "success" : "destructive"} className={complex.status !== "Ativo" && complex.status === "Suspenso" ? "bg-amber-500 hover:bg-amber-600" : ""}>
+                                                            {complex.status === "Suspenso" && <Lock className="w-3 h-3 mr-1" />}
                                                             {complex.status}
                                                         </Badge>
                                                     </TableCell>
@@ -343,6 +371,17 @@ export default function ComplexesPage() {
                                                             <Button variant="outline" size="sm" onClick={() => handleEditComplex(complex)}>
                                                                 Editar
                                                             </Button>
+                                                            {complex.status === 'Suspenso' ? (
+                                                                <Button variant="outline" size="sm" onClick={() => handleToggleSuspension(complex)} className="border-green-500 text-green-600 hover:bg-green-50">
+                                                                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                                                                    Reativar
+                                                                </Button>
+                                                            ) : (
+                                                                <Button variant="outline" size="sm" onClick={() => handleToggleSuspension(complex)} className="border-amber-500 text-amber-600 hover:bg-amber-50">
+                                                                    <Ban className="w-3 h-3 mr-1" />
+                                                                    Suspender
+                                                                </Button>
+                                                            )}
                                                             <Button variant="destructive" size="sm" onClick={() => handleDeleteComplex(complex.id)}>
                                                                 Deletar
                                                             </Button>
