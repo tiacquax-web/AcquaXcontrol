@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { validateUserSession } from '@/lib/users';
+import { checkUserSuspension } from '@/lib/services/suspension-service';
 
 /**
  * GET /api/auth/my-context
@@ -15,6 +16,20 @@ export async function GET(req: NextRequest): Promise<Response> {
     const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
     if (sessionError) return NextResponse.json({ error: sessionError }, { status: sessionStatus });
     if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
+    // ── Verificar suspensão do condomínio ──────────────────────────────────
+    try {
+        const suspension = await checkUserSuspension(userId);
+        if (suspension.suspended) {
+            return NextResponse.json(
+                { error: 'Acesso suspenso. Procure a administração do seu condomínio.', suspended: true, complexNames: suspension.complexNames },
+                { status: 403 }
+            );
+        }
+    } catch (suspErr) {
+        // Se a verificação falhar, não bloqueia o acesso (fail-open)
+        console.error('[my-context] Erro ao verificar suspensão:', suspErr);
+    }
 
     try {
         // Busca todos os role assignments do usuário (incluindo nome do papel)

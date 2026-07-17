@@ -140,7 +140,7 @@ export async function middleware(req: NextRequest) {
     '/_next', '/favicon.ico', '/recover', '/politica-de-privacidade',
     '/logo-acquax.png', '/manifest.webmanifest', '/sw.js', '/offline',
     '/icons', '/.well-known', '/screenshots', '/logo-quadrada',
-    '/news/', '/services/', '/public/',
+    '/news/', '/services/', '/public/', '/suspended',
   ];
   if (publicPaths.some((p) => pathname.startsWith(p))) {
     const res = NextResponse.next();
@@ -148,7 +148,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // ── 6. JWT Authentication ──
-  const authPaths = ['/login', '/signup', '/first-access'];
+  const authPaths = ['/login', '/signup', '/first-access', '/suspended'];
   const isAuthPath = authPaths.some((p) => pathname.startsWith(p));
   const isRootPath = pathname === '/';
   const token = req.cookies.get('session')?.value;

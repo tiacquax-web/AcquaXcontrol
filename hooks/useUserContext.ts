@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useRouter } from 'next/navigation';
 
 const NEXT_PUBLIC_API_URL = '/api';
 
@@ -50,6 +51,7 @@ export interface UserContext {
 }
 
 export function useUserContext() {
+  const router = useRouter();
   const [context, setContext] = useState<UserContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +66,13 @@ export function useUserContext() {
         });
         setContext(res.data);
       } catch (err: any) {
+        // Detectar suspensão de condomínio e redirecionar
+        if (err.response?.status === 403 && err.response?.data?.suspended) {
+          if (typeof window !== 'undefined') {
+            window.location.href = '/suspended';
+          }
+          return;
+        }
         const message = err.response?.data?.error || err.message || 'Erro ao buscar contexto';
         setError(message);
         setContext(null);

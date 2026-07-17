@@ -3,6 +3,7 @@ import { compare } from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import prisma from '@/lib/prisma';
+import { checkUserSuspension } from '@/lib/services/suspension-service';
 
 // ─── Rate Limiter (in-memory, por IP) ─────────────────────────────────────────
 // Máximo 5 tentativas por IP em janela de 5 minutos (300 segundos).
@@ -129,6 +130,16 @@ export async function POST(req: Request) {
     if (!isPasswordValid) {
       console.warn('[login] Senha incorreta para:', email);
       return NextResponse.json({ error: 'Credenciais inválidas.' }, { status: 401 });
+    }
+
+    // ── 4.5. Verificar suspensão do condomínio ────────────────────────────────
+    const suspension = await checkUserSuspension(user.id);
+    if (suspension.suspended) {
+      console.warn('[login] Acesso suspenso para:', email, '- Condomínios:', suspension.complexNames.join(', '));
+      return NextResponse.json(
+        { error: 'Acesso suspenso. Procure a administração do seu condomínio.', suspended: true },
+        { status: 403 }
+      );
     }
 
     // ── 5. Gerar JWT e sessão ─────────────────────────────────────────────────
