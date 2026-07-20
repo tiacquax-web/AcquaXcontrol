@@ -28,6 +28,9 @@ const MAX_ATTEMPTS = 3;
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // ── Autenticação ──────────────────────────────────────────────────────────
+  // CRON_SECRET é opcional: se configurado, valida o Bearer token enviado
+  // automaticamente pelo Vercel Cron. Se não configurado, apenas loga um aviso
+  // e continua (igual ao cron do GL Import).
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
     const authHeader = req.headers.get('authorization');
@@ -35,8 +38,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     if (token !== cronSecret) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-  } else if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 });
+  } else {
+    console.warn('[EmailCron] CRON_SECRET não configurado — executando sem autenticação.');
   }
 
   // ── Verificar configuração de email ────────────────────────────────────────
