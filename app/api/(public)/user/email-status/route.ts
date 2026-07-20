@@ -19,18 +19,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ message: 'Não autorizado' }, { status: 401 });
     }
 
-    // Verificar se é admin ou programador
-    const user = await prisma.user.findFirst({
-      where: { id: userId, deletedAt: null },
-      select: { id: true, name: true, roleAssignments: { include: { role: true } } } as any
+    // Verificar se é admin ou programador via RoleAssignment
+    const systemAssignments = await prisma.roleAssignment.findMany({
+      where: {
+        userId,
+        contextType: 'system',
+        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+      },
+      select: { Role: { select: { name: true } } },
     });
-    if (!user) {
-      return NextResponse.json({ message: 'Usuário não encontrado' }, { status: 404 });
-    }
-
-    const isAdmin = (user as any).roleAssignments?.some((ra: any) =>
-      ra?.role?.name === 'Administrador' || ra?.role?.name === 'Programador'
-    );
+    const systemRoles = systemAssignments.map(a => a.Role?.name).filter(Boolean) as string[];
+    const isAdmin = systemRoles.includes('Administrador') || systemRoles.includes('Programador');
     if (!isAdmin) {
       return NextResponse.json({ message: 'Acesso restrito a administradores' }, { status: 403 });
     }
