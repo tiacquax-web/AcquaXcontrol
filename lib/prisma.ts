@@ -16,6 +16,15 @@ const prismaClientSingleton = () => {
         async delete({ where }: { where: { id: string } }) {
           const modelName = (this as unknown as ExtendedModelContext).$name;
           const extendedClient = client as unknown as Record<string, ModelClient>;
+          // Meter has @@unique([register, status]) — when soft-deleting, set status to 'Inativo'
+          // so the register can be reused. Without this, a soft-deleted meter with status 'Ativo'
+          // blocks re-registration of the same chassi.
+          if (modelName === 'meter') {
+            return extendedClient[modelName].update({
+              where: { ...where },
+              data: { deletedAt: new Date(), status: 'Inativo' },
+            });
+          }
           return extendedClient[modelName].update({
             where: { ...where },
             data: { deletedAt: new Date() },
