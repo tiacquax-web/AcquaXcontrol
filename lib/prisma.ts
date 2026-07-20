@@ -81,6 +81,7 @@ const prismaClientSingleton = () => {
            */
           const MODELS_WITHOUT_DELETED_AT = new Set([
             'ScheduleOverride',
+            'EmailJob',
             'SupportMessage',
             'SuggestionVote',
           ]);
