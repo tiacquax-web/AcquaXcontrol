@@ -96,7 +96,7 @@ export async function findResidentsForComplex(complexId: string): Promise<Reside
     where: {
       id: { in: userIds },
       deletedAt: null,
-      email: { not: null },
+      
     },
     select: { id: true, name: true, email: true },
   });
@@ -192,6 +192,10 @@ export async function createEmailJobsForDealershipReading(
   let created = 0;
   let skipped = 0;
 
+  // Batch creation: coletar todos os jobs em um array e usar createMany
+  const jobBatch: any[] = [];
+  const BATCH_SIZE = 500;
+
   for (const resident of residents) {
     const report = reportByApartment.get(resident.apartmentId);
     if (!report) {
@@ -205,22 +209,39 @@ export async function createEmailJobsForDealershipReading(
       continue;
     }
 
-    await prisma.emailJob.create({
-      data: {
-        apartmentConsumptionReportId: report.id,
-        dealershipReadingId,
-        toEmail: resident.userEmail,
-        toName: resident.userName,
-        subject: `Filipeta ${dealershipReading.monthRef}/${dealershipReading.yearRef} - ${resident.apartmentName}`,
-        monthRef: dealershipReading.monthRef,
-        yearRef: dealershipReading.yearRef || '',
-        complexId: dealershipReading.complexId,
-        apartmentId: resident.apartmentId,
-        status: 'pending',
-        createdByUserId,
-      },
+    jobBatch.push({
+      apartmentConsumptionReportId: report.id,
+      dealershipReadingId,
+      toEmail: resident.userEmail,
+      toName: resident.userName,
+      subject: `Filipeta ${dealershipReading.monthRef}/${dealershipReading.yearRef} - ${resident.apartmentName}`,
+      monthRef: dealershipReading.monthRef,
+      yearRef: dealershipReading.yearRef || '',
+      complexId: dealershipReading.complexId,
+      apartmentId: resident.apartmentId,
+      status: 'pending',
+      createdByUserId: createdByUserId || null,
     });
-    created++;
+  }
+
+  // Inserir em lotes para evitar timeout/deadlock
+  for (let i = 0; i < jobBatch.length; i += BATCH_SIZE) {
+    const chunk = jobBatch.slice(i, i + BATCH_SIZE);
+    try {
+      await prisma.emailJob.createMany({ data: chunk });
+      created += chunk.length;
+    } catch (batchErr: any) {
+      console.error(`[EmailDispatcher] Erro no lote ${i}:`, batchErr?.message);
+      // Fallback: inserir um por um no lote que falhou
+      for (const job of chunk) {
+        try {
+          await prisma.emailJob.create({ data: job });
+          created++;
+        } catch (singleErr) {
+          console.error(`[EmailDispatcher] Erro ao criar job individual:`, singleErr);
+        }
+      }
+    }
   }
 
   console.log(`[EmailDispatcher] Jobs criados: ${created}, pulados: ${skipped}, moradores: ${residents.length}`);

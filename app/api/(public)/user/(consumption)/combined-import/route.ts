@@ -12,6 +12,10 @@ import {
 import { randomUUID } from 'crypto';
 import { createEmailJobsForDealershipReading } from "@/lib/services/filipeta-email-dispatcher";
 
+// Importação de 288+ linhas pode levar mais de 60s (default Vercel) devido às
+// múltiplas operações de banco (leituras + relatórios + email jobs)
+export const maxDuration = 120;
+
 // Otimização (Alta prioridade implementada):
 // 1. Prefetch de leituras e relatórios existentes.
 // 2. Acúmulo de documentos para criação em lote (createMany) ao invés de criar um a um.
