@@ -693,7 +693,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     result.success = (result.readingsCreated + result.reportsCreated + result.reportsUpdated) > 0;
 
     // ── Trigger: criar EmailJobs para envio automático de filipetas ────────────
-    if (dealershipReadingId && result.success && process.env.ZOHO_SMTP_USER) {
+    if (dealershipReadingId && result.success) {
       try {
         await createEmailJobsForDealershipReading(dealershipReadingId, userId);
         console.log(`[Combined Import] EmailJobs criados para dealershipReading: ${dealershipReadingId}`);

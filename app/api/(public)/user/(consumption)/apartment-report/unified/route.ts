@@ -288,7 +288,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
     // Dispara a criação de jobs em background (não bloqueia a resposta)
-    if (dealershipReadingIds.size > 0 && process.env.ZOHO_SMTP_USER) {
+    if (dealershipReadingIds.size > 0) {
       try {
         for (const drId of dealershipReadingIds) {
           await createEmailJobsForDealershipReading(drId, userId);
