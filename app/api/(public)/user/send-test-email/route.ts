@@ -7,11 +7,10 @@ export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 /**
- * POST /api/user/send-test-email
- * Body: { to: "email@example.com" }
- * Envia um email de teste direto, sem passar pela fila de EmailJobs.
+ * GET /api/user/send-test-email?to=email@example.com
+ * Envia um email de teste direto via Zoho SMTP. Só visitar o link logado.
  */
-export async function POST(req: NextRequest): Promise<NextResponse> {
+export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
     if (sessionError) {
@@ -36,14 +35,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ message: 'Apenas administradores podem enviar emails de teste' }, { status: 403 });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const to = body.to;
-    if (!to || typeof to !== 'string' || !to.includes('@')) {
-      return NextResponse.json({ message: 'Email de destino inválido' }, { status: 400 });
+    const url = new URL(req.url);
+    const to = url.searchParams.get('to') || 'ruivagiulia@gmail.com';
+    if (!to.includes('@')) {
+      return NextResponse.json({ message: 'Email invalido' }, { status: 400 });
     }
 
     if (!isEmailConfigured()) {
-      return NextResponse.json({ message: 'SMTP não configurado' }, { status: 500 });
+      return NextResponse.json({ message: 'SMTP nao configurado' }, { status: 500 });
     }
 
     const testHtml = `
@@ -77,7 +76,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
 
     if (result.success) {
-      return NextResponse.json({ success: true, message: 'Email enviado com sucesso para ' + to, messageId: result.messageId });
+      return NextResponse.json({ success: true, message: 'Email enviado com sucesso para ' + to });
     } else {
       return NextResponse.json({ success: false, message: 'Falha ao enviar email', error: result.error }, { status: 500 });
     }
