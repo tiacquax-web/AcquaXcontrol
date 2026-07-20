@@ -1,5 +1,5 @@
 "use client"
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useMonitoringReadings } from '@/hooks/useMonitoringReadings'
 import MonitoringChart from './MonitoringChart'
 import { DateRange } from 'react-day-picker'
@@ -26,6 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar'
 import { Calendar as CalendarIcon } from 'lucide-react'
 import { useUserContext } from '@/hooks/useUserContext'
+import { useMeters } from '@/hooks/useMeters'
 import { AlertTriangle } from 'lucide-react'
 
 // Fase 1: Placeholder de seleção de medidores manual até integração com UI real de contexto
@@ -85,6 +86,50 @@ export default function MonitoringPage() {
   const alertTypes = prefs.alertTypes
   const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: addDays(new Date(), -30), to: new Date() })
   const [rangeError, setRangeError] = useState<string | null>(null)
+
+  // ── Auto-seleção de medidores ──────────────────────────────────────────
+  // Quando o morador tem apenas 1 unidade vinculada, o contexto é auto-selecionado
+  // (apartamento/complexo). Buscamos os medidores desse contexto e selecionamos
+  // todos automaticamente, para que o morador veja os dados sem precisar clicar.
+  // Só não auto-selecionamos se o usuário tiver mais de uma unidade (precisa escolher).
+  const autoSelectAttemptedRef = useRef(false)
+
+  // Buscar medidores do contexto atual (mesmo filtro do MeterSelectionPanel)
+  const { meters: autoSelectMeters, loading: autoSelectLoading } = useMeters({
+    complexId,
+    blockId,
+    apartmentId,
+    enabled: !!(apartmentId || (complexId && !apartmentId)),
+    take: 200,
+  })
+
+  // Determinar se deve auto-selecionar
+  const shouldAutoSelect = (() => {
+    if (!userContext || autoSelectAttemptedRef.current) return false
+    if (autoSelectLoading || autoSelectMeters.length === 0) return false
+    if (selectedMeters.length > 0) return false  // já tem seleção manual ou do localStorage
+
+    // Morador com 1 apartamento → auto-selecionar
+    if (!userContext.isSystem && userContext.apartments.length === 1) return true
+
+    // Síndico com 1 condomínio GL → auto-selecionar (se tiver poucos medidores)
+    if (!userContext.isSystem && userContext.complexes.length > 0) {
+      const glComplexes = userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id))
+      if (glComplexes.length === 1 && autoSelectMeters.length <= 10) return true
+    }
+
+    return false
+  })()
+
+  useEffect(() => {
+    if (shouldAutoSelect) {
+      const meterIds = autoSelectMeters.map(m => m.id)
+      if (meterIds.length > 0) {
+        update({ meterIds })
+        autoSelectAttemptedRef.current = true
+      }
+    }
+  }, [shouldAutoSelect, autoSelectMeters])
 
   const requestParams = useMemo(() => ({
     meterIds: selectedMeters,
@@ -172,6 +217,8 @@ export default function MonitoringPage() {
       if (selectedMeters.length > 0) {
         update({ meterIds: [] })
       }
+      // Reset auto-select flag quando contexto muda manualmente
+      autoSelectAttemptedRef.current = false
     }
   }, [contextKey, ready])
 
