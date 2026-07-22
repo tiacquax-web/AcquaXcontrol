@@ -54,26 +54,23 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
                             <p style="color: rgba(255,255,255,0.85); margin: 4px 0 0;">Sistema de medicao e controle</p>
                         </div>
                         <div style="background: #f8f9fa; padding: 24px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px;">
-                            <h2 style="color: #333;">Seu acesso esta ativo!</h2>
+                            <h2 style="color: #333;">Ol&aacute; <strong>${updatedName || ''}</strong>!</h2>
                             <p style="color: #555; line-height: 1.6;">
-                                Ola <strong>${updatedName || ''}</strong>,
+                                Seu acesso ao AcquaX Control foi liberado com sucesso.
                             </p>
                             <p style="color: #555; line-height: 1.6;">
-                                Seus dados foram atualizados no sistema de medicao AcquaXcontrol.
+                                Atrav&eacute;s da plataforma, voc&ecirc; poder&aacute;:
                             </p>
-                            <p style="color: #555; line-height: 1.6;">
-                                Atraves do sistema voce pode acompanhar seu consumo de agua, verificar filipetas mensais e monitorar seu gasto diario.
-                            </p>
-                            <div style="background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin: 16px 0;">
-                                <p style="color: #555; margin: 0 0 8px;"><strong>Como acessar:</strong></p>
-                                <p style="color: #555; margin: 0 0 4px;">1. Acesse <a href="https://www.acquaxcontrol.com.br" style="color: #0066B3;">www.acquaxcontrol.com.br</a></p>
-                                <p style="color: #555; margin: 0;">2. Faca login com seu email e senha cadastrados</p>
-                            </div>
+                            <ul style="color: #555; line-height: 1.8; padding-left: 24px; margin: 8px 0 16px;">
+                                <li>Acompanhar seu consumo de &aacute;gua;</li>
+                                <li>Consultar suas filipetas mensais;</li>
+                                <li>Monitorar seu consumo di&aacute;rio (em caso de medi&ccedil;&atilde;o por IOT) de forma pr&aacute;tica e transparente.</li>
+                            </ul>
                             <div style="text-align: center; margin: 24px 0;">
                                 <a href="https://www.acquaxcontrol.com.br" style="background: #0066B3; color: white; padding: 12px 32px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">Acessar o Sistema</a>
                             </div>
                             <p style="color: #555; line-height: 1.6;">
-                                Em caso de duvidas sobre sua senha, entre em contato com a administracao do seu condominio.
+                                Seja bem-vindo(a)! Esperamos que o AcquaX Control facilite o acompanhamento do seu consumo e contribua para uma gest&atilde;o mais eficiente dos seus recursos.
                             </p>
                             <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
                             <p style="color: #999; font-size: 12px;">
@@ -88,7 +85,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
                     toName: updatedName || undefined,
                     subject: 'Bem-vindo(a) ao AcquaXcontrol!',
                     html: welcomeHtml,
-                    text: 'Bem-vindo ao AcquaXcontrol! Seus dados foram atualizados. Acesse www.acquaxcontrol.com.br e faca login com seu email e senha.',
+                    text: 'Seu acesso ao AcquaX Control foi liberado com sucesso. Atraves da plataforma voce podera acompanhar seu consumo de agua, consultar filipetas mensais e monitorar seu consumo diario. Seja bem-vindo(a)! Acesse www.acquaxcontrol.com.br',
                 });
                 console.log('[User Update] Email de boas-vindas enviado para:', updatedEmail);
             } catch (emailErr: any) {
