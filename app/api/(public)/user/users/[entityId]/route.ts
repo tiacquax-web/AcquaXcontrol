@@ -54,7 +54,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
                             <p style="color: rgba(255,255,255,0.85); margin: 4px 0 0;">Sistema de medicao e controle</p>
                         </div>
                         <div style="background: #f8f9fa; padding: 24px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px;">
-                            <h2 style="color: #333;">Bem-vindo(a) ao AcquaXcontrol!</h2>
+                            <h2 style="color: #333;">Seu acesso esta ativo!</h2>
                             <p style="color: #555; line-height: 1.6;">
                                 Ola <strong>${updatedName || ''}</strong>,
                             </p>
@@ -67,12 +67,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
                             <div style="background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin: 16px 0;">
                                 <p style="color: #555; margin: 0 0 8px;"><strong>Como acessar:</strong></p>
                                 <p style="color: #555; margin: 0 0 4px;">1. Acesse <a href="https://www.acquaxcontrol.com.br" style="color: #0066B3;">www.acquaxcontrol.com.br</a></p>
-                                <p style="color: #555; margin: 0 0 4px;">2. Faca login com seu email e senha</p>
-                                <p style="color: #555; margin: 0;">3. No primeiro acesso, voce sera solicitado a criar uma nova senha</p>
+                                <p style="color: #555; margin: 0;">2. Faca login com seu email e senha cadastrados</p>
                             </div>
                             <div style="text-align: center; margin: 24px 0;">
                                 <a href="https://www.acquaxcontrol.com.br" style="background: #0066B3; color: white; padding: 12px 32px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">Acessar o Sistema</a>
                             </div>
+                            <p style="color: #555; line-height: 1.6;">
+                                Em caso de duvidas sobre sua senha, entre em contato com a administracao do seu condominio.
+                            </p>
                             <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
                             <p style="color: #999; font-size: 12px;">
                                 Este e um email automatico do sistema AcquaXcontrol. Nao responda.<br/>
