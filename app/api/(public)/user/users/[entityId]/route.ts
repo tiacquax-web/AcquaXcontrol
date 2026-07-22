@@ -2,6 +2,8 @@ import { cleanEntityBody } from "@/lib/prisma"
 import prisma from "@/lib/prisma"
 import { createEntity, deleteEntity, updateEntityData } from "@/lib/userData"
 import { updateUser, validateUserSession } from "@/lib/users"
+import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
+import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 import { NextRequest, NextResponse } from "next/server"
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ entityId: string }> }): Promise<Response> {
@@ -38,6 +40,59 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
 
         if ('password' in user) {
             user.password = undefined; // Remove password from the response
+        }
+
+        // Enviar email de boas-vindas se o email foi atualizado e é valido
+        const updatedEmail = (user as any).email;
+        const updatedName = (user as any).name;
+        if (updatedEmail && !isBlockedEmailDomain(updatedEmail) && isEmailConfigured()) {
+            try {
+                const welcomeHtml = `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                        <div style="background: linear-gradient(135deg, #0066B3, #009FE0); padding: 24px; border-radius: 8px 8px 0 0;">
+                            <h1 style="color: white; margin: 0; font-size: 22px;">AcquaX do Brasil</h1>
+                            <p style="color: rgba(255,255,255,0.85); margin: 4px 0 0;">Sistema de medicao e controle</p>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 24px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px;">
+                            <h2 style="color: #333;">Bem-vindo(a) ao AcquaXcontrol!</h2>
+                            <p style="color: #555; line-height: 1.6;">
+                                Ola <strong>${updatedName || ''}</strong>,
+                            </p>
+                            <p style="color: #555; line-height: 1.6;">
+                                Seus dados foram atualizados no sistema de medicao AcquaXcontrol.
+                            </p>
+                            <p style="color: #555; line-height: 1.6;">
+                                Atraves do sistema voce pode acompanhar seu consumo de agua, verificar filipetas mensais e monitorar seu gasto diario.
+                            </p>
+                            <div style="background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin: 16px 0;">
+                                <p style="color: #555; margin: 0 0 8px;"><strong>Como acessar:</strong></p>
+                                <p style="color: #555; margin: 0 0 4px;">1. Acesse <a href="https://www.acquaxcontrol.com.br" style="color: #0066B3;">www.acquaxcontrol.com.br</a></p>
+                                <p style="color: #555; margin: 0 0 4px;">2. Faca login com seu email e senha</p>
+                                <p style="color: #555; margin: 0;">3. No primeiro acesso, voce sera solicitado a criar uma nova senha</p>
+                            </div>
+                            <div style="text-align: center; margin: 24px 0;">
+                                <a href="https://www.acquaxcontrol.com.br" style="background: #0066B3; color: white; padding: 12px 32px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">Acessar o Sistema</a>
+                            </div>
+                            <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
+                            <p style="color: #999; font-size: 12px;">
+                                Este e um email automatico do sistema AcquaXcontrol. Nao responda.<br/>
+                                AcquaX do Brasil - Sistema de medicao e controle
+                            </p>
+                        </div>
+                    </div>
+                `;
+                await sendEmail({
+                    to: updatedEmail,
+                    toName: updatedName || undefined,
+                    subject: 'Bem-vindo(a) ao AcquaXcontrol!',
+                    html: welcomeHtml,
+                    text: 'Bem-vindo ao AcquaXcontrol! Seus dados foram atualizados. Acesse www.acquaxcontrol.com.br e faca login com seu email e senha.',
+                });
+                console.log('[User Update] Email de boas-vindas enviado para:', updatedEmail);
+            } catch (emailErr: any) {
+                console.error('[User Update] Falha ao enviar email de boas-vindas:', emailErr?.message);
+                // Nao falha o update se o email falhar
+            }
         }
 
         // Return the updated entity data

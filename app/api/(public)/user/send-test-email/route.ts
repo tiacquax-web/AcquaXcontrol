@@ -7,20 +7,15 @@ export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 /**
- * GET /api/user/send-test-email?to=email@example.com
- * Envia um email de teste direto via Zoho SMTP. Só visitar o link logado.
+ * GET /api/user/send-test-email?to=email@example.com&type=test|welcome
+ * Envia um email de teste ou boas-vindas. Só visitar o link logado.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
-    if (sessionError) {
-      return NextResponse.json({ message: sessionError }, { status: sessionStatus });
-    }
-    if (!userId) {
-      return NextResponse.json({ message: 'Não autorizado' }, { status: 401 });
-    }
+    if (sessionError) return NextResponse.json({ message: sessionError }, { status: sessionStatus });
+    if (!userId) return NextResponse.json({ message: 'Não autorizado' }, { status: 401 });
 
-    // Verificar se é admin ou programador
     const systemAssignments = await prisma.roleAssignment.findMany({
       where: {
         userId,
@@ -31,52 +26,91 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     });
     const systemRoles = systemAssignments.map(a => a.Role?.name).filter(Boolean) as string[];
     const isAdmin = systemRoles.includes('Administrador') || systemRoles.includes('Programador');
-    if (!isAdmin) {
-      return NextResponse.json({ message: 'Apenas administradores podem enviar emails de teste' }, { status: 403 });
-    }
+    if (!isAdmin) return NextResponse.json({ message: 'Apenas administradores' }, { status: 403 });
 
     const url = new URL(req.url);
     const to = url.searchParams.get('to') || 'ruivagiulia@gmail.com';
-    if (!to.includes('@')) {
-      return NextResponse.json({ message: 'Email invalido' }, { status: 400 });
-    }
+    const type = url.searchParams.get('type') || 'test';
+    if (!to.includes('@')) return NextResponse.json({ message: 'Email invalido' }, { status: 400 });
+    if (!isEmailConfigured()) return NextResponse.json({ message: 'SMTP nao configurado' }, { status: 500 });
 
-    if (!isEmailConfigured()) {
-      return NextResponse.json({ message: 'SMTP nao configurado' }, { status: 500 });
-    }
+    let subject: string;
+    let html: string;
+    let text: string;
 
-    const testHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background: linear-gradient(135deg, #0066B3, #009FE0); padding: 24px; border-radius: 8px 8px 0 0;">
-          <h1 style="color: white; margin: 0; font-size: 22px;">AcquaX do Brasil</h1>
-          <p style="color: rgba(255,255,255,0.85); margin: 4px 0 0;">Sistema de medicao e controle</p>
+    if (type === 'welcome') {
+      subject = 'Bem-vindo ao AcquaXcontrol!';
+      html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #0066B3, #009FE0); padding: 24px; border-radius: 8px 8px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 22px;">AcquaX do Brasil</h1>
+            <p style="color: rgba(255,255,255,0.85); margin: 4px 0 0;">Sistema de medicao e controle</p>
+          </div>
+          <div style="background: #f8f9fa; padding: 24px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px;">
+            <h2 style="color: #333;">Bem-vindo(a) ao AcquaXcontrol!</h2>
+            <p style="color: #555; line-height: 1.6;">
+              Seu acesso ao sistema de medicao AcquaXcontrol foi liberado.
+            </p>
+            <p style="color: #555; line-height: 1.6;">
+              Atraves do sistema voce pode acompanhar seu consumo de agua, verificar filipetas mensais e monitorar seu gasto diario.
+            </p>
+            <div style="background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin: 16px 0;">
+              <p style="color: #555; margin: 0 0 8px;"><strong>Como acessar:</strong></p>
+              <p style="color: #555; margin: 0 0 4px;">1. Acesse <a href="https://www.acquaxcontrol.com.br" style="color: #0066B3;">www.acquaxcontrol.com.br</a></p>
+              <p style="color: #555; margin: 0 0 4px;">2. Faca login com seu email e senha</p>
+              <p style="color: #555; margin: 0;">3. No primeiro acesso, voce sera solicitado a criar uma nova senha</p>
+            </div>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="https://www.acquaxcontrol.com.br" style="background: #0066B3; color: white; padding: 12px 32px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">Acessar o Sistema</a>
+            </div>
+            <p style="color: #555; line-height: 1.6;">
+              Se ja definiu sua senha, basta acessar com seu email e senha. Caso ainda nao tenha definido, voce sera solicitado a criar uma no primeiro acesso.
+            </p>
+            <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
+            <p style="color: #999; font-size: 12px;">
+              Este e um email automatico do sistema AcquaXcontrol. Nao responda.<br/>
+              AcquaX do Brasil - Sistema de medicao e controle
+            </p>
+          </div>
         </div>
-        <div style="background: #f8f9fa; padding: 24px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px;">
-          <h2 style="color: #333;">Email de Teste</h2>
-          <p style="color: #555; line-height: 1.6;">
-            Este e um email de teste enviado pelo sistema AcquaXcontrol em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}.
-          </p>
-          <p style="color: #555; line-height: 1.6;">
-            Se voce esta lendo isto, o SMTP do Zoho esta funcionando corretamente!
-          </p>
-          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
-          <p style="color: #999; font-size: 12px;">
-            Este e um email automatico do sistema AcquaXcontrol. Nao responda.
-          </p>
+      `;
+      text = 'Bem-vindo ao AcquaXcontrol! Seu acesso foi liberado. Acesse www.acquaxcontrol.com.br e faca login com seu email e senha.';
+    } else {
+      subject = 'Teste de Email - AcquaXcontrol';
+      html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #0066B3, #009FE0); padding: 24px; border-radius: 8px 8px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 22px;">AcquaX do Brasil</h1>
+            <p style="color: rgba(255,255,255,0.85); margin: 4px 0 0;">Sistema de medicao e controle</p>
+          </div>
+          <div style="background: #f8f9fa; padding: 24px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px;">
+            <h2 style="color: #333;">Email de Teste</h2>
+            <p style="color: #555; line-height: 1.6;">
+              Este e um email de teste enviado pelo sistema AcquaXcontrol em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}.
+            </p>
+            <p style="color: #555; line-height: 1.6;">
+              Se voce esta lendo isto, o SMTP do Zoho esta funcionando corretamente!
+            </p>
+            <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
+            <p style="color: #999; font-size: 12px;">
+              Este e um email automatico do sistema AcquaXcontrol. Nao responda.
+            </p>
+          </div>
         </div>
-      </div>
-    `;
+      `;
+      text = 'Email de teste enviado pelo sistema AcquaXcontrol.';
+    }
 
     const result = await sendEmail({
       to,
-      toName: 'Giulia (Teste)',
-      subject: 'Teste de Email - AcquaXcontrol',
-      html: testHtml,
-      text: 'Email de teste enviado pelo sistema AcquaXcontrol.',
+      toName: type === 'welcome' ? 'Morador' : 'Giulia (Teste)',
+      subject,
+      html,
+      text,
     });
 
     if (result.success) {
-      return NextResponse.json({ success: true, message: 'Email enviado com sucesso para ' + to });
+      return NextResponse.json({ success: true, message: 'Email ' + (type === 'welcome' ? 'de boas-vindas' : 'de teste') + ' enviado para ' + to });
     } else {
       return NextResponse.json({ success: false, message: 'Falha ao enviar email', error: result.error }, { status: 500 });
     }
