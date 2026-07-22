@@ -274,9 +274,6 @@ export async function POST(req: NextRequest): Promise<Response> {
                                 <div style="background: #f8f9fa; padding: 24px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px;">
                                     <h2 style="color: #333;">Senha Redefinida</h2>
                                     <p style="color: #555; line-height: 1.6;">
-                                        Ol&aacute; <strong>${c.name || ''}</strong>,
-                                    </p>
-                                    <p style="color: #555; line-height: 1.6;">
                                         Sua senha de acesso ao sistema AcquaXcontrol foi redefinida.
                                     </p>
                                     <div style="background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin: 16px 0; text-align: center;">
@@ -284,12 +281,16 @@ export async function POST(req: NextRequest): Promise<Response> {
                                         <p style="font-size: 24px; font-weight: bold; color: #0066B3; margin: 0; letter-spacing: 2px;">${c.password}</p>
                                     </div>
                                     <p style="color: #555; line-height: 1.6;">
-                                        Acesse <a href="https://www.acquaxcontrol.com.br" style="color: #0066B3;">www.acquaxcontrol.com.br</a> e fa&ccedil;a login com esta senha.
-                                        Voc&ecirc; ser&aacute; solicitado a criar uma nova senha no primeiro acesso.
+                                        Acesse <a href="https://www.acquaxcontrol.com.br" style="color: #0066B3;">www.acquaxcontrol.com.br</a> e faca login com esta senha.
+                                        Voce sera solicitado a criar uma nova senha no primeiro acesso.
                                     </p>
+                                    <div style="text-align: center; margin: 24px 0;">
+                                        <a href="https://www.acquaxcontrol.com.br" style="background: #0066B3; color: white; padding: 12px 32px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">Acessar o Sistema</a>
+                                    </div>
                                     <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
                                     <p style="color: #999; font-size: 12px;">
-                                        Este e um email automatico do sistema AcquaXcontrol. Nao responda.
+                                        Este e um email automatico do sistema AcquaXcontrol. Nao responda.<br/>
+                                        AcquaX do Brasil - Sistema de medicao e controle
                                     </p>
                                 </div>
                             </div>
