@@ -9,6 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, Search, Download, Printer, ChevronLeft, ChevronRight, Building2, Layers, DoorClosed, Gauge, Activity, CalendarCheck } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useDebounce } from "@/hooks/use-debounce"
+import ComplexesCombobox from "@/components/ComboboxComplex"
+import type { Complex } from "@prisma/client"
 import axios from "axios"
 
 interface ApuracaoItem {
@@ -28,6 +30,7 @@ interface ApuracaoItem {
 
 export default function ApuracaoPage() {
     const [search, setSearch] = useState("")
+    const [selectedComplex, setSelectedComplex] = useState<Complex | undefined>(undefined)
     const [data, setData] = useState<ApuracaoItem[]>([])
     const [totalCount, setTotalCount] = useState(0)
     const [loading, setLoading] = useState(true)
@@ -43,7 +46,7 @@ export default function ApuracaoPage() {
         try {
             const skip = (page - 1) * take
             const res = await axios.get('/api/apuracao', {
-                params: { search: debouncedSearch, take, skip }
+                params: { search: debouncedSearch, take, skip, complexId: selectedComplex?.id }
             })
             setData(res.data.list || [])
             setTotalCount(res.data.totalCount || 0)
@@ -52,12 +55,12 @@ export default function ApuracaoPage() {
         } finally {
             setLoading(false)
         }
-    }, [debouncedSearch, toast])
+    }, [debouncedSearch, toast, selectedComplex])
 
     useEffect(() => {
         setCurrentPage(1)
         fetchData(1)
-    }, [debouncedSearch])
+    }, [debouncedSearch, selectedComplex])
 
     const handlePageChange = (page: number) => {
         setCurrentPage(page)
@@ -74,7 +77,7 @@ export default function ApuracaoPage() {
             let page = 1
             let hasMore = true
             while (hasMore) {
-                const res = await axios.get('/api/apuracao', { params: { search: debouncedSearch, take: 200, skip: (page - 1) * 200 } })
+                const res = await axios.get('/api/apuracao', { params: { search: debouncedSearch, take: 200, skip: (page - 1) * 200, complexId: selectedComplex?.id } })
                 allPages.push(...(res.data.list || []))
                 if (allPages.length >= (res.data.totalCount || 0)) hasMore = false
                 else page++
@@ -181,16 +184,26 @@ export default function ApuracaoPage() {
                             </div>
                         )}
 
-                        {/* Search */}
-                        <div className="relative flex-1 mb-2">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                type="text"
-                                placeholder="Buscar por nome do condomínio..."
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                className="pl-8"
-                            />
+                        {/* Filtros */}
+                        <div className="flex flex-col sm:flex-row gap-3 mb-2">
+                            <div className="flex-1 min-w-[200px]">
+                                <ComplexesCombobox
+                                    complex={selectedComplex}
+                                    setSelectedComplex={(c) => {
+                                        setSelectedComplex(c)
+                                    }}
+                                />
+                            </div>
+                            <div className="relative flex-1">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    type="text"
+                                    placeholder="Buscar por nome do condomínio..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="pl-8"
+                                />
+                            </div>
                         </div>
 
                         {/* Table */}
