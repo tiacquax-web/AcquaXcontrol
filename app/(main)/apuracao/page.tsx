@@ -191,6 +191,7 @@ export default function ApuracaoPage() {
                                     complex={selectedComplex}
                                     setSelectedComplex={(c) => {
                                         setSelectedComplex(c)
+                                        if (c) setSearch('') // limpa busca ao selecionar um condomínio
                                     }}
                                 />
                             </div>
@@ -198,10 +199,11 @@ export default function ApuracaoPage() {
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     type="text"
-                                    placeholder="Buscar por nome do condomínio..."
+                                    placeholder={selectedComplex ? "Limpe o filtro de condomínio para buscar..." : "Buscar por nome do condomínio..."}
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
                                     className="pl-8"
+                                    disabled={!!selectedComplex}
                                 />
                             </div>
                         </div>

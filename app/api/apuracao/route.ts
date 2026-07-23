@@ -18,15 +18,20 @@ export async function GET(req: NextRequest): Promise<Response> {
         const take = parseInt(req.nextUrl.searchParams.get('take') || '50');
         const skip = parseInt(req.nextUrl.searchParams.get('skip') || '0');
 
-        // Base query for complexes (MongoDB-safe: deletedAt null OR not set)
-        const where: any = { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] };
-        if (search) {
-            where.OR = [
-                { socialName: { contains: search, mode: 'insensitive' } },
-                { aliasName: { contains: search, mode: 'insensitive' } },
-            ];
-        }
-        if (complexId) where.id = complexId;
+        // Base query for complexes
+        const where: any = {
+            AND: [
+                // soft-delete filter
+                { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                // optional single complex filter
+                ...(complexId ? [{ id: complexId }] : []),
+                // optional text search (only when no specific complexId selected)
+                ...(search && !complexId ? [{ OR: [
+                    { socialName: { contains: search, mode: 'insensitive' } },
+                    { aliasName: { contains: search, mode: 'insensitive' } },
+                ]}] : []),
+            ]
+        };
 
         const [complexes, totalCount] = await Promise.all([
             prisma.complex.findMany({
