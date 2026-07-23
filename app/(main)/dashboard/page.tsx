@@ -1161,64 +1161,101 @@ function AdminKPIDashboard() {
           </Card>
         )}
 
-        {/* Most/Least updated */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {stats?.mostUpdated && (
-            <Card className="border-green-200 bg-green-50/50">
-              <CardContent className="p-4 flex items-start gap-3">
-                <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Mais atualizado</p>
-                  <p className="font-semibold text-sm">{stats.mostUpdated.socialName || stats.mostUpdated.aliasName}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Última filipeta: <span className="font-medium text-green-600">{stats.mostUpdated.lastReadingLabel ?? '—'}</span>
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {stats?.leastUpdated && (
-            <Card className="border-orange-200 bg-orange-50/50">
-              <CardContent className="p-4 flex items-start gap-3">
-                <Clock className="w-5 h-5 text-orange-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Menos atualizado</p>
-                  <p className="font-semibold text-sm">{stats.leastUpdated.socialName || stats.leastUpdated.aliasName}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Última filipeta: <span className="font-medium text-orange-600">{stats.leastUpdated.lastReadingLabel ?? 'Sem leitura'}</span>
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {stats?.mostAccessed && (
-            <Card className="border-blue-200 bg-blue-50/50">
-              <CardContent className="p-4 flex items-start gap-3">
-                <TrendingUp className="w-5 h-5 text-blue-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Mais acessado (30 dias)</p>
-                  <p className="font-semibold text-sm">{stats.mostAccessed.socialName || stats.mostAccessed.aliasName}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    <span className="font-medium text-blue-600">{stats.mostAccessed.accessCount} usuário{stats.mostAccessed.accessCount !== 1 ? 's' : ''}</span> únicos
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {stats?.leastAccessed && (
-            <Card className="border-gray-200 bg-gray-50/50">
-              <CardContent className="p-4 flex items-start gap-3">
-                <TrendingDown className="w-5 h-5 text-gray-400 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Menos acessado (30 dias)</p>
-                  <p className="font-semibold text-sm">{stats.leastAccessed.socialName || stats.leastAccessed.aliasName}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    <span className="font-medium text-gray-600">{stats.leastAccessed.accessCount} usuário{stats.leastAccessed.accessCount !== 1 ? 's' : ''}</span> únicos
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+        {/* Top 3 mais/menos atualizados + mais acessados + sem acesso */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {/* Mais atualizados */}
+          <Card className="border-green-200 bg-green-50/50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                <p className="text-xs font-semibold text-green-700">Mais atualizados</p>
+              </div>
+              <div className="space-y-2">
+                {(stats?.top3MostUpdated ?? (stats?.mostUpdated ? [stats.mostUpdated] : [])).map((cx: any, i: number) => (
+                  <div key={cx.id} className="flex items-start gap-2">
+                    <span className="text-[10px] text-green-500 font-bold mt-0.5 w-3 shrink-0">{i + 1}.</span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-xs truncate">{cx.socialName || cx.aliasName}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Filipeta: <span className="font-medium text-green-600">{cx.lastReadingLabel ?? '—'}</span>
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {!(stats?.top3MostUpdated?.length) && !stats?.mostUpdated && (
+                  <p className="text-xs text-muted-foreground">Sem dados</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Menos atualizados */}
+          <Card className="border-orange-200 bg-orange-50/50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock className="w-4 h-4 text-orange-500 shrink-0" />
+                <p className="text-xs font-semibold text-orange-700">Menos atualizados</p>
+              </div>
+              <div className="space-y-2">
+                {(stats?.top3LeastUpdated ?? (stats?.leastUpdated ? [stats.leastUpdated] : [])).map((cx: any, i: number) => (
+                  <div key={cx.id} className="flex items-start gap-2">
+                    <span className="text-[10px] text-orange-500 font-bold mt-0.5 w-3 shrink-0">{i + 1}.</span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-xs truncate">{cx.socialName || cx.aliasName}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Filipeta: <span className="font-medium text-orange-600">{cx.lastReadingLabel ?? 'Sem leitura'}</span>
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {!(stats?.top3LeastUpdated?.length) && !stats?.leastUpdated && (
+                  <p className="text-xs text-muted-foreground">Sem dados</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Mais acessados */}
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <TrendingUp className="w-4 h-4 text-blue-500 shrink-0" />
+                <p className="text-xs font-semibold text-blue-700">Mais acessados (30d)</p>
+              </div>
+              <div className="space-y-2">
+                {(stats?.top3MostAccessed ?? (stats?.mostAccessed ? [stats.mostAccessed] : [])).map((cx: any, i: number) => (
+                  <div key={cx.id} className="flex items-start gap-2">
+                    <span className="text-[10px] text-blue-500 font-bold mt-0.5 w-3 shrink-0">{i + 1}.</span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-xs truncate">{cx.socialName || cx.aliasName}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        <span className="font-medium text-blue-600">{cx.accessCount}</span> usuário{cx.accessCount !== 1 ? 's' : ''} únicos
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {!(stats?.top3MostAccessed?.length) && !stats?.mostAccessed && (
+                  <p className="text-xs text-muted-foreground">Nenhum acesso</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Sem acesso no mês */}
+          <Card className="border-gray-200 bg-gray-50/50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <TrendingDown className="w-4 h-4 text-gray-400 shrink-0" />
+                <p className="text-xs font-semibold text-gray-600">Sem acesso (30d)</p>
+              </div>
+              <div className="flex flex-col items-center justify-center py-2">
+                <p className="text-4xl font-bold text-gray-500">{stats?.noAccessCount ?? '—'}</p>
+                <p className="text-xs text-muted-foreground mt-1 text-center">
+                  condomínio{stats?.noAccessCount !== 1 ? 's' : ''} sem nenhum acesso neste mês
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </section>
 

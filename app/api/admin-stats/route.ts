@@ -150,10 +150,13 @@ export async function GET(req: NextRequest): Promise<Response> {
     const withoutDates = complexesWithDates.filter(c => c.lastReadingDate === null);
     withDates.sort((a, b) => b.lastReadingDate!.getTime() - a.lastReadingDate!.getTime());
 
-    const mostUpdated  = withDates[0] ?? null;
-    const leastUpdated = withDates.length > 1 ? withDates[withDates.length - 1] : (withoutDates[0] ?? null);
+    // Top 3 mais atualizados e 3 menos atualizados
+    const top3MostUpdated  = withDates.slice(0, 3);
+    const top3LeastUpdated = withDates.length > 0
+      ? withDates.slice(-3).reverse()
+      : withoutDates.slice(0, 3);
 
-    // ─── Condomínios mais/menos acessados (30 dias) ───────────────────────────
+    // ─── Condomínios mais acessados (30 dias) ─────────────────────────────────
     const monthlyUserIds = [...new Set(monthlySessions.map(s => s.userId))];
     const complexAccessTotal: Record<string, Set<string>> = {};
 
@@ -185,8 +188,44 @@ export async function GET(req: NextRequest): Promise<Response> {
       accessCount: complexAccessTotal[cx.id]?.size ?? 0,
     }));
     accessCounts.sort((a, b) => b.accessCount - a.accessCount);
-    const mostAccessed  = accessCounts.length > 0 && accessCounts[0].accessCount > 0 ? accessCounts[0] : null;
-    const leastAccessed = accessCounts.length > 1 ? accessCounts[accessCounts.length - 1] : null;
+
+    // Top 3 mais acessados
+    const top3MostAccessed = accessCounts.filter(c => c.accessCount > 0).slice(0, 3);
+    // Quantidade de condomínios sem nenhum acesso no mês
+    const noAccessCount = accessCounts.filter(c => c.accessCount === 0).length;
+
+    // manter compat retroativa
+    const mostUpdated  = top3MostUpdated[0] ?? null;
+    const leastUpdated = top3LeastUpdated[0] ?? null;
+    const mostAccessed  = top3MostAccessed[0] ?? null;
+    const leastAccessed = null;
+
+    // ─── Contagens de aptos e medidores por condomínio ───────────────────────
+    const complexIds = topComplexes.map(c => c.id);
+    const [aptCounts, meterCounts] = await Promise.all([
+      prisma.apartment.groupBy({
+        by: ['complexId'],
+        where: { complexId: { in: complexIds }, deletedAt: null },
+        _count: { id: true },
+      }),
+      prisma.meter.groupBy({
+        by: ['complexId'],
+        where: { complexId: { in: complexIds }, deletedAt: null },
+        _count: { id: true },
+      }),
+    ]);
+    const aptCountMap: Record<string, number> = {};
+    aptCounts.forEach(a => { if (a.complexId) aptCountMap[a.complexId] = a._count.id; });
+    const meterCountMap: Record<string, number> = {};
+    meterCounts.forEach(m => { if (m.complexId) meterCountMap[m.complexId] = m._count.id; });
+
+    // Atualizar complexesWithDates com as contagens reais
+    const complexesWithCounts = complexesWithDates.map(cx => ({
+      ...cx,
+      totalApartments: aptCountMap[cx.id] ?? 0,
+      totalMeters: meterCountMap[cx.id] ?? 0,
+      accessCount: complexAccessTotal[cx.id]?.size ?? 0,
+    }));
 
     // ─── Resposta ─────────────────────────────────────────────────────────────
     return NextResponse.json({
@@ -204,11 +243,17 @@ export async function GET(req: NextRequest): Promise<Response> {
       },
       todayLogins: todayLoginsByType,
       loginsByDay: Object.values(loginsByDay),
+      // top 3 listas
+      top3MostUpdated,
+      top3LeastUpdated,
+      top3MostAccessed,
+      noAccessCount,
+      // retrocompat
       mostUpdated,
       leastUpdated,
       mostAccessed,
       leastAccessed,
-      complexes: complexesWithDates,
+      complexes: complexesWithCounts,
     });
   } catch (e: any) {
     return serverError('admin-stats', e);
