@@ -14,7 +14,7 @@ import { createEmailJobsForDealershipReading } from "@/lib/services/filipeta-ema
 
 // Importação de 288+ linhas pode levar mais de 60s (default Vercel) devido às
 // múltiplas operações de banco (leituras + relatórios + email jobs)
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 // Otimização (Alta prioridade implementada):
 // 1. Prefetch de leituras e relatórios existentes.
@@ -606,82 +606,30 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     if (reportUpdates.length > 0) {
-      console.time("⏱️ Update reports (bulk)");
-      const bulkUpdates = reportUpdates.map(upd => {
-        const sanitized = sanitizeUpdateData(upd.data);
-        const sanitizedWithoutUpdatedAt = { ...sanitized };
-        delete sanitizedWithoutUpdatedAt.updatedAt;
-
-        const stages: Record<string, any>[] = [];
-        if (Object.keys(sanitizedWithoutUpdatedAt).length > 0) {
-          stages.push({ $set: sanitizedWithoutUpdatedAt });
-        }
-        stages.push({ $set: { updatedAt: "$$NOW" } });
-
-        return {
-          q: { _id: upd.id },
-          u: stages,
-          upsert: false
-        };
-      });
-
-      try {
-        const bulkRes: any = await prisma.$runCommandRaw({
-          update: 'ApartmentConsumptionReports',
-          ordered: false,
-          updates: bulkUpdates
-        });
-        console.timeEnd("⏱️ Update reports (bulk)");
-
-        const writeErrors: any[] = Array.isArray(bulkRes?.writeErrors) ? bulkRes.writeErrors : [];
-        const failedIndexes = new Set<number>();
-        let successCount = reportUpdates.length;
-
-        if (writeErrors.length > 0) {
-          successCount -= writeErrors.length;
-          for (const err of writeErrors) {
-            const idx = typeof err?.index === 'number' ? err.index : -1;
-            if (idx < 0 || idx >= reportUpdates.length) {
-              result.errors.push({
-                row: 0,
-                type: 'report',
-                message: `Erro em bulk update de relatório: ${err?.errmsg || err?.code || 'desconhecido'}`
-              });
-              continue;
-            }
-            failedIndexes.add(idx);
-            const upd = reportUpdates[idx];
-            try {
-              await prisma.apartmentConsumptionReport.update({ where: { id: upd.id }, data: upd.data });
-              successCount += 1;
-            } catch (fallbackError) {
-              result.errors.push({
-                row: upd.lineNumber,
-                type: 'report',
-                message: `Erro update relatório: ${fallbackError instanceof Error ? fallbackError.message : 'desconhecido'}`
-              });
-            }
-          }
-        }
-
-        result.reportsUpdated = successCount;
-      } catch (error) {
-        console.timeEnd("⏱️ Update reports (bulk)");
-        let updatesOk = 0;
-        for (const upd of reportUpdates) {
+      console.time("⏱️ Update reports (batched)");
+      const BATCH_SIZE = 50;
+      let updatesOk = 0;
+      for (let i = 0; i < reportUpdates.length; i += BATCH_SIZE) {
+        const batch = reportUpdates.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map(async (upd) => {
           try {
-            await prisma.apartmentConsumptionReport.update({ where: { id: upd.id }, data: upd.data });
-            updatesOk++;
-          } catch (fallbackError) {
+            const sanitized = sanitizeUpdateData(upd.data);
+            await prisma.apartmentConsumptionReport.update({ where: { id: upd.id }, data: sanitized });
+            return true;
+          } catch (err: any) {
             result.errors.push({
               row: upd.lineNumber,
               type: 'report',
-              message: `Erro update relatório: ${fallbackError instanceof Error ? fallbackError.message : 'desconhecido'}`
+              message: `Erro update relatório: ${err instanceof Error ? err.message : 'desconhecido'}`
             });
+            return false;
           }
-        }
-        result.reportsUpdated = updatesOk;
+        });
+        const results = await Promise.all(batchPromises);
+        updatesOk += results.filter(Boolean).length;
       }
+      result.reportsUpdated = updatesOk;
+      console.timeEnd("⏱️ Update reports (batched)");
     }
 
     // Contar linkedReports (reports criados + atualizados com lastReadingId)
@@ -693,13 +641,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     result.success = (result.readingsCreated + result.reportsCreated + result.reportsUpdated) > 0;
 
     // ── Trigger: criar EmailJobs para envio automático de filipetas ────────────
+    // Fire-and-forget: não bloquear a resposta da importação
     if (dealershipReadingId && result.success) {
-      try {
-        await createEmailJobsForDealershipReading(dealershipReadingId, userId);
-        console.log(`[Combined Import] EmailJobs criados para dealershipReading: ${dealershipReadingId}`);
-      } catch (emailErr: any) {
-        console.error('[Combined Import] Erro ao criar EmailJobs:', emailErr?.message);
-      }
+      createEmailJobsForDealershipReading(dealershipReadingId, userId)
+        .then(() => console.log(`[Combined Import] EmailJobs criados para dealershipReading: ${dealershipReadingId}`))
+        .catch((emailErr: any) => console.error('[Combined Import] Erro ao criar EmailJobs:', emailErr?.message));
     }
 
     return NextResponse.json(result);
