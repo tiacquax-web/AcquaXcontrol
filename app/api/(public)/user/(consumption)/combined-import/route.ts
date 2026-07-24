@@ -197,6 +197,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     };
 
     // Percorrer linhas apenas para montar estruturas em memória
+    console.log(`[IMPORT] Step 3: Processing ${rows.length} rows...`);
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const lineNumber = i + 2; // Excel line number
@@ -340,6 +341,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // ===== PREFETCH EXISTENTES NO BANCO =====
+    console.log(`[IMPORT] Step 4: ${readingCandidates.length} reading candidates, ${rowContexts.length} row contexts`);
     // Leituras existentes (meterId + readAtDate)
     const meterToDates = new Map<string, Set<string>>();
     for (const candidate of readingCandidates) {
@@ -352,20 +354,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let existingReadingsKeySet = new Set<string>();
     const existingReadingsIdMap = new Map<string, string>(); // key -> existing reading id
     if (meterToDates.size > 0) {
-      const orFilters = Array.from(meterToDates.entries()).map(([meterId, dateSet]) => ({
-        meterId,
-        readAtDate: { in: Array.from(dateSet) },
-        deletedAt: null
-      }));
+      // SIMPLIFIED: Instead of N OR conditions (one per meter+date), use a single
+      // meterId: { in: [...] } query and filter by date in memory. The old OR approach
+      // with 288+ conditions was causing MongoDB to hang for 300+ seconds.
+      const allMeterIds = Array.from(meterToDates.keys());
+      const allDates = new Set<string>();
+      for (const dateSet of meterToDates.values()) {
+        for (const d of dateSet) allDates.add(d);
+      }
 
+      console.log(`[IMPORT] Step 5: Fetching existing readings for ${allMeterIds.length} meters, dates: ${Array.from(allDates).join(', ')}`);
       console.time("⏱️ Fetch existing readings");
       const existingReadings = await prisma.reading.findMany({
         where: {
-          OR: orFilters
+          meterId: { in: allMeterIds },
+          readAtDate: { in: Array.from(allDates) }
         },
         select: { id: true, meterId: true, readAtDate: true }
       });
       console.timeEnd("⏱️ Fetch existing readings");
+      console.log(`[IMPORT] Step 5a: Found ${existingReadings.length} existing readings`);
       existingReadingsKeySet = new Set(existingReadings.map(er => `${er.meterId}::${er.readAtDate}`));
       existingReadings.forEach(er => existingReadingsIdMap.set(`${er.meterId}::${er.readAtDate}`, er.id));
     }
@@ -422,6 +430,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
     if (apartmentsTouched.length > 0 && monthFilters.length > 0 && yearFilters.length > 0) {
+      console.log(`[IMPORT] Step 6: Fetching existing reports for ${apartmentsTouched.length} apartments`);
       console.time("⏱️ Fetch existing reports");
     }
     const existingReports = (apartmentsTouched.length > 0 && monthFilters.length > 0 && yearFilters.length > 0)
@@ -437,6 +446,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       : [];
     if (apartmentsTouched.length > 0 && monthFilters.length > 0 && yearFilters.length > 0) {
       console.timeEnd("⏱️ Fetch existing reports");
+      console.log(`[IMPORT] Step 6a: Found ${existingReports.length} existing reports`);
     }
 
     const makeReportBaseKey = (apartmentId: string, monthValue: string, yearValue: string) =>
@@ -561,6 +571,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // ===== EXECUTAR ESCRITAS =====
+    console.log(`[IMPORT] Step 7: Writes — ${newReadingCandidates.length} new readings, ${reportCreates.length} report creates, ${reportUpdates.length} report updates, ${toSoftDeleteReadingIds.length} soft-deletes`);
     // Soft-delete existentes quando policy = replace
     if (toSoftDeleteReadingIds.length > 0) {
       try {
@@ -641,6 +652,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Sucesso se algo foi criado ou atualizado
     result.success = (result.readingsCreated + result.reportsCreated + result.reportsUpdated) > 0;
 
+    console.log(`[IMPORT] Step 8: All writes done — readings: ${result.readingsCreated}, reports created: ${result.reportsCreated}, reports updated: ${result.reportsUpdated}`);
     // ── Trigger: criar EmailJobs para envio automático de filipetas ────────────
     // Fire-and-forget: não bloquear a resposta da importação
     if (dealershipReadingId && result.success) {
