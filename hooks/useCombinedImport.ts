@@ -296,6 +296,8 @@ export const useCombinedImport = (): UseCombinedImportResult => {
 
     setIsImporting(true);
     setImportResult(null);
+    // Declarar fora do try para que o finally consiga limpar corretamente
+    let progressInterval: ReturnType<typeof setInterval> | null = null;
     try {
       setImportProgress({ total: validationResult.validRows.length, processed: 0, step: 'importing-readings' });
       
@@ -304,7 +306,7 @@ export const useCombinedImport = (): UseCombinedImportResult => {
       let stepIdx = 0;
       const steps = ['importing-readings', 'importing-reports', 'linking'] as const;
       const total = validationResult.validRows.length;
-      const progressInterval = setInterval(() => {
+      progressInterval = setInterval(() => {
         simulatedProcessed = Math.min(simulatedProcessed + Math.max(1, Math.floor(total * 0.05)), Math.floor(total * 0.9));
         stepIdx = Math.min(stepIdx + 1, steps.length - 1);
         setImportProgress(prev => ({ ...prev, processed: simulatedProcessed, step: steps[stepIdx] as any }));
@@ -347,7 +349,7 @@ export const useCombinedImport = (): UseCombinedImportResult => {
     } catch (error) {
       throw error;
     } finally {
-      clearInterval(progressInterval);
+      if (progressInterval !== null) clearInterval(progressInterval);
       setIsImporting(false);
     }
   };

@@ -14,6 +14,7 @@ import { createEmailJobsForDealershipReading } from "@/lib/services/filipeta-ema
 
 // Importação de 288+ linhas pode levar mais de 60s (default Vercel) devido às
 // múltiplas operações de banco (leituras + relatórios + email jobs)
+export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 // Otimização (Alta prioridade implementada):
