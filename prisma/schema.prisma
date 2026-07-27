@@ -613,7 +613,7 @@ model Meter {
   glId                      String?
 
   apartmentId               String
-  apartment                 Apartment   @relation(fields: [apartmentId], references: [id]) // Relacionamento com Apartment
+  apartment                 Apartment?  @relation(fields: [apartmentId], references: [id]) // Relacionamento com Apartment
 
   // Campos desnormalizados para otimização de queries
   blockId                   String?     // ID do bloco (desnormalizado)
