@@ -7,44 +7,47 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const { default: prisma } = await import('@/lib/prisma');
 
-    const targetChassis = ['3617385304','3617385379','3617385433','3617385457','3617385475','3617385479','3617385506'];
-    const targetGlIds = ['3617385304','D21l0008407d','3617385433','3617385457','E15L0005842D','3617385479','3617385506'];
-    
-    // Search by register (chassi) — including soft-deleted, case insensitive
-    // The Prisma middleware adds deletedAt filter, so we use $queryRaw to bypass it
-    const db = (prisma as any);
-    
-    // Try 1: find by register containing any of the chassis (partial match)
-    const metersByRegister = await prisma.meter.findMany({
-      where: { 
-        OR: targetChassis.map(c => ({ register: { contains: c } }))
-      },
-      select: { id: true, register: true, glId: true, status: true, deletedAt: true, apartmentId: true },
-    });
-
-    // Try 2: find meters where glId is already set to any of the target glIds
-    const metersByGlId = await prisma.meter.findMany({
+    // The meter we need to update: register contains "2898602" or "CAMPISTA"
+    // Target glId: E15L0005842D
+    const meters = await prisma.meter.findMany({
       where: {
-        OR: targetGlIds.map(g => ({ glId: { contains: g } }))
+        OR: [
+          { register: { contains: '2898602' } },
+          { register: { contains: 'CAMPISTA' } },
+        ]
       },
       select: { id: true, register: true, glId: true, status: true, deletedAt: true },
     });
 
-    // Try 3: get a sample of meters to see what registers look like
-    const sampleMeters = await prisma.meter.findMany({
-      take: 20,
-      select: { id: true, register: true, glId: true, status: true },
+    const results: any[] = [];
+
+    for (const m of meters) {
+      if (m.glId === 'E15L0005842D') {
+        results.push({ register: m.register, action: 'already_set', glId: m.glId });
+        continue;
+      }
+      await prisma.meter.update({
+        where: { id: m.id },
+        data: { glId: 'E15L0005842D' },
+      });
+      results.push({ register: m.register, action: 'updated', oldGlId: m.glId, newGlId: 'E15L0005842D' });
+    }
+
+    // Also verify all 7 are now correct
+    const allTargetGlIds = ['3617385304','D21l0008407d','3617385433','3617385457','E15L0005842D','3617385479','3617385506'];
+    const verify = await prisma.meter.findMany({
+      where: { OR: allTargetGlIds.map(g => ({ glId: g })) },
+      select: { register: true, glId: true, status: true },
     });
 
     return NextResponse.json({
-      metersByRegister: metersByRegister.map(m => ({ register: m.register, glId: m.glId, status: m.status, deletedAt: m.deletedAt })),
-      metersByRegisterCount: metersByRegister.length,
-      metersByGlId: metersByGlId.map(m => ({ register: m.register, glId: m.glId, status: m.status })),
-      metersByGlIdCount: metersByGlId.length,
-      sampleMeters: sampleMeters.map(m => ({ register: m.register, glId: m.glId, status: m.status })),
+      foundMeters: meters.map(m => ({ register: m.register, glId: m.glId, status: m.status, deletedAt: m.deletedAt })),
+      updateResults: results,
+      verification: verify.map(m => ({ register: m.register, glId: m.glId, status: m.status })),
+      verificationCount: verify.length,
     });
   } catch (err: any) {
     console.error('[temp-update-glids] erro:', err);
-    return NextResponse.json({ error: String(err?.message ?? err), stack: err?.stack?.substring(0, 500) }, { status: 500 });
+    return NextResponse.json({ error: String(err?.message ?? err) }, { status: 500 });
   }
 }
