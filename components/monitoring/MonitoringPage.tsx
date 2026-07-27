@@ -2,8 +2,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useMonitoringReadings } from '@/hooks/useMonitoringReadings'
 import MonitoringChart from './MonitoringChart'
-import GLOverviewCards from './GLOverviewCards'
-import { useGLOverview } from '@/hooks/useGLOverview'
 import { DateRange } from 'react-day-picker'
 import { addDays, differenceInCalendarDays, format } from 'date-fns'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,11 +24,13 @@ import { Separator } from '@/components/ui/separator'
 import { usePermissionChecker } from '@/hooks/use-permission-checker'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
-import { Calendar as CalendarIcon, Wifi, Activity, TrendingUp, ChevronRight } from 'lucide-react'
+import { Calendar as CalendarIcon } from 'lucide-react'
 import { useUserContext } from '@/hooks/useUserContext'
 import { useMeters } from '@/hooks/useMeters'
 import { AlertTriangle } from 'lucide-react'
 
+// Fase 1: Placeholder de seleção de medidores manual até integração com UI real de contexto
+const MOCK_METERS: { id: string, register: string }[] = [] // pode ser preenchido futuramente via API de meters
 const MAX_RANGE_DAYS = 60
 
 export default function MonitoringPage() {
@@ -41,12 +41,16 @@ export default function MonitoringPage() {
   // Auto-selecionar contexto baseado no perfil
   useEffect(() => {
     if (ctxLoading || !userContext || complexObj) return
+
+    // Morador com 1 apto: seleciona automaticamente
     if (!userContext.isSystem && userContext.apartments.length === 1 && userContext.complexes.length === 0) {
       const apt = userContext.apartments[0]
       setComplexObj(apt.block?.complex ?? undefined)
       setBlockObj(apt.block ?? undefined)
       setApartmentObj(apt)
     }
+
+    // Síndico com 1 condomínio: seleciona automaticamente
     if (!userContext.isSystem && userContext.complexes.length > 0) {
       const glComplexes = userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id))
       if (glComplexes.length === 1) {
@@ -60,13 +64,12 @@ export default function MonitoringPage() {
     if (userContext.isSystem) return true
     return userContext.glComplexIds && userContext.glComplexIds.length > 0
   })()
-
+  // Monitoramento é acessível para qualquer usuário com permissão de leitura
   const canAccessMonitoring = hasPermission('monitoringDashboard', 'read')
     || hasPermission('reading', 'read')
     || hasPermission('complex', 'read')
     || hasPermission('apartmentConsumptionReport', 'read')
     || hasPermission('dealershipReading', 'read')
-
   const [companyObj, setCompanyObj] = useState<any | undefined>()
   const [complexObj, setComplexObj] = useState<any | undefined>()
   const [blockObj, setBlockObj] = useState<any | undefined>()
@@ -83,15 +86,15 @@ export default function MonitoringPage() {
   const alertTypes = prefs.alertTypes
   const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: addDays(new Date(), -30), to: new Date() })
   const [rangeError, setRangeError] = useState<string | null>(null)
-  const [showOverview, setShowOverview] = useState(true)
 
-  // ── GL Overview ──────────────────────────────────────────────────────
-  const { overview: glOverview, loading: glLoading, glmMeters } = useGLOverview(complexId)
-  const hasGLMeters = glmMeters.length > 0
-
-  // ── Auto-seleção de medidores ──────────────────────────────────────
+  // ── Auto-seleção de medidores ──────────────────────────────────────────
+  // Quando o morador tem apenas 1 unidade vinculada, o contexto é auto-selecionado
+  // (apartamento/complexo). Buscamos os medidores desse contexto e selecionamos
+  // todos automaticamente, para que o morador veja os dados sem precisar clicar.
+  // Só não auto-selecionamos se o usuário tiver mais de uma unidade (precisa escolher).
   const autoSelectAttemptedRef = useRef(false)
 
+  // Buscar medidores do contexto atual (mesmo filtro do MeterSelectionPanel)
   const { meters: autoSelectMeters, loading: autoSelectLoading } = useMeters({
     complexId,
     blockId,
@@ -100,15 +103,21 @@ export default function MonitoringPage() {
     take: 200,
   })
 
+  // Determinar se deve auto-selecionar
   const shouldAutoSelect = (() => {
     if (!userContext || autoSelectAttemptedRef.current) return false
     if (autoSelectLoading || autoSelectMeters.length === 0) return false
-    if (selectedMeters.length > 0) return false
+    if (selectedMeters.length > 0) return false  // já tem seleção manual ou do localStorage
+
+    // Morador com 1 apartamento → auto-selecionar
     if (!userContext.isSystem && userContext.apartments.length === 1) return true
+
+    // Síndico com 1 condomínio GL → auto-selecionar (se tiver poucos medidores)
     if (!userContext.isSystem && userContext.complexes.length > 0) {
       const glComplexes = userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id))
       if (glComplexes.length === 1 && autoSelectMeters.length <= 10) return true
     }
+
     return false
   })()
 
@@ -121,19 +130,6 @@ export default function MonitoringPage() {
       }
     }
   }, [shouldAutoSelect, autoSelectMeters])
-
-  // Auto-selecionar medidores GL quando o overview carregar e nada estiver selecionado
-  useEffect(() => {
-    if (!ready || autoSelectAttemptedRef.current) return
-    if (glOverview.length > 0 && selectedMeters.length === 0 && hasGLAccess) {
-      // Auto-selecionar medidores GL (até 10) para mostrar o gráfico
-      const glMeterIds = glOverview.slice(0, 10).map(o => o.meterId)
-      if (glMeterIds.length > 0) {
-        update({ meterIds: glMeterIds })
-        autoSelectAttemptedRef.current = true
-      }
-    }
-  }, [glOverview, ready, hasGLAccess])
 
   const requestParams = useMemo(() => ({
     meterIds: selectedMeters,
@@ -159,10 +155,16 @@ export default function MonitoringPage() {
   }, [dateRange])
 
   const handleRangeSelect = (range: DateRange | undefined) => {
-    if (!range) { setRangeError(null); setDateRange(undefined); return }
+    if (!range) {
+      setRangeError(null)
+      setDateRange(undefined)
+      return
+    }
+
     if (range.from && range.to && range.to < range.from) {
       range = { from: range.to, to: range.from }
     }
+
     if (range.from && range.to) {
       const diff = Math.abs(differenceInCalendarDays(range.to, range.from))
       if (diff >= MAX_RANGE_DAYS) {
@@ -175,9 +177,11 @@ export default function MonitoringPage() {
     } else {
       setRangeError(null)
     }
+
     setDateRange(range)
   }
 
+  // Recomputar estatísticas localmente se sigma ou alertTypes forem alterados (client-side sensitivity)
   const recomputed = useMemo(() => {
     if (!data) return null
     return {
@@ -192,12 +196,19 @@ export default function MonitoringPage() {
   const metersWithData = recomputed?.meters || []
   const distinctAlerts = data?.distinctAlerts || []
 
+  // Ao trocar o contexto (empresa/condomínio/bloco/apartamento), a seleção de
+  // medidores de um contexto anterior deixa de fazer sentido — sem isso, uma
+  // seleção antiga (ex: "Selecionar todos" com 450+ medidores) continuava sendo
+  // enviada à API junto com o novo filtro, deixando a consulta extremamente
+  // lenta e exibindo UUIDs crus nos chips (medidor não encontrado no novo contexto).
   const contextKey = `${companyId ?? ''}|${complexId ?? ''}|${blockId ?? ''}|${apartmentId ?? ''}`
   const [prevContextKey, setPrevContextKey] = useState<string | null>(null)
 
   useEffect(() => {
     if (!ready) return
     if (prevContextKey === null) {
+      // Primeira vez que o contexto fica pronto: apenas memoriza, não limpa
+      // (preserva seleção restaurada do localStorage ao abrir a página).
       setPrevContextKey(contextKey)
       return
     }
@@ -206,8 +217,8 @@ export default function MonitoringPage() {
       if (selectedMeters.length > 0) {
         update({ meterIds: [] })
       }
+      // Reset auto-select flag quando contexto muda manualmente
       autoSelectAttemptedRef.current = false
-      setShowOverview(true)
     }
   }, [contextKey, ready])
 
@@ -237,93 +248,9 @@ export default function MonitoringPage() {
 
   return (
     <div className='p-4 space-y-4'>
-      {/* Header */}
-      <div className='flex items-center justify-between flex-wrap gap-2'>
-        <div>
-          <h1 className='text-2xl font-semibold flex items-center gap-2'>
-            <Activity className='h-6 w-6 text-primary' />
-            Dashboard de Monitoramento
-          </h1>
-          {hasGLMeters && (
-            <p className='text-xs text-muted-foreground mt-1'>
-              {glmMeters.length} medidor(es) com monitoramento GroupLink ativo
-            </p>
-          )}
-        </div>
-        {hasGLMeters && (
-          <Button
-            variant={showOverview ? 'default' : 'outline'}
-            size='sm'
-            className='text-xs'
-            onClick={() => setShowOverview(!showOverview)}
-          >
-            <Wifi className='h-3.5 w-3.5 mr-1.5' />
-            {showOverview ? 'Ocultar' : 'Mostrar'} Overview GL
-          </Button>
-        )}
-      </div>
-
-      {/* ── GL Overview Cards ───────────────────────────────────────────── */}
-      {showOverview && hasGLAccess && (
-        <Card className='shadow-sm'>
-          <CardHeader className='pb-2'>
-            <CardTitle className='text-sm flex items-center gap-2'>
-              <Wifi className='h-4 w-4 text-primary' />
-              Visão Geral — Monitoramento IoT
-            </CardTitle>
-          </CardHeader>
-          <CardContent className='p-3'>
-            {glLoading ? (
-              <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
-                {[1,2,3,4].map(i => (
-                  <Skeleton key={i} className='h-[120px] rounded-lg' />
-                ))}
-              </div>
-            ) : glOverview.length > 0 ? (
-              <GLOverviewCards
-                meters={glOverview}
-                onSelectMeter={(meterId) => {
-                  if (!selectedMeters.includes(meterId)) {
-                    update({ meterIds: [...selectedMeters, meterId] })
-                  }
-                  setShowOverview(false)
-                  // Scroll to chart
-                  setTimeout(() => {
-                    document.getElementById('monitoring-chart-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                  }, 100)
-                }}
-              />
-            ) : (
-              <div className='flex flex-col items-center justify-center py-8 text-center'>
-                <Wifi className='h-8 w-8 text-muted-foreground/40 mb-2' />
-                <p className='text-sm text-muted-foreground'>
-                  {complexId
-                    ? 'Nenhum medidor com GL conectado neste condomínio.'
-                    : 'Selecione um condomínio para ver os medidores monitorados.'
-                  }
-                </p>
-                {hasGLAccess && !complexId && userContext?.glComplexIds?.length === 1 && (
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    className='mt-3 text-xs'
-                    onClick={() => {
-                      const glComplex = userContext.complexes.find(c => userContext.glComplexIds?.includes(c.id))
-                      if (glComplex) setComplexObj(glComplex)
-                    }}
-                  >
-                    Ver condomínio GL <ChevronRight className='h-3 w-3 ml-1' />
-                  </Button>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Main Grid ────────────────────────────────────────────────── */}
+      <h1 className='text-2xl font-semibold'>Dashboard de Monitoramento</h1>
       <div className='grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 items-start'>
-        {/* Área Principal */}
+        {/* Área Principal (agora primeiro para que painel fique à direita em telas grandes) */}
         <div className='flex flex-col gap-4'>
           <Card className='shadow-sm'>
             <CardHeader className='pb-2'>
@@ -332,7 +259,10 @@ export default function MonitoringPage() {
             <CardContent className='p-3 space-y-2'>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant='outline' className='w-full justify-start text-left font-normal'>
+                  <Button
+                    variant='outline'
+                    className='w-full justify-start text-left font-normal'
+                  >
                     <CalendarIcon className='mr-2 h-4 w-4' />
                     <span>{rangeLabel}</span>
                   </Button>
@@ -348,84 +278,51 @@ export default function MonitoringPage() {
                   />
                 </PopoverContent>
               </Popover>
-              <div className='text-[11px] text-muted-foreground'>Selecione até {MAX_RANGE_DAYS} dias para análise.</div>
+              <div className='text-[11px] text-muted-foreground'>Selecione até {MAX_RANGE_DAYS} dias para análise. Intervalos maiores são ajustados automaticamente.</div>
               {rangeError && <div className='text-[11px] text-destructive'>{rangeError}</div>}
             </CardContent>
           </Card>
-
-          {/* Chart Section */}
-          <div id='monitoring-chart-section'>
-            {loading && <Skeleton className='h-72 w-full' />}
-            {error && <div className='text-red-500 text-sm'>{error}</div>}
-            {!loading && !error && metersWithData.length > 0 && (
-              <MonitoringChart meters={metersWithData} view={view} mode={mode} />
-            )}
-            {!loading && !error && metersWithData.length === 0 && (
-              <Card className='border-dashed'>
-                <CardContent className='flex flex-col items-center justify-center py-12 text-center'>
-                  <TrendingUp className='h-8 w-8 text-muted-foreground/40 mb-3' />
-                  <p className='text-sm text-muted-foreground font-medium'>
-                    {hasGLMeters
-                      ? 'Clique em um medidor no overview acima para ver o gráfico detalhado'
-                      : 'Selecione medidores no painel lateral para visualizar os dados'
-                    }
-                  </p>
-                  {hasGLMeters && (
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      className='mt-3 text-xs'
-                      onClick={() => {
-                        const allGLIds = glOverview.slice(0, 10).map(o => o.meterId)
-                        if (allGLIds.length > 0) update({ meterIds: allGLIds })
-                      }}
-                    >
-                      Ver todos os medidores GL
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* Stats & Anomalies */}
-          {metersWithData.length > 0 && (
-            <>
-              <div className='space-y-3'>
-                <div className='flex items-center gap-2'>
-                  <h2 className='text-sm font-semibold tracking-wide uppercase text-muted-foreground'>Resumo</h2>
-                  <InfoDialogButton
-                    title='Como ler o resumo de métricas?'
-                    description='Resumo agregado das métricas estatísticas calculadas para cada medidor selecionado.'
-                  >
-                    <p>Veja rapidamente os indicadores principais para cada medidor.</p>
-                    <p className='text-xs text-muted-foreground'>Os cálculos consideram apenas o período, filtros e sigma atualmente aplicados.</p>
-                  </InfoDialogButton>
-                </div>
-                <StatsSummary items={metersWithData.map(m => ({ meterId: m.meterId, register: m.register, stats: m.stats }))} />
-              </div>
-              <div className='space-y-3'>
-                <div className='flex items-center gap-2'>
-                  <h2 className='text-sm font-semibold tracking-wide uppercase text-muted-foreground'>Anomalias</h2>
-                  <InfoDialogButton
-                    title='O que é considerado anomalia?'
-                    description='Definições usadas pelo painel para sinalizar leituras atípicas.'
-                  >
-                    <ul className='list-disc list-inside space-y-1'>
-                      <li><strong>NEGATIVE_CONSUMPTION</strong>: leitura regressiva.</li>
-                      <li><strong>OUTLIER_HIGH</strong>: consumo muito acima da média.</li>
-                      <li><strong>OUTLIER_LOW</strong>: consumo positivo muito abaixo da média.</li>
-                      <li><strong>HAS_ALERT</strong>: leitura com alertas do dispositivo IoT.</li>
-                    </ul>
-                  </InfoDialogButton>
-                </div>
-                <AnomaliesList items={metersWithData.map(m => ({ meterId: m.meterId, register: m.register, anomalies: m.stats?.anomalies || [] }))} />
-              </div>
-            </>
+          {loading && <Skeleton className='h-72 w-full' />}
+          {error && <div className='text-red-500 text-sm'>{error}</div>}
+          {!loading && !error && metersWithData.length > 0 && (
+            <MonitoringChart meters={metersWithData} view={view} mode={mode} />
           )}
+          {!loading && !error && metersWithData.length === 0 && (
+            <div className='text-muted-foreground text-sm'>Selecione medidores e ajuste filtros.</div>
+          )}
+          <div className='space-y-3'>
+            <div className='flex items-center gap-2'>
+              <h2 className='text-sm font-semibold tracking-wide uppercase text-muted-foreground'>Resumo</h2>
+              <InfoDialogButton
+                title='Como ler o resumo de métricas?'
+                description='Resumo agregado das métricas estatísticas calculadas para cada medidor selecionado.'
+              >
+                <p>Veja rapidamente os indicadores principais para cada medidor. Use o botão de informações em cada cartão para uma explicação detalhada.</p>
+                <p className='text-xs text-muted-foreground'>Os cálculos consideram apenas o período, filtros e sigma atualmente aplicados.</p>
+              </InfoDialogButton>
+            </div>
+            <StatsSummary items={metersWithData.map(m => ({ meterId: m.meterId, register: m.register, stats: m.stats }))} />
+          </div>
+          <div className='space-y-3'>
+            <div className='flex items-center gap-2'>
+              <h2 className='text-sm font-semibold tracking-wide uppercase text-muted-foreground'>Anomalias</h2>
+              <InfoDialogButton
+                title='O que é considerado anomalia?'
+                description='Definições usadas pelo painel para sinalizar leituras atípicas.'
+              >
+                <ul className='list-disc list-inside space-y-1'>
+                  <li><strong>NEGATIVE_CONSUMPTION</strong>: leitura regressiva (delta menor que zero).</li>
+                  <li><strong>OUTLIER_HIGH</strong>: consumo muito acima da média positiva, com base no desvio padrão e no sigma selecionado.</li>
+                  <li><strong>OUTLIER_LOW</strong>: consumo positivo muito abaixo da média positiva, respeitando o sigma.</li>
+                  <li><strong>HAS_ALERT</strong>: leitura que já veio acompanhada por alertas do dispositivo IoT.</li>
+                </ul>
+                <p className='text-xs text-muted-foreground'>Deltas iguais a zero são tratados como consumo nulo e não entram na categoria de negativo.</p>
+              </InfoDialogButton>
+            </div>
+            <AnomaliesList items={metersWithData.map(m => ({ meterId: m.meterId, register: m.register, anomalies: m.stats?.anomalies || [] }))} />
+          </div>
         </div>
-
-        {/* Painel Lateral */}
+        {/* Painel Lateral (agora à direita) */}
         <div className='flex flex-col gap-4 xl:sticky xl:top-4'>
           <Card className='shadow-sm'>
             <CardHeader className='pb-2'><CardTitle className='text-sm'>Contexto</CardTitle></CardHeader>
@@ -454,22 +351,18 @@ export default function MonitoringPage() {
               <SigmaControl sigma={sigma} onChange={(n)=>update({ sigma: n })} />
             </CardContent>
           </Card>
-          {distinctAlerts.length > 0 && (
-            <Card className='shadow-sm'>
-              <CardHeader className='pb-2'><CardTitle className='text-sm'>Tipos de Alertas</CardTitle></CardHeader>
-              <CardContent className='max-h-60 overflow-auto p-3'>
-                <AlertTypeFilter distinctAlerts={distinctAlerts} selected={alertTypes} onChange={(vals)=>update({ alertTypes: vals })} />
-              </CardContent>
-            </Card>
-          )}
-          {metersWithData.length > 0 && (
-            <Card className='shadow-sm'>
-              <CardHeader className='pb-2'><CardTitle className='text-sm'>Exportar</CardTitle></CardHeader>
-              <CardContent className='p-3'>
-                <ExportButton meters={metersWithData} />
-              </CardContent>
-            </Card>
-          )}
+          <Card className='shadow-sm'>
+            <CardHeader className='pb-2'><CardTitle className='text-sm'>Tipos de Alertas</CardTitle></CardHeader>
+            <CardContent className='max-h-60 overflow-auto p-3'>
+              <AlertTypeFilter distinctAlerts={distinctAlerts} selected={alertTypes} onChange={(vals)=>update({ alertTypes: vals })} />
+            </CardContent>
+          </Card>
+          <Card className='shadow-sm'>
+            <CardHeader className='pb-2'><CardTitle className='text-sm'>Exportar</CardTitle></CardHeader>
+            <CardContent className='p-3'>
+              <ExportButton meters={metersWithData} />
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

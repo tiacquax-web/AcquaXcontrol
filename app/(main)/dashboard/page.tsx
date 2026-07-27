@@ -35,6 +35,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
 } from 'recharts';
 
+import ResidentMonitoringCard from '@/components/dashboard/ResidentMonitoringCard';
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
@@ -332,6 +334,11 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
 
   return (
     <div className="space-y-8">
+      {/* ── Monitoramento em Tempo Real (GL) ── */}
+      {activeAptId && (
+        <ResidentMonitoringCard apartmentId={activeAptId} />
+      )}
+
       {/* ── Consumo Anual ── */}
       <section className="w-full space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
