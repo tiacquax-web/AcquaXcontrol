@@ -11,10 +11,13 @@ import {
   Gauge, ShieldCheck, HousePlus, ReceiptText,
   ChartBarIncreasing, LayoutDashboard, GaugeCircle,
   Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen, ClipboardList,
-  MessageSquare, Lightbulb, Key, DatabaseZap, BellDot,
+  MessageSquare, Lightbulb, Key, DatabaseZap, BellDot, Settings,
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
+import { RolePreviewSelector } from './RolePreviewSelector';
+import { useRolePreview, ROLE_LABELS } from '@/contexts/RolePreviewContext';
+import { getRoleTabVisibility } from '@/lib/role-tab-config';
 
 // ─── Menu items ───────────────────────────────────────────────────────────────
 // Regra: items sem requiresCreate aparecem para todos os perfis que têm
@@ -186,6 +189,13 @@ const items = [
     group: 'Cadastros',
     requiresCreate: true,
   },
+  {
+    title: "Personalização de Perfis",
+    url: "/role-customization",
+    icon: Settings,
+    group: 'Cadastros',
+    requiresCreate: true,
+  },
 ]
 
 export function AppSidebar() {
@@ -193,10 +203,10 @@ export function AppSidebar() {
   const { permissions, loading } = usePermissionsContext();
   const { context: userContext, loading: ctxLoading } = useUserContext();
 
+  // ── Role Preview Mode ──
+  const { isPreviewing, previewRole, effectivePermissions: previewPerms } = useRolePreview();
+
   // Verifica se o usuário tem condomínios com medidores GL vinculados
-  // glComplexIds vem da API my-context e contém apenas condomínios que têm
-  // medidores com glId ativo. Isso garante que as abas IoT só apareçam
-  // para usuários que realmente têm acesso a dados de monitoramento.
   const hasGLAccess = (() => {
     if (!userContext) return false;
     if (userContext.isSystem) return true;
@@ -206,19 +216,36 @@ export function AppSidebar() {
   function hasAnyPermission(url: string, requiresCreate?: boolean, requiresGL?: boolean) {
     // Dashboard sempre visível
     if (url === '/dashboard') return true;
+
+    // ── Preview mode: usa permissões simuladas + config de abas ──
+    if (isPreviewing && previewPerms) {
+      // Primeiro checa se a aba está habilitada na config personalizada
+      const tabVisible = getRoleTabVisibility(url, previewRole as any);
+      if (tabVisible === false) return false;
+
+      if (requiresGL) {
+        return true;
+      }
+      const entity = sidebarPermissionMap[url];
+      if (!entity) return previewPerms.length > 0;
+      if (entity === 'system' && requiresCreate) {
+        return previewPerms.some((p: any) => p.entity === 'system');
+      }
+      if (requiresCreate) {
+        return previewPerms.some((p: any) => p.entity === entity && p.action === 'create');
+      }
+      return previewPerms.some((p: any) => p.entity === entity);
+    }
+
+    // ── Modo real ──
     if (!permissions) return false;
 
-    // Items que requerem GL: só mostrar se o usuário tem condomínios
-    // com medidores GL ativos (verificado via glComplexIds da API my-context)
     if (requiresGL) {
       if (!hasGLAccess) return false;
     }
 
     const entity = sidebarPermissionMap[url];
-    // URL sem mapeamento de entidade → visível se tiver qualquer permissão
     if (!entity) return permissions.length > 0;
-    // Entidade 'system' com requiresCreate → visível para quem tem QUALQUER permissão
-    // em 'system' (admin/programador têm entity=system em seus papéis)
     if (entity === 'system' && requiresCreate) {
       return permissions.some((p: any) => p.entity === 'system');
     }
@@ -254,6 +281,7 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
+        <RolePreviewSelector />
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>

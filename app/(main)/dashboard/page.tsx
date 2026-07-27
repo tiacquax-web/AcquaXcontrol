@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2,
+  Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2, Eye,
   AlertTriangle, Ban, Receipt, CalendarCheck2, DoorClosed,
   GaugeCircle, Users, BarChart3, Home, Star,
   Activity, ArrowRight, LogIn, TrendingDown, CheckCircle2, Clock,
@@ -36,6 +36,7 @@ import {
 } from 'recharts';
 
 import ResidentMonitoringCard from '@/components/dashboard/ResidentMonitoringCard';
+import { useRolePreview, ROLE_CONTEXT } from '@/contexts/RolePreviewContext';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -277,7 +278,11 @@ function ConsumoAnualGraph({ apartmentId, complexId }: { apartmentId: string; co
 
 // ─── MoradorDashboard ─────────────────────────────────────────────────────────
 function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) {
-  const { context, loading: ctxLoading } = useUserContext();
+  const { isPreviewing, effectiveContext: previewCtx } = useRolePreview();
+  const { context: realCtx, loading: realLoading } = useUserContext();
+  // Em preview mode, usa contexto simulado; senão usa o real
+  const context = isPreviewing ? previewCtx : realCtx;
+  const ctxLoading = isPreviewing ? false : realLoading;
   const apartments = context?.apartments ?? [];
 
   const singleApartment = useMemo(() => {
@@ -301,7 +306,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
       {/* Seletor de apartamento (apenas quando há mais de 1) */}
       {!singleApartment && apartments.length > 1 && (
         <div className="flex gap-2 flex-wrap">
-          {apartments.map(apt => {
+          {apartments.map((apt: any) => {
             const block = apt.block as any;
             const cx = block?.complex;
             return (
@@ -497,13 +502,16 @@ function BlockComparisonCard({ complexId, month, year }: { complexId: string; mo
 }
 
 function SindicoDashboard() {
-  const { context, loading: ctxLoading } = useUserContext();
+  const { isPreviewing, effectiveContext: previewCtx } = useRolePreview();
+  const { context: realCtx, loading: realLoading } = useUserContext();
+  const context = isPreviewing ? previewCtx : realCtx;
+  const ctxLoading = isPreviewing ? false : realLoading;
 
   const complexes = useMemo(() => {
     if (!context) return [];
     const map = new Map<string, any>();
-    context.complexes.forEach(c => map.set(c.id, c));
-    context.apartments.forEach(a => {
+    context.complexes.forEach((c: any) => map.set(c.id, c));
+    context.apartments.forEach((a: any) => {
       const cx = (a.block as any)?.complex;
       if (cx && !map.has(cx.id)) map.set(cx.id, cx);
     });
@@ -1324,7 +1332,10 @@ export default function Dashboard() {
   const [selectedMeter, setSelectedMeter] = useState<any>(undefined);
   const { updatePreferences, loading: updatingPref } = useUpdateUserPreferences();
   const [error, setError] = useState<string | null>(null);
-  const { context, loading: ctxLoading } = useUserContext();
+  const { isPreviewing: isPrevMode, effectiveContext: prevCtx } = useRolePreview();
+  const { context: realCtxMain, loading: realLoadingMain } = useUserContext();
+  const context = isPrevMode ? prevCtx : realCtxMain;
+  const ctxLoading = isPrevMode ? false : realLoadingMain;
 
   useEffect(() => { clearCachedPermissions(); }, []);
 
@@ -1345,36 +1356,52 @@ export default function Dashboard() {
     } catch (e: any) { setError(e.message || 'Erro ao salvar preferência.'); }
   };
 
+  // ── Role Preview Mode ──────────────────────────────────────────────────────────
+  const previewRole = isPrevMode ? (sessionStorage.getItem('role-preview') || 'real') : 'real';
+
+  // Usa contexto de preview se ativo, senão usa o real (já definido acima)
+  const effectiveCtx = context;
+  const effectiveLoading = ctxLoading;
+
   // ── Role detection ──────────────────────────────────────────────────────────
-  // Administrador (isSystem + role='Administrador') → AdminKPIDashboard (panorama KPI)
-  // Programador (isSystem + não-Administrador)       → ProgramadorDashboard (atalhos)
-  // Síndico / Administradora de empresa              → SindicoDashboard
-  // Morador (só apartments)                          → MoradorDashboard
-  const isSystem      = context?.isSystem ?? false;
-  const isAdministrador = isSystem && (context?.systemRoles ?? []).includes('Administrador');
-  // Programador = qualquer usuário system que NÃO seja Administrador (inclui 'Programador', roles sem nome específico, etc.)
+  const isSystem      = effectiveCtx?.isSystem ?? false;
+  const isAdministrador = isSystem && (effectiveCtx?.systemRoles ?? []).includes('Administrador');
   const isProgramador = isSystem && !isAdministrador;
   const isMorador = useMemo(() => {
-    if (!context) return false;
-    return !context.isSystem
-      && context.companyIds.length === 0
-      && context.complexes.length === 0
-      && context.blocks.length === 0
-      && context.apartments.length > 0;
-  }, [context]);
+    if (!effectiveCtx) return false;
+    return !effectiveCtx.isSystem
+      && effectiveCtx.companyIds.length === 0
+      && effectiveCtx.complexes.length === 0
+      && effectiveCtx.blocks.length === 0
+      && effectiveCtx.apartments.length > 0;
+  }, [effectiveCtx]);
 
   const renderDashboard = () => {
-    if (ctxLoading) {
+    if (effectiveLoading) {
       return (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
         </div>
       );
     }
-    if (isProgramador)    return <ProgramadorDashboard />;
-    if (isAdministrador)  return <AdminKPIDashboard />;
-    if (isMorador)        return <MoradorDashboard router={router} />;
-    return <SindicoDashboard />;   // síndico ou administradora
+
+    // Banner de preview mode
+    const previewBanner = isPrevMode && (
+      <div className="mb-4 rounded-lg border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-4 py-2 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
+        <Eye className="w-3.5 h-3.5 shrink-0" />
+        <span>Modo visualização ativo — você está vendo o sistema como <strong>{previewRole === 'morador' ? 'Morador' : previewRole === 'sindico' ? 'Síndico' : previewRole === 'administradora' ? 'Administradora' : previewRole === 'programador' ? 'Programador' : 'Administrador'}</strong></span>
+      </div>
+    );
+
+    return (
+      <>
+        {previewBanner}
+        {isProgramador    ? <ProgramadorDashboard /> :
+         isAdministrador  ? <AdminKPIDashboard /> :
+         isMorador        ? <MoradorDashboard router={router} /> :
+         <SindicoDashboard />}
+      </>
+    );
   };
 
   return (
