@@ -288,42 +288,6 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
   const [selectedAptId, setSelectedAptId] = useState<string | null>(null);
   const activeAptId = singleApartment?.id ?? selectedAptId;
 
-  // Filipeta preview (last 3 months)
-  const [filipetasByMonth, setFilipetasByMonth] = useState<Record<string, MeterReportItem[]>>({});
-  const [loadingFilipetas, setLoadingFilipetas] = useState(false);
-
-  const last3 = useMemo(() => Array.from({ length: 3 }, (_, i) => {
-    const d = subMonths(new Date(), i);
-    return {
-      month: String(d.getMonth() + 1).padStart(2, '0'),
-      year: String(d.getFullYear()),
-      label: format(d, 'MMM/yyyy', { locale: ptBR }),
-    };
-  }), []);
-
-  useEffect(() => {
-    if (ctxLoading || apartments.length === 0 || !activeAptId) return;
-    setLoadingFilipetas(true);
-    const base = '/api';
-    // Buscar o complexId do apartamento ativo para passar como filtro
-    const activeApt = apartments.find(a => a.id === activeAptId);
-    const activeComplexId = (activeApt?.block as any)?.complex?.id;
-
-    Promise.all(
-      last3.map(m =>
-        fetch(`${base}/meter-report?month=${m.month}&year=${m.year}&apartment_id=${activeAptId}${activeComplexId ? `&complex_id=${activeComplexId}` : ''}`, { credentials: 'include' })
-          .then(r => r.ok ? r.json() : { list: [] })
-          .then(d => ({ key: `${m.month}-${m.year}`, list: (d.list ?? []) as MeterReportItem[] }))
-          .catch(() => ({ key: `${m.month}-${m.year}`, list: [] as MeterReportItem[] }))
-      )
-    ).then(results => {
-      const map: Record<string, MeterReportItem[]> = {};
-      results.forEach(r => { map[r.key] = r.list; });
-      setFilipetasByMonth(map);
-      setLoadingFilipetas(false);
-    });
-  }, [ctxLoading, apartments.length, activeAptId, apartments]);
-
   if (ctxLoading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -333,93 +297,43 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
   }
 
   return (
-    <div className="space-y-8">
-      {/* ── Monitoramento em Tempo Real (GL) ── */}
+    <div className="space-y-6">
+      {/* Seletor de apartamento (apenas quando há mais de 1) */}
+      {!singleApartment && apartments.length > 1 && (
+        <div className="flex gap-2 flex-wrap">
+          {apartments.map(apt => {
+            const block = apt.block as any;
+            const cx = block?.complex;
+            return (
+              <Button
+                key={apt.id}
+                variant={selectedAptId === apt.id ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedAptId(apt.id)}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                <DoorClosed className="w-3.5 h-3.5" />
+                {cx?.socialName ? `${cx.socialName} — ` : ''}Bl.{block?.name} Apto {apt.name}
+              </Button>
+            );
+          })}
+        </div>
+      )}
+
+      {apartments.length === 0 && (
+        <div className="text-center py-8 text-muted-foreground text-sm">
+          Nenhum apartamento vinculado à sua conta.
+        </div>
+      )}
+
+      {/* Monitoramento em Tempo Real (GL) */}
       {activeAptId && (
         <ResidentMonitoringCard apartmentId={activeAptId} />
       )}
 
-      {/* ── Consumo Anual ── */}
-      <section className="w-full space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-semibold">Consumo da Unidade</h2>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => router.push('/readings')}>
-            Ver leituras completas <ChevronRight className="w-4 h-4 ml-1" />
-          </Button>
-        </div>
-
-        {!singleApartment && apartments.length > 1 && (
-          <div className="flex gap-2 flex-wrap">
-            {apartments.map(apt => {
-              const block = apt.block as any;
-              const cx = block?.complex;
-              return (
-                <Button
-                  key={apt.id}
-                  variant={selectedAptId === apt.id ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedAptId(apt.id)}
-                  className="flex items-center gap-1.5 text-xs"
-                >
-                  <DoorClosed className="w-3.5 h-3.5" />
-                  {cx?.socialName ? `${cx.socialName} — ` : ''}Bl.{block?.name} Apto {apt.name}
-                </Button>
-              );
-            })}
-          </div>
-        )}
-
-        {apartments.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground text-sm">
-            Nenhum apartamento vinculado à sua conta.
-          </div>
-        )}
-
-        {activeAptId ? (
-          <ConsumoAnualGraph apartmentId={activeAptId} complexId={apartments.find(a => a.id === activeAptId)?.block?.complex?.id} />
-        ) : (
-          !singleApartment && apartments.length > 1 && (
-            <p className="text-xs text-muted-foreground text-center">Selecione uma unidade para ver o gráfico de consumo.</p>
-          )
-        )}
-      </section>
-
-      {/* ── Filipeta preview ── */}
-      <section className="w-full space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-semibold">Filipetas — últimos 3 meses</h2>
-          </div>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/meter-report" className="flex items-center gap-1">Ver todas <ChevronRight className="w-4 h-4" /></Link>
-          </Button>
-        </div>
-        {!activeAptId && apartments.length > 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-4">Selecione uma unidade para ver as filipetas.</p>
-        ) : loadingFilipetas ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {[1, 2, 3].map(i => <FilipetaMiniSkeleton key={i} />)}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {last3.map(m => {
-              const items = filipetasByMonth[`${m.month}-${m.year}`] ?? [];
-              if (items.length === 0)
-                return (
-                  <div key={m.label} className="border rounded-xl p-4 flex flex-col items-center justify-center text-muted-foreground text-sm min-h-[120px]">
-                    <span className="font-medium capitalize mb-1">{m.label}</span>
-                    <span className="text-xs">Sem dados</span>
-                  </div>
-                );
-              return items.map(r => <FilipetaMiniCard key={r.id} report={r} />);
-            })}
-          </div>
-        )}
-      </section>
+      {!activeAptId && apartments.length > 1 && (
+        <p className="text-xs text-muted-foreground text-center py-8">Selecione uma unidade acima para ver o monitoramento.</p>
+      )}
     </div>
   );
 }
