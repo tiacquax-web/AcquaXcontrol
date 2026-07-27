@@ -49,6 +49,7 @@ export default function ResidentMonitoringCard({ apartmentId }: { apartmentId: s
   })
 
   const glMeters = useMemo(() => meters.filter(m => !!(m as any).glId), [meters])
+  const hasGL = glMeters.length > 0
 
   useEffect(() => {
     if (metersLoading) return
@@ -92,8 +93,7 @@ export default function ResidentMonitoringCard({ apartmentId }: { apartmentId: s
       })
   }, [metersLoading, glMeters.length])
 
-  if (!metersLoading && glMeters.length === 0) return null
-
+  // ALL hooks must be called before any early return — React rules of hooks
   const chartData = useMemo(() => {
     if (metersData.length === 0) return []
     const dateMap: Record<string, any> = {}
@@ -141,6 +141,9 @@ export default function ResidentMonitoringCard({ apartmentId }: { apartmentId: s
   const totalConsumed = metersData.reduce((sum, m) => sum + (m.stats?.totalConsumed || 0), 0)
   const totalAlerts = metersData.reduce((sum, m) => sum + (m.stats?.alertCount || 0), 0)
   const totalAnomalies = metersData.reduce((sum, m) => sum + (m.stats?.anomalies?.length || 0), 0)
+
+  // Early returns — AFTER all hooks
+  if (!metersLoading && !hasGL) return null
 
   if (loading || metersLoading) {
     return (
