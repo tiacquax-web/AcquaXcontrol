@@ -7,56 +7,44 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const { default: prisma } = await import('@/lib/prisma');
 
-    const rows = [
-      { chassi: '3617385304', glId: '3617385304' },
-      { chassi: '3617385379', glId: 'D21l0008407d' },
-      { chassi: '3617385433', glId: '3617385433' },
-      { chassi: '3617385457', glId: '3617385457' },
-      { chassi: '3617385475', glId: 'E15L0005842D' },
-      { chassi: '3617385479', glId: '3617385479' },
-      { chassi: '3617385506', glId: '3617385506' },
-    ];
+    const targetChassis = ['3617385304','3617385379','3617385433','3617385457','3617385475','3617385479','3617385506'];
+    const targetGlIds = ['3617385304','D21l0008407d','3617385433','3617385457','E15L0005842D','3617385479','3617385506'];
+    
+    // Search by register (chassi) — including soft-deleted, case insensitive
+    // The Prisma middleware adds deletedAt filter, so we use $queryRaw to bypass it
+    const db = (prisma as any);
+    
+    // Try 1: find by register containing any of the chassis (partial match)
+    const metersByRegister = await prisma.meter.findMany({
+      where: { 
+        OR: targetChassis.map(c => ({ register: { contains: c } }))
+      },
+      select: { id: true, register: true, glId: true, status: true, deletedAt: true, apartmentId: true },
+    });
 
-    // Find all meters by chassi (register)
-    const allChassis = rows.map(r => r.chassi.toUpperCase());
-    const existingMeters = await prisma.meter.findMany({
-      where: { register: { in: allChassis } },
+    // Try 2: find meters where glId is already set to any of the target glIds
+    const metersByGlId = await prisma.meter.findMany({
+      where: {
+        OR: targetGlIds.map(g => ({ glId: { contains: g } }))
+      },
       select: { id: true, register: true, glId: true, status: true, deletedAt: true },
     });
 
-    const existingMap = new Map(existingMeters.map(m => [m.register.toUpperCase(), m]));
-
-    const notFound: string[] = [];
-    const updated: string[] = [];
-    const skipped: string[] = [];
-
-    for (const row of rows) {
-      const existing = existingMap.get(row.chassi.toUpperCase());
-      if (!existing) {
-        notFound.push(row.chassi);
-        continue;
-      }
-      if (existing.glId === row.glId) {
-        skipped.push(row.chassi);
-        continue;
-      }
-      await prisma.meter.update({
-        where: { id: existing.id },
-        data: { glId: row.glId },
-      });
-      updated.push(`${row.chassi} -> ${row.glId}`);
-    }
+    // Try 3: get a sample of meters to see what registers look like
+    const sampleMeters = await prisma.meter.findMany({
+      take: 20,
+      select: { id: true, register: true, glId: true, status: true },
+    });
 
     return NextResponse.json({
-      message: 'Update concluído',
-      updated,
-      updatedCount: updated.length,
-      skipped,
-      notFound,
-      allMetersFound: existingMeters.map(m => ({ register: m.register, glId: m.glId, status: m.status })),
+      metersByRegister: metersByRegister.map(m => ({ register: m.register, glId: m.glId, status: m.status, deletedAt: m.deletedAt })),
+      metersByRegisterCount: metersByRegister.length,
+      metersByGlId: metersByGlId.map(m => ({ register: m.register, glId: m.glId, status: m.status })),
+      metersByGlIdCount: metersByGlId.length,
+      sampleMeters: sampleMeters.map(m => ({ register: m.register, glId: m.glId, status: m.status })),
     });
   } catch (err: any) {
     console.error('[temp-update-glids] erro:', err);
-    return NextResponse.json({ error: String(err?.message ?? err) }, { status: 500 });
+    return NextResponse.json({ error: String(err?.message ?? err), stack: err?.stack?.substring(0, 500) }, { status: 500 });
   }
 }
