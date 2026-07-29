@@ -34,4 +34,6 @@ export const sidebarPermissionMap: Record<string, string> = {
   '/api-manager': 'system',
   // GL Integration: somente admin/programador (entity=system, requiresCreate=true)
   '/gl-integration': 'system',
+  // Personalização de Perfis: somente admin/programador (entity=system, requiresCreate=true)
+  '/role-customization': 'system',
 };

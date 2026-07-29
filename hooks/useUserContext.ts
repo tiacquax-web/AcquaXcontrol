@@ -56,25 +56,7 @@ export function useUserContext() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ── Role Preview Mode ──
-  // Lê do sessionStorage diretamente (sem dependência circular com o contexto)
-  const [previewRole, setPreviewRole] = useState<string | null>(null);
-
   useEffect(() => {
-    const saved = sessionStorage.getItem('role-preview');
-    if (saved && saved !== 'real') {
-      setPreviewRole(saved);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Se está em preview mode, não busca dados reais
-    if (previewRole && previewRole !== 'real') {
-      setLoading(false);
-      setContext(null); // O contexto simulado vem do RolePreviewContext no dashboard
-      return;
-    }
-
     async function fetchContext() {
       setLoading(true);
       setError(null);
@@ -99,7 +81,7 @@ export function useUserContext() {
       }
     }
     fetchContext();
-  }, [previewRole]);
+  }, []);
 
   return { context, loading, error };
 }

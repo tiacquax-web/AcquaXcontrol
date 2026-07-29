@@ -151,9 +151,9 @@ interface RolePreviewContextType {
   previewRole: PreviewRole
   setPreviewRole: (role: PreviewRole) => void
   isPreviewing: boolean
-  // Retorna permissões (reais ou simuladas)
+  // Retorna permissões (simuladas quando em preview)
   effectivePermissions: { entity: string; action: string }[] | null
-  // Retorna contexto (real ou simulado)
+  // Retorna contexto (simulado quando em preview)
   effectiveContext: any | null
   // Retorna true se o usuário atual pode usar preview mode (só admin/programador)
   canPreview: boolean
@@ -174,8 +174,6 @@ export function useRolePreview() {
 
 export function RolePreviewProvider({ children }: { children: React.ReactNode }) {
   const [previewRole, setPreviewRoleState] = useState<PreviewRole>('real')
-  const [realPermissions, setRealPermissions] = useState<any[] | null>(null)
-  const [realContext, setRealContext] = useState<any | null>(null)
   const [canPreview, setCanPreview] = useState(false)
 
   // Carregar do sessionStorage no mount
@@ -184,25 +182,13 @@ export function RolePreviewProvider({ children }: { children: React.ReactNode })
     if (saved && saved !== 'real') {
       setPreviewRoleState(saved as PreviewRole)
     }
-  }, [])
 
-  // Buscar permissões e contexto reais uma vez
-  useEffect(() => {
-    fetch('/api/my-permissions', { credentials: 'include' })
+    // Verificar se o usuário é admin/programador usando o endpoint correto
+    fetch('/api/auth/my-context', { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data?.permissions) setRealPermissions(data.permissions)
-      })
-      .catch(() => {})
-
-    fetch('/api/my-context', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data) {
-          setRealContext(data)
-          // Só permite preview se for admin ou programador
-          const canPreview = data.isSystem && (data.systemRoles?.includes('Administrador') || !data.systemRoles?.includes('Administrador'))
-          setCanPreview(!!data.isSystem)
+        if (data?.isSystem) {
+          setCanPreview(true)
         }
       })
       .catch(() => {})
@@ -221,11 +207,11 @@ export function RolePreviewProvider({ children }: { children: React.ReactNode })
 
   const effectivePermissions = isPreviewing
     ? ROLE_PERMISSIONS[previewRole as Exclude<PreviewRole, 'real'>]
-    : realPermissions
+    : null
 
   const effectiveContext = isPreviewing
     ? ROLE_CONTEXT[previewRole as Exclude<PreviewRole, 'real'>]
-    : realContext
+    : null
 
   return (
     <RolePreviewContext.Provider value={{

@@ -206,6 +206,28 @@ export function AppSidebar() {
   // ── Role Preview Mode ──
   const { isPreviewing, previewRole, effectivePermissions: previewPerms } = useRolePreview();
 
+  // Determina o tipo de role do usuário real (para aplicar config de abas)
+  const realRoleType = (() => {
+    if (!userContext) return null;
+    if (userContext.isSystem) {
+      if (userContext.systemRoles?.includes('Administrador')) return 'administrador';
+      return 'programador';
+    }
+    // Não é system
+    if (userContext.companyIds.length === 0 && userContext.complexes.length === 0 && userContext.blocks.length === 0 && userContext.apartments.length > 0) {
+      return 'morador';
+    }
+    // Tem complexes/blocks mas não company → sindico
+    if (userContext.companyIds.length === 0 && (userContext.complexes.length > 0 || userContext.blocks.length > 0)) {
+      return 'sindico';
+    }
+    // Tem companyIds → administradora
+    if (userContext.companyIds.length > 0) {
+      return 'administradora';
+    }
+    return 'sindico'; // fallback
+  })();
+
   // Verifica se o usuário tem condomínios com medidores GL vinculados
   const hasGLAccess = (() => {
     if (!userContext) return false;
@@ -239,6 +261,12 @@ export function AppSidebar() {
 
     // ── Modo real ──
     if (!permissions) return false;
+
+    // Aplicar config de abas personalizada para usuários reais
+    if (realRoleType) {
+      const tabVisible = getRoleTabVisibility(url, realRoleType);
+      if (tabVisible === false) return false;
+    }
 
     if (requiresGL) {
       if (!hasGLAccess) return false;

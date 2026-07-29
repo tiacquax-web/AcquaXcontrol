@@ -36,7 +36,7 @@ import {
 } from 'recharts';
 
 import ResidentMonitoringCard from '@/components/dashboard/ResidentMonitoringCard';
-import { useRolePreview, ROLE_CONTEXT } from '@/contexts/RolePreviewContext';
+import { useRolePreview } from '@/contexts/RolePreviewContext';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -1332,10 +1332,8 @@ export default function Dashboard() {
   const [selectedMeter, setSelectedMeter] = useState<any>(undefined);
   const { updatePreferences, loading: updatingPref } = useUpdateUserPreferences();
   const [error, setError] = useState<string | null>(null);
-  const { isPreviewing: isPrevMode, effectiveContext: prevCtx } = useRolePreview();
-  const { context: realCtxMain, loading: realLoadingMain } = useUserContext();
-  const context = isPrevMode ? prevCtx : realCtxMain;
-  const ctxLoading = isPrevMode ? false : realLoadingMain;
+  const { isPreviewing: isPrevMode, previewRole, effectiveContext: prevCtx } = useRolePreview();
+  const { context, loading: ctxLoading } = useUserContext();
 
   useEffect(() => { clearCachedPermissions(); }, []);
 
@@ -1356,14 +1354,11 @@ export default function Dashboard() {
     } catch (e: any) { setError(e.message || 'Erro ao salvar preferência.'); }
   };
 
-  // ── Role Preview Mode ──────────────────────────────────────────────────────────
-  const previewRole = isPrevMode ? (sessionStorage.getItem('role-preview') || 'real') : 'real';
-
-  // Usa contexto de preview se ativo, senão usa o real (já definido acima)
-  const effectiveCtx = context;
-  const effectiveLoading = ctxLoading;
-
   // ── Role detection ──────────────────────────────────────────────────────────
+  // Em preview mode, usa contexto simulado; senão usa o real
+  const effectiveCtx = isPrevMode ? prevCtx : context;
+  const effectiveLoading = isPrevMode ? false : ctxLoading;
+
   const isSystem      = effectiveCtx?.isSystem ?? false;
   const isAdministrador = isSystem && (effectiveCtx?.systemRoles ?? []).includes('Administrador');
   const isProgramador = isSystem && !isAdministrador;
