@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { Loader2, Mail, ArrowLeft, CheckCircle2 } from "lucide-react"
+import { Loader2, Mail, ArrowLeft, CheckCircle2, Info } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
@@ -69,7 +69,7 @@ export default function RecoverPassword() {
           </div>
           <CardDescription className="text-center">
             {sent
-              ? "Verifique seu email para redefinir a senha"
+              ? "Solicitação enviada"
               : "Informe seu email e enviaremos um link para redefinir sua senha"}
           </CardDescription>
         </CardHeader>
@@ -77,10 +77,20 @@ export default function RecoverPassword() {
           {sent ? (
             <div className="flex flex-col items-center gap-4 py-4">
               <CheckCircle2 className="w-12 h-12 text-green-500" />
-              <p className="text-sm text-center text-muted-foreground">
-                Enviamos um email com as instruções para redefinir sua senha.
-                O link expira em 1 hora.
-              </p>
+              <div className="space-y-3 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Caso seu email esteja cadastrado, você receberá um email com as instruções para redefinir sua senha.
+                  O link expira em 1 hora.
+                </p>
+                <div className="rounded-lg border bg-muted/50 p-3 text-xs text-muted-foreground flex items-start gap-2">
+                  <Info className="w-4 h-4 shrink-0 mt-0.5 text-blue-500" />
+                  <span>
+                    Não recebeu o email? Verifique a pasta de spam ou lixo eletrônico.
+                    Caso o problema persista, procure a administração do seu condomínio
+                    para confirmar se seu email está cadastrado no sistema.
+                  </span>
+                </div>
+              </div>
               <Button
                 variant="outline"
                 className="w-full"
