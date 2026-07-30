@@ -103,7 +103,8 @@ export async function middleware(req: NextRequest) {
   const isAuthEndpoint =
     pathname.startsWith('/api/auth/login') ||
     pathname.startsWith('/api/auth/signup') ||
-    pathname.startsWith('/api/auth/recover');
+    pathname.startsWith('/api/auth/recover') ||
+    pathname.startsWith('/api/auth/reset-password');
 
   if (isAuthEndpoint) {
     if (!rateLimit(ip, 10, 60_000)) {
@@ -137,7 +138,7 @@ export async function middleware(req: NextRequest) {
 
   // ── 5. Static & public paths ──
   const publicPaths = [
-    '/_next', '/favicon.ico', '/recover', '/politica-de-privacidade',
+    '/_next', '/favicon.ico', '/recover', '/reset-password', '/politica-de-privacidade',
     '/logo-acquax.png', '/manifest.webmanifest', '/sw.js', '/offline',
     '/icons', '/.well-known', '/screenshots', '/logo-quadrada',
     '/news/', '/services/', '/public/', '/suspended',

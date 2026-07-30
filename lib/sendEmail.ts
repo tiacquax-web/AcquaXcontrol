@@ -17,11 +17,12 @@ const transporter = nodemailer.createTransport({
     socketTimeout: 30_000,
 });
 
-export default async function sendEmail(to: string, subject: string, text: string) {
+export default async function sendEmail(to: string, subject: string, text: string, html?: string) {
     await transporter.sendMail({
         from: `"${process.env.ZOHO_SMTP_FROM_NAME || 'AcquaX do Brasil'}" <${user}>`,
         to,
         subject,
         text,
+        ...(html ? { html } : {}),
     });
 }
