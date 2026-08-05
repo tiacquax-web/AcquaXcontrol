@@ -307,11 +307,9 @@ export class GlImportService {
   /**
    * Cria registros de Reading para as linhas com remote_id válido.
    *
-   * IMPORTANTE: A inserção é feita em lotes de INSERT_BATCH_SIZE (500) registros
-   * para evitar deadlocks de transação no MongoDB ao processar arquivos grandes
-   * (20k+ leituras por arquivo GL). Antes deste fix, o createMany com ~17k
-   * registros de uma vez causava "Transaction failed due to a write conflict
-   * or a deadlock" e NENHUMA leitura era gravada.
+   * IMPORTANTE: Usa prisma.reading.createMany diretamente (não bulkCreateEntity)
+   * para evitar o bug de permissão que silenciosamente descartava todas as leituras
+   * quando o usuário do cron não tinha contextos configurados para os meters.
    *
    * Usa prisma.reading.createMany diretamente (não bulkCreateEntity) com
    * skipDuplicates:true, para evitar o bug de permissão que silenciosamente
@@ -322,6 +320,12 @@ export class GlImportService {
    * Busca os campos desnormalizados (apartmentId, blockId, complexId,
    * companyId) dos meters diretamente para populá-los nas readings
    * (necessário para queries de consumo por condomínio/bloco).
+   *
+   * A inserção é feita em lotes de INSERT_BATCH_SIZE (500) registros para evitar
+   * deadlocks de transação no MongoDB ao processar arquivos grandes (20k+ leituras
+   * por arquivo GL). Antes deste fix, o createMany com ~17k registros de uma vez
+   * causava "Transaction failed due to a write conflict or a deadlock" e NENHUMA
+   * leitura era gravada.
    */
   static async importRows(
     rows: GlCsvRow[],
@@ -332,8 +336,9 @@ export class GlImportService {
     let skipped = 0;
     let errors = 0;
 
-    // 1. Filtra linhas com remote_id válido e constrói array de leituras
-    const matchedReadings: object[] = [];
+    // ── 1. Filtrar linhas com meterId válido ──────────────────────────────────
+    const meterIdSet = new Set<string>();
+    const validRows: Array<{ row: GlCsvRow; meterId: string }> = [];
 
     for (const row of rows) {
       const meterId = glIdToMeterId.get(row.remote_id.trim());
@@ -348,56 +353,57 @@ export class GlImportService {
         continue;
       }
 
-      // monthRef / yearRef: necessários para relatórios de consumo mensal
-      const yyyy = String(row.readAt.getUTCFullYear());
-      const mm   = String(row.readAt.getUTCMonth() + 1).padStart(2, '0');
-
-      matchedReadings.push({
-        reading: row.reading,
-        readAt: row.readAt,
-        readAtDate: row.readAtDate,
-        monthRef: mm,
-        yearRef: yyyy,
-        meterId,
-        registerName: row.remote_id,
-        remoteId: row.device_id,
-        isManualReading: false,
-        isPreReading: false,
-      });
+      meterIdSet.add(meterId);
+      validRows.push({ row, meterId });
     }
 
-    if (matchedReadings.length === 0) {
+    if (validRows.length === 0) {
       return { imported: 0, skipped, errors };
     }
 
-    console.log(`[GL Import] ${matchedReadings.length} leituras matched, inserindo em lotes de ${INSERT_BATCH_SIZE}...`);
+    console.log(`[GL Import] ${validRows.length} leituras matched, inserindo em lotes de ${INSERT_BATCH_SIZE}...`);
 
-    // 2. Buscar dados desnormalizados dos meters (uma única query)
-    const uniqueMeterIds = [...new Set(matchedReadings.map((r: any) => r.meterId))];
-    const metersData = await prisma.meter.findMany({
-      where: { id: { in: uniqueMeterIds } },
+    // ── 2. Buscar campos desnormalizados dos meters (em batch único) ──────────
+    const meters = await prisma.meter.findMany({
+      where: { id: { in: Array.from(meterIdSet) }, deletedAt: null },
       select: { id: true, apartmentId: true, blockId: true, complexId: true, companyId: true },
     });
-    const meterDataMap = new Map(metersData.map((m: any) => [m.id, m]));
 
-    // 3. Adicionar campos desnormalizados + createdByUserId + deletedAt
-    const readingsWithAllFields = matchedReadings.map((reading: any) => {
-      const meterData = reading.meterId ? meterDataMap.get(reading.meterId) : null;
+    const meterMap = new Map(meters.map((m) => [m.id, m]));
+
+    // ── 3. Montar objetos de leitura ──────────────────────────────────────────
+    const readingsToCreate = validRows.map(({ row, meterId }) => {
+      const meterData = meterMap.get(meterId);
+      const yyyy = String(row.readAt.getUTCFullYear());
+      const mm   = String(row.readAt.getUTCMonth() + 1).padStart(2, '0');
+
       return {
-        ...reading,
-        createdByUserId: userId,
-        deletedAt: null,
-        apartmentId: meterData?.apartmentId || null,
-        blockId: meterData?.blockId || null,
-        complexId: meterData?.complexId || null,
-        companyId: meterData?.companyId || null,
+        reading:          row.reading,
+        readAt:           row.readAt,
+        readAtDate:       row.readAtDate,
+        monthRef:         mm,
+        yearRef:          yyyy,
+        meterId,
+        registerName:     row.remote_id,   // glId string (remote_id do CSV GL)
+        remoteId:         row.device_id,   // device_id do CSV GL (rastreabilidade)
+        isManualReading:  false,
+        isPreReading:     false,
+        createdByUserId:  userId,
+        deletedAt:        null,
+        // Campos desnormalizados — necessários para queries de consumo por condomínio/bloco
+        apartmentId:      meterData?.apartmentId ?? null,
+        blockId:          meterData?.blockId ?? null,
+        complexId:        meterData?.complexId ?? null,
+        companyId:        meterData?.companyId ?? null,
       };
     });
 
-    // 4. Inserir em lotes (batched createMany) com skipDuplicates
+    // ── 4. Inserir em lotes (batched createMany, direto no Prisma) ───────────
+    // Lotes de INSERT_BATCH_SIZE evitam deadlocks de transação no MongoDB com
+    // arquivos grandes (20k+ leituras); skipDuplicates evita falha em reimportações.
     let imported = 0;
-    for (let i = 0; i < readingsWithAllFields.length; i += INSERT_BATCH_SIZE) {
-      const batch = readingsWithAllFields.slice(i, i + INSERT_BATCH_SIZE);
+    for (let i = 0; i < readingsToCreate.length; i += INSERT_BATCH_SIZE) {
+      const batch = readingsToCreate.slice(i, i + INSERT_BATCH_SIZE);
       try {
         // Cast para any: o $extends do Prisma client perde a tipagem de skipDuplicates
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -416,7 +422,10 @@ export class GlImportService {
       }
     }
 
-    console.log(`\n[GL Import] Inserção concluída: imported=${imported} | errors=${errors}`);
+    console.log(
+      `\n[GL Import] Inserção concluída: imported=${imported} | errors=${errors} ` +
+      `(${skipped} descartadas por glId não encontrado)`,
+    );
 
     return { imported, skipped, errors };
   }
@@ -449,7 +458,7 @@ export class GlImportService {
    *   2. Baixa e descompacta cada arquivo (GetObject + gunzip)
    *   3. Faz parse do CSV (separador ;)
    *   4. Constrói mapa remote_id → meterId (query única Prisma)
-   *   5. Cria Reading records em lotes (batched createMany)
+   *   5. Cria Reading records em lotes (batched createMany direto no Prisma)
    *   6. Grava GlImportLog
    */
   static async runImport(now: Date = new Date()): Promise<GlImportResult> {
