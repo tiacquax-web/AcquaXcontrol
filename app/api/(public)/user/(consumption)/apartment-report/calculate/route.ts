@@ -75,6 +75,22 @@ export async function POST(req: NextRequest): Promise<Response> {
                 calculatedValues = calculateProportionalValues(apartment, dealershipReading)
         }
 
+        // Leituras de GÁS: os campos calculados acima (consumption/totalUnit/etc.)
+        // são sempre os campos de ÁGUA — se a dealershipReading for do tipo 'gas',
+        // realocamos os valores calculados para consumptionGasValue/totalGasValue
+        // (que é o que a linha da tabela de gás realmente exibe/edita — ver
+        // apartment-report-row.tsx, colunas condicionadas a dealershipReading.type
+        // === 'gas'). Sem isso, "Recalcular" numa leitura de gás sempre zerava
+        // consumptionGasValue/totalGasValue, deixando consumo/valores em branco
+        // na filipeta de gás.
+        if (dealershipReading.type === 'gas') {
+            calculatedValues = {
+                ...calculatedValues,
+                consumptionGasValue: calculatedValues.consumption ?? 0,
+                totalGasValue: calculatedValues.totalUnit ?? 0,
+            }
+        }
+
         return NextResponse.json(calculatedValues)
 
     } catch (error) {

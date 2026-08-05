@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ApartmentWithConsumptionReport, EnrichedApartmentReport } from '@/types/apartment';
 import { sanitizeImageUrl } from '@/lib/utils';
+import { Info, Flame, Droplets } from 'lucide-react';
 
 
 // ─── MeterPhoto ──────────────────────────────────────────────────────────────
@@ -98,6 +99,25 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
   const prevReport2 = history?.[1];
   const hasHistory = Array.isArray(history) && history.length > 0;
   const historyMissingLabel = hasHistory ? 'ref. pend.' : '';
+
+  // ─── Utility type (água vs gás) ──────────────────────────────────────────
+  // Determina se esta filipeta é de gás para exibir ícone/cor laranja e
+  // usar consumptionGasValue/totalGasValue em vez de consumption/totalUnit
+  // (mesmo padrão usado em levantamento/page.tsx e MeterReportCard.tsx).
+  const reportType = (report as any).utilityType ?? dealershipReading?.type;
+  const isGas = reportType === 'gas';
+  const utilityLabel = isGas ? 'Gás' : 'Água/Esgoto';
+  const UtilityIcon = isGas ? Flame : Droplets;
+  const displayConsumption = isGas
+    ? ((report as any).consumptionGasValue ?? report.consumption ?? null)
+    : (report.consumption ?? null);
+  const displayTotalUnit = isGas
+    ? ((report as any).totalGasValue ?? report.totalUnit ?? null)
+    : (report.totalUnit ?? null);
+  const historyConsumption = (r: any) =>
+    isGas ? (r?.consumptionGasValue ?? r?.consumption ?? null) : (r?.consumption ?? null);
+  const prevReport1Consumption = prevReport1 ? historyConsumption(prevReport1) : null;
+  const prevReport2Consumption = prevReport2 ? historyConsumption(prevReport2) : null;
 
   const emissionDate = format(new Date(), 'dd/MM/yyyy HH:mm');
   
@@ -194,6 +214,16 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
           </div>
         </div>
 
+        {/* Faixa de identificação do tipo de utilidade (água/gás) — mesma
+            lógica de cor/ícone usada em levantamento (MeterPhotoCard). */}
+        <div
+          className={`${isGas ? 'bg-orange-500' : 'bg-teal-600'} text-white text-center text-[10px] font-bold uppercase tracking-wider py-1 px-2 flex items-center justify-center gap-1.5 border-b-2 border-black print:text-white`}
+          style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
+        >
+          <UtilityIcon className="w-3 h-3" />
+          {utilityLabel}
+        </div>
+
         {/* MIDDLE SECTION: Meter photo on left, all info on right */}
         <div className="grid grid-cols-3 border-b-2 border-black">
           
@@ -229,11 +259,11 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
                 <tbody>
                   <tr>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{prevReport2 ? `${String(prevReport2.monthRef).padStart(2, '0')}/${prevReport2.yearRef}`: historyMissingLabel}</td>
-                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{prevReport2 ? prevReport2.consumption?.toFixed(6) : historyMissingLabel}</td>
+                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{prevReport2 ? prevReport2Consumption?.toFixed(6) : historyMissingLabel}</td>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{prevReport1 ? `${String(prevReport1.monthRef).padStart(2, '0')}/${prevReport1.yearRef}`: historyMissingLabel}</td>
-                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{prevReport1 ? prevReport1.consumption?.toFixed(6) : historyMissingLabel}</td>
+                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{prevReport1 ? prevReport1Consumption?.toFixed(6) : historyMissingLabel}</td>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{monthRefStr}/{report.yearRef}</td>
-                    <td className="py-0.5 px-1 text-center text-xs">{report.consumption?.toFixed(6) || '0.000000'}</td>
+                    <td className="py-0.5 px-1 text-center text-xs">{displayConsumption != null ? displayConsumption.toFixed(6) : '0.000000'}</td>
                   </tr>
                 </tbody>
               </table>
@@ -263,6 +293,20 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
               </div>
             </div>
 
+            {/* Rótulo de custo — Água/Esgoto ou Gás, conforme utilityType */}
+            <div className="border-b-2 border-black">
+              <p className={`font-bold text-xs py-0.5 px-1 border-b-2 border-black leading-tight ${isGas ? 'bg-orange-100 text-orange-700' : 'bg-gray-100'}`}>
+                {utilityLabel.toUpperCase()}
+              </p>
+              <div className="py-0.5 px-1 text-xs text-left">
+                <p className="leading-tight">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                    (displayTotalUnit != null && report.partial != null) ? displayTotalUnit - report.partial : (displayTotalUnit ?? 0)
+                  )}
+                </p>
+              </div>
+            </div>
+
             {/* READING DETAILS TABLE */}
             <div>
               <table className="w-full text-xs border-collapse">
@@ -280,10 +324,10 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
                   <tr>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{prevReport1?.lastReading?.reading?.toFixed(3) ?? 'ref. pend.'}</td>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{lastReading?.reading?.toFixed(3) ?? 'ref. pend.'}</td>
-                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{report.consumption?.toFixed(6) ?? 'ref. pend.'}</td>
+                    <td className={`border-r border-black py-0.5 px-1 text-center text-xs font-bold ${isGas ? 'text-orange-700' : ''}`}>{displayConsumption != null ? displayConsumption.toFixed(6) : 'ref. pend.'}</td>
                     <td className="border-r border-black py-0.5 px-1 text-center text-xs leading-tight">{periodStartFormatted}<br/>a<br/>{periodEndFormatted}</td>
                     <td className="border-r border-black py-0.5 px-1 text-center text-xs">{nextReadingDateFormatted}</td>
-                    <td className="py-0.5 px-1 text-center text-xs font-bold">{report.totalUnit?.toFixed(2) ?? 'ref. pend.'}</td>
+                    <td className={`py-0.5 px-1 text-center text-xs font-bold ${isGas ? 'text-orange-700' : ''}`}>{displayTotalUnit != null ? displayTotalUnit.toFixed(2) : 'ref. pend.'}</td>
                   </tr>
                 </tbody>
               </table>
