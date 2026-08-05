@@ -14,6 +14,9 @@ export interface MeterReportItem {
   partial: number | null;
   apartmentId: string;
   dealershipReadingId: string | null;
+  utilityType?: 'water' | 'gas' | null;
+  consumptionGasValue?: number | null;
+  totalGasValue?: number | null;
   apartment: {
     id: string;
     name: string;
@@ -47,6 +50,7 @@ export interface MeterReportItem {
     monthRef: string;
     yearRef: string;
     consumption: number | null;
+    utilityType?: 'water' | 'gas' | null;
     lastReading?: { reading: number | null; readAtDate: string | null } | null;
   }>;
   dealershipReading: {
@@ -56,6 +60,7 @@ export interface MeterReportItem {
     nextReadingDate?: string | null;
     dealership?: { name: string } | null;
     complex?: { socialName: string } | null;
+    type?: 'water' | 'gas' | null;
   } | null;
 }
 
@@ -70,10 +75,11 @@ interface UseMeterReportProps {
   year: string;  // "2026"
   complexId?: string;
   apartmentId?: string;
+  utilityType?: 'water' | 'gas'; // filtra por tipo de utilidade (agua/gas), quando informado
   enabled?: boolean;
 }
 
-export function useMeterReport({ month, year, complexId, apartmentId, enabled = true }: UseMeterReportProps) {
+export function useMeterReport({ month, year, complexId, apartmentId, utilityType, enabled = true }: UseMeterReportProps) {
   const [data, setData] = useState<MeterReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +94,7 @@ export function useMeterReport({ month, year, complexId, apartmentId, enabled = 
     const params: Record<string, string> = { month, year };
     if (complexId) params.complex_id = complexId;
     if (apartmentId) params.apartment_id = apartmentId;
+    if (utilityType) params.utility_type = utilityType;
 
     axios
       .get<MeterReportData>(`${NEXT_PUBLIC_API_URL}/meter-report`, {
@@ -110,7 +117,7 @@ export function useMeterReport({ month, year, complexId, apartmentId, enabled = 
       });
 
     return () => { cancelled = true; };
-  }, [month, year, complexId, apartmentId, enabled]);
+  }, [month, year, complexId, apartmentId, utilityType, enabled]);
 
   return { data, loading, error };
 }

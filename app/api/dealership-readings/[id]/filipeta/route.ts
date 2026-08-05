@@ -132,11 +132,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     });
 
+    // Chave composta apartmentId::utilityType — evita misturar histórico de água
+    // e gás quando o mesmo apartamento possui os dois medidores/relatórios (o
+    // schema já suporta 2 registros por apartamento/mês via utilityType).
+    const historyKey = (r: { apartmentId: string | null; utilityType?: string | null }) =>
+      `${r.apartmentId}::${r.utilityType || 'water'}`;
+
     const historicalReportsByApartment = historicalReports.reduce((acc, report) => {
-      if (!acc[report.apartmentId!]) {
-        acc[report.apartmentId!] = [];
+      const key = historyKey(report as any);
+      if (!acc[key]) {
+        acc[key] = [];
       }
-      acc[report.apartmentId!].push(report);
+      acc[key].push(report);
       return acc;
     }, {} as Record<string, any[]>);
 
@@ -145,6 +152,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // com policy=skip, ou medidor não encontrado pelo chassi), buscamos a leitura
     // mais recente do apartamento no mesmo mês/ano para preencher a foto.
     const reportsWithoutLastReading = currentReports.filter(r => !r.lastReadingId);
+    // Chave composta apartmentId::utilityType — evita que a foto de fallback de
+    // um relatório de gás seja preenchida com a leitura/foto do medidor de água
+    // do mesmo apartamento (ou vice-versa) quando ambos existem no período.
     let fallbackReadingsByApartment: Record<string, any> = {};
 
     if (reportsWithoutLastReading.length > 0) {
@@ -176,19 +186,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           isPreReading: true,
           registerName: true,
           nextReadingDate: true,
+          meter: { select: { typeMeter: { select: { name: true, acronym: true } } } },
         },
       });
 
-      // Manter apenas a leitura mais recente por apartamento (já está ordenado por readAt desc)
-      for (const r of fallbackReadings) {
-        if (!fallbackReadingsByApartment[r.apartmentId!]) {
-          fallbackReadingsByApartment[r.apartmentId!] = r;
+      const isReadingOfUtility = (reading: any, util: 'water' | 'gas') => {
+        const tm = reading?.meter?.typeMeter;
+        if (!tm) return true; // fallback: sem typeMeter, não bloquear
+        const name = (tm.name || '').toString().toLowerCase();
+        const acr = (tm.acronym || '').toString().toLowerCase();
+        if (util === 'gas') {
+          return name.includes('gas') || name.includes('gás') || acr.includes('gas') || acr.includes('gás') || acr === 'g';
+        }
+        return name.includes('agua') || name.includes('água') || name.includes('water') || acr.includes('agua') || acr.includes('água') || acr === 'h2o' || acr === 'w';
+      };
+
+      // Para cada relatório sem lastReading, buscar a leitura mais recente do
+      // MESMO apartamento E do mesmo tipo de utilidade (água/gás).
+      for (const report of reportsWithoutLastReading) {
+        const util: 'water' | 'gas' = (report.utilityType as any) || 'water';
+        const key = historyKey(report as any);
+        const match = fallbackReadings.find(
+          r => r.apartmentId === report.apartmentId && isReadingOfUtility(r, util),
+        );
+        if (match) {
+          fallbackReadingsByApartment[key] = match;
         }
       }
     }
 
     const enrichedReports = currentReports.map(currentReport => {
-      const history = historicalReportsByApartment[currentReport.apartmentId] || [];
+      const key = historyKey(currentReport as any);
+      const history = historicalReportsByApartment[key] || [];
       // Sort history descending by date to easily find previous months
       history.sort((a, b) => {
         const dateA = new Date(Number(a.yearRef), Number(a.monthRef) - 1);
@@ -198,7 +227,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
       // Se não tem lastReading, usar o fallback (leitura mais recente do período com urlCover)
       const effectiveLastReading = currentReport.lastReading
-        ?? fallbackReadingsByApartment[currentReport.apartmentId]
+        ?? fallbackReadingsByApartment[key]
         ?? null;
 
       return {
