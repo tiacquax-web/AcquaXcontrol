@@ -3,6 +3,7 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGrou
 import { FooterSidebar } from "./footer-sidebar"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
+import { useUserContext } from "@/hooks/useUserContext"
 import { Skeleton } from "@/components/ui/skeleton"
 
 import {
@@ -10,10 +11,13 @@ import {
   Gauge, ShieldCheck, HousePlus, ReceiptText,
   ChartBarIncreasing, LayoutDashboard, GaugeCircle,
   Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen, ClipboardList,
-  MessageSquare, Lightbulb, Key, DatabaseZap, BellDot,
+  MessageSquare, Lightbulb, Key, DatabaseZap, BellDot, Settings,
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
+import { RolePreviewSelector } from './RolePreviewSelector';
+import { useRolePreview, ROLE_LABELS } from '@/contexts/RolePreviewContext';
+import { getRoleTabVisibility } from '@/lib/role-tab-config';
 
 // ─── Menu items ───────────────────────────────────────────────────────────────
 // Regra: items sem requiresCreate aparecem para todos os perfis que têm
@@ -62,18 +66,21 @@ const items = [
     url: "/monitoring",
     icon: Gauge,
     group: 'Geral',
+    requiresGL: true,
   },
   {
     title: "Central de Alertas",
     url: "/alerts",
     icon: BellDot,
     group: 'Geral',
+    requiresGL: true,
   },
   {
     title: "Medidores de Nível",
     url: "/reservoir-monitoring",
     icon: Droplets,
     group: 'Geral',
+    requiresGL: true,
   },
   {
     title: "Apuração",
@@ -182,21 +189,91 @@ const items = [
     group: 'Cadastros',
     requiresCreate: true,
   },
+  {
+    title: "Personalização de Perfis",
+    url: "/role-customization",
+    icon: Settings,
+    group: 'Cadastros',
+    requiresCreate: true,
+  },
 ]
 
 export function AppSidebar() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { permissions, loading } = usePermissionsContext();
+  const { context: userContext, loading: ctxLoading } = useUserContext();
 
-  function hasAnyPermission(url: string, requiresCreate?: boolean) {
+  // ── Role Preview Mode ──
+  const { isPreviewing, previewRole, effectivePermissions: previewPerms } = useRolePreview();
+
+  // Determina o tipo de role do usuário real (para aplicar config de abas)
+  const realRoleType = (() => {
+    if (!userContext) return null;
+    if (userContext.isSystem) {
+      if (userContext.systemRoles?.includes('Administrador')) return 'administrador';
+      return 'programador';
+    }
+    // Não é system
+    if (userContext.companyIds.length === 0 && userContext.complexes.length === 0 && userContext.blocks.length === 0 && userContext.apartments.length > 0) {
+      return 'morador';
+    }
+    // Tem complexes/blocks mas não company → sindico
+    if (userContext.companyIds.length === 0 && (userContext.complexes.length > 0 || userContext.blocks.length > 0)) {
+      return 'sindico';
+    }
+    // Tem companyIds → administradora
+    if (userContext.companyIds.length > 0) {
+      return 'administradora';
+    }
+    return 'sindico'; // fallback
+  })();
+
+  // Verifica se o usuário tem condomínios com medidores GL vinculados
+  const hasGLAccess = (() => {
+    if (!userContext) return false;
+    if (userContext.isSystem) return true;
+    return userContext.glComplexIds && userContext.glComplexIds.length > 0;
+  })();
+
+  function hasAnyPermission(url: string, requiresCreate?: boolean, requiresGL?: boolean) {
     // Dashboard sempre visível
     if (url === '/dashboard') return true;
+
+    // ── Preview mode: usa permissões simuladas + config de abas ──
+    if (isPreviewing && previewPerms) {
+      // Primeiro checa se a aba está habilitada na config personalizada
+      const tabVisible = getRoleTabVisibility(url, previewRole as any);
+      if (tabVisible === false) return false;
+
+      if (requiresGL) {
+        return true;
+      }
+      const entity = sidebarPermissionMap[url];
+      if (!entity) return previewPerms.length > 0;
+      if (entity === 'system' && requiresCreate) {
+        return previewPerms.some((p: any) => p.entity === 'system');
+      }
+      if (requiresCreate) {
+        return previewPerms.some((p: any) => p.entity === entity && p.action === 'create');
+      }
+      return previewPerms.some((p: any) => p.entity === entity);
+    }
+
+    // ── Modo real ──
     if (!permissions) return false;
+
+    // Aplicar config de abas personalizada para usuários reais
+    if (realRoleType) {
+      const tabVisible = getRoleTabVisibility(url, realRoleType);
+      if (tabVisible === false) return false;
+    }
+
+    if (requiresGL) {
+      if (!hasGLAccess) return false;
+    }
+
     const entity = sidebarPermissionMap[url];
-    // URL sem mapeamento de entidade → visível se tiver qualquer permissão
     if (!entity) return permissions.length > 0;
-    // Entidade 'system' com requiresCreate → visível para quem tem QUALQUER permissão
-    // em 'system' (admin/programador têm entity=system em seus papéis)
     if (entity === 'system' && requiresCreate) {
       return permissions.some((p: any) => p.entity === 'system');
     }
@@ -213,7 +290,7 @@ export function AppSidebar() {
 
   const visibleGroups = groups.filter((group) =>
     items.some(
-      (item) => item.group === group && hasAnyPermission(item.url, (item as any).requiresCreate)
+      (item) => item.group === group && hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).requiresGL)
     )
   );
 
@@ -232,10 +309,11 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
+        <RolePreviewSelector />
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {loading ? (
+              {loading || ctxLoading ? (
                 Array.from({ length: 2 }).map((_, idx) => (
                   <div key={idx} className="mb-6">
                     <div className="flex items-center gap-2 mb-2 pl-2">
@@ -261,7 +339,7 @@ export function AppSidebar() {
                       .filter(
                         (item) =>
                           item.group === group &&
-                          hasAnyPermission(item.url, (item as any).requiresCreate)
+                          hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).requiresGL)
                       )
                       .map((item) => (
                         <SidebarMenuItem key={item.title}>

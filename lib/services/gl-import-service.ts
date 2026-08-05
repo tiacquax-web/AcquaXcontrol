@@ -25,6 +25,10 @@
  *   - Apenas medidores com glId preenchido são processados
  *   - remote_id sem correspondência no banco → descartado + logado
  *   - Cada execução grava um GlImportLog para auditoria
+ *
+ * ATENÇÃO: A inserção é feita em lotes (batch) de 500 registros para evitar
+ * deadlocks/timeouts de transação no MongoDB ao processar arquivos grandes
+ * (20k+ leituras por arquivo GL).
  */
 
 import prisma from '@/lib/prisma';
@@ -68,6 +72,11 @@ export interface GlCsvRow {
   readAtDate: string;
 }
 
+// ─── Constantes ───────────────────────────────────────────────────────────────
+
+/** Tamanho do lote para createMany — evita deadlock de transação no MongoDB */
+const INSERT_BATCH_SIZE = 500;
+
 // ─── Singleton S3 Client ──────────────────────────────────────────────────────
 
 let s3Client: S3Client | null = null;
@@ -81,7 +90,7 @@ function getS3Client(): S3Client {
 
     if (!region || !accessKeyId || !secretAccessKey) {
       throw new Error(
-        '[GL Import] Credenciais S3 ausentes. Configure GL_S3_REGION, GL_ACESS_KEY_ID e GL_S3_SECRET_ACESS_KEY.',
+        '[GL Import] Credenciais S3 ausentes. Configure GL_S3_REGION, GL_S3_ACCESS_KEY_ID e GL_S3_SECRET_ACCESS_KEY.',
       );
     }
 
@@ -293,7 +302,7 @@ export class GlImportService {
     return admin.id;
   }
 
-  // ── Banco: importar linhas ────────────────────────────────────────────────────
+  // ── Banco: importar linhas (batched) ─────────────────────────────────────────
 
   /**
    * Cria registros de Reading para as linhas com remote_id válido.
@@ -304,6 +313,13 @@ export class GlImportService {
    *
    * Busca os campos desnormalizados (apartmentId, blockId, complexId, companyId)
    * dos meters para populá-los nas readings (necessário para queries de consumo).
+   *
+   * A inserção é feita em lotes de INSERT_BATCH_SIZE (500) registros para evitar
+   * deadlocks de transação no MongoDB ao processar arquivos grandes (20k+ leituras
+   * por arquivo GL). Antes deste fix, o createMany com ~17k registros de uma vez
+   * causava "Transaction failed due to a write conflict or a deadlock" e NENHUMA
+   * leitura era gravada. skipDuplicates evita falha em importações retroativas
+   * repetidas.
    */
   static async importRows(
     rows: GlCsvRow[],
@@ -338,6 +354,8 @@ export class GlImportService {
     if (validRows.length === 0) {
       return { imported: 0, skipped, errors };
     }
+
+    console.log(`[GL Import] ${validRows.length} leituras matched, inserindo em lotes de ${INSERT_BATCH_SIZE}...`);
 
     // ── 2. Buscar campos desnormalizados dos meters (em batch único) ──────────
     const meters = await prisma.meter.findMany({
@@ -374,25 +392,36 @@ export class GlImportService {
       };
     });
 
-    // ── 4. Inserir em lote (direto no Prisma, sem verificação de permissão) ───
-    try {
-      // Cast para any: o $extends do Prisma client perde a tipagem de skipDuplicates
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (prisma as any).reading.createMany({
-        data: readingsToCreate,
-        skipDuplicates: true,   // evita falhar se houver duplicatas (importação retroativa repetida)
-      });
-    } catch (e: any) {
-      console.error(`[GL Import] Erro ao salvar leituras: ${e.message}`);
-      return { imported: 0, skipped, errors: errors + readingsToCreate.length };
+    // ── 4. Inserir em lotes (direto no Prisma, sem verificação de permissão) ──
+    // Lotes de INSERT_BATCH_SIZE evitam deadlocks de transação no MongoDB com
+    // arquivos grandes (20k+ leituras); skipDuplicates evita falha em reimportações.
+    let imported = 0;
+    for (let i = 0; i < readingsToCreate.length; i += INSERT_BATCH_SIZE) {
+      const batch = readingsToCreate.slice(i, i + INSERT_BATCH_SIZE);
+      try {
+        // Cast para any: o $extends do Prisma client perde a tipagem de skipDuplicates
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = await (prisma as any).reading.createMany({
+          data: batch,
+          skipDuplicates: true,   // evita falhar se houver duplicatas (importação retroativa repetida)
+        });
+        imported += result.count ?? batch.length;
+        process.stdout.write('.');
+      } catch (e: any) {
+        const batchErrors = batch.length;
+        errors += batchErrors;
+        const msg = `ERRO_BATCH | offset=${i} | count=${batchErrors} | ${e.message.split('\n')[0]}`;
+        console.error(`\n[GL Import] ${msg}`);
+        if (skipLog.length < 500) skipLog.push(msg);
+      }
     }
 
     console.log(
-      `[GL Import] ${readingsToCreate.length} leituras salvas no banco ` +
+      `\n[GL Import] Inserção concluída: imported=${imported} | errors=${errors} ` +
       `(${skipped} descartadas por glId não encontrado)`,
     );
 
-    return { imported: readingsToCreate.length, skipped, errors };
+    return { imported, skipped, errors };
   }
 
   // ── Log de execução ───────────────────────────────────────────────────────────
@@ -423,7 +452,7 @@ export class GlImportService {
    *   2. Baixa e descompacta cada arquivo (GetObject + gunzip)
    *   3. Faz parse do CSV (separador ;)
    *   4. Constrói mapa remote_id → meterId (query única Prisma)
-   *   5. Cria Reading records (prisma.reading.createMany direto)
+   *   5. Cria Reading records em lotes (batched createMany direto no Prisma)
    *   6. Grava GlImportLog
    */
   static async runImport(now: Date = new Date()): Promise<GlImportResult> {
@@ -470,39 +499,73 @@ export class GlImportService {
         return { success: true, filesFound, filesProcessed, rowsTotal: 0, imported: 0, skipped: 0, errors, skipLog };
       }
 
-      // 3. Construir mapa glId → meterId (uma query para todos os remote_ids)
+      // 3. Construir mapa glId → meterId
       const allRemoteIds = allRows.map((r) => r.remote_id);
       const glIdToMeterId = await GlImportService.buildGlIdToMeterIdMap(allRemoteIds);
 
-      // 4. Obter userId do sistema
+      // 4. Buscar userId do sistema
       const userId = await GlImportService.getSystemUserId();
 
-      // 5. Importar leituras
+      // 5. Importar leituras (batched)
       const result = await GlImportService.importRows(allRows, glIdToMeterId, userId, skipLog);
       imported = result.imported;
-      skipped += result.skipped;
+      skipped = result.skipped;
       errors += result.errors;
 
-      console.log(`[GL Import] Resultado: importadas=${imported} | descartadas=${skipped} | erros=${errors}`);
+      // 6. Gravar log de execução
+      await GlImportService.saveImportLog({
+        executedAt,
+        filesFound,
+        filesProcessed,
+        rowsTotal,
+        imported,
+        skipped,
+        errors,
+        skipLog,
+      });
 
-      if (skipLog.length > 0) {
-        console.warn(
-          `[GL Import] Descartes (primeiros ${Math.min(skipLog.length, 20)}):\n` +
-          skipLog.slice(0, 20).join('\n') +
-          (skipLog.length > 20 ? `\n... (+${skipLog.length - 20} mais)` : ''),
-        );
-      }
+      console.log(
+        `[GL Import] Finalizado | filesFound=${filesFound} | filesProcessed=${filesProcessed} | ` +
+          `rowsTotal=${rowsTotal} | imported=${imported} | skipped=${skipped} | errors=${errors}`,
+      );
 
-      // 6. Gravar log
-      await GlImportService.saveImportLog({ executedAt, filesFound, filesProcessed, rowsTotal, imported, skipped, errors, skipLog });
-
-      return { success: true, filesFound, filesProcessed, rowsTotal, imported, skipped, errors, skipLog };
-
+      return {
+        success: true,
+        filesFound,
+        filesProcessed,
+        rowsTotal,
+        imported,
+        skipped,
+        errors,
+        skipLog,
+      };
     } catch (error: any) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[GL Import] Falha crítica: ${message}`);
-      await GlImportService.saveImportLog({ executedAt, filesFound, filesProcessed, rowsTotal, imported, skipped, errors, skipLog, errorMessage: message });
-      return { success: false, filesFound, filesProcessed, rowsTotal, imported, skipped, errors, skipLog, error: message };
+      const errorMessage = error.message || 'Erro desconhecido';
+      console.error(`[GL Import] ERRO CRÍTICO: ${errorMessage}`);
+
+      await GlImportService.saveImportLog({
+        executedAt,
+        filesFound,
+        filesProcessed,
+        rowsTotal,
+        imported,
+        skipped,
+        errors,
+        skipLog,
+        errorMessage,
+      });
+
+      return {
+        success: false,
+        filesFound,
+        filesProcessed,
+        rowsTotal,
+        imported,
+        skipped,
+        errors,
+        skipLog,
+        error: errorMessage,
+      };
     }
   }
 }

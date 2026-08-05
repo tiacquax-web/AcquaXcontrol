@@ -115,19 +115,13 @@ export default function Login() {
             </form>
           </Form>
         </CardContent>
-        {/* <CardFooter className="flex flex-col space-y-2">
+        <div className="px-6 pb-4">
           <div className="text-sm text-muted-foreground text-center">
-            <a href="/forgot-password" className="hover:text-primary underline underline-offset-4">
+            <a href="/recover" className="hover:text-primary underline underline-offset-4">
               Esqueceu sua senha?
             </a>
           </div>
-          <div className="text-sm text-muted-foreground text-center">
-            Não tem uma conta?{" "}
-            <a href="/register" className="hover:text-primary underline underline-offset-4">
-              Registre-se
-            </a>
-          </div>
-        </CardFooter> */}
+        </div>
       </Card>
     </div>
   )

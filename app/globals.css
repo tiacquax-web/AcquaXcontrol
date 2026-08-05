@@ -479,3 +479,66 @@
     display: none !important;
   }
 }
+
+/* ─── 4.2 — Melhorias de Layout Mobile ────────────────────────────────────────── */
+
+/* Tabelas com scroll horizontal controlado em telas pequenas */
+@media (max-width: 768px) {
+  /* Tabelas de dados: scroll horizontal com indicação visual */
+  .table-responsive-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .table-responsive-wrapper table {
+    min-width: 500px;
+  }
+
+  /* Cards em grid: 1 coluna em mobile */
+  .grid-cols-1.lg\\:grid-cols-2,
+  .grid-cols-1.lg\\:grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Reduzir padding em telas pequenas */
+  .card-mobile-compact {
+    padding: 0.75rem !important;
+  }
+
+  /* Gráficos: altura menor em mobile */
+  .recharts-responsive-container {
+    min-height: 200px !important;
+  }
+
+  /* Filtros: empilhar em coluna */
+  .filter-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .filter-bar > * {
+    width: 100% !important;
+  }
+
+  /* Botões de ação: full width em mobile */
+  .mobile-full-width {
+    width: 100% !important;
+  }
+
+  /* Dialog/Modal: quase full screen em mobile */
+  [role="dialog"] {
+    max-width: 95vw !important;
+    max-height: 90vh !important;
+    margin: 0 auto !important;
+  }
+
+  /* Tabelas densas: fonte menor */
+  table td, table th {
+    font-size: 0.75rem !important;
+    padding: 0.375rem 0.5rem !important;
+  }
+}
+
+/* Utilitário: wrapper para tabelas responsivas */
+.table-responsive-wrapper {
+  width: 100%;
+}

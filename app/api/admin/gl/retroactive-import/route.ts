@@ -24,6 +24,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateUserSession } from '@/lib/users';
 import { GlImportService } from '@/lib/services/gl-import-service';
+import { GlAlarmImportService } from '@/lib/services/gl-alarm-import-service';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 min para importações maiores
@@ -143,6 +144,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         totalSkipped        += result.skipped;
         totalErrors         += result.errors;
 
+        // ── Alarmes (pasta alarms/) — independente do resultado das leituras ────
+        let alarmsImported = 0;
+        try {
+          const alarmResult = await GlAlarmImportService.runImport(date);
+          alarmsImported = alarmResult.imported;
+        } catch (alarmErr: any) {
+          console.error(`[GL Retroactive] Erro ao importar alarmes do dia ${dateStr}: ${alarmErr.message}`);
+        }
+
         byDay.push({
           date: dateStr,
           filesFound: result.filesFound,
@@ -152,12 +162,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           skipped: result.skipped,
           errors: result.errors,
           success: result.success,
+          alarmsImported,
           ...(result.error ? { error: result.error } : {}),
-        });
+        } as any);
 
         console.log(
           `[GL Retroactive] ${dateStr}: filesFound=${result.filesFound} ` +
-          `imported=${result.imported} skipped=${result.skipped} errors=${result.errors}`
+          `imported=${result.imported} skipped=${result.skipped} errors=${result.errors} alarmsImported=${alarmsImported}`
         );
 
       } catch (e: any) {

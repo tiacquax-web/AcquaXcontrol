@@ -22,10 +22,13 @@ import ComplexesCombobox from "@/components/ComboboxComplex"
 import BlocksCombobox from "@/components/ComboboxBlock"
 import SelectApartment from "@/components/ComboboxApartment"
 import { useRoles } from "@/hooks/useRoles"
+import { useUserContext } from "@/hooks/useUserContext"
 import { exportUsers } from "@/services/usersService"
 import axios from "axios"
 import type { Complex, Block, Apartment } from "@prisma/client"
 import * as XLSX from "xlsx"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import BulkImportTab from "./bulk-import-tab"
 
 export default function UsersPage() {
     const [searchQuery, setSearchQuery] = useState("")
@@ -68,6 +71,19 @@ export default function UsersPage() {
     const { deleteRoleAssignment, error: errorDeleteRoleAssignment, loading: loadingDeleteRoleAssignment } = useRoleAssignmentMutations()
     const { roles } = useRoles({})
     const [currentUser, setCurrentUser] = useState<Partial<User> | undefined>(undefined)
+    const { context: userContext } = useUserContext()
+
+    // Só admins/programadores podem ver importação em massa
+    const canBulkImport = userContext?.isSystem ?? false
+    // Programador não pode excluir usuários Administrador
+    const isAdministrador = (userContext?.systemRoles ?? []).includes('Administrador')
+
+    // Helper: verifica se um usuário da lista é Administrador (tem role system com nome 'Administrador')
+    const isUserAdministrador = (user: any) => {
+        const roles = user?.Roles ?? user?.roles ?? []
+        return roles.some((r: any) => r?.Role?.name === 'Administrador' && r?.contextType === 'system')
+    }
+    const isSystemUser = userContext?.isSystem ?? false
     const [exportLoading, setExportLoading] = useState(false)
     const [resettingAll, setResettingAll] = useState(false)
     const [showExportModal, setShowExportModal] = useState(false)
@@ -122,17 +138,21 @@ export default function UsersPage() {
     }
 
     const handleDeleteUser = async (id: string) => {
-        if (window.confirm("Tem certeza de que deseja excluir este usuário?")) {
-            try {
-                await deleteUser(id)
-                toast({
-                    title: "Usuário excluído com sucesso",
-                    description: "O usuário foi excluído com sucesso.",
-                })
-                refetch()
-            } catch (error) {
-                console.error("Erro ao excluir usuário:", error)
-            }
+        if (!window.confirm("Tem certeza de que deseja excluir este usuário?")) return
+        try {
+            await deleteUser(id)
+            toast({
+                title: "Usuário excluído com sucesso",
+                description: "O usuário foi excluído com sucesso.",
+            })
+            refetch()
+        } catch (error: any) {
+            const msg = error?.response?.data?.error || error?.message || "Erro ao excluir usuário"
+            toast({
+                title: "Não foi possível excluir",
+                description: msg,
+                variant: "destructive",
+            })
         }
     }
 
@@ -397,6 +417,12 @@ export default function UsersPage() {
 
     return (
         <div className="space-y-6 w-full p-6">
+          <Tabs defaultValue="list" className="w-full">
+            <TabsList>
+              <TabsTrigger value="list">Lista de Usuários</TabsTrigger>
+              {canBulkImport && <TabsTrigger value="import">Importação em Massa</TabsTrigger>}
+            </TabsList>
+            <TabsContent value="list" className="space-y-0">
             {!currentUser && (
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -604,9 +630,11 @@ export default function UsersPage() {
                                                                 <Button variant="outline" size="sm" onClick={() => handleEditUser(user)}>
                                                                     Editar
                                                                 </Button>
-                                                                <Button variant="destructive" size="sm" onClick={() => handleDeleteUser(user.id)}>
-                                                                    Excluir
-                                                                </Button>
+                                                                {!(isSystemUser && !isAdministrador && isUserAdministrador(user)) && (
+                                                                    <Button variant="destructive" size="sm" onClick={() => handleDeleteUser(user.id)}>
+                                                                        Excluir
+                                                                    </Button>
+                                                                )}
                                                             </div>
                                                         </TableCell>
                                                     </TableRow>
@@ -728,6 +756,13 @@ export default function UsersPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+        </TabsContent>
+            {canBulkImport && (
+            <TabsContent value="import">
+              <BulkImportTab />
+            </TabsContent>
+            )}
+          </Tabs>
         </div>
     )
 }

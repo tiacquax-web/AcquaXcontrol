@@ -835,7 +835,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
             case PermissionableEntity.role:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 
-                const whereCondition = {
+                const whereCondition = cleanWhere({
                     AND: [
                         {
                             OR: [
@@ -845,7 +845,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                         },
                         extraWhere,
                     ],
-                };
+                });
 
                 const roles = await prisma.role.findMany({
                     where: whereCondition,
@@ -862,7 +862,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
             case PermissionableEntity.roleAssignment:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 const roleAssignments = await prisma.roleAssignment.findMany({
-                    where: {
+                    where: cleanWhere({
                         AND: [
                             {
                                 OR: [
@@ -872,7 +872,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             },
                             extraWhere,
                         ]
-                    },
+                    }),
                     include: include ? include : undefined,
                     take: take < 200 ? take : 200,
                 });
@@ -1024,6 +1024,17 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 return { entity: company, status: 201, error: null };
 
             case PermissionableEntity.complex:
+                // Se nenhuma empresa foi informada, vincula automaticamente à empresa padrão "Acqua X do Brasil"
+                // (o usuário pode trocar depois editando o condomínio)
+                if (!data.companyId) {
+                    const defaultCompany = await prisma.company.findFirst({
+                        where: { name: { contains: 'Acqua', mode: 'insensitive' }, deletedAt: null },
+                        orderBy: { createdAt: 'asc' },
+                        select: { id: true },
+                    });
+                    if (defaultCompany) data.companyId = defaultCompany.id;
+                }
+
                 if (!hasSystemPermission && !contexts.companyIds.includes(data.companyId))
                     return { entity: null, error: 'Não autorizado', status: 401 };
 
@@ -1334,6 +1345,18 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 // Normalizar email se estiver presente
                 if (data.email) {
                     data.email = normalizeEmail(data.email);
+                }
+                
+                // Verificar se já existe um usuário ATIVO com o mesmo email (ignora soft-deleted)
+                const existingUser = await prisma.user.findFirst({
+                    where: {
+                        email: data.email,
+                        deletedAt: null,
+                    },
+                    select: { id: true },
+                });
+                if (existingUser) {
+                    return { entity: null, error: 'Já existe um usuário ativo com este e-mail.', status: 409 };
                 }
                 
                 const user = await prisma.user.create({ data: { ...data } });
@@ -2929,6 +2952,40 @@ async function deleteEntity(userId: string, entityType: PermissionableEntity, en
                                                contexts.apartmentIds.length > 0;
                 
                 if (!hasUserDeletePermission) return { error: 'Não autorizado', status: 401, entity: null };
+
+                // 1b. Proteção: Programador não pode deletar usuário com papel "Administrador"
+                if (hasSystemPermission) {
+                    // Buscar os papéis do solicitante para verificar se é Administrador
+                    const requesterAssignments = await prisma.roleAssignment.findMany({
+                        where: {
+                            userId,
+                            contextType: 'system',
+                            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                        },
+                        select: { Role: { select: { name: true } } },
+                    });
+                    const requesterSystemRoles = requesterAssignments.map(a => a.Role?.name).filter(Boolean) as string[];
+                    const isRequesterAdmin = requesterSystemRoles.includes('Administrador');
+
+                    if (!isRequesterAdmin) {
+                        // Solicitante é Programador (ou outro system não-admin)
+                        // Verificar se o usuário-alvo tem papel de Administrador
+                        const targetAssignments = await prisma.roleAssignment.findMany({
+                            where: {
+                                userId: entityId,
+                                contextType: 'system',
+                                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                            },
+                            select: { Role: { select: { name: true } } },
+                        });
+                        const targetSystemRoles = targetAssignments.map(a => a.Role?.name).filter(Boolean) as string[];
+                        const isTargetAdmin = targetSystemRoles.includes('Administrador');
+
+                        if (isTargetAdmin) {
+                            return { error: 'Programadores não podem excluir usuários Administrador', status: 403, entity: null };
+                        }
+                    }
+                }
 
                 // 2. Se não for sistema, verificar se o usuário-alvo está no escopo
                 if (!hasSystemPermission) {

@@ -6,10 +6,13 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { AlertCircle, Building2, Home, Activity, ChevronLeft, ChevronRight } from "lucide-react"
+import { AlertCircle, Building2, Home, Activity, ChevronLeft, ChevronRight, Ban, CheckCircle2, Lock } from "lucide-react"
 import Image from "next/image"
 import { ComplexFull } from "@/types/fullTypes"
 import { useState } from "react"
+import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/hooks/use-toast"
+import axios from "axios"
 
 interface ComplexesListProps {
   nameQuery?: string
@@ -157,10 +160,38 @@ export default function ComplexesList({ nameQuery, viewType, setSelectedComplex,
 }
 
 function ComplexCard({ complex, onCardClick }: { complex: ComplexFull; onCardClick: (complex: Complex) => void }) {
+  const { toast } = useToast()
+  const [isToggling, setIsToggling] = useState(false)
+  const isSuspended = complex.status === 'Suspenso'
+
+  const handleToggleSuspension = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setIsToggling(true)
+    try {
+      const res = await axios.patch(`/api/user/complexes/${complex.id}/suspend`, {
+        suspend: !isSuspended
+      })
+      toast({
+        title: res.data.message,
+        description: isSuspended ? 'Os usuários vinculados já podem acessar o sistema.' : 'Os usuários vinculados perderão o acesso ao sistema.',
+      })
+      // Recarrega a página para refletir a mudança
+      window.location.reload()
+    } catch (err: any) {
+      toast({
+        title: 'Erro',
+        description: err.response?.data?.error || 'Erro ao alterar status do condomínio.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsToggling(false)
+    }
+  }
+
   return (
     <Card
       onClick={() => onCardClick(complex)}
-      className="cursor-pointer hover:shadow-md transition-all duration-200 overflow-hidden h-full"
+      className={`cursor-pointer hover:shadow-md transition-all duration-200 overflow-hidden h-full ${isSuspended ? 'border-amber-400 border-2 opacity-80' : ''}`}
     >
       <div className="relative aspect-square w-full">
         <Image
@@ -170,9 +201,20 @@ function ComplexCard({ complex, onCardClick }: { complex: ComplexFull; onCardCli
           className="object-cover"
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
         />
+        {isSuspended && (
+          <div className="absolute top-2 right-2 bg-amber-500 text-white px-2 py-1 rounded-md text-xs font-medium flex items-center gap-1">
+            <Lock className="w-3 h-3" />
+            Suspenso
+          </div>
+        )}
       </div>
       <CardContent className="p-4 space-y-3">
-        <CardTitle className="line-clamp-1 text-lg">{complex.socialName}</CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="line-clamp-1 text-lg">{complex.socialName}</CardTitle>
+          <Badge variant={isSuspended ? 'destructive' : 'secondary'} className="shrink-0 text-xs">
+            {complex.status || 'Ativo'}
+          </Badge>
+        </div>
         <div className="space-y-2 text-sm">
           <div className="flex items-center gap-2">
             <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -197,6 +239,27 @@ function ComplexCard({ complex, onCardClick }: { complex: ComplexFull; onCardCli
             </p>
           </div>
         </div>
+        <Button
+          variant={isSuspended ? 'outline' : 'destructive'}
+          size="sm"
+          className="w-full mt-2"
+          onClick={handleToggleSuspension}
+          disabled={isToggling}
+        >
+          {isToggling ? (
+            'Processando...'
+          ) : isSuspended ? (
+            <>
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Reativar Acesso
+            </>
+          ) : (
+            <>
+              <Ban className="w-4 h-4 mr-2" />
+              Suspender Acesso
+            </>
+          )}
+        </Button>
       </CardContent>
     </Card>
   )

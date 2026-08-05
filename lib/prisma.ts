@@ -16,6 +16,15 @@ const prismaClientSingleton = () => {
         async delete({ where }: { where: { id: string } }) {
           const modelName = (this as unknown as ExtendedModelContext).$name;
           const extendedClient = client as unknown as Record<string, ModelClient>;
+          // Meter has @@unique([register, status]) — when soft-deleting, set status to 'Inativo'
+          // so the register can be reused. Without this, a soft-deleted meter with status 'Ativo'
+          // blocks re-registration of the same chassi.
+          if (modelName === 'meter') {
+            return extendedClient[modelName].update({
+              where: { ...where },
+              data: { deletedAt: new Date(), status: 'Inativo' },
+            });
+          }
           return extendedClient[modelName].update({
             where: { ...where },
             data: { deletedAt: new Date() },
@@ -72,6 +81,7 @@ const prismaClientSingleton = () => {
            */
           const MODELS_WITHOUT_DELETED_AT = new Set([
             'ScheduleOverride',
+            'EmailJob',
             'SupportMessage',
             'SuggestionVote',
           ]);
@@ -132,6 +142,25 @@ export function cleanEntityBody(body:any) {
     if (body.role) delete body.role; // Remove role object, keep roleId
     if (body.dealership) delete body.dealership; // Remove dealership object, keep dealershipId
     if (body.typeMeter) delete body.typeMeter; // Remove typeMeter object, keep typeMeterId
+
+    // Remove relation ARRAYS accidentally included in the payload.
+    //
+    // BUG (found 2026-07-07): frontend edit forms often spread the fetched
+    // entity back into the update payload (e.g. `{ ...currentUser, ...formData }`),
+    // and fetched entities frequently include relation lists like
+    // `Roles: RoleAssignment[]` (see GET /api/user/users, which `include`s Roles).
+    // Sending that array straight to `prisma.user.update({ data })` makes Prisma
+    // throw `PrismaClientValidationError: Unknown argument Roles`, which the
+    // generic error handler in updateEntityData surfaces as the unhelpful
+    // "Dados inválidos para atualização" — with no indication of which field
+    // was the culprit.
+    //
+    // There is exactly one scalar array column in the whole schema
+    // (GlImportLog.skipLog: String[]), and it is never written through this
+    // generic body-cleaning path — so it's safe to strip every array field here.
+    for (const key of Object.keys(body)) {
+        if (Array.isArray(body[key])) delete body[key];
+    }
 
     return body;
 }

@@ -10,9 +10,9 @@ import {
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, Minus, Building2, Calendar,
-  Droplets, Loader2, AlertCircle, Info, Search, X,
+  Droplets, Loader2, AlertCircle, Search, X,
   Printer, ChevronDown, ChevronUp, Camera, ZoomIn,
-} from 'lucide-react';
+  Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -29,10 +29,11 @@ import { sanitizeImageUrl } from '@/lib/utils';
 const API = '/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function buildMonthOptions(count = 24) {
+function buildMonthOptions(pastCount = 24, futureCount = 12) {
   const opts = [];
-  for (let i = 0; i < count; i++) {
-    const d = subMonths(new Date(), i);
+  // Meses futuros primeiro (do mais distante para o mais próximo), depois mês atual e meses passados
+  for (let i = -futureCount; i < pastCount; i++) {
+    const d = subMonths(new Date(), i); // i negativo = subMonths soma meses (mês futuro)
     opts.push({
       value: `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`,
       label: format(d, 'MMM/yyyy', { locale: ptBR }),
@@ -44,7 +45,9 @@ function buildMonthOptions(count = 24) {
   return opts;
 }
 
-const ALL_MONTHS = buildMonthOptions(24);
+const FUTURE_MONTHS_COUNT = 12; // permite selecionar até 12 meses à frente do mês atual
+const ALL_MONTHS = buildMonthOptions(24, FUTURE_MONTHS_COUNT);
+const CURRENT_MONTH_INDEX = FUTURE_MONTHS_COUNT; // índice do mês atual dentro de ALL_MONTHS
 
 function fmt(v: number | null | undefined) {
   return v != null ? v.toFixed(3) : '—';
@@ -114,11 +117,23 @@ function MeterPhoto({ url, alt, monthLabel }: { url: string; alt?: string; month
           <img
             src={url}
             alt={alt ?? 'Medidor'}
-            className="max-w-full max-h-[85vh] rounded-xl object-contain shadow-2xl"
+            className="max-w-full max-h-[80vh] rounded-xl object-contain shadow-2xl"
             onClick={e => e.stopPropagation()}
           />
+          {/* Aviso de processamento de imagem */}
+          <div
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-md flex items-start gap-2 rounded-lg bg-black/70 backdrop-blur-sm px-3 py-2"
+            onClick={e => e.stopPropagation()}
+          >
+            <Info className="w-3.5 h-3.5 text-white/60 shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-tight text-white/70">
+              Imagem processada com tecnologia de aprimoramento óptico para garantir precisão na leitura.
+              Pequenas diferenças visuais (linhas, manchas, tonalidade) são artefatos do processamento e
+              não alteram o valor registrado.
+            </p>
+          </div>
           {monthLabel && (
-            <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/80 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
+            <p className="absolute bottom-24 left-1/2 -translate-x-1/2 text-white/80 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
               {monthLabel}
             </p>
           )}
@@ -242,10 +257,22 @@ function MeterPhotoCard({
           <img
             src={photoUrl}
             alt={`Medidor ${label}`}
-            className="max-w-full max-h-[85vh] rounded-xl object-contain shadow-2xl"
+            className="max-w-full max-h-[80vh] rounded-xl object-contain shadow-2xl"
             onClick={e => e.stopPropagation()}
           />
-          <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/80 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
+          {/* Aviso de processamento de imagem */}
+          <div
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-md flex items-start gap-2 rounded-lg bg-black/70 backdrop-blur-sm px-3 py-2"
+            onClick={e => e.stopPropagation()}
+          >
+            <Info className="w-3.5 h-3.5 text-white/60 shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-tight text-white/70">
+              Imagem processada com tecnologia de aprimoramento óptico para garantir precisão na leitura.
+              Pequenas diferenças visuais (linhas, manchas, tonalidade) são artefatos do processamento e
+              não alteram o valor registrado.
+            </p>
+          </div>
+          <p className="absolute bottom-24 left-1/2 -translate-x-1/2 text-white/80 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
             {label}
           </p>
         </div>
@@ -268,8 +295,8 @@ export default function LevantamentoPage() {
   const { context, loading: ctxLoading } = useUserContext();
 
   // Período: mês início e mês fim
-  const [fromMonth, setFromMonth] = useState(ALL_MONTHS[5]); // 6 meses atrás
-  const [toMonth, setToMonth] = useState(ALL_MONTHS[0]);     // mês atual
+  const [fromMonth, setFromMonth] = useState(ALL_MONTHS[CURRENT_MONTH_INDEX + 5]); // 5 meses atrás
+  const [toMonth, setToMonth] = useState(ALL_MONTHS[CURRENT_MONTH_INDEX]);     // mês atual
 
   const [selectedComplexId, setSelectedComplexId] = useState<string | undefined>();
   const [selectedComplexObj, setSelectedComplexObj] = useState<any>(null);
@@ -750,6 +777,15 @@ export default function LevantamentoPage() {
               <Camera className="w-4 h-4 text-teal-500 print:hidden" />
               Fotos do Medidor por Mês
             </h3>
+            <div className="mb-3 flex items-start gap-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2 print:hidden">
+              <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+              <p className="text-[11px] leading-tight text-blue-700">
+                As imagens dos medidores passam por processamento automatizado de aprimoramento óptico
+                para garantir a leitura mais precisa possível. Pequenas diferenças visuais — como linhas,
+                manchas ou variações de tonalidade — são artefatos naturais deste processo e não
+                representam alteração dos valores registrados.
+              </p>
+            </div>
             {/* Grid: 1 col mobile, 2 col sm, 3 col md, 4 col lg */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 morador-cards-grid">
               {moradorRow.months.map((m, mi) => (
@@ -894,6 +930,15 @@ export default function LevantamentoPage() {
                   <Camera className="w-4 h-4 text-teal-500" />
                   Fotos do Medidor por Mês — Bl. {singleRow.blockName} / Ap. {singleRow.aptName}
                 </h3>
+                <div className="mb-3 flex items-start gap-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2 print:hidden">
+                  <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+                  <p className="text-[11px] leading-tight text-blue-700">
+                    As imagens dos medidores passam por processamento automatizado de aprimoramento óptico
+                    para garantir a leitura mais precisa possível. Pequenas diferenças visuais — como linhas,
+                    manchas ou variações de tonalidade — são artefatos naturais deste processo e não
+                    representam alteração dos valores registrados.
+                  </p>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {singleRow.months.map((m, mi) => (
                     <MeterPhotoCard

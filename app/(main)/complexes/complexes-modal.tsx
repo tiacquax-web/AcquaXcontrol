@@ -437,7 +437,14 @@ export default function ComplexModal({ isOpen, onClose, onSave, complex }: Compl
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="companyId">Administradora</Label>
-                    <CompaniesCombobox setSelectedCompany={handleSelectCompany} name="companyId" modal required />
+                    <CompaniesCombobox
+                      setSelectedCompany={handleSelectCompany}
+                      name="companyId"
+                      modal
+                      required
+                      autoSelectSingle={false}
+                      company={formData.companyId ? { id: formData.companyId } as Partial<Company> : undefined}
+                    />
                   </div>
                 </div>
               </div>

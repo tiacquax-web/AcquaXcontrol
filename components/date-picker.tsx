@@ -39,7 +39,7 @@ export function DatePickerComponent({
   setDate,
   setDateRange,
   minDaysBack = 90, // Padrão: 90 dias para trás
-  maxDate = new Date() // Padrão: hoje
+  maxDate = new Date(new Date().getFullYear() + 1, 11, 31) // Padrão: até 1 ano no futuro
 }: DatePickerProps) {
   // const [date, setDate] = React.useState<Date | undefined>(initialDate)
   // const [dateRange, setDateRange] = React.useState<DateRange | undefined>(initialDateRange)

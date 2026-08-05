@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Calculator, Download, Loader2, RefreshCw, Save, Upload, X, AlertTriangle, Info, FileText } from "lucide-react"
+import { Calculator, Download, Loader2, RefreshCw, Save, Upload, X, AlertTriangle, Info, FileText, Mail } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -49,6 +49,7 @@ export function ApartmentReportsSection({
     const [combinedImportResult, setCombinedImportResult] = useState<CombinedImportResult | null>(null)
     const [showIssuesModal, setShowIssuesModal] = useState(false)
     const [isDescriptionModalOpen, setIsDescriptionModalOpen] = useState(false) // State for the new modal
+    const [isSendingEmails, setIsSendingEmails] = useState(false)
 
     const { apartmentReports: existingReports, totalCount, loading, error, refetch } = useApartmentsReports({ dealershipReadingId, withApartment: true, take: 2000, skip: 0 })
     const { apartments } = useApartments({ complexId, take: 2000, skip: 0, withBlock: true })
@@ -224,7 +225,37 @@ export function ApartmentReportsSection({
                 description: generate.error || "Ocorreu um erro ao gerar os relatórios.",
                 variant: "destructive",
             })
-        }    }    // Function to handle completion of a single save operation
+        }    }
+    // Function to manually trigger pending email jobs
+    const handleTriggerEmails = async () => {
+        setIsSendingEmails(true)
+        try {
+            const response = await fetch('/api/user/trigger-emails', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            })
+            const data = await response.json()
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Erro ao disparar emails')
+            }
+
+            toast({
+                title: "Emails processados",
+                description: `${data.sent || 0} enviados, ${data.failed || 0} falhas, ${data.skipped || 0} pulados${data.message ? ' — ' + data.message : ''}`,
+            })
+        } catch (error: any) {
+            toast({
+                title: "Erro ao disparar emails",
+                description: error?.message || "Ocorreu um erro ao processar a fila de emails.",
+                variant: "destructive",
+            })
+        } finally {
+            setIsSendingEmails(false)
+        }
+    }
+
+    // Function to handle completion of a single save operation
     const handleSaveCompleted = () => {
         setSaveAllProgress(prev => {
             const newCompleted = prev.completed + 1
@@ -356,6 +387,21 @@ export function ApartmentReportsSection({
                                     <Button variant="outline" onClick={() => setIsDescriptionModalOpen(true)}>
                                         <FileText className="h-4 w-4 mr-2" />
                                         Gerar Filipeta
+                                    </Button>
+                                )}
+                                {hasPermission('generateFilipeta', 'do') && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={handleTriggerEmails}
+                                        disabled={isSendingEmails}
+                                        className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                                    >
+                                        {isSendingEmails ? (
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        ) : (
+                                            <Mail className="h-4 w-4 mr-2" />
+                                        )}
+                                        Disparar Emails
                                     </Button>
                                 )}
                                 <Button variant="outline" onClick={() => router.refresh()} disabled={generate.loading}>

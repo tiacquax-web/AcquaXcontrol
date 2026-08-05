@@ -1,5 +1,5 @@
 "use client"
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useMonitoringReadings } from '@/hooks/useMonitoringReadings'
 import MonitoringChart from './MonitoringChart'
 import { DateRange } from 'react-day-picker'
@@ -25,6 +25,9 @@ import { usePermissionChecker } from '@/hooks/use-permission-checker'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
 import { Calendar as CalendarIcon } from 'lucide-react'
+import { useUserContext } from '@/hooks/useUserContext'
+import { useMeters } from '@/hooks/useMeters'
+import { AlertTriangle } from 'lucide-react'
 
 // Fase 1: Placeholder de seleção de medidores manual até integração com UI real de contexto
 const MOCK_METERS: { id: string, register: string }[] = [] // pode ser preenchido futuramente via API de meters
@@ -33,9 +36,35 @@ const MAX_RANGE_DAYS = 60
 export default function MonitoringPage() {
   const { prefs, update, ready } = useMonitoringLocalPreferences()
   const { hasPermission, loading: permissionsLoading } = usePermissionChecker()
+  const { context: userContext, loading: ctxLoading } = useUserContext()
+
+  // Auto-selecionar contexto baseado no perfil
+  useEffect(() => {
+    if (ctxLoading || !userContext || complexObj) return
+
+    // Morador com 1 apto: seleciona automaticamente
+    if (!userContext.isSystem && userContext.apartments.length === 1 && userContext.complexes.length === 0) {
+      const apt = userContext.apartments[0]
+      setComplexObj(apt.block?.complex ?? undefined)
+      setBlockObj(apt.block ?? undefined)
+      setApartmentObj(apt)
+    }
+
+    // Síndico com 1 condomínio: seleciona automaticamente
+    if (!userContext.isSystem && userContext.complexes.length > 0) {
+      const glComplexes = userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id))
+      if (glComplexes.length === 1) {
+        setComplexObj(glComplexes[0])
+      }
+    }
+  }, [ctxLoading, userContext])
+
+  const hasGLAccess = (() => {
+    if (!userContext) return false
+    if (userContext.isSystem) return true
+    return userContext.glComplexIds && userContext.glComplexIds.length > 0
+  })()
   // Monitoramento é acessível para qualquer usuário com permissão de leitura
-  // (reading, complex, apartment, etc.) — síndicos devem ver a aba sem restrição.
-  // Verificamos se o usuário tem QUALQUER permissão (não apenas monitoringDashboard).
   const canAccessMonitoring = hasPermission('monitoringDashboard', 'read')
     || hasPermission('reading', 'read')
     || hasPermission('complex', 'read')
@@ -57,6 +86,50 @@ export default function MonitoringPage() {
   const alertTypes = prefs.alertTypes
   const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: addDays(new Date(), -30), to: new Date() })
   const [rangeError, setRangeError] = useState<string | null>(null)
+
+  // ── Auto-seleção de medidores ──────────────────────────────────────────
+  // Quando o morador tem apenas 1 unidade vinculada, o contexto é auto-selecionado
+  // (apartamento/complexo). Buscamos os medidores desse contexto e selecionamos
+  // todos automaticamente, para que o morador veja os dados sem precisar clicar.
+  // Só não auto-selecionamos se o usuário tiver mais de uma unidade (precisa escolher).
+  const autoSelectAttemptedRef = useRef(false)
+
+  // Buscar medidores do contexto atual (mesmo filtro do MeterSelectionPanel)
+  const { meters: autoSelectMeters, loading: autoSelectLoading } = useMeters({
+    complexId,
+    blockId,
+    apartmentId,
+    enabled: !!(apartmentId || (complexId && !apartmentId)),
+    take: 200,
+  })
+
+  // Determinar se deve auto-selecionar
+  const shouldAutoSelect = (() => {
+    if (!userContext || autoSelectAttemptedRef.current) return false
+    if (autoSelectLoading || autoSelectMeters.length === 0) return false
+    if (selectedMeters.length > 0) return false  // já tem seleção manual ou do localStorage
+
+    // Morador com 1 apartamento → auto-selecionar
+    if (!userContext.isSystem && userContext.apartments.length === 1) return true
+
+    // Síndico com 1 condomínio GL → auto-selecionar (se tiver poucos medidores)
+    if (!userContext.isSystem && userContext.complexes.length > 0) {
+      const glComplexes = userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id))
+      if (glComplexes.length === 1 && autoSelectMeters.length <= 10) return true
+    }
+
+    return false
+  })()
+
+  useEffect(() => {
+    if (shouldAutoSelect) {
+      const meterIds = autoSelectMeters.map(m => m.id)
+      if (meterIds.length > 0) {
+        update({ meterIds })
+        autoSelectAttemptedRef.current = true
+      }
+    }
+  }, [shouldAutoSelect, autoSelectMeters])
 
   const requestParams = useMemo(() => ({
     meterIds: selectedMeters,
@@ -123,9 +196,31 @@ export default function MonitoringPage() {
   const metersWithData = recomputed?.meters || []
   const distinctAlerts = data?.distinctAlerts || []
 
-  useEffect(()=>{
-    if (!selectedMeters.length) return
-  }, [selectedMeters])
+  // Ao trocar o contexto (empresa/condomínio/bloco/apartamento), a seleção de
+  // medidores de um contexto anterior deixa de fazer sentido — sem isso, uma
+  // seleção antiga (ex: "Selecionar todos" com 450+ medidores) continuava sendo
+  // enviada à API junto com o novo filtro, deixando a consulta extremamente
+  // lenta e exibindo UUIDs crus nos chips (medidor não encontrado no novo contexto).
+  const contextKey = `${companyId ?? ''}|${complexId ?? ''}|${blockId ?? ''}|${apartmentId ?? ''}`
+  const [prevContextKey, setPrevContextKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!ready) return
+    if (prevContextKey === null) {
+      // Primeira vez que o contexto fica pronto: apenas memoriza, não limpa
+      // (preserva seleção restaurada do localStorage ao abrir a página).
+      setPrevContextKey(contextKey)
+      return
+    }
+    if (prevContextKey !== contextKey) {
+      setPrevContextKey(contextKey)
+      if (selectedMeters.length > 0) {
+        update({ meterIds: [] })
+      }
+      // Reset auto-select flag quando contexto muda manualmente
+      autoSelectAttemptedRef.current = false
+    }
+  }, [contextKey, ready])
 
   if (permissionsLoading) {
     return (

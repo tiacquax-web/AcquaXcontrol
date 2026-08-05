@@ -10,6 +10,12 @@ import {
   MONTH_NAMES_MAP
 } from "@/types/combined-import";
 import { randomUUID } from 'crypto';
+import { createEmailJobsForDealershipReading } from "@/lib/services/filipeta-email-dispatcher";
+
+// Importação de 288+ linhas pode levar mais de 60s (default Vercel) devido às
+// múltiplas operações de banco (leituras + relatórios + email jobs)
+export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 // Otimização (Alta prioridade implementada):
 // 1. Prefetch de leituras e relatórios existentes.
@@ -191,6 +197,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     };
 
     // Percorrer linhas apenas para montar estruturas em memória
+    console.log(`[IMPORT] Step 3: Processing ${rows.length} rows...`);
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const lineNumber = i + 2; // Excel line number
@@ -334,6 +341,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // ===== PREFETCH EXISTENTES NO BANCO =====
+    console.log(`[IMPORT] Step 4: ${readingCandidates.length} reading candidates, ${rowContexts.length} row contexts`);
     // Leituras existentes (meterId + readAtDate)
     const meterToDates = new Map<string, Set<string>>();
     for (const candidate of readingCandidates) {
@@ -346,20 +354,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let existingReadingsKeySet = new Set<string>();
     const existingReadingsIdMap = new Map<string, string>(); // key -> existing reading id
     if (meterToDates.size > 0) {
-      const orFilters = Array.from(meterToDates.entries()).map(([meterId, dateSet]) => ({
-        meterId,
-        readAtDate: { in: Array.from(dateSet) },
-        deletedAt: null
-      }));
+      // SIMPLIFIED: Instead of N OR conditions (one per meter+date), use a single
+      // meterId: { in: [...] } query and filter by date in memory. The old OR approach
+      // with 288+ conditions was causing MongoDB to hang for 300+ seconds.
+      const allMeterIds = Array.from(meterToDates.keys());
+      const allDates = new Set<string>();
+      for (const dateSet of meterToDates.values()) {
+        for (const d of dateSet) allDates.add(d);
+      }
 
+      console.log(`[IMPORT] Step 5: Fetching existing readings for ${allMeterIds.length} meters, dates: ${Array.from(allDates).join(', ')}`);
       console.time("⏱️ Fetch existing readings");
       const existingReadings = await prisma.reading.findMany({
         where: {
-          OR: orFilters
+          meterId: { in: allMeterIds },
+          readAtDate: { in: Array.from(allDates) }
         },
         select: { id: true, meterId: true, readAtDate: true }
       });
       console.timeEnd("⏱️ Fetch existing readings");
+      console.log(`[IMPORT] Step 5a: Found ${existingReadings.length} existing readings`);
       existingReadingsKeySet = new Set(existingReadings.map(er => `${er.meterId}::${er.readAtDate}`));
       existingReadings.forEach(er => existingReadingsIdMap.set(`${er.meterId}::${er.readAtDate}`, er.id));
     }
@@ -416,6 +430,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
     if (apartmentsTouched.length > 0 && monthFilters.length > 0 && yearFilters.length > 0) {
+      console.log(`[IMPORT] Step 6: Fetching existing reports for ${apartmentsTouched.length} apartments`);
       console.time("⏱️ Fetch existing reports");
     }
     const existingReports = (apartmentsTouched.length > 0 && monthFilters.length > 0 && yearFilters.length > 0)
@@ -431,6 +446,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       : [];
     if (apartmentsTouched.length > 0 && monthFilters.length > 0 && yearFilters.length > 0) {
       console.timeEnd("⏱️ Fetch existing reports");
+      console.log(`[IMPORT] Step 6a: Found ${existingReports.length} existing reports`);
     }
 
     const makeReportBaseKey = (apartmentId: string, monthValue: string, yearValue: string) =>
@@ -555,6 +571,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // ===== EXECUTAR ESCRITAS =====
+    console.log(`[IMPORT] Step 7: Writes — ${newReadingCandidates.length} new readings, ${reportCreates.length} report creates, ${reportUpdates.length} report updates, ${toSoftDeleteReadingIds.length} soft-deletes`);
     // Soft-delete existentes quando policy = replace
     if (toSoftDeleteReadingIds.length > 0) {
       try {
@@ -601,82 +618,30 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     if (reportUpdates.length > 0) {
-      console.time("⏱️ Update reports (bulk)");
-      const bulkUpdates = reportUpdates.map(upd => {
-        const sanitized = sanitizeUpdateData(upd.data);
-        const sanitizedWithoutUpdatedAt = { ...sanitized };
-        delete sanitizedWithoutUpdatedAt.updatedAt;
-
-        const stages: Record<string, any>[] = [];
-        if (Object.keys(sanitizedWithoutUpdatedAt).length > 0) {
-          stages.push({ $set: sanitizedWithoutUpdatedAt });
-        }
-        stages.push({ $set: { updatedAt: "$$NOW" } });
-
-        return {
-          q: { _id: upd.id },
-          u: stages,
-          upsert: false
-        };
-      });
-
-      try {
-        const bulkRes: any = await prisma.$runCommandRaw({
-          update: 'ApartmentConsumptionReports',
-          ordered: false,
-          updates: bulkUpdates
-        });
-        console.timeEnd("⏱️ Update reports (bulk)");
-
-        const writeErrors: any[] = Array.isArray(bulkRes?.writeErrors) ? bulkRes.writeErrors : [];
-        const failedIndexes = new Set<number>();
-        let successCount = reportUpdates.length;
-
-        if (writeErrors.length > 0) {
-          successCount -= writeErrors.length;
-          for (const err of writeErrors) {
-            const idx = typeof err?.index === 'number' ? err.index : -1;
-            if (idx < 0 || idx >= reportUpdates.length) {
-              result.errors.push({
-                row: 0,
-                type: 'report',
-                message: `Erro em bulk update de relatório: ${err?.errmsg || err?.code || 'desconhecido'}`
-              });
-              continue;
-            }
-            failedIndexes.add(idx);
-            const upd = reportUpdates[idx];
-            try {
-              await prisma.apartmentConsumptionReport.update({ where: { id: upd.id }, data: upd.data });
-              successCount += 1;
-            } catch (fallbackError) {
-              result.errors.push({
-                row: upd.lineNumber,
-                type: 'report',
-                message: `Erro update relatório: ${fallbackError instanceof Error ? fallbackError.message : 'desconhecido'}`
-              });
-            }
-          }
-        }
-
-        result.reportsUpdated = successCount;
-      } catch (error) {
-        console.timeEnd("⏱️ Update reports (bulk)");
-        let updatesOk = 0;
-        for (const upd of reportUpdates) {
+      console.time("⏱️ Update reports (batched)");
+      const BATCH_SIZE = 50;
+      let updatesOk = 0;
+      for (let i = 0; i < reportUpdates.length; i += BATCH_SIZE) {
+        const batch = reportUpdates.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map(async (upd) => {
           try {
-            await prisma.apartmentConsumptionReport.update({ where: { id: upd.id }, data: upd.data });
-            updatesOk++;
-          } catch (fallbackError) {
+            const sanitized = sanitizeUpdateData(upd.data);
+            await prisma.apartmentConsumptionReport.update({ where: { id: upd.id }, data: sanitized });
+            return true;
+          } catch (err: any) {
             result.errors.push({
               row: upd.lineNumber,
               type: 'report',
-              message: `Erro update relatório: ${fallbackError instanceof Error ? fallbackError.message : 'desconhecido'}`
+              message: `Erro update relatório: ${err instanceof Error ? err.message : 'desconhecido'}`
             });
+            return false;
           }
-        }
-        result.reportsUpdated = updatesOk;
+        });
+        const results = await Promise.all(batchPromises);
+        updatesOk += results.filter(Boolean).length;
       }
+      result.reportsUpdated = updatesOk;
+      console.timeEnd("⏱️ Update reports (batched)");
     }
 
     // Contar linkedReports (reports criados + atualizados com lastReadingId)
@@ -686,6 +651,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     // Sucesso se algo foi criado ou atualizado
     result.success = (result.readingsCreated + result.reportsCreated + result.reportsUpdated) > 0;
+
+    console.log(`[IMPORT] Step 8: All writes done — readings: ${result.readingsCreated}, reports created: ${result.reportsCreated}, reports updated: ${result.reportsUpdated}`);
+    // ── Trigger: criar EmailJobs para envio automático de filipetas ────────────
+    // Fire-and-forget: não bloquear a resposta da importação
+    if (dealershipReadingId && result.success) {
+      createEmailJobsForDealershipReading(dealershipReadingId, userId)
+        .then(() => console.log(`[Combined Import] EmailJobs criados para dealershipReading: ${dealershipReadingId}`))
+        .catch((emailErr: any) => console.error('[Combined Import] Erro ao criar EmailJobs:', emailErr?.message));
+    }
 
     return NextResponse.json(result);
 
