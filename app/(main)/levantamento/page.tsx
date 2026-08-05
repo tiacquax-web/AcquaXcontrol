@@ -471,11 +471,22 @@ export default function LevantamentoPage() {
         const row = map.get(rowKey)!;
         const mIdx = monthsData.findIndex(m2 => m2.month === md.month && m2.year === md.year);
         if (mIdx >= 0) {
-          const ws = item.totalUnit != null && item.partial != null ? item.totalUnit - item.partial : null;
+          // Para linhas de GÁS, os campos "consumption"/"totalUnit" do
+          // ApartmentConsumptionReport são sempre os de ÁGUA — os valores de
+          // gás ficam em consumptionGasValue/totalGasValue (mesmo padrão já
+          // usado em FilipetaGridReport.tsx). Sem essa derivação, a linha de
+          // gás no Levantamento aparecia com consumo/valores em branco.
+          const itemConsumption = utilityType === 'gas'
+            ? ((item as any).consumptionGasValue ?? item.consumption ?? null)
+            : (item.consumption ?? null);
+          const itemTotalUnit = utilityType === 'gas'
+            ? ((item as any).totalGasValue ?? item.totalUnit ?? null)
+            : (item.totalUnit ?? null);
+          const ws = itemTotalUnit != null && item.partial != null ? itemTotalUnit - item.partial : null;
           row.months[mIdx] = {
             label: md.label,
-            consumption: item.consumption,
-            totalUnit: item.totalUnit,
+            consumption: itemConsumption,
+            totalUnit: itemTotalUnit,
             partial: item.partial,
             waterSewage: ws,
             prevReading: item.history?.[0]?.lastReading?.reading ?? null,
