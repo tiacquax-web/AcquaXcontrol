@@ -42,6 +42,7 @@ interface UnifiedItemResult {
   apartmentId: string;
   reportId?: string;
   readingId?: string;
+  dealershipReadingId?: string;
   createdReport?: boolean;
   updatedReport?: boolean;
   createdReading?: boolean;
@@ -260,6 +261,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           });
           r.reportId = updated.id;
           r.updatedReport = true;
+          r.dealershipReadingId = updated.dealershipReadingId || payload.report.dealershipReadingId;
         } else {
           const created = await prisma.apartmentConsumptionReport.create({
             data: {
@@ -270,6 +272,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           });
           r.reportId = created.id;
           r.createdReport = true;
+          r.dealershipReadingId = created.dealershipReadingId || payload.report.dealershipReadingId;
         }
       } catch (err: any) {
         errors.push(err?.message || 'Erro desconhecido ao processar item.');

@@ -23,11 +23,17 @@ export interface ConsumptionAnalysis {
 /**
  * Busca os relatórios de consumo anteriores do apartamento e calcula a análise.
  * O `currentReportId` é o relatório atual (excluído da média histórica).
+ *
+ * `utilityType` (quando informado) filtra o histórico para o mesmo tipo de
+ * utilidade do relatório atual (água ou gás) — evita misturar consumo de
+ * água com consumo de gás na análise de tendência de unidades que possuem
+ * os dois medidores.
  */
 export async function getConsumptionAnalysis(
   apartmentId: string,
   currentReportId: string,
   currentConsumption: number,
+  utilityType?: string | null,
 ): Promise<ConsumptionAnalysis> {
   // Buscar os últimos 7 relatórios do apartamento (excluindo o atual),
   // ordenados do mais recente para o mais antigo
@@ -36,6 +42,7 @@ export async function getConsumptionAnalysis(
       apartmentId,
       id: { not: currentReportId },
       deletedAt: null,
+      ...(utilityType ? { utilityType: utilityType as any } : {}),
     },
     orderBy: [
       { yearRef: 'desc' },
