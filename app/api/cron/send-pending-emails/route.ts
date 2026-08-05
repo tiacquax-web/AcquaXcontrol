@@ -177,6 +177,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
             job.apartmentId || apartment.id,
             report.id,
             currentConsumption,
+            report.utilityType,
           );
         } catch (e) {
           console.warn(`[EmailCron] Erro ao buscar análise para apt ${apartment.id}:`, e);

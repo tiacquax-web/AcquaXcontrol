@@ -128,7 +128,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         let analysis;
         try {
           const currentConsumption = report.totalConsumption ?? report.consumption;
-          analysis = await getConsumptionAnalysis(job.apartmentId || apartment.id, report.id, currentConsumption);
+          analysis = await getConsumptionAnalysis(job.apartmentId || apartment.id, report.id, currentConsumption, report.utilityType);
         } catch (e) { /* analysis é opcional */ }
 
         const readingDate = report.lastReading?.readAtDate;

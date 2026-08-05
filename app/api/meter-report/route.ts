@@ -29,6 +29,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     const yearRef = req.nextUrl.searchParams.get('year') || '';
     const complexId = req.nextUrl.searchParams.get('complex_id') || undefined;
     const apartmentId = req.nextUrl.searchParams.get('apartment_id') || undefined;
+    const utilityTypeParam = req.nextUrl.searchParams.get('utility_type') || undefined; // 'water' | 'gas'
 
     if (!monthRef || !yearRef) {
       return NextResponse.json({ error: 'month and year are required' }, { status: 400 });
@@ -48,6 +49,10 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     if (complexId) {
       where.complexId = complexId;
+    }
+
+    if (utilityTypeParam === 'water' || utilityTypeParam === 'gas') {
+      where.utilityType = utilityTypeParam;
     }
 
     if (apartmentId) {
@@ -125,10 +130,16 @@ export async function GET(req: NextRequest): Promise<Response> {
       orderBy: { yearRef: 'desc' },
     });
 
+    // Chave composta apartmentId::utilityType — evita misturar histórico de água
+    // e gás quando o mesmo apartamento possui os dois medidores/relatórios.
+    const historyKey = (r: { apartmentId: string; utilityType?: string | null }) =>
+      `${r.apartmentId}::${r.utilityType || 'water'}`;
+
     const historicalByApartment: Record<string, any[]> = {};
     historicalReports.forEach(r => {
-      if (!historicalByApartment[r.apartmentId]) historicalByApartment[r.apartmentId] = [];
-      historicalByApartment[r.apartmentId].push(r);
+      const key = historyKey(r as any);
+      if (!historicalByApartment[key]) historicalByApartment[key] = [];
+      historicalByApartment[key].push(r);
     });
 
     // Sort historical descending
@@ -166,7 +177,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       return {
         ...r,
         lastReading,
-        history: historicalByApartment[r.apartmentId] || [],
+        history: historicalByApartment[historyKey(r as any)] || [],
         dealershipReading: r.dealershipReadingId ? drById[r.dealershipReadingId] || null : null,
       };
     });

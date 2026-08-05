@@ -7,7 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { Droplets, Calendar, Building2, DoorClosed, ZoomIn, X, Printer, Info } from 'lucide-react';
+import { Droplets, Flame, Calendar, Building2, DoorClosed, ZoomIn, X, Printer, Info } from 'lucide-react';
 
 interface MeterReportCardProps {
   report: MeterReportItem;
@@ -96,6 +96,21 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
   const complex = apartment?.block?.complex as any;
   const block = apartment?.block as any;
 
+  // ─── Utility type (água vs gás) ──────────────────────────────────────────
+  // Determina se este relatório é de gás para exibir rótulos/valores corretos
+  // (ex: consumptionGasValue/totalGasValue em vez de consumption/totalUnit).
+  const reportType = report.utilityType ?? dealershipReading?.type;
+  const isGas = reportType === 'gas';
+  const utilityLabel = isGas ? 'Gás' : 'Água/Esgoto';
+  const displayConsumption = isGas
+    ? (report.consumptionGasValue ?? report.consumption ?? null)
+    : (report.consumption ?? null);
+  const displayTotalUnit = isGas
+    ? (report.totalGasValue ?? report.totalUnit ?? null)
+    : (report.totalUnit ?? null);
+  const headerColorClass = isGas ? 'bg-orange-500' : 'bg-blue-600';
+  const UtilityIcon = isGas ? Flame : Droplets;
+
   const complexName = complex?.socialName || complex?.aliasName || 'Condomínio';
   const blockName = block?.name || '';
   const apartmentName = apartment?.name || '';
@@ -152,14 +167,17 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
       <div className="meter-report-card-print bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col w-full">
 
         {/* ── Header ──────────────────────────────────────────────────────────── */}
-        <div className="bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-2">
+        <div className={`${headerColorClass} text-white px-4 py-2.5 flex items-center justify-between gap-2`}>
           <div className="flex items-center gap-2 min-w-0">
             <Building2 className="w-4 h-4 shrink-0" />
             <span className="font-semibold text-sm truncate">{complexName}</span>
           </div>
-          <Badge variant="secondary" className="text-xs bg-white/20 text-white border-white/30 shrink-0 whitespace-nowrap">
-            {monthYearLabel}
-          </Badge>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <UtilityIcon className="w-3.5 h-3.5" />
+            <Badge variant="secondary" className="text-xs bg-white/20 text-white border-white/30 whitespace-nowrap">
+              {monthYearLabel}
+            </Badge>
+          </div>
         </div>
 
         {/* ── Unit info ───────────────────────────────────────────────────────── */}
@@ -252,7 +270,7 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
           ) : (
             /* Placeholder quando não tem foto */
             <div className="w-full h-[140px] sm:h-[176px] bg-gray-100 border-b flex flex-col items-center justify-center gap-2">
-              <Droplets className="w-10 h-10 text-gray-300" />
+              <UtilityIcon className="w-10 h-10 text-gray-300" />
               <p className="text-gray-400 text-xs">Sem foto do medidor</p>
             </div>
           )}
@@ -279,10 +297,10 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
             </div>
             <div className="px-2 py-3">
               <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">Consumo</p>
-              <p className="font-bold text-teal-700 text-sm leading-tight">
-                {report.consumption?.toFixed(3) ?? '—'}
+              <p className={`font-bold text-sm leading-tight ${isGas ? 'text-orange-700' : 'text-teal-700'}`}>
+                {displayConsumption != null ? displayConsumption.toFixed(3) : '—'}
               </p>
-              <p className="text-teal-400 text-[10px]">m³</p>
+              <p className={`text-[10px] ${isGas ? 'text-orange-400' : 'text-teal-400'}`}>m³</p>
             </div>
           </div>
 
@@ -313,16 +331,18 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
               <p className="font-semibold text-gray-700 text-xs">{formatCurrency(report.partial)}</p>
             </div>
             <div className="px-2 py-2.5">
-              <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">Água/Esgoto</p>
+              <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">{utilityLabel}</p>
               <p className="font-semibold text-gray-700 text-xs">
-                {report.totalUnit != null && report.partial != null
-                  ? formatCurrency(report.totalUnit - report.partial)
-                  : '—'}
+                {displayTotalUnit != null && report.partial != null
+                  ? formatCurrency(displayTotalUnit - report.partial)
+                  : displayTotalUnit != null
+                    ? formatCurrency(displayTotalUnit)
+                    : '—'}
               </p>
             </div>
-            <div className="px-2 py-2.5 bg-blue-50">
-              <p className="text-blue-500 text-[11px] font-medium mb-1 leading-tight">Total a Pagar</p>
-              <p className="font-bold text-blue-700 text-xs">{formatCurrency(report.totalUnit)}</p>
+            <div className={`px-2 py-2.5 ${isGas ? 'bg-orange-50' : 'bg-blue-50'}`}>
+              <p className={`text-[11px] font-medium mb-1 leading-tight ${isGas ? 'text-orange-500' : 'text-blue-500'}`}>Total a Pagar</p>
+              <p className={`font-bold text-xs ${isGas ? 'text-orange-700' : 'text-blue-700'}`}>{formatCurrency(displayTotalUnit)}</p>
             </div>
           </div>
 
@@ -336,16 +356,20 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
               const isCurrentMonth = i === 2;
               const mRef = r ? String(r.monthRef).padStart(2, '0') : null;
               const yRef = r?.yearRef;
-              const cons = r?.consumption;
+              const rIsGas = isCurrentMonth ? isGas : (r as any)?.utilityType === 'gas';
+              const cons = rIsGas ? ((r as any)?.consumptionGasValue ?? r?.consumption) : r?.consumption;
+              const highlightBg = isCurrentMonth ? (isGas ? 'bg-orange-50 border-orange-200' : 'bg-blue-50 border-blue-200') : 'bg-white border-gray-200';
+              const highlightLabel = isCurrentMonth ? (isGas ? 'text-orange-600' : 'text-blue-600') : 'text-gray-500';
+              const highlightValue = isCurrentMonth ? (isGas ? 'text-orange-700' : 'text-blue-700') : 'text-gray-700';
               return (
                 <div
                   key={i}
-                  className={`rounded-lg border px-2 py-2 ${isCurrentMonth ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}
+                  className={`rounded-lg border px-2 py-2 ${highlightBg}`}
                 >
-                  <p className={`text-[11px] font-medium mb-0.5 ${isCurrentMonth ? 'text-blue-600' : 'text-gray-500'}`}>
+                  <p className={`text-[11px] font-medium mb-0.5 ${highlightLabel}`}>
                     {mRef && yRef ? `${mRef}/${yRef}` : '—'}
                   </p>
-                  <p className={`font-bold text-sm ${isCurrentMonth ? 'text-blue-700' : 'text-gray-700'}`}>
+                  <p className={`font-bold text-sm ${highlightValue}`}>
                     {cons != null ? `${cons.toFixed(3)} m³` : '—'}
                   </p>
                 </div>

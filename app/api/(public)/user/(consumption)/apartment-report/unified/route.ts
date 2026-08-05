@@ -42,6 +42,7 @@ interface UnifiedItemResult {
   apartmentId: string;
   reportId?: string;
   readingId?: string;
+  dealershipReadingId?: string;
   createdReport?: boolean;
   updatedReport?: boolean;
   createdReading?: boolean;
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         // Validate dealership reading context (ensure exists & consistent)
         const dealershipReading = await prisma.dealershipReading.findFirst({
           where: { id: payload.report.dealershipReadingId, deletedAt: null },
-          select: { id: true, monthRef: true, yearRef: true, complexId: true }
+          select: { id: true, monthRef: true, yearRef: true, complexId: true, type: true }
         });
         if (!dealershipReading) {
           errors.push('Leitura da concessionária não encontrada.');
@@ -218,11 +219,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
         // ===== Report create or update =====
         const { monthRef, yearRef } = payload.report; // expected numeric strings already
+        // Tipo de utilidade (água/gás) — deriva da leitura da concessionária associada.
+        // Precisa ser gravado no relatório (utilityType) E usado para escopar a busca
+        // do relatório existente: sem isso, um apartamento com medidores de água E gás
+        // no mesmo mês teria os dois relatórios colidindo na mesma chave
+        // (apartmentId + monthRef + yearRef), e o segundo save sobrescreveria o primeiro
+        // — o que também deixava consumptionGasValue/totalGasValue "perdidos" porque o
+        // relatório de gás acabava sendo tratado como o mesmo registro do de água.
+        const resolvedUtilityType = dealershipReading.type ?? 'water';
         const existingReport = await prisma.apartmentConsumptionReport.findFirst({
           where: {
             apartmentId: payload.report.apartmentId,
             monthRef: monthRef.toString(),
             yearRef: yearRef.toString(),
+            utilityType: resolvedUtilityType,
             deletedAt: null,
           },
           select: { id: true }
@@ -233,6 +243,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           dealershipReadingId: payload.report.dealershipReadingId,
           monthRef: monthRef.toString(),
           yearRef: yearRef.toString(),
+          utilityType: resolvedUtilityType,
           consumption: payload.report.consumption ?? 0,
           totalConsumption: payload.report.totalConsumption ?? 0,
             consumptionCost: payload.report.consumptionCost ?? 0,
@@ -260,6 +271,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           });
           r.reportId = updated.id;
           r.updatedReport = true;
+          r.dealershipReadingId = updated.dealershipReadingId || payload.report.dealershipReadingId;
         } else {
           const created = await prisma.apartmentConsumptionReport.create({
             data: {
@@ -270,6 +282,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           });
           r.reportId = created.id;
           r.createdReport = true;
+          r.dealershipReadingId = created.dealershipReadingId || payload.report.dealershipReadingId;
         }
       } catch (err: any) {
         errors.push(err?.message || 'Erro desconhecido ao processar item.');

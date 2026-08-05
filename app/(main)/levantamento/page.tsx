@@ -10,7 +10,7 @@ import {
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, Minus, Building2, Calendar,
-  Droplets, Loader2, AlertCircle, Search, X,
+  Droplets, Flame, Loader2, AlertCircle, Search, X,
   Printer, ChevronDown, ChevronUp, Camera, ZoomIn,
   Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -147,6 +147,7 @@ function MeterPhoto({ url, alt, monthLabel }: { url: string; alt?: string; month
 // Exibe foto em tamanho grande com todos os dados abaixo
 function MeterPhotoCard({
   photoUrl, label, currReading, prevReading, consumption, totalUnit, partial, waterSewage,
+  utilityType,
 }: {
   photoUrl: string | null;
   label: string;
@@ -156,13 +157,17 @@ function MeterPhotoCard({
   totalUnit: number | null;
   partial: number | null;
   waterSewage: number | null;
+  utilityType?: 'water' | 'gas' | null;
 }) {
+  const isGas = utilityType === 'gas';
+  const utilityCostLabel = isGas ? 'Gás' : 'Água/Esgoto';
   const [open, setOpen] = useState(false);
 
   return (
     <div className="morador-meter-card bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col">
       {/* Badge do mês */}
-      <div className="bg-teal-600 text-white text-center text-xs font-bold uppercase tracking-wider py-1.5 px-3">
+      <div className={`${isGas ? 'bg-orange-500' : 'bg-teal-600'} text-white text-center text-xs font-bold uppercase tracking-wider py-1.5 px-3 flex items-center justify-center gap-1.5`}>
+        {isGas ? <Flame className="w-3 h-3" /> : <Droplets className="w-3 h-3" />}
         {label}
       </div>
 
@@ -220,7 +225,7 @@ function MeterPhotoCard({
           <div className="border-t border-gray-100 pt-2 flex flex-col gap-1">
             {waterSewage != null && (
               <div className="flex justify-between">
-                <span className="text-gray-400">Água/Esgoto</span>
+                <span className="text-gray-400">{utilityCostLabel}</span>
                 <span className="font-medium text-gray-700">{fmtBRL(waterSewage)}</span>
               </div>
             )}
@@ -305,6 +310,7 @@ export default function LevantamentoPage() {
   const [selectedAptObj, setSelectedAptObj] = useState<any>(null);
   const [searchText, setSearchText] = useState('');
   const [expandedApt, setExpandedApt] = useState<string | null>(null);
+  const [utilityFilter, setUtilityFilter] = useState<'all' | 'water' | 'gas'>('all');
 
   // ── Helpers de contexto ──────────────────────────────────────────────────────
   const isMorador = useMemo(() => {
@@ -419,6 +425,8 @@ export default function LevantamentoPage() {
   // ── Montar mapa de unidades → consumos por mês ───────────────────────────────
   interface AptRow {
     apartmentId: string;
+    utilityType: 'water' | 'gas';
+    rowKey: string; // `${apartmentId}::${utilityType}` — chave única de linha (água e gás geram linhas separadas)
     aptName: string;
     blockName: string;
     months: Array<{
@@ -442,10 +450,16 @@ export default function LevantamentoPage() {
 
     monthsData.forEach(md => {
       md.items.forEach(item => {
-        const aptId = item.apartmentId;
-        if (!map.has(aptId)) {
-          map.set(aptId, {
-            apartmentId: aptId,
+        // Chave composta apartmentId::utilityType — evita que um apartamento com
+        // medidores de água E gás tenha os dados de uma utilidade sobrescritos
+        // pelos dados da outra (ambas passam a gerar linhas separadas na tabela).
+        const utilityType: 'water' | 'gas' = (item as any).utilityType === 'gas' ? 'gas' : 'water';
+        const rowKey = `${item.apartmentId}::${utilityType}`;
+        if (!map.has(rowKey)) {
+          map.set(rowKey, {
+            apartmentId: item.apartmentId,
+            utilityType,
+            rowKey,
             aptName: item.apartment?.name ?? '',
             blockName: item.apartment?.block?.name ?? '',
             months: monthsData.map(m2 => ({ label: m2.label, consumption: null, totalUnit: null, partial: null, waterSewage: null, prevReading: null, currReading: null, photoUrl: null })),
@@ -454,14 +468,25 @@ export default function LevantamentoPage() {
             minConsumption: 0,
           });
         }
-        const row = map.get(aptId)!;
+        const row = map.get(rowKey)!;
         const mIdx = monthsData.findIndex(m2 => m2.month === md.month && m2.year === md.year);
         if (mIdx >= 0) {
-          const ws = item.totalUnit != null && item.partial != null ? item.totalUnit - item.partial : null;
+          // Para linhas de GÁS, os campos "consumption"/"totalUnit" do
+          // ApartmentConsumptionReport são sempre os de ÁGUA — os valores de
+          // gás ficam em consumptionGasValue/totalGasValue (mesmo padrão já
+          // usado em FilipetaGridReport.tsx). Sem essa derivação, a linha de
+          // gás no Levantamento aparecia com consumo/valores em branco.
+          const itemConsumption = utilityType === 'gas'
+            ? ((item as any).consumptionGasValue ?? item.consumption ?? null)
+            : (item.consumption ?? null);
+          const itemTotalUnit = utilityType === 'gas'
+            ? ((item as any).totalGasValue ?? item.totalUnit ?? null)
+            : (item.totalUnit ?? null);
+          const ws = itemTotalUnit != null && item.partial != null ? itemTotalUnit - item.partial : null;
           row.months[mIdx] = {
             label: md.label,
-            consumption: item.consumption,
-            totalUnit: item.totalUnit,
+            consumption: itemConsumption,
+            totalUnit: itemTotalUnit,
             partial: item.partial,
             waterSewage: ws,
             prevReading: item.history?.[0]?.lastReading?.reading ?? null,
@@ -485,13 +510,24 @@ export default function LevantamentoPage() {
     return Array.from(map.values()).sort((a, b) => {
       const bComp = a.blockName.localeCompare(b.blockName);
       if (bComp !== 0) return bComp;
-      return a.aptName.localeCompare(b.aptName, undefined, { numeric: true });
+      const aComp = a.aptName.localeCompare(b.aptName, undefined, { numeric: true });
+      if (aComp !== 0) return aComp;
+      // Mesma unidade: água antes de gás
+      return a.utilityType.localeCompare(b.utilityType);
     });
   }, [allLoaded, monthsData]);
 
-  // Filtro por texto + bloco + apartamento
+  // Detecta se o condomínio possui dados de gás (além de água) para decidir se
+  // o filtro de tipo de utilidade deve ser exibido.
+  const hasGasData = useMemo(() => aptRows.some(r => r.utilityType === 'gas'), [aptRows]);
+
+  // Filtro por texto + bloco + apartamento + tipo de utilidade (água/gás)
   const filteredRows = useMemo(() => {
     let rows = aptRows;
+    // Filtro por tipo de utilidade
+    if (utilityFilter !== 'all') {
+      rows = rows.filter(r => r.utilityType === utilityFilter);
+    }
     // Filtro por bloco selecionado
     if (selectedBlockObj?.name) {
       const bName = selectedBlockObj.name.toLowerCase();
@@ -513,7 +549,7 @@ export default function LevantamentoPage() {
       );
     }
     return rows;
-  }, [aptRows, searchText, selectedBlockObj, selectedAptObj]);
+  }, [aptRows, searchText, selectedBlockObj, selectedAptObj, utilityFilter]);
 
   // ── Dados para gráfico — recalculado dinamicamente sobre filteredRows ─────────
   // Nota: chartData depende de filteredRows (pós-filtro), não de monthsData bruto
@@ -538,11 +574,17 @@ export default function LevantamentoPage() {
   const complexDisplayName = selectedComplexObj?.socialName || selectedComplexObj?.aliasName || '';
 
   // ── Para morador: dados da sua unidade ──────────────────────────────────────
-  // Cada mês tem: foto, leituras, consumo, valores
-  const moradorRow = useMemo(() => {
-    if (!isMorador || aptRows.length === 0) return null;
-    return aptRows[0]; // morador sempre tem 1 unidade
-  }, [isMorador, aptRows]);
+  // Cada mês tem: foto, leituras, consumo, valores.
+  // Um apartamento pode ter medidor de água E de gás — nesse caso aptRows terá
+  // 2 linhas (mesma apartmentId, utilityType diferente) e o morador vê ambas.
+  const moradorRows = useMemo(() => {
+    if (!isMorador || aptRows.length === 0) return [];
+    if (utilityFilter === 'all') return aptRows;
+    return aptRows.filter(r => r.utilityType === utilityFilter);
+  }, [isMorador, aptRows, utilityFilter]);
+  // Mantido para compatibilidade com trechos que assumem uma única unidade
+  // (ex: header, gráfico) — usa a primeira linha (água, se existir, senão gás).
+  const moradorRow = moradorRows[0] ?? null;
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -673,6 +715,27 @@ export default function LevantamentoPage() {
           </div>
         )}
 
+        {/* Filtro por tipo de utilidade (água/gás) — exibido quando o condomínio tem ambos */}
+        {allLoaded && hasGasData && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tipo</label>
+            <Select value={utilityFilter} onValueChange={(v: 'all' | 'water' | 'gas') => setUtilityFilter(v)}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="water">
+                  <span className="flex items-center gap-1.5"><Droplets className="w-3.5 h-3.5 text-teal-500" /> Água</span>
+                </SelectItem>
+                <SelectItem value="gas">
+                  <span className="flex items-center gap-1.5"><Flame className="w-3.5 h-3.5 text-orange-500" /> Gás</span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {/* Busca livre — só para não moradores */}
         {!isMorador && allLoaded && aptRows.length > 0 && (
           <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
@@ -691,14 +754,14 @@ export default function LevantamentoPage() {
         )}
 
         {/* Badge de filtros ativos */}
-        {!isMorador && (selectedBlockObj || selectedAptObj || searchText) && (
+        {(selectedBlockObj || selectedAptObj || searchText || utilityFilter !== 'all') && (
           <div className="flex flex-col gap-1 justify-end">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide invisible">&#8203;</label>
             <Button
               variant="ghost"
               size="sm"
               className="text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => { setSelectedBlockId(undefined); setSelectedBlockObj(null); setSelectedAptObj(null); setSearchText(''); }}
+              onClick={() => { setSelectedBlockId(undefined); setSelectedBlockObj(null); setSelectedAptObj(null); setSearchText(''); setUtilityFilter('all'); }}
             >
               <X className="w-3.5 h-3.5 mr-1" />
               Limpar filtros
@@ -743,7 +806,10 @@ export default function LevantamentoPage() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          VISTA DO MORADOR: fotos em destaque, uma por mês
+          VISTA DO MORADOR: fotos em destaque, uma por mês.
+          Quando o apartamento tem medidor de água E de gás, moradorRows terá
+          2 linhas — renderizamos uma seção completa (cards + gráfico) por
+          utilidade, mantendo o layout idêntico ao de hoje quando há apenas 1.
           ═══════════════════════════════════════════════════════════════════════ */}
       {allLoaded && isMorador && moradorRow && (
         <>
@@ -766,66 +832,82 @@ export default function LevantamentoPage() {
                 {complexDisplayName} — Bl. {moradorRow.blockName} / Ap. {moradorRow.aptName}
               </p>
               <p className="text-xs text-teal-600">
-                {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'} · Média {moradorRow.avgConsumption.toFixed(2)} m³/mês
+                {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'}
+                {moradorRows.length > 1 && ' · Água e Gás'}
               </p>
             </div>
           </div>
 
-          {/* ── Cards de foto por mês ────────────────────────────────── */}
-          <div>
-            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2 print:text-base">
-              <Camera className="w-4 h-4 text-teal-500 print:hidden" />
-              Fotos do Medidor por Mês
-            </h3>
-            <div className="mb-3 flex items-start gap-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2 print:hidden">
-              <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
-              <p className="text-[11px] leading-tight text-blue-700">
-                As imagens dos medidores passam por processamento automatizado de aprimoramento óptico
-                para garantir a leitura mais precisa possível. Pequenas diferenças visuais — como linhas,
-                manchas ou variações de tonalidade — são artefatos naturais deste processo e não
-                representam alteração dos valores registrados.
-              </p>
-            </div>
-            {/* Grid: 1 col mobile, 2 col sm, 3 col md, 4 col lg */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 morador-cards-grid">
-              {moradorRow.months.map((m, mi) => (
-                <MeterPhotoCard
-                  key={mi}
-                  photoUrl={m.photoUrl}
-                  label={m.label}
-                  currReading={m.currReading}
-                  prevReading={m.prevReading}
-                  consumption={m.consumption}
-                  totalUnit={m.totalUnit}
-                  partial={m.partial}
-                  waterSewage={m.waterSewage}
-                />
-              ))}
-            </div>
-          </div>
+          {moradorRows.map(mr => {
+            const isGas = mr.utilityType === 'gas';
+            return (
+              <div key={mr.rowKey} className="flex flex-col gap-4">
+                {moradorRows.length > 1 && (
+                  <div className={`flex items-center gap-2 text-sm font-semibold ${isGas ? 'text-orange-600' : 'text-teal-600'}`}>
+                    {isGas ? <Flame className="w-4 h-4" /> : <Droplets className="w-4 h-4" />}
+                    {isGas ? 'Gás' : 'Água'} · Média {mr.avgConsumption.toFixed(2)} m³/mês
+                  </div>
+                )}
 
-          {/* ── Gráfico de evolução da unidade ──────────────────────── */}
-          <div className="bg-white border rounded-xl p-4 print:border-gray-400">
-            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-teal-500" />
-              Evolução do Consumo — {complexDisplayName} Bl.{moradorRow.blockName} Ap.{moradorRow.aptName}
-            </h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={moradorRow.months.map(m => ({ label: m.label, consumo: m.consumption ?? 0 }))}
-                margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} unit=" m³" width={60} />
-                <Tooltip formatter={(val: any) => [`${val} m³`, 'Consumo']} labelStyle={{ fontWeight: 'bold' }} />
-                <ReferenceLine
-                  y={moradorRow.avgConsumption}
-                  stroke="#94a3b8" strokeDasharray="4 4"
-                  label={{ value: 'Média', position: 'right', fontSize: 10, fill: '#94a3b8' }}
-                />
-                <Line type="monotone" dataKey="consumo" stroke="#0d9488" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+                {/* ── Cards de foto por mês ────────────────────────────────── */}
+                <div>
+                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2 print:text-base">
+                    <Camera className="w-4 h-4 text-teal-500 print:hidden" />
+                    Fotos do Medidor por Mês{moradorRows.length > 1 && ` — ${isGas ? 'Gás' : 'Água'}`}
+                  </h3>
+                  <div className="mb-3 flex items-start gap-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2 print:hidden">
+                    <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+                    <p className="text-[11px] leading-tight text-blue-700">
+                      As imagens dos medidores passam por processamento automatizado de aprimoramento óptico
+                      para garantir a leitura mais precisa possível. Pequenas diferenças visuais — como linhas,
+                      manchas ou variações de tonalidade — são artefatos naturais deste processo e não
+                      representam alteração dos valores registrados.
+                    </p>
+                  </div>
+                  {/* Grid: 1 col mobile, 2 col sm, 3 col md, 4 col lg */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 morador-cards-grid">
+                    {mr.months.map((m, mi) => (
+                      <MeterPhotoCard
+                        key={mi}
+                        photoUrl={m.photoUrl}
+                        label={m.label}
+                        currReading={m.currReading}
+                        prevReading={m.prevReading}
+                        consumption={m.consumption}
+                        totalUnit={m.totalUnit}
+                        partial={m.partial}
+                        waterSewage={m.waterSewage}
+                        utilityType={mr.utilityType}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── Gráfico de evolução da unidade ──────────────────────── */}
+                <div className="bg-white border rounded-xl p-4 print:border-gray-400">
+                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-teal-500" />
+                    Evolução do Consumo{moradorRows.length > 1 && ` (${isGas ? 'Gás' : 'Água'})`} — {complexDisplayName} Bl.{mr.blockName} Ap.{mr.aptName}
+                  </h3>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={mr.months.map(m => ({ label: m.label, consumo: m.consumption ?? 0 }))}
+                      margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} unit=" m³" width={60} />
+                      <Tooltip formatter={(val: any) => [`${val} m³`, 'Consumo']} labelStyle={{ fontWeight: 'bold' }} />
+                      <ReferenceLine
+                        y={mr.avgConsumption}
+                        stroke="#94a3b8" strokeDasharray="4 4"
+                        label={{ value: 'Média', position: 'right', fontSize: 10, fill: '#94a3b8' }}
+                      />
+                      <Line type="monotone" dataKey="consumo" stroke={isGas ? '#f97316' : '#0d9488'} strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            );
+          })}
 
           {/* Footer print */}
           <div className="hidden print:block text-xs text-gray-400 text-center mt-4">
@@ -908,55 +990,61 @@ export default function LevantamentoPage() {
             </ResponsiveContainer>
           </div>
 
-          {/* ── Filipeta inline: cards por mês quando uma única unidade está selecionada ── */}
-          {selectedBlockObj && selectedAptObj && filteredRows.length === 1 && (() => {
-            const singleRow = filteredRows[0];
-            return (
-              <div>
-                <div className="flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 mb-3">
-                  <div className="bg-teal-600 rounded-lg p-2">
-                    <Building2 className="w-4 h-4 text-white" />
+          {/* ── Filipeta inline: cards por mês quando uma única unidade está selecionada ──
+              Nota: uma "unidade" pode ter 1 ou 2 linhas em filteredRows (água e/ou gás).
+              Renderizamos uma seção por linha para não misturar os dados das duas utilidades. */}
+          {selectedBlockObj && selectedAptObj && filteredRows.length >= 1 && filteredRows.length <= 2 && (
+            <div className="flex flex-col gap-6">
+              {filteredRows.map(singleRow => (
+                <div key={singleRow.rowKey}>
+                  <div className="flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 mb-3">
+                    <div className="bg-teal-600 rounded-lg p-2">
+                      <Building2 className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-teal-800 text-sm">
+                        {complexDisplayName} — Bl. {singleRow.blockName} / Ap. {singleRow.aptName}
+                        {filteredRows.length > 1 && (singleRow.utilityType === 'gas' ? ' (Gás)' : ' (Água)')}
+                      </p>
+                      <p className="text-xs text-teal-600">
+                        {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'} · Média {singleRow.avgConsumption.toFixed(2)} m³/mês
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-bold text-teal-800 text-sm">
-                      {complexDisplayName} — Bl. {singleRow.blockName} / Ap. {singleRow.aptName}
-                    </p>
-                    <p className="text-xs text-teal-600">
-                      {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'} · Média {singleRow.avgConsumption.toFixed(2)} m³/mês
+                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                    <Camera className="w-4 h-4 text-teal-500" />
+                    Fotos do Medidor por Mês — Bl. {singleRow.blockName} / Ap. {singleRow.aptName}
+                    {filteredRows.length > 1 && <span className={singleRow.utilityType === 'gas' ? 'text-orange-600' : 'text-teal-600'}>({singleRow.utilityType === 'gas' ? 'Gás' : 'Água'})</span>}
+                  </h3>
+                  <div className="mb-3 flex items-start gap-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2 print:hidden">
+                    <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+                    <p className="text-[11px] leading-tight text-blue-700">
+                      As imagens dos medidores passam por processamento automatizado de aprimoramento óptico
+                      para garantir a leitura mais precisa possível. Pequenas diferenças visuais — como linhas,
+                      manchas ou variações de tonalidade — são artefatos naturais deste processo e não
+                      representam alteração dos valores registrados.
                     </p>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {singleRow.months.map((m, mi) => (
+                      <MeterPhotoCard
+                        key={mi}
+                        photoUrl={m.photoUrl}
+                        label={m.label}
+                        currReading={m.currReading}
+                        prevReading={m.prevReading}
+                        consumption={m.consumption}
+                        totalUnit={m.totalUnit}
+                        partial={m.partial}
+                        waterSewage={m.waterSewage}
+                        utilityType={singleRow.utilityType}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-teal-500" />
-                  Fotos do Medidor por Mês — Bl. {singleRow.blockName} / Ap. {singleRow.aptName}
-                </h3>
-                <div className="mb-3 flex items-start gap-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2 print:hidden">
-                  <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
-                  <p className="text-[11px] leading-tight text-blue-700">
-                    As imagens dos medidores passam por processamento automatizado de aprimoramento óptico
-                    para garantir a leitura mais precisa possível. Pequenas diferenças visuais — como linhas,
-                    manchas ou variações de tonalidade — são artefatos naturais deste processo e não
-                    representam alteração dos valores registrados.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {singleRow.months.map((m, mi) => (
-                    <MeterPhotoCard
-                      key={mi}
-                      photoUrl={m.photoUrl}
-                      label={m.label}
-                      currReading={m.currReading}
-                      prevReading={m.prevReading}
-                      consumption={m.consumption}
-                      totalUnit={m.totalUnit}
-                      partial={m.partial}
-                      waterSewage={m.waterSewage}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
+              ))}
+            </div>
+          )}
 
           {/* ── Tabela por unidade ──────────────────────────────────────── */}
           <div className="bg-white border rounded-xl overflow-hidden print:border-gray-400">
@@ -988,13 +1076,14 @@ export default function LevantamentoPage() {
                 </thead>
                 <tbody>
                   {filteredRows.map((row, ri) => {
-                    const isExpanded = expandedApt === row.apartmentId;
+                    const isExpanded = expandedApt === row.rowKey;
+                    const isGasRow = row.utilityType === 'gas';
                     return (
-                      <React.Fragment key={row.apartmentId}>
+                      <React.Fragment key={row.rowKey}>
                         {/* Linha principal: consumo */}
                         <tr
                           className={`border-b cursor-pointer transition-colors ${ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/40`}
-                          onClick={() => setExpandedApt(isExpanded ? null : row.apartmentId)}
+                          onClick={() => setExpandedApt(isExpanded ? null : row.rowKey)}
                         >
                           <td className={`sticky left-0 z-10 px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap print:static print:whitespace-normal ${ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/40`}>
                             <div className="flex items-center gap-1.5">
@@ -1002,6 +1091,9 @@ export default function LevantamentoPage() {
                                 ? <ChevronUp className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                                 : <ChevronDown className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                               }
+                              {isGasRow
+                                ? <Flame className="w-3 h-3 text-orange-500 shrink-0" />
+                                : <Droplets className="w-3 h-3 text-teal-500 shrink-0" />}
                               <span className="text-gray-500">Bl.{row.blockName}</span>
                               <span>Ap.{row.aptName}</span>
                             </div>
@@ -1088,9 +1180,9 @@ export default function LevantamentoPage() {
                                         );
                                       })}
                                     </tr>
-                                    {/* Água/Esgoto */}
+                                    {/* Água/Esgoto ou Gás, conforme utilityType da linha */}
                                     <tr>
-                                      <td className="pr-3 py-1.5 text-gray-500 whitespace-nowrap">Água/Esgoto</td>
+                                      <td className="pr-3 py-1.5 text-gray-500 whitespace-nowrap">{isGasRow ? 'Gás' : 'Água/Esgoto'}</td>
                                       {row.months.map((m, mi) => (
                                         <td key={mi} className="px-3 py-1.5 text-center text-gray-700">{fmtBRL(m.waterSewage)}</td>
                                       ))}
