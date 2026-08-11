@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image'; // usado apenas para o logo (/logo-quadrada-2.jpg)
+import { Info } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ApartmentWithConsumptionReport, EnrichedApartmentReport } from '@/types/apartment';
