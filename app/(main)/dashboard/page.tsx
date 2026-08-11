@@ -37,6 +37,7 @@ import {
 
 import ResidentMonitoringCard from '@/components/dashboard/ResidentMonitoringCard';
 import AreaCommonAnnualDashboard from '@/components/dashboard/AreaCommonAnnualDashboard';
+import OperationsHealthCard from '@/components/dashboard/OperationsHealthCard';
 import { useRolePreview } from '@/contexts/RolePreviewContext';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -1022,6 +1023,8 @@ function AdminKPIDashboard() {
             </Card>
           ))}
         </div>
+
+        <OperationsHealthCard />
 
         {/* Users by type + today logins */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

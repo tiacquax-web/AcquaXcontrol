@@ -93,11 +93,25 @@ export function recomputeStats(meter: MonitoringMeterData, view: 'cumulative' | 
   const maxDelta = positive.length ? Math.max(...positive) : null
 
   const anomalies: ComputedStats['anomalies'] = []
+  const positiveBaseline = avgDelta ?? 0
   for (let i=1;i<ordered.length;i++) {
     const delta = deltas[i-1]
     const base = ordered[i]
     const anomalyTypes: string[] = []
-  if (delta < 0) anomalyTypes.push('NEGATIVE_CONSUMPTION')
+    if (delta < 0) anomalyTypes.push('NEGATIVE_CONSUMPTION')
+
+    // Sinal conservador: três intervalos consecutivos com consumo positivo
+    // acima do padrão e em janela curta sugerem fluxo contínuo/vazamento.
+    // É um alerta de investigação, não um diagnóstico automático.
+    const recentDeltas = deltas.slice(Math.max(0, i - 3), i)
+    const recentReadings = ordered.slice(Math.max(0, i - 3), i + 1)
+    const hoursBetween = recentReadings.length >= 2
+      ? (new Date(recentReadings[recentReadings.length - 1].readAt).getTime() - new Date(recentReadings[0].readAt).getTime()) / 3_600_000
+      : Infinity
+    const sustainedHigh = recentDeltas.length >= 3
+      && recentDeltas.every(value => value > 0 && (positiveBaseline === 0 || value >= positiveBaseline * 1.35))
+      && hoursBetween <= 36
+    if (sustainedHigh) anomalyTypes.push('POSSIBLE_LEAK')
     if (stdDev !== null && avgDelta !== null) {
       if (delta > avgDelta + sigma * stdDev) anomalyTypes.push('OUTLIER_HIGH')
       if (delta > 0 && delta < avgDelta - sigma * stdDev) anomalyTypes.push('OUTLIER_LOW')

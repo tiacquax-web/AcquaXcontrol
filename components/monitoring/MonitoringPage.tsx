@@ -88,13 +88,11 @@ export default function MonitoringPage() {
   const [rangeError, setRangeError] = useState<string | null>(null)
 
   // ── Auto-seleção de medidores ──────────────────────────────────────────
-  // Quando o morador tem apenas 1 unidade vinculada, o contexto é auto-selecionado
-  // (apartamento/complexo). Buscamos os medidores desse contexto e selecionamos
-  // todos automaticamente, para que o morador veja os dados sem precisar clicar.
-  // Só não auto-selecionamos se o usuário tiver mais de uma unidade (precisa escolher).
+  // Morador com uma única unidade não deve depender de seleção manual nem de
+  // uma seleção antiga salva no navegador. Ao abrir o Monitoramento, usamos
+  // sempre os medidores vinculados à unidade dele.
   const autoSelectAttemptedRef = useRef(false)
 
-  // Buscar medidores do contexto atual (mesmo filtro do MeterSelectionPanel)
   const { meters: autoSelectMeters, loading: autoSelectLoading } = useMeters({
     complexId,
     blockId,
@@ -103,33 +101,37 @@ export default function MonitoringPage() {
     take: 200,
   })
 
-  // Determinar se deve auto-selecionar
-  const shouldAutoSelect = (() => {
-    if (!userContext || autoSelectAttemptedRef.current) return false
-    if (autoSelectLoading || autoSelectMeters.length === 0) return false
-    if (selectedMeters.length > 0) return false  // já tem seleção manual ou do localStorage
+  const isSingleApartmentUser = Boolean(
+    userContext && !userContext.isSystem && userContext.apartments.length === 1,
+  )
+  const isSingleGlComplexManager = Boolean(
+    userContext && !userContext.isSystem && userContext.complexes.length > 0
+      && userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id)).length === 1,
+  )
 
-    // Morador com 1 apartamento → auto-selecionar
-    if (!userContext.isSystem && userContext.apartments.length === 1) return true
-
-    // Síndico com 1 condomínio GL → auto-selecionar (se tiver poucos medidores)
-    if (!userContext.isSystem && userContext.complexes.length > 0) {
-      const glComplexes = userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id))
-      if (glComplexes.length === 1 && autoSelectMeters.length <= 10) return true
-    }
-
-    return false
-  })()
+  const shouldAutoSelect = Boolean(
+    userContext
+      && !autoSelectAttemptedRef.current
+      && !autoSelectLoading
+      && autoSelectMeters.length > 0
+      && (isSingleApartmentUser || (isSingleGlComplexManager && autoSelectMeters.length <= 10)),
+  )
 
   useEffect(() => {
-    if (shouldAutoSelect) {
-      const meterIds = autoSelectMeters.map(m => m.id)
-      if (meterIds.length > 0) {
-        update({ meterIds })
-        autoSelectAttemptedRef.current = true
-      }
+    if (!shouldAutoSelect) return
+
+    const meterIds = autoSelectMeters.map(meter => meter.id)
+    const selectedSet = new Set(selectedMeters)
+    const contextMetersAlreadySelected = meterIds.length === selectedMeters.length
+      && meterIds.every(id => selectedSet.has(id))
+
+    if (!contextMetersAlreadySelected) {
+      // Para o morador, isso também corrige seleções antigas persistidas de
+      // outro condomínio ou unidade e evita a tela vazia por filtro incorreto.
+      update({ meterIds })
     }
-  }, [shouldAutoSelect, autoSelectMeters])
+    autoSelectAttemptedRef.current = true
+  }, [shouldAutoSelect, autoSelectMeters, selectedMeters, update])
 
   const requestParams = useMemo(() => ({
     meterIds: selectedMeters,

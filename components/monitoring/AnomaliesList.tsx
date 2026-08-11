@@ -14,6 +14,7 @@ const ALERT_LABELS: Record<string, string> = {
   OUTLIER_LOW: 'Consumo baixo',
   ZERO_CONSUMPTION: 'Consumo zero',
   HAS_ALERT: 'Alerta IoT',
+  POSSIBLE_LEAK: 'Possível vazamento — investigar',
 }
 
 function formatAlertType(type: string) {
