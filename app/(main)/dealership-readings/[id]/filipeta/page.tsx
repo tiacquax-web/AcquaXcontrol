@@ -62,6 +62,7 @@ const FilipetaPage = () => {
 
   const { hasPermission, loading: permissionsLoading } = usePermissionChecker();
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [screenPage, setScreenPage] = useState(0);
 
   const totalScreenPages = data ? Math.ceil(data.list.length / SCREEN_PAGE_SIZE) : 0;
@@ -69,27 +70,41 @@ const FilipetaPage = () => {
     ? data.list.slice(screenPage * SCREEN_PAGE_SIZE, (screenPage + 1) * SCREEN_PAGE_SIZE)
     : [];
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     if (!data || data.list.length === 0 || pdfLoading) return;
 
     setPdfLoading(true);
+    setPdfError(null);
     const qs = new URLSearchParams();
     if (order) qs.set('order', order);
     if (filterBlockId) qs.set('block_id', filterBlockId);
     if (filterAptId) qs.set('apartment_id', filterAptId);
     if (description) qs.set('description', description);
 
-    // Download direto: o PDF é montado no servidor e o tablet não precisa
-    // renderizar centenas de fotos ou manter o arquivo inteiro em JavaScript.
-    const link = document.createElement('a');
-    link.href = `/api/dealership-readings/${encodeURIComponent(String(id))}/filipeta/pdf?${qs.toString()}`;
-    link.rel = 'noopener';
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    try {
+      // O servidor gera e envia o PDF ao S3. A resposta contém só o link
+      // temporário, portanto o tablet não recebe o arquivo no corpo da API.
+      const response = await fetch(`/api/dealership-readings/${encodeURIComponent(String(id))}/filipeta/pdf?${qs.toString()}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.downloadUrl) {
+        throw new Error(payload.error || 'Não foi possível gerar o PDF.');
+      }
 
-    window.setTimeout(() => setPdfLoading(false), 5000);
+      const link = document.createElement('a');
+      link.href = payload.downloadUrl;
+      link.rel = 'noopener';
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error: any) {
+      setPdfError(error?.message || 'Não foi possível gerar o PDF completo.');
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
   const handlePrint = () => {
@@ -240,6 +255,9 @@ const FilipetaPage = () => {
             </Button>
           </div>
         </div>
+        {pdfError && data && data.list.length > BROWSER_PRINT_MAX_REPORTS && (
+          <p className="text-sm text-red-600" role="alert">{pdfError}</p>
+        )}
 
         {/* ── Filtros: Bloco + Apartamento + Botão Buscar ───────────────── */}
         <div className="border rounded-lg p-4 bg-card shadow-sm space-y-3">

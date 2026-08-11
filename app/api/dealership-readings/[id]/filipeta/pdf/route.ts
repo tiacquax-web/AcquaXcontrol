@@ -1,10 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { PutObjectCommand, S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { validateUserSession } from '@/lib/users';
 import { generateFilipetaPdf } from '@/lib/services/filipeta-pdf-service';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
+
+let pdfS3Client: S3Client | null = null;
+
+function getPdfStorageConfig() {
+  const region = process.env.FILIPETA_PDF_S3_REGION || process.env.GL_S3_REGION;
+  const bucket = process.env.FILIPETA_PDF_S3_BUCKET || process.env.GL_S3_BUCKET;
+  const accessKeyId = process.env.FILIPETA_PDF_S3_ACCESS_KEY_ID
+    || process.env.GL_S3_ACCESS_KEY_ID
+    || process.env.GL_ACESS_KEY_ID;
+  const secretAccessKey = process.env.FILIPETA_PDF_S3_SECRET_ACCESS_KEY
+    || process.env.GL_S3_SECRET_ACCESS_KEY
+    || process.env.GL_SECRET_ACESS_KEY;
+
+  if (!region || !bucket || !accessKeyId || !secretAccessKey) {
+    throw new Error('Configuração S3 para PDF ausente. Configure FILIPETA_PDF_S3_* ou reutilize as credenciais GL_S3_* com permissão de escrita.');
+  }
+
+  if (!pdfS3Client) {
+    pdfS3Client = new S3Client({ region, credentials: { accessKeyId, secretAccessKey } });
+  }
+
+  return { region, bucket, client: pdfS3Client };
+}
 
 export async function GET(
   req: NextRequest,
@@ -60,14 +85,39 @@ export async function GET(
     });
 
     const filename = `filipetas-${data.dealershipReading?.yearRef || 'leitura'}-${String(data.dealershipReading?.monthRef || '').padStart(2, '0')}.pdf`;
-    return new Response(pdf, {
+    const storage = getPdfStorageConfig();
+    const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '');
+    const key = `exports/filipetas/${userId}/${safeId}-${Date.now()}.pdf`;
+
+    await storage.client.send(new PutObjectCommand({
+      Bucket: storage.bucket,
+      Key: key,
+      Body: pdf,
+      ContentType: 'application/pdf',
+      ContentDisposition: `attachment; filename="${filename}"`,
+      CacheControl: 'private, max-age=3600',
+    }));
+
+    const downloadUrl = await getSignedUrl(
+      storage.client,
+      new GetObjectCommand({
+        Bucket: storage.bucket,
+        Key: key,
+        ResponseContentType: 'application/pdf',
+        ResponseContentDisposition: `attachment; filename="${filename}"`,
+      }),
+      { expiresIn: 3600 },
+    );
+
+    return NextResponse.json({
+      success: true,
+      filename,
+      size: pdf.byteLength,
+      expiresIn: 3600,
+      downloadUrl,
+    }, {
       status: 200,
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${filename}"`,
-        'Content-Length': String(pdf.byteLength),
-        'Cache-Control': 'private, no-store, max-age=0',
-      },
+      headers: { 'Cache-Control': 'private, no-store, max-age=0' },
     });
   } catch (error: any) {
     console.error('[FILIPETA_PDF_ERROR]', error?.message || error);
