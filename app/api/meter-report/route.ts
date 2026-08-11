@@ -108,6 +108,26 @@ export async function GET(req: NextRequest): Promise<Response> {
     const drById: Record<string, any> = {};
     dealershipReadings.forEach(dr => { drById[dr.id] = dr; });
 
+    // Relatórios antigos/importados podem não guardar dealershipReadingId,
+    // mas ainda pertencem ao mesmo ciclo do condomínio. Nesses casos, use a
+    // DealershipReading do mês/ano/complexo (e, quando disponível, do mesmo
+    // tipo de utilitário) para manter as datas de leitura no payload.
+    const dealershipReadingsByKey: Record<string, any[]> = {};
+    dealershipReadings.forEach(dr => {
+      const key = `${dr.complexId}|${dr.monthRef}|${dr.yearRef}`;
+      if (!dealershipReadingsByKey[key]) dealershipReadingsByKey[key] = [];
+      dealershipReadingsByKey[key].push(dr);
+    });
+
+    const resolveDealershipReading = (report: any) => {
+      if (report.dealershipReadingId && drById[report.dealershipReadingId]) {
+        return drById[report.dealershipReadingId];
+      }
+      const key = `${report.complexId || complexId || ''}|${report.monthRef}|${report.yearRef}`;
+      const candidates = dealershipReadingsByKey[key] || [];
+      return candidates.find(dr => !report.utilityType || dr.type === report.utilityType) || candidates[0] || null;
+    };
+
     // Historical data
     const apartmentIds = [...new Set(currentReports.map(r => r.apartmentId))];
     const firstReport = currentReports[0];
@@ -140,9 +160,65 @@ export async function GET(req: NextRequest): Promise<Response> {
       })
     );
 
+    // Alguns relatórios importados não possuem lastReadingId, embora a leitura
+    // do apartamento exista na coleção Readings. A Filipeta já usa este fallback;
+    // o endpoint agregado precisa fazer o mesmo para não devolver datas pendentes.
+    const reportsWithoutLastReading = currentReports.filter(r => !r.lastReading);
+    const fallbackReadingsByApartment: Record<string, any> = {};
+
+    if (reportsWithoutLastReading.length > 0) {
+      const fallbackReadings = await prisma.reading.findMany({
+        where: {
+          apartmentId: { in: reportsWithoutLastReading.map(r => r.apartmentId) },
+          monthRef: monthRef.padStart(2, '0'),
+          yearRef,
+          OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+        },
+        orderBy: { readAt: 'desc' },
+        select: {
+          id: true,
+          apartmentId: true,
+          urlCover: true,
+          reading: true,
+          readAt: true,
+          readAtDate: true,
+          monthRef: true,
+          yearRef: true,
+          meterId: true,
+          isManualReading: true,
+          isPreReading: true,
+          registerName: true,
+          nextReadingDate: true,
+          readingDate: true,
+          readingDateNext: true,
+        },
+      });
+
+      // Como a consulta está ordenada pela leitura mais recente, manter apenas
+      // a primeira por apartamento reproduz o comportamento da Filipeta.
+      for (const reading of fallbackReadings) {
+        if (!fallbackReadingsByApartment[reading.apartmentId!]) {
+          fallbackReadingsByApartment[reading.apartmentId!] = reading;
+        }
+      }
+    }
+
     const enrichedReports = currentReports.map(r => {
+      // Usa a leitura vinculada ao relatório; quando o vínculo não existe,
+      // usa a leitura mais recente do mesmo apartamento e período.
+      let lastReading: any = r.lastReading ?? fallbackReadingsByApartment[r.apartmentId] ?? null;
+
+      // Normaliza campos legados para que o frontend possa usar a mesma fonte
+      // independentemente de a leitura ter vindo do vínculo ou do fallback.
+      if (lastReading) {
+        lastReading = {
+          ...lastReading,
+          readAtDate: lastReading.readAtDate || lastReading.readingDate || (lastReading.readAt ? new Date(lastReading.readAt).toISOString() : null),
+          nextReadingDate: lastReading.nextReadingDate || lastReading.readingDateNext || null,
+        };
+      }
+
       // Converte coverBase64 (Buffer) para data URL se não houver urlCover
-      let lastReading: any = r.lastReading;
       if (lastReading) {
         if (!lastReading.urlCover && lastReading.coverBase64) {
           try {
@@ -167,7 +243,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         ...r,
         lastReading,
         history: historicalByApartment[r.apartmentId] || [],
-        dealershipReading: r.dealershipReadingId ? drById[r.dealershipReadingId] || null : null,
+        dealershipReading: resolveDealershipReading(r),
       };
     });
 
