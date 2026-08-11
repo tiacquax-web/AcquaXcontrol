@@ -55,10 +55,13 @@ const MeterPhoto: React.FC<MeterPhotoProps> = ({ urlCover }) => {
       <img
         src={src}
         alt="Foto do medidor"
+        width={240}
+        height={160}
         loading="lazy"
         decoding="async"
+        fetchPriority="low"
         onError={() => setImgError(true)}
-        style={{ width: '100%', maxHeight: '160px', objectFit: 'contain', display: 'block' }}
+        style={{ width: '100%', maxWidth: '240px', height: '160px', objectFit: 'contain', display: 'block' }}
       />
     </div>
   );

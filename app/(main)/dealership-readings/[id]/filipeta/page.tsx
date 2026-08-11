@@ -1,9 +1,9 @@
 // app/(main)/dealership-readings/[id]/filipeta/page.tsx
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { Printer, Download, AlertTriangle, LoaderCircle, X, Search } from 'lucide-react';
+import { Printer, AlertTriangle, LoaderCircle, X, Search } from 'lucide-react';
 
 import {
   useDealershipFilipetaData,
@@ -16,9 +16,6 @@ import { usePermissionChecker } from '@/hooks/use-permission-checker';
 import SelectApartment from '@/components/ComboboxApartment';
 import BlocksCombobox from '@/components/ComboboxBlock';
 import type { Block, Apartment } from '@prisma/client';
-
-const BROWSER_PRINT_MAX_REPORTS = 20;
-const SCREEN_PAGE_SIZE = 30;
 
 const FilipetaPage = () => {
   const params = useParams();
@@ -61,76 +58,17 @@ const FilipetaPage = () => {
   });
 
   const { hasPermission, loading: permissionsLoading } = usePermissionChecker();
-  const [pdfLoading, setPdfLoading] = useState(false);
-  const [pdfError, setPdfError] = useState<string | null>(null);
-  const [screenPage, setScreenPage] = useState(0);
 
-  const totalScreenPages = data ? Math.ceil(data.list.length / SCREEN_PAGE_SIZE) : 0;
-  const visibleReports = data
-    ? data.list.slice(screenPage * SCREEN_PAGE_SIZE, (screenPage + 1) * SCREEN_PAGE_SIZE)
-    : [];
-
-  const handleDownloadPdf = async () => {
-    if (!data || data.list.length === 0 || pdfLoading) return;
-
-    setPdfLoading(true);
-    setPdfError(null);
-    const qs = new URLSearchParams();
-    if (order) qs.set('order', order);
-    if (filterBlockId) qs.set('block_id', filterBlockId);
-    if (filterAptId) qs.set('apartment_id', filterAptId);
-    if (description) qs.set('description', description);
-
-    try {
-      // O servidor gera e envia o PDF ao S3. A resposta contém só o link
-      // temporário, portanto o tablet não recebe o arquivo no corpo da API.
-      const response = await fetch(`/api/dealership-readings/${encodeURIComponent(String(id))}/filipeta/pdf?${qs.toString()}`, {
-        credentials: 'include',
-        cache: 'no-store',
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.downloadUrl) {
-        const detail = payload.detail ? ` ${payload.detail}` : '';
-        throw new Error(`${payload.error || 'Não foi possível gerar o PDF.'}${detail}`);
-      }
-
-      const link = document.createElement('a');
-      link.href = payload.downloadUrl;
-      link.rel = 'noopener';
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (error: any) {
-      setPdfError(error?.message || 'Não foi possível gerar o PDF completo.');
-    } finally {
-      setPdfLoading(false);
-    }
-  };
-
-  const handlePrint = () => {
-    if (!data || data.list.length === 0) return;
-
-    // A partir de 21 unidades, evita window.print(): o Android tenta montar
-    // todas as páginas e imagens na memória e pode encerrar o app de impressão.
-    if (data.list.length > BROWSER_PRINT_MAX_REPORTS) {
-      handleDownloadPdf();
-      return;
-    }
-
-    window.print();
-  };
+  const handlePrint = () => window.print();
 
   const hasFilters = !!(filterBlock || filterApartment);
 
   const clearFilters = () => {
-    setScreenPage(0);
     setFilterBlock(undefined);
     setFilterApartment(undefined);
   };
 
   const handleSearch = () => {
-    setScreenPage(0);
     setFetchEnabled(true);
     setFetchKey(k => k + 1);
   };
@@ -195,7 +133,7 @@ const FilipetaPage = () => {
 
     return (
       <div id="filipeta-body" className="space-y-0">
-        {visibleReports.map(report => (
+        {data.list.map(report => (
           <FilipetaGridReport
             key={report.id || report.apartmentId}
             report={report}
@@ -203,29 +141,6 @@ const FilipetaPage = () => {
             description={description}
           />
         ))}
-        {totalScreenPages > 1 && (
-          <div className="no-print flex flex-wrap items-center justify-center gap-3 py-4 text-sm">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={screenPage === 0}
-              onClick={() => setScreenPage(page => Math.max(0, page - 1))}
-            >
-              Anteriores
-            </Button>
-            <span className="text-muted-foreground">
-              Unidades {screenPage * SCREEN_PAGE_SIZE + 1}–{Math.min((screenPage + 1) * SCREEN_PAGE_SIZE, data.list.length)} de {data.list.length}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={screenPage >= totalScreenPages - 1}
-              onClick={() => setScreenPage(page => Math.min(totalScreenPages - 1, page + 1))}
-            >
-              Próximas
-            </Button>
-          </div>
-        )}
       </div>
     );
   };
@@ -236,29 +151,11 @@ const FilipetaPage = () => {
       <div id="print-header" className="no-print space-y-4 mb-6">
         <div className="flex justify-between items-center flex-wrap gap-3">
           <h1 className="text-2xl font-bold">Filipeta de Leitura</h1>
-          <div className="flex items-center gap-2">
-            {data && data.list.length > BROWSER_PRINT_MAX_REPORTS && (
-              <span className="text-xs text-muted-foreground text-right max-w-[280px]">
-                Esta quantidade será gerada como PDF no servidor para não travar o dispositivo.
-              </span>
-            )}
-            <Button onClick={handlePrint} disabled={!data || data.list.length === 0 || pdfLoading}>
-              {data && data.list.length > BROWSER_PRINT_MAX_REPORTS ? (
-                <Download className="mr-2 h-4 w-4" />
-              ) : (
-                <Printer className="mr-2 h-4 w-4" />
-              )}
-              {pdfLoading
-                ? 'Gerando PDF no servidor...'
-                : data && data.list.length > BROWSER_PRINT_MAX_REPORTS
-                  ? 'Baixar PDF completo'
-                  : 'Imprimir'}
-            </Button>
-          </div>
+          <Button onClick={handlePrint} disabled={!data || data.list.length === 0}>
+            <Printer className="mr-2 h-4 w-4" />
+            Imprimir
+          </Button>
         </div>
-        {pdfError && data && data.list.length > BROWSER_PRINT_MAX_REPORTS && (
-          <p className="text-sm text-red-600" role="alert">{pdfError}</p>
-        )}
 
         {/* ── Filtros: Bloco + Apartamento + Botão Buscar ───────────────── */}
         <div className="border rounded-lg p-4 bg-card shadow-sm space-y-3">
