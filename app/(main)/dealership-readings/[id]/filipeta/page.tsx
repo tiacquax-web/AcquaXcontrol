@@ -1,7 +1,7 @@
 // app/(main)/dealership-readings/[id]/filipeta/page.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Printer, AlertTriangle, LoaderCircle, X, Search } from 'lucide-react';
 
@@ -16,6 +16,8 @@ import { usePermissionChecker } from '@/hooks/use-permission-checker';
 import SelectApartment from '@/components/ComboboxApartment';
 import BlocksCombobox from '@/components/ComboboxBlock';
 import type { Block, Apartment } from '@prisma/client';
+
+const PRINT_BATCH_SIZE = 20;
 
 const FilipetaPage = () => {
   const params = useParams();
@@ -58,17 +60,50 @@ const FilipetaPage = () => {
   });
 
   const { hasPermission, loading: permissionsLoading } = usePermissionChecker();
+  const [printBatch, setPrintBatch] = useState<number | null>(null);
 
-  const handlePrint = () => window.print();
+  const totalPrintBatches = data ? Math.ceil(data.list.length / PRINT_BATCH_SIZE) : 0;
+  const reportsToRender = data && printBatch !== null
+    ? data.list.slice(printBatch * PRINT_BATCH_SIZE, (printBatch + 1) * PRINT_BATCH_SIZE)
+    : data?.list ?? [];
+
+  // O Chrome mobile pode encerrar a aba quando window.print() tenta montar
+  // centenas de páginas e imagens de uma única vez. Após o diálogo fechar,
+  // avançamos para o próximo lote sem abrir outro diálogo automaticamente.
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      setPrintBatch(current => {
+        if (current === null || totalPrintBatches <= 1) return null;
+        return current + 1 < totalPrintBatches ? current + 1 : null;
+      });
+    };
+
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, [totalPrintBatches]);
+
+  const handlePrint = () => {
+    if (!data || data.list.length === 0) return;
+
+    if (data.list.length > PRINT_BATCH_SIZE && printBatch === null) {
+      setPrintBatch(0);
+      window.setTimeout(() => window.print(), 180);
+      return;
+    }
+
+    window.print();
+  };
 
   const hasFilters = !!(filterBlock || filterApartment);
 
   const clearFilters = () => {
+    setPrintBatch(null);
     setFilterBlock(undefined);
     setFilterApartment(undefined);
   };
 
   const handleSearch = () => {
+    setPrintBatch(null);
     setFetchEnabled(true);
     setFetchKey(k => k + 1);
   };
@@ -133,7 +168,7 @@ const FilipetaPage = () => {
 
     return (
       <div id="filipeta-body" className="space-y-0">
-        {data.list.map(report => (
+        {reportsToRender.map(report => (
           <FilipetaGridReport
             key={report.id || report.apartmentId}
             report={report}
@@ -151,10 +186,19 @@ const FilipetaPage = () => {
       <div id="print-header" className="no-print space-y-4 mb-6">
         <div className="flex justify-between items-center flex-wrap gap-3">
           <h1 className="text-2xl font-bold">Filipeta de Leitura</h1>
-          <Button onClick={handlePrint} disabled={!data || data.list.length === 0}>
-            <Printer className="mr-2 h-4 w-4" />
-            Imprimir
-          </Button>
+          <div className="flex items-center gap-2">
+            {printBatch !== null && totalPrintBatches > 1 && (
+              <span className="text-xs text-muted-foreground text-right max-w-[220px]">
+                Lote {printBatch + 1} de {totalPrintBatches}. Após fechar a impressão, clique novamente para o próximo lote.
+              </span>
+            )}
+            <Button onClick={handlePrint} disabled={!data || data.list.length === 0}>
+              <Printer className="mr-2 h-4 w-4" />
+              {printBatch !== null && totalPrintBatches > 1
+                ? `Imprimir lote ${printBatch + 1}/${totalPrintBatches}`
+                : 'Imprimir'}
+            </Button>
+          </div>
         </div>
 
         {/* ── Filtros: Bloco + Apartamento + Botão Buscar ───────────────── */}
