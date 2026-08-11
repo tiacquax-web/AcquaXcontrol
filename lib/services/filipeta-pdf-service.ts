@@ -27,8 +27,8 @@ const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
 const MARGIN = 24;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
-const PHOTO_BATCH_SIZE = 12;
-const PHOTO_CONCURRENCY = 6;
+const PHOTO_BATCH_SIZE = 8;
+const PHOTO_CONCURRENCY = 2;
 const IMAGE_TIMEOUT_MS = 7000;
 
 function text(value: unknown, fallback = 'ref. pend.') {
@@ -111,9 +111,9 @@ async function optimizeImage(url: string | null | undefined, baseUrl?: string): 
 
     return await sharp(input)
       .rotate()
-      .resize({ width: 420, height: 420, fit: 'inside', withoutEnlargement: true })
+      .resize({ width: 320, height: 320, fit: 'inside', withoutEnlargement: true })
       .flatten({ background: '#ffffff' })
-      .jpeg({ quality: 65, progressive: true, mozjpeg: true })
+      .jpeg({ quality: 55, progressive: true, mozjpeg: true })
       .toBuffer();
   } catch (error) {
     console.warn('[Filipeta PDF] image skipped:', error instanceof Error ? error.message : error);

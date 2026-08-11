@@ -90,7 +90,8 @@ const FilipetaPage = () => {
       });
       const payload = await response.json();
       if (!response.ok || !payload.downloadUrl) {
-        throw new Error(payload.error || 'Não foi possível gerar o PDF.');
+        const detail = payload.detail ? ` ${payload.detail}` : '';
+        throw new Error(`${payload.error || 'Não foi possível gerar o PDF.'}${detail}`);
       }
 
       const link = document.createElement('a');

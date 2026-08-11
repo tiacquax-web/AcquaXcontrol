@@ -18,7 +18,7 @@ function getPdfStorageConfig() {
     || process.env.GL_ACESS_KEY_ID;
   const secretAccessKey = process.env.FILIPETA_PDF_S3_SECRET_ACCESS_KEY
     || process.env.GL_S3_SECRET_ACCESS_KEY
-    || process.env.GL_SECRET_ACESS_KEY;
+    || process.env.GL_S3_SECRET_ACESS_KEY;
 
   if (!region || !bucket || !accessKeyId || !secretAccessKey) {
     throw new Error('Configuração S3 para PDF ausente. Configure FILIPETA_PDF_S3_* ou reutilize as credenciais GL_S3_* com permissão de escrita.');
@@ -45,6 +45,8 @@ export async function GET(
     return NextResponse.json({ error: 'Dealership reading id is required' }, { status: 400 });
   }
 
+  let stage = 'validar dados da Filipeta';
+
   try {
     // Reutiliza a mesma rota de dados da Filipeta para manter filtros,
     // permissões e histórico idênticos à visualização atual.
@@ -55,6 +57,7 @@ export async function GET(
       if (value) dataUrl.searchParams.set(key, value);
     }
 
+    stage = 'carregar dados da Filipeta';
     const dataResponse = await fetch(dataUrl, {
       method: 'GET',
       headers: {
@@ -77,6 +80,7 @@ export async function GET(
     }
 
     const description = incoming.get('description');
+    stage = 'gerar PDF';
     const pdf = await generateFilipetaPdf({
       reports: data.list,
       dealershipReading: data.dealershipReading,
@@ -85,10 +89,12 @@ export async function GET(
     });
 
     const filename = `filipetas-${data.dealershipReading?.yearRef || 'leitura'}-${String(data.dealershipReading?.monthRef || '').padStart(2, '0')}.pdf`;
+    stage = 'configurar armazenamento S3';
     const storage = getPdfStorageConfig();
     const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '');
     const key = `exports/filipetas/${userId}/${safeId}-${Date.now()}.pdf`;
 
+    stage = 'enviar PDF ao S3';
     await storage.client.send(new PutObjectCommand({
       Bucket: storage.bucket,
       Key: key,
@@ -98,6 +104,7 @@ export async function GET(
       CacheControl: 'private, max-age=3600',
     }));
 
+    stage = 'criar link temporário';
     const downloadUrl = await getSignedUrl(
       storage.client,
       new GetObjectCommand({
@@ -120,7 +127,13 @@ export async function GET(
       headers: { 'Cache-Control': 'private, no-store, max-age=0' },
     });
   } catch (error: any) {
-    console.error('[FILIPETA_PDF_ERROR]', error?.message || error);
-    return NextResponse.json({ error: 'Erro ao gerar o PDF das filipetas.' }, { status: 500 });
+    const errorName = error?.name || error?.Code || 'ErroDesconhecido';
+    const rawMessage = error?.message || String(error);
+    const safeMessage = rawMessage.length > 240 ? `${rawMessage.slice(0, 237)}...` : rawMessage;
+    console.error('[FILIPETA_PDF_ERROR]', { stage, errorName, message: rawMessage, stack: error?.stack });
+    return NextResponse.json({
+      error: `Falha ao ${stage}.`,
+      detail: `${errorName}: ${safeMessage}`,
+    }, { status: 500 });
   }
 }
