@@ -55,13 +55,14 @@ const MeterPhoto: React.FC<MeterPhotoProps> = ({ urlCover }) => {
       <img
         src={src}
         alt="Foto do medidor"
-        width={240}
-        height={160}
+        width={320}
+        height={220}
         loading="lazy"
         decoding="async"
         fetchPriority="low"
         onError={() => setImgError(true)}
-        style={{ width: '100%', maxWidth: '240px', height: '160px', objectFit: 'contain', display: 'block' }}
+        className="filipeta-meter-photo"
+        style={{ width: '100%', maxWidth: '320px', height: '220px', objectFit: 'contain', display: 'block' }}
       />
     </div>
   );
@@ -150,7 +151,7 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
   const monthRefStr = String(report.monthRef).padStart(2, '0');
 
   return (
-    <div className="filipeta-grid-report bg-white p-0 break-inside-avoid-page" style={{ fontSize: '11pt' }}>
+    <div className="filipeta-grid-report w-full max-w-full min-w-0 overflow-hidden bg-white p-0 break-inside-avoid-page" style={{ fontSize: '11pt' }}>
       {/* MAIN CONTAINER: Logo + Info on left, Meter photo on right */}
       <div className="border-2 border-b-0 border-black">
         
@@ -170,7 +171,7 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
           </div>
 
           {/* Middle: Company and Complex Info */}
-          <div className="border-r-2 border-black py-1 px-2">
+          <div className="min-w-0 border-r-2 border-black py-1 px-2 break-words">
             <p className="font-bold text-xs leading-tight">{companyName}</p>
             <p className="font-bold text-xs leading-tight">{complexName}</p>
             <p className="text-xs leading-tight">Bloco {blockName}</p>
@@ -184,7 +185,7 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
           </div>
 
           {/* Right: IDs and Contact */}
-          <div className="py-1 px-2">
+          <div className="min-w-0 py-1 px-2 break-words">
             <div className="grid grid-cols-2 gap-x-1 text-xs">
               <div className="border-r-2 border-black pr-2">
                 <p className="font-bold leading-tight">Emitido em:</p>
@@ -214,12 +215,12 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
           </div>
 
           {/* Right: All Information */}
-          <div className="col-span-2">
+          <div className="col-span-2 min-w-0 max-w-full overflow-hidden">
             
             {/* CONSUMPTION HISTORY TABLE */}
             <div className="border-b-2 border-black">
               <p className="font-bold text-xs py-0.5 px-1 border-b-2 border-black bg-gray-100 leading-tight">HISTÓRICO DE CONSUMO</p>
-              <table className="w-full text-xs border-collapse">
+              <table className="filipeta-data-table w-full max-w-full text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-black">
                     <th className="border-r border-black py-0.5 px-1 text-left font-bold">Mês</th>
@@ -269,7 +270,7 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
 
             {/* READING DETAILS TABLE */}
             <div>
-              <table className="w-full text-xs border-collapse">
+              <table className="filipeta-data-table w-full max-w-full text-xs border-collapse">
                 <thead>
                   <tr className="border-b-2 border-black">
                     <th className="border-r border-black py-0.5 px-1 font-bold text-left leading-tight">LEITURA ANT.<br/>m³</th>

@@ -210,10 +210,53 @@
   .filipeta-grid-report {
     page-break-after: always;
     page-break-inside: avoid;
-    margin: 0;
-    padding: 0;
+    break-inside: avoid-page;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
     box-shadow: none !important;
     border: 1px solid black;
+  }
+
+  /* Evita que o conteúdo mínimo das colunas force a tabela para fora do A4. */
+  .filipeta-grid-report > div,
+  .filipeta-grid-report .grid,
+  .filipeta-grid-report .col-span-2,
+  .filipeta-grid-report table,
+  .filipeta-grid-report tbody,
+  .filipeta-grid-report thead,
+  .filipeta-grid-report tr {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .filipeta-grid-report table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .filipeta-grid-report th,
+  .filipeta-grid-report td {
+    min-width: 0 !important;
+    max-width: 0 !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+  }
+
+  .filipeta-grid-report .filipeta-meter-photo {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 220px !important;
+    min-height: 180px !important;
+    object-fit: contain !important;
   }
 
   /* ── Filipeta Medição (MeterReportCard) — impressão ── */
@@ -292,6 +335,12 @@
   /* Filtros e elementos interativos do levantamento: ocultos no print */
   .print\:hidden {
     display: none !important;
+  }
+
+  .filipeta-grid-report a,
+  .filipeta-grid-report p {
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
   }
 
   /* Last report should not have page break */
