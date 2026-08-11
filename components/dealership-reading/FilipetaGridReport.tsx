@@ -76,7 +76,7 @@ interface FilipetaGridReportProps {
   description?: string | null;
 }
 
-const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealershipReading, description }) => {
+const FilipetaGridReport = React.memo<FilipetaGridReportProps>(({ report, dealershipReading, description }) => {
   const { apartment, lastReading, history } = report;
   const complex = apartment?.block?.complex as any;
   const company = complex?.company as any;
@@ -303,6 +303,8 @@ const FilipetaGridReport: React.FC<FilipetaGridReportProps> = ({ report, dealers
       </div>
     </div>
   );
-};
+});
+
+FilipetaGridReport.displayName = 'FilipetaGridReport';
 
 export default FilipetaGridReport;

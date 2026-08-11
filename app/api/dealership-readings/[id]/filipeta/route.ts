@@ -41,7 +41,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const dealershipReading = await prisma.dealershipReading.findUnique({
       where: { id: dealershipReadingId },
-      include: { complex: { include: { company: true } }, dealership: true },
+      select: {
+        id: true,
+        type: true,
+        readingDate: true,
+        readingDateNext: true,
+        totalDays: true,
+        diffCost: true,
+        monthRef: true,
+        yearRef: true,
+        complexId: true,
+        complex: {
+          select: {
+            id: true,
+            socialName: true,
+            aliasName: true,
+            zipcode: true,
+            street: true,
+            number: true,
+            neighborhood: true,
+            state: true,
+            city: true,
+            company: { select: { id: true, name: true, socialName: true } },
+          },
+        },
+        dealership: { select: { id: true, name: true, service: true } },
+      },
     });
 
     if (!dealershipReading) {
@@ -76,8 +101,41 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         dealershipReadingId: dealershipReadingId,
         ...(apartmentFilter ? { apartment: apartmentFilter } : {}),
       },
-      include: {
-        apartment: { include: { block: { include: { complex: { include: { company: true } } } } } },
+      select: {
+        id: true,
+        monthRef: true,
+        yearRef: true,
+        consumption: true,
+        partial: true,
+        totalUnit: true,
+        apartmentId: true,
+        lastReadingId: true,
+        apartment: {
+          select: {
+            id: true,
+            name: true,
+            block: {
+              select: {
+                id: true,
+                name: true,
+                complex: {
+                  select: {
+                    id: true,
+                    socialName: true,
+                    aliasName: true,
+                    zipcode: true,
+                    street: true,
+                    number: true,
+                    neighborhood: true,
+                    state: true,
+                    city: true,
+                    company: { select: { id: true, name: true, socialName: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
         // Nunca enviar coverBase64: uma única resposta pode conter centenas de
         // imagens originais e causar estouro de memória no tablet/navegador.
         lastReading: {
@@ -139,9 +197,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           yearRef: ref.yearRef,
         })),
       },
-      include: {
-        // O histórico só precisa de leitura e data; fotos históricas não são
-        // usadas na filipeta e aumentam muito o payload.
+      select: {
+        id: true,
+        monthRef: true,
+        yearRef: true,
+        consumption: true,
+        apartmentId: true,
         lastReading: {
           select: {
             reading: true,
