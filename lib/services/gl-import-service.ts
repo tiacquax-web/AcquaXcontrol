@@ -108,7 +108,7 @@ export class GlImportService {
    * Ex:      events/2026/06/11/
    */
   static buildDayPrefix(now: Date): string {
-    const prefix = process.env.GL_S3_PATH_PREFIX ?? 'events';
+    const prefix = (process.env.GL_S3_PATH_PREFIX ?? 'events').replace(/^\/+|\/+$/g, '');
     const yyyy = now.getUTCFullYear();
     const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
     const dd = String(now.getUTCDate()).padStart(2, '0');

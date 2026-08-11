@@ -34,7 +34,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const accessKeyId = process.env.GL_S3_ACCESS_KEY_ID ?? process.env.GL_ACESS_KEY_ID;
     const secretAccessKey = process.env.GL_S3_SECRET_ACCESS_KEY ?? process.env.GL_S3_SECRET_ACESS_KEY;
     const bucket = process.env.GL_S3_BUCKET;
-    const pathPrefix = process.env.GL_S3_PATH_PREFIX ?? 'events';
+    const pathPrefix = (process.env.GL_S3_PATH_PREFIX ?? 'events').replace(/^\/+|\/+$/g, '');
 
     const envCheck = {
       GL_S3_REGION: region ? `✅ ${region}` : '❌ AUSENTE',
