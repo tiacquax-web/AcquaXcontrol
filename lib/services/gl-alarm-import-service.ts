@@ -250,10 +250,32 @@ export class GlAlarmImportService {
     if (alarmsToCreate.length === 0) return { imported: 0, errors: 0 };
 
     try {
-      const result = await prisma.glAlarm.createMany({ data: alarmsToCreate });
+      // O fornecedor pode manter os mesmos arquivos disponíveis por vários dias.
+      // Deduplicar por remoteId + código + instante evita alarmes e e-mails repetidos
+      // quando o cron ou uma importação retroativa reprocessa o mesmo período.
+      const remoteIds = [...new Set(alarmsToCreate.map(alarm => alarm.remoteId).filter(Boolean))];
+      const existingAlarms = remoteIds.length > 0
+        ? await prisma.glAlarm.findMany({
+            where: { remoteId: { in: remoteIds }, deletedAt: null },
+            select: { remoteId: true, alarmCode: true, alarmAt: true },
+          })
+        : [];
+      const alarmKey = (alarm: { remoteId: string; alarmCode: string; alarmAt: Date }) =>
+        `${alarm.remoteId}|${alarm.alarmCode}|${new Date(alarm.alarmAt).getTime()}`;
+      const knownKeys = new Set(existingAlarms.map(alarmKey));
+      const uniqueAlarms = alarmsToCreate.filter(alarm => {
+        const key = alarmKey(alarm);
+        if (knownKeys.has(key)) return false;
+        knownKeys.add(key);
+        return true;
+      });
 
-      // Notificar moradores sobre alarmes vinculados ao seu medidor
-      GlAlarmImportService.notifyResidentsOfAlarms(alarmsToCreate).catch(err =>
+      if (uniqueAlarms.length === 0) return { imported: 0, errors: 0 };
+
+      const result = await prisma.glAlarm.createMany({ data: uniqueAlarms });
+
+      // Notificar somente alarmes realmente novos.
+      GlAlarmImportService.notifyResidentsOfAlarms(uniqueAlarms).catch(err =>
         console.error('[GL Alarm Import] Erro ao notificar moradores:', err)
       );
 

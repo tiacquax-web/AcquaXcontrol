@@ -26,6 +26,24 @@ export const maxDuration = 120; // 2 min — suficiente para 50 emails
 const MAX_BATCH = 50;
 const MAX_ATTEMPTS = 3;
 
+function previousMonth(monthRef: string, yearRef: string) {
+  const date = new Date(Number(yearRef), Number(monthRef) - 2, 1);
+  return { monthRef: String(date.getMonth() + 1).padStart(2, '0'), yearRef: String(date.getFullYear()) };
+}
+
+function reportKey(apartmentId: string, monthRef: string, yearRef: string) {
+  return `${apartmentId}:${yearRef}:${monthRef.padStart(2, '0')}`;
+}
+
+function derivePeriodStart(value: string | null | undefined, totalDays: number | null | undefined) {
+  if (!value || totalDays == null || !Number.isFinite(Number(totalDays))) return undefined;
+  const raw = String(value);
+  const date = new Date(raw.includes('T') ? raw : `${raw.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return undefined;
+  date.setDate(date.getDate() - Number(totalDays));
+  return date.toISOString().slice(0, 10);
+}
+
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // ── Autenticação ──────────────────────────────────────────────────────────
   // CRON_SECRET é opcional: se configurado, valida o Bearer token enviado
@@ -73,7 +91,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         where: { id: { in: reportIds } },
         include: {
           lastReading: {
-            select: { readAtDate: true, nextReadingDate: true, readAt: true },
+            select: { reading: true, readAtDate: true, nextReadingDate: true, readAt: true },
           },
         },
       }) : [],
@@ -90,6 +108,29 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const reportMap = new Map(reports.map(r => [r.id, r]));
     const apartmentMap = new Map(apartments.map(a => [a.id, a]));
     const complexMap = new Map(complexes.map(c => [c.id, c]));
+
+    // Dados da conta do condomínio e do relatório anterior alimentam o extrato rico.
+    const dealershipReadingIds = [...new Set(reports.map(r => r.dealershipReadingId).filter(Boolean))] as string[];
+    const previousRefs = pendingJobs.map(job => {
+      const ref = previousMonth(job.monthRef, job.yearRef);
+      return { apartmentId: job.apartmentId, ...ref };
+    }).filter(ref => ref.apartmentId) as Array<{ apartmentId: string; monthRef: string; yearRef: string }>;
+    const [dealershipReadings, previousReports] = await Promise.all([
+      dealershipReadingIds.length > 0
+        ? prisma.dealershipReading.findMany({ where: { id: { in: dealershipReadingIds } } })
+        : [],
+      previousRefs.length > 0
+        ? prisma.apartmentConsumptionReport.findMany({
+            where: {
+              OR: previousRefs.map(ref => ({ apartmentId: ref.apartmentId, monthRef: ref.monthRef, yearRef: ref.yearRef })),
+              AND: [{ OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }],
+            },
+            include: { lastReading: { select: { reading: true, readAtDate: true } } },
+          })
+        : [],
+    ]);
+    const dealershipMap = new Map(dealershipReadings.map(reading => [reading.id, reading]));
+    const previousReportMap = new Map(previousReports.map(report => [reportKey(report.apartmentId, report.monthRef, report.yearRef), report]));
 
     // Verificar alertas ativos para os apartamentos (GlAlarm)
     let alarmCounts: Record<string, number> = {};
@@ -157,18 +198,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
         const blockName = apartment.block?.name || '';
         const alertCount = alarmCounts[job.apartmentId || ''] || 0;
+        const dealership = report.dealershipReadingId ? dealershipMap.get(report.dealershipReadingId) : null;
+        const previousRef = previousMonth(job.monthRef, job.yearRef);
+        const previousReport = job.apartmentId
+          ? previousReportMap.get(reportKey(job.apartmentId, previousRef.monthRef, previousRef.yearRef))
+          : null;
 
-        // Calcular período de consumo
-        const readingDate = report.lastReading?.readAtDate || null;
-        let periodStart: string | undefined;
-        let periodEnd: string | undefined;
-
-        if (readingDate) {
-          periodEnd = String(readingDate).split(/[ T]/)[0];
-          // Buscar período inicial: data da leitura anterior ou subtrair 30 dias
-          // Por simplicidade, usar o readingDate do dealershipReading
-          periodStart = undefined; // será calculado pelo template se não fornecido
-        }
+        // Período: prioriza as leituras reais e usa o total de dias da conta como fallback.
+        const readingDate = report.lastReading?.readAtDate || dealership?.readingDate || null;
+        const periodEnd = readingDate ? String(readingDate).split(/[ T]/)[0] : undefined;
+        const periodStart = previousReport?.lastReading?.readAtDate
+          ? String(previousReport.lastReading.readAtDate).split(/[ T]/)[0]
+          : derivePeriodStart(periodEnd, dealership?.totalDays);
+        const nextReadingDate = report.lastReading?.nextReadingDate || dealership?.readingDateNext || undefined;
 
         // Buscar análise de consumo histórico (comparação da unidade consigo mesma)
         let analysis = undefined;
@@ -192,16 +234,22 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           yearRef: job.yearRef,
           consumption: report.consumption,
           totalConsumption: report.totalConsumption ?? undefined,
+          initialReading: previousReport?.lastReading?.reading ?? null,
+          finalReading: report.lastReading?.reading ?? null,
           consumptionCost: report.consumptionCost,
           sewageCost: report.sewageCost,
           totalUnit: report.totalUnit,
+          rateioValue: report.partial ?? null,
           kiteCarConsumption: report.kiteCarConsumption ?? undefined,
           kiteCarCost: report.kiteCarCost ?? undefined,
           utilityType: report.utilityType || undefined,
-          readingDate: report.lastReading?.readAtDate ? String(report.lastReading.readAtDate) : undefined,
-          nextReadingDate: report.lastReading?.nextReadingDate || undefined,
+          readingDate: readingDate ? String(readingDate) : undefined,
+          nextReadingDate,
           periodStart,
           periodEnd,
+          condominiumConsumption: dealership?.dealershipConsumption ?? null,
+          condominiumBillValue: dealership?.totalValue ?? null,
+          consumptionPerEconomy: dealership?.average ?? null,
           hasAlerts: alertCount > 0,
           alertMessage: alertCount > 0
             ? `Sua unidade possui ${alertCount} alerta(s) recente(s) do sistema de monitoramento. Acesse o sistema para visualizar os detalhes.`

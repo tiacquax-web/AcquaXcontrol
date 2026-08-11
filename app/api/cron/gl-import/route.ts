@@ -57,52 +57,93 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   // ── Execução da importação ────────────────────────────────────────────────
   const now = new Date();
-  console.log(`[GL Cron] Iniciando importação GL em ${now.toISOString()}`);
+  const configuredLookback = Number.parseInt(process.env.GL_IMPORT_LOOKBACK_DAYS ?? '7', 10);
+  const lookbackDays = Math.min(Math.max(Number.isFinite(configuredLookback) ? configuredLookback : 7, 0), 14);
+  const dates: Date[] = [];
+  for (let offset = lookbackDays; offset >= 0; offset -= 1) {
+    const date = new Date(now);
+    date.setUTCDate(date.getUTCDate() - offset);
+    dates.push(date);
+  }
+  console.log(`[GL Cron] Iniciando importação GL em ${now.toISOString()} | janela=${lookbackDays + 1} dias`);
 
   try {
-    const result = await GlImportService.runImport(now);
+    let success = true;
+    let filesFound = 0;
+    let filesProcessed = 0;
+    let rowsTotal = 0;
+    let imported = 0;
+    let skipped = 0;
+    let errors = 0;
+    let alarmFilesFound = 0;
+    let alarmImported = 0;
+    let alarmErrors = 0;
+    const byDay: Array<Record<string, unknown>> = [];
 
-    const status = result.success ? 200 : 500;
+    for (const date of dates) {
+      const dateLabel = date.toISOString().slice(0, 10);
+      const result = await GlImportService.runImport(date);
+      filesFound += result.filesFound;
+      filesProcessed += result.filesProcessed;
+      rowsTotal += result.rowsTotal;
+      imported += result.imported;
+      skipped += result.skipped;
+      errors += result.errors;
+      if (!result.success) success = false;
 
-    console.log(
-      `[GL Cron] Importação finalizada | success=${result.success} | ` +
-        `filesFound=${result.filesFound} | filesProcessed=${result.filesProcessed} | ` +
-        `rowsTotal=${result.rowsTotal} | imported=${result.imported} | ` +
-        `skipped=${result.skipped} | errors=${result.errors}`,
-    );
+      let alarmResult;
+      try {
+        alarmResult = await GlAlarmImportService.runImport(date);
+        alarmFilesFound += alarmResult.filesFound;
+        alarmImported += alarmResult.imported;
+        alarmErrors += alarmResult.errors;
+        if (!alarmResult.success) success = false;
+      } catch (alarmError: any) {
+        alarmErrors += 1;
+        success = false;
+        alarmResult = { success: false, filesFound: 0, imported: 0, errors: 1, error: alarmError.message };
+      }
 
-    // ── Alarmes GL (pasta alarms/) — independente do resultado das leituras ──────
-    let alarmResult;
-    try {
-      alarmResult = await GlAlarmImportService.runImport(now);
-      console.log(
-        `[GL Alarm Cron] Importação finalizada | success=${alarmResult.success} | ` +
-          `filesFound=${alarmResult.filesFound} | imported=${alarmResult.imported} | errors=${alarmResult.errors}`,
-      );
-    } catch (alarmError: any) {
-      console.error(`[GL Alarm Cron] Falha: ${alarmError.message}`);
-      alarmResult = { success: false, filesFound: 0, filesProcessed: 0, rowsTotal: 0, imported: 0, errors: 1, skipLog: [], error: alarmError.message };
-    }
-
-    return NextResponse.json(
-      {
-        success: result.success,
-        executedAt: now.toISOString(),
+      byDay.push({
+        date: dateLabel,
+        success: result.success && alarmResult.success,
         filesFound: result.filesFound,
         filesProcessed: result.filesProcessed,
         rowsTotal: result.rowsTotal,
         imported: result.imported,
         skipped: result.skipped,
         errors: result.errors,
-        ...(result.error ? { error: result.error } : {}),
         alarms: {
           filesFound: alarmResult.filesFound,
           imported: alarmResult.imported,
           errors: alarmResult.errors,
           ...(alarmResult.error ? { error: alarmResult.error } : {}),
         },
+        ...(result.error ? { error: result.error } : {}),
+      });
+    }
+
+    console.log(
+      `[GL Cron] Importação finalizada | success=${success} | days=${dates.length} | ` +
+        `filesFound=${filesFound} | imported=${imported} | errors=${errors} | alarmsImported=${alarmImported}`,
+    );
+
+    return NextResponse.json(
+      {
+        success,
+        executedAt: now.toISOString(),
+        lookbackDays,
+        daysProcessed: dates.length,
+        filesFound,
+        filesProcessed,
+        rowsTotal,
+        imported,
+        skipped,
+        errors,
+        alarms: { filesFound: alarmFilesFound, imported: alarmImported, errors: alarmErrors },
+        byDay,
       },
-      { status },
+      { status: success ? 200 : 500 },
     );
   } catch (error: any) {
     const message = error instanceof Error ? error.message : String(error);

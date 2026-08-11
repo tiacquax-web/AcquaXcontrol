@@ -12,6 +12,24 @@ export const maxDuration = 120;
 const MAX_BATCH = 100;
 const MAX_ATTEMPTS = 3;
 
+function previousMonth(monthRef: string, yearRef: string) {
+  const date = new Date(Number(yearRef), Number(monthRef) - 2, 1);
+  return { monthRef: String(date.getMonth() + 1).padStart(2, '0'), yearRef: String(date.getFullYear()) };
+}
+
+function reportKey(apartmentId: string, monthRef: string, yearRef: string) {
+  return `${apartmentId}:${yearRef}:${monthRef.padStart(2, '0')}`;
+}
+
+function derivePeriodStart(value: string | null | undefined, totalDays: number | null | undefined) {
+  if (!value || totalDays == null || !Number.isFinite(Number(totalDays))) return undefined;
+  const raw = String(value);
+  const date = new Date(raw.includes('T') ? raw : `${raw.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return undefined;
+  date.setDate(date.getDate() - Number(totalDays));
+  return date.toISOString().slice(0, 10);
+}
+
 /**
  * POST /api/user/trigger-emails
  * 
@@ -76,7 +94,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const [reports, apartments, complexes] = await Promise.all([
       reportIds.length > 0 ? prisma.apartmentConsumptionReport.findMany({
         where: { id: { in: reportIds } },
-        include: { lastReading: { select: { readAtDate: true, nextReadingDate: true, readAt: true } } },
+        include: { lastReading: { select: { reading: true, readAtDate: true, nextReadingDate: true, readAt: true } } },
       }) : [],
       apartmentIds.length > 0 ? prisma.apartment.findMany({
         where: { id: { in: apartmentIds } },
@@ -91,6 +109,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const reportMap = new Map(reports.map(r => [r.id, r]));
     const apartmentMap = new Map(apartments.map(a => [a.id, a]));
     const complexMap = new Map(complexes.map(c => [c.id, c]));
+
+    const dealershipReadingIds = [...new Set(reports.map(r => r.dealershipReadingId).filter(Boolean))] as string[];
+    const previousRefs = pendingJobs.map(job => {
+      const ref = previousMonth(job.monthRef, job.yearRef);
+      return { apartmentId: job.apartmentId, ...ref };
+    }).filter(ref => ref.apartmentId) as Array<{ apartmentId: string; monthRef: string; yearRef: string }>;
+    const [dealershipReadings, previousReports] = await Promise.all([
+      dealershipReadingIds.length > 0
+        ? prisma.dealershipReading.findMany({ where: { id: { in: dealershipReadingIds } } })
+        : [],
+      previousRefs.length > 0
+        ? prisma.apartmentConsumptionReport.findMany({
+            where: {
+              OR: previousRefs.map(ref => ({ apartmentId: ref.apartmentId, monthRef: ref.monthRef, yearRef: ref.yearRef })),
+              AND: [{ OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }],
+            },
+            include: { lastReading: { select: { reading: true, readAtDate: true } } },
+          })
+        : [],
+    ]);
+    const dealershipMap = new Map(dealershipReadings.map(reading => [reading.id, reading]));
+    const previousReportMap = new Map(previousReports.map(report => [reportKey(report.apartmentId, report.monthRef, report.yearRef), report]));
 
     let sent = 0, failed = 0, skipped = 0;
 
@@ -124,6 +164,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
 
         const blockName = apartment.block?.name || '';
+        const dealership = report.dealershipReadingId ? dealershipMap.get(report.dealershipReadingId) : null;
+        const previousRef = previousMonth(job.monthRef, job.yearRef);
+        const previousReport = job.apartmentId
+          ? previousReportMap.get(reportKey(job.apartmentId, previousRef.monthRef, previousRef.yearRef))
+          : null;
+        const readingDate = report.lastReading?.readAtDate || dealership?.readingDate || null;
+        const periodEnd = readingDate ? String(readingDate).split(/[ T]/)[0] : undefined;
+        const periodStart = previousReport?.lastReading?.readAtDate
+          ? String(previousReport.lastReading.readAtDate).split(/[ T]/)[0]
+          : derivePeriodStart(periodEnd, dealership?.totalDays);
+        const nextReadingDate = report.lastReading?.nextReadingDate || dealership?.readingDateNext || undefined;
 
         let analysis;
         try {
@@ -131,7 +182,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           analysis = await getConsumptionAnalysis(job.apartmentId || apartment.id, report.id, currentConsumption);
         } catch (e) { /* analysis é opcional */ }
 
-        const readingDate = report.lastReading?.readAtDate;
         const { subject, html, text } = generateFilipetaEmail({
           residentName: job.toName || 'Morador',
           apartmentName: apartment.name || '',
@@ -141,14 +191,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           yearRef: job.yearRef,
           consumption: report.consumption,
           totalConsumption: report.totalConsumption ?? undefined,
+          initialReading: previousReport?.lastReading?.reading ?? null,
+          finalReading: report.lastReading?.reading ?? null,
           consumptionCost: report.consumptionCost,
           sewageCost: report.sewageCost,
           totalUnit: report.totalUnit,
+          rateioValue: report.partial ?? null,
           kiteCarConsumption: report.kiteCarConsumption ?? undefined,
           kiteCarCost: report.kiteCarCost ?? undefined,
           utilityType: report.utilityType || undefined,
           readingDate: readingDate ? String(readingDate) : undefined,
-          nextReadingDate: report.lastReading?.nextReadingDate || undefined,
+          nextReadingDate,
+          periodStart,
+          periodEnd,
+          condominiumConsumption: dealership?.dealershipConsumption ?? null,
+          condominiumBillValue: dealership?.totalValue ?? null,
+          consumptionPerEconomy: dealership?.average ?? null,
           analysis,
         });
 

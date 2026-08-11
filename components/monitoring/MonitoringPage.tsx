@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { useMonitoringReadings } from '@/hooks/useMonitoringReadings'
 import MonitoringChart from './MonitoringChart'
 import { DateRange } from 'react-day-picker'
-import { addDays, differenceInCalendarDays, format } from 'date-fns'
+import { addDays, differenceInCalendarDays, differenceInHours, format } from 'date-fns'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -196,6 +196,20 @@ export default function MonitoringPage() {
   const metersWithData = recomputed?.meters || []
   const distinctAlerts = data?.distinctAlerts || []
 
+  const dataHealth = useMemo(() => {
+    const dates = metersWithData.flatMap(m => m.readings || [])
+      .map(reading => new Date(reading.readAt).getTime())
+      .filter(timestamp => Number.isFinite(timestamp));
+    if (dates.length === 0) return { status: 'empty' as const, latest: null, ageHours: null };
+    const latestTimestamp = Math.max(...dates);
+    const ageHours = Math.max(0, differenceInHours(new Date(), new Date(latestTimestamp)));
+    return {
+      status: ageHours > 24 ? 'stale' as const : 'healthy' as const,
+      latest: new Date(latestTimestamp),
+      ageHours,
+    };
+  }, [metersWithData])
+
   // Ao trocar o contexto (empresa/condomínio/bloco/apartamento), a seleção de
   // medidores de um contexto anterior deixa de fazer sentido — sem isso, uma
   // seleção antiga (ex: "Selecionar todos" com 450+ medidores) continuava sendo
@@ -249,6 +263,24 @@ export default function MonitoringPage() {
   return (
     <div className='p-4 space-y-4'>
       <h1 className='text-2xl font-semibold'>Dashboard de Monitoramento</h1>
+      {selectedMeters.length > 0 && (
+        <Card className={dataHealth.status === 'stale' ? 'border-amber-300 bg-amber-50/60' : dataHealth.status === 'empty' ? 'border-slate-200' : 'border-emerald-200 bg-emerald-50/50'}>
+          <CardContent className='p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'>
+            <div className='flex items-start gap-2'>
+              <AlertTriangle className={`h-4 w-4 mt-0.5 ${dataHealth.status === 'stale' ? 'text-amber-600' : dataHealth.status === 'empty' ? 'text-slate-400' : 'text-emerald-600'}`} />
+              <div>
+                <p className='text-sm font-semibold'>Saúde dos dados</p>
+                <p className='text-xs text-muted-foreground'>
+                  {loading ? 'Atualizando leituras…' : dataHealth.latest ? `Última leitura recebida em ${format(dataHealth.latest, "dd/MM/yyyy 'às' HH:mm")}` : 'Nenhuma leitura encontrada no período selecionado.'}
+                </p>
+              </div>
+            </div>
+            <span className={`text-xs font-semibold ${dataHealth.status === 'stale' ? 'text-amber-700' : dataHealth.status === 'empty' ? 'text-slate-500' : 'text-emerald-700'}`}>
+              {dataHealth.status === 'stale' ? `Dados atrasados há ${dataHealth.ageHours}h` : dataHealth.status === 'empty' ? 'Sem dados no período' : 'Dados atualizados'}
+            </span>
+          </CardContent>
+        </Card>
+      )}
       <div className='grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 items-start'>
         {/* Área Principal (agora primeiro para que painel fique à direita em telas grandes) */}
         <div className='flex flex-col gap-4'>

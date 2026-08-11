@@ -1,13 +1,5 @@
-/**
- * lib/services/filipeta-email-template.ts
- *
- * Gera o HTML do email enviado aos moradores com o resumo de consumo
- * e um link para visualizar a filipeta completa no sistema.
- */
-
 import { format } from 'date-fns';
 import type { ConsumptionAnalysis } from './consumption-analysis';
-import { ptBR } from 'date-fns/locale';
 
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -19,311 +11,160 @@ export interface FilipetaEmailData {
   apartmentName: string;
   blockName: string;
   complexName: string;
-  monthRef: string; // "01" - "12"
-  yearRef: string;  // "2026"
-  consumption: number;        // m³
-  totalConsumption?: number;  // m³ total
-  consumptionCost: number;    // R$
-  sewageCost: number;         // R$
-  totalUnit: number;          // R$ final
+  monthRef: string;
+  yearRef: string;
+  consumption: number;
+  totalConsumption?: number;
+  initialReading?: number | null;
+  finalReading?: number | null;
+  consumptionCost: number;
+  sewageCost: number;
+  totalUnit: number;
+  rateioValue?: number | null;
   kiteCarConsumption?: number;
   kiteCarCost?: number;
-  utilityType?: string;       // water | gas
-  readingDate?: string;       // data da leitura YYYY-MM-DD
-  nextReadingDate?: string;   // próxima leitura YYYY-MM-DD
+  utilityType?: string;
+  readingDate?: string;
+  nextReadingDate?: string;
   periodStart?: string;
   periodEnd?: string;
-  // Alertas
+  condominiumConsumption?: number | null;
+  condominiumBillValue?: number | null;
+  consumptionPerEconomy?: number | null;
   hasAlerts?: boolean;
   alertMessage?: string;
-  // Análise de consumo (comparação histórica da própria unidade)
   analysis?: ConsumptionAnalysis;
-  // Dica de economia contextual
   economyTip?: string;
 }
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
 
-/**
- * Gera uma dica de economia contextual baseada na análise de consumo.
- */
 function generateEconomyTip(analysis?: ConsumptionAnalysis): string | undefined {
-  if (!analysis) return undefined;
-
-  if (analysis.trend === 'insufficient_data') {
-    return undefined; // não incomodar no primeiro mês
-  }
-
+  if (!analysis || analysis.trend === 'insufficient_data') return undefined;
   if (analysis.trend === 'increase' && analysis.vsPreviousPct !== null) {
-    if (analysis.vsPreviousPct > 30) {
-      return 'Seu consumo subiu significativamente. Recomendamos verificar possíveis vazamentos em torneiras, válvulas de descarga e conexões. Um vazamento pequeno pode desperdiçar até 200 litros por dia.';
-    }
-    if (analysis.vsPreviousPct > 10) {
-      return 'Seu consumo aumentou neste mês. Confira se houve aumento de pessoas em casa ou uso intensivo de equipamentos. Se não houver motivo aparente, vale verificar vazamentos ocultos.';
-    }
+    if (analysis.vsPreviousPct > 30) return 'Seu consumo subiu significativamente. Recomendamos verificar possíveis vazamentos em torneiras, válvulas de descarga e conexões.';
+    if (analysis.vsPreviousPct > 10) return 'Seu consumo aumentou neste mês. Confira se houve mudança de rotina e, se não houver motivo aparente, verifique possíveis vazamentos.';
   }
-
   if (analysis.trend === 'decrease' && analysis.vsPreviousPct !== null) {
-    if (analysis.vsPreviousPct < -20) {
-      return 'Excelente! Seu consumo reduziu bastante este mês. Continue assim — pequenas mudanças de hábito fazem grande diferença no final do ano.';
-    }
-    if (analysis.vsPreviousPct < -10) {
-      return 'Muito bem! Seu consumo diminuiu em relação ao mês anterior. Manter esse padrão ajuda a reduzir custos ao longo do ano.';
-    }
+    if (analysis.vsPreviousPct < -20) return 'Excelente! Seu consumo reduziu bastante este mês. Continue mantendo esses bons hábitos.';
+    if (analysis.vsPreviousPct < -10) return 'Muito bem! Seu consumo diminuiu em relação ao mês anterior.';
   }
-
-  if (analysis.trend === 'stable') {
-    return 'Dica: feche a torneira enquanto escova os dentes e ensaboa as mãos. Esse simples hábito economiza até 12 litros por minuto.';
-  }
-
+  if (analysis.trend === 'stable') return 'Dica: feche a torneira enquanto escova os dentes e ensaboa as mãos para reduzir o desperdício.';
   return undefined;
 }
 
 export function generateFilipetaEmail(data: FilipetaEmailData): { subject: string; html: string; text: string } {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_API_URL || 'https://www.acquaxcontrol.com.br';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.acquaxcontrol.com.br';
   const monthName = MONTH_NAMES[parseInt(data.monthRef, 10) - 1] || data.monthRef;
   const isWater = data.utilityType !== 'gas';
   const utilityLabel = isWater ? 'Água' : 'Gás';
 
-  const fmtCurrency = (v: number) =>
+  const fmtCurrency = (v: number | null | undefined) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
-
-  const fmtNumber = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 }).format(v || 0);
-
-  const fmtDate = (d?: string) => {
-    if (!d) return null;
+  const fmtNumber = (v: number | null | undefined, decimals = 2) =>
+    v == null ? '—' : new Intl.NumberFormat('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(v);
+  const fmtDate = (value?: string | null) => {
+    if (!value) return 'referência pendente';
     try {
-      const date = d.includes('T') ? new Date(d) : new Date(d + 'T00:00:00');
-      if (isNaN(date.getTime())) return null;
-      return format(date, 'dd/MM/yyyy');
-    } catch { return null; }
+      const normalized = value.includes('T') ? value : value.includes(' ') ? value.replace(' ', 'T') : `${value}T00:00:00`;
+      const date = new Date(normalized);
+      return Number.isNaN(date.getTime()) ? 'referência pendente' : format(date, 'dd/MM/yyyy');
+    } catch {
+      return 'referência pendente';
+    }
   };
 
-  const periodStr = [fmtDate(data.periodStart), fmtDate(data.periodEnd)]
-    .filter(Boolean).join(' a ') || '—';
-
-  const subject = `${utilityLabel}: Sua filipeta de ${monthName}/${data.yearRef} - ${data.complexName}`;
-
-  // Tabela de valores (só linhas relevantes)
-  const costRows: string[] = [];
-
-  if (data.consumptionCost > 0) {
-    costRows.push(`
-      <tr>
-        <td style="padding:8px 0;border-bottom:1px solid #eee;">Consumo de ${utilityLabel.toLowerCase()}</td>
-        <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;font-weight:600;">${fmtCurrency(data.consumptionCost)}</td>
-      </tr>`);
-  }
-
-  if (data.sewageCost > 0 && isWater) {
-    costRows.push(`
-      <tr>
-        <td style="padding:8px 0;border-bottom:1px solid #eee;">Esgoto</td>
-        <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;font-weight:600;">${fmtCurrency(data.sewageCost)}</td>
-      </tr>`);
-  }
-
-  if (data.kiteCarCost && data.kiteCarCost > 0) {
-    costRows.push(`
-      <tr>
-        <td style="padding:8px 0;border-bottom:1px solid #eee;">Carro Pipa</td>
-        <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;font-weight:600;">${fmtCurrency(data.kiteCarCost)}</td>
-      </tr>`);
-  }
-
+  const residentName = escapeHtml(data.residentName || 'Morador');
+  const apartmentName = escapeHtml(data.apartmentName);
+  const blockName = escapeHtml(data.blockName);
+  const complexName = escapeHtml(data.complexName);
+  const monthYear = `${monthName}/${data.yearRef}`;
+  const periodStr = `${fmtDate(data.periodStart)} a ${fmtDate(data.periodEnd)}`;
+  const nextReading = fmtDate(data.nextReadingDate);
+  const individualConsumption = data.totalConsumption ?? data.consumption;
   const economyTip = data.economyTip || generateEconomyTip(data.analysis);
+  const detailUrl = `${baseUrl}/login?redirect=/filipeta&apt=${encodeURIComponent(data.apartmentName)}&ref=${encodeURIComponent(`${data.monthRef}/${data.yearRef}`)}`;
 
   const alertSection = data.hasAlerts ? `
-    <tr>
-      <td style="padding:0 0 16px 0;">
-        <div style="background:#fff3cd;border:1px solid #ffeaa7;border-radius:8px;padding:12px 16px;">
-          <p style="margin:0 0 4px 0;font-size:14px;font-weight:700;color:#856404;">⚠️ Aviso Importante</p>
-          <p style="margin:0;font-size:13px;color:#856404;line-height:1.5;">${data.alertMessage || 'Há alertas pendentes para sua unidade. Acesse o sistema para mais detalhes.'}</p>
+    <tr><td style="padding:0 0 18px 0;">
+      <div style="background:#fff8e1;border:1px solid #f3d27a;border-radius:8px;padding:13px 16px;">
+        <p style="margin:0 0 5px;font-size:14px;font-weight:700;color:#8a5a00;">Atenção sobre sua unidade</p>
+        <p style="margin:0;font-size:13px;color:#8a5a00;line-height:1.5;">${escapeHtml(data.alertMessage || 'Há alertas de monitoramento associados à sua unidade. Acesse o sistema para consultar os detalhes.')}</p>
+      </div>
+    </td></tr>` : '';
+
+  const analysisSection = data.analysis ? `
+    <tr><td style="padding:0 0 18px 0;">
+      <div style="border:1px solid #dbe5ef;border-radius:8px;overflow:hidden;">
+        <div style="background:#f2f6fa;padding:10px 16px;font-size:13px;font-weight:700;color:#334155;">Análise do seu consumo</div>
+        <div style="padding:13px 16px;">
+          <p style="margin:0 0 10px;font-size:14px;color:#334155;line-height:1.5;">${escapeHtml(data.analysis.trendEmoji)} ${escapeHtml(data.analysis.trendLabel)}</p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            ${data.analysis.previousConsumption !== null ? `<tr><td style="padding:4px 0;font-size:12px;color:#64748b;">Mês anterior</td><td style="padding:4px 0;text-align:right;font-size:12px;font-weight:600;color:#334155;">${fmtNumber(data.analysis.previousConsumption)} m³</td></tr>` : ''}
+            ${data.analysis.avg6Months !== null ? `<tr><td style="padding:4px 0;font-size:12px;color:#64748b;">Média histórica</td><td style="padding:4px 0;text-align:right;font-size:12px;font-weight:600;color:#334155;">${fmtNumber(data.analysis.avg6Months)} m³</td></tr>` : ''}
+            ${data.analysis.vsPreviousPct !== null ? `<tr><td style="padding:4px 0;font-size:12px;color:#64748b;">Variação vs. mês anterior</td><td style="padding:4px 0;text-align:right;font-size:12px;font-weight:600;color:${data.analysis.vsPreviousPct > 10 ? '#c62828' : data.analysis.vsPreviousPct < -10 ? '#2e7d32' : '#475569'};">${data.analysis.vsPreviousPct > 0 ? '+' : ''}${data.analysis.vsPreviousPct}%</td></tr>` : ''}
+          </table>
         </div>
-      </td>
-    </tr>` : '';
+      </div>
+    </td></tr>` : '';
 
+  const economySection = economyTip ? `
+    <tr><td style="padding:0 0 18px 0;">
+      <div style="background:#edf8f0;border:1px solid #b8dfc0;border-radius:8px;padding:12px 16px;">
+        <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#216e39;">Dica de economia</p>
+        <p style="margin:0;font-size:13px;color:#216e39;line-height:1.5;">${escapeHtml(economyTip)}</p>
+      </div>
+    </td></tr>` : '';
+
+  const subject = `${utilityLabel}: extrato de consumo ${monthYear} - ${data.complexName}`;
   const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;min-height:100vh;">
-    <tr>
-      <td align="center" style="padding:24px 12px;">
-        <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f4f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f4f7;"><tr><td align="center" style="padding:24px 10px;">
+<table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;background:#fff;border:1px solid #d7dee6;border-radius:8px;overflow:hidden;">
+  <tr><td style="padding:18px 24px;background:#fff;border-bottom:1px solid #d7dee6;">
+    <p style="margin:0;color:#075985;font-size:20px;font-weight:700;">AcquaX do Brasil</p>
+    <p style="margin:4px 0 0;color:#64748b;font-size:12px;">Extrato de consumo individual</p>
+  </td></tr>
+  <tr><td style="padding:24px 24px 8px;">
+    <p style="margin:0 0 12px;font-size:16px;font-weight:700;color:#111827;">Prezado(a) ${residentName},</p>
+    <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#475569;">Seguem abaixo os dados de consumo da unidade <strong>${apartmentName}</strong> do bloco <strong>${blockName}</strong> do condomínio <strong>${complexName}</strong>, referentes ao período de <strong>${monthYear}</strong>.</p>
+  </td></tr>
+  <tr><td style="padding:0 24px 18px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;">
+      <tr><td colspan="3" style="padding:9px 12px;background:#6b7280;color:#fff;text-align:center;font-size:14px;font-weight:700;">Consumo individual</td></tr>
+      <tr style="background:#f8fafc;"><th style="padding:8px;border-right:1px solid #cbd5e1;font-size:12px;">Índice inicial</th><th style="padding:8px;border-right:1px solid #cbd5e1;font-size:12px;">Índice final</th><th style="padding:8px;font-size:12px;">Consumo no período</th></tr>
+      <tr><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtNumber(data.initialReading)} m³</td><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtNumber(data.finalReading)} m³</td><td style="padding:9px;text-align:center;font-size:13px;font-weight:700;color:#075985;">${fmtNumber(individualConsumption)} m³</td></tr>
+      <tr style="background:#f8fafc;"><th style="padding:8px;border-top:1px solid #cbd5e1;border-right:1px solid #cbd5e1;font-size:12px;">Consumo total</th><th style="padding:8px;border-top:1px solid #cbd5e1;border-right:1px solid #cbd5e1;font-size:12px;">Valor consumido</th><th style="padding:8px;border-top:1px solid #cbd5e1;font-size:12px;">Valor total</th></tr>
+      <tr><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtNumber(individualConsumption)} m³</td><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtCurrency(data.consumptionCost)}</td><td style="padding:9px;text-align:center;font-size:14px;font-weight:700;color:#075985;">${fmtCurrency(data.totalUnit)}</td></tr>
+    </table>
+  </td></tr>
+  <tr><td style="padding:0 24px 18px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;">
+      <tr><td colspan="3" style="padding:9px 12px;background:#6b7280;color:#fff;text-align:center;font-size:14px;font-weight:700;">Consumo do condomínio</td></tr>
+      <tr style="background:#f8fafc;"><th style="padding:8px;border-right:1px solid #cbd5e1;font-size:12px;">Consumo medido</th><th style="padding:8px;border-right:1px solid #cbd5e1;font-size:12px;">Valor da conta</th><th style="padding:8px;font-size:12px;">Consumo por economia</th></tr>
+      <tr><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtNumber(data.condominiumConsumption)} m³</td><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtCurrency(data.condominiumBillValue)}</td><td style="padding:9px;text-align:center;font-size:13px;">${fmtNumber(data.consumptionPerEconomy)} m³</td></tr>
+      <tr style="background:#f8fafc;"><th colspan="2" style="padding:8px;border-top:1px solid #cbd5e1;border-right:1px solid #cbd5e1;font-size:12px;">Período de referência</th><th style="padding:8px;border-top:1px solid #cbd5e1;font-size:12px;">Data próx. leitura</th></tr>
+      <tr><td colspan="2" style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${periodStr}</td><td style="padding:9px;text-align:center;font-size:13px;">${nextReading}</td></tr>
+    </table>
+  </td></tr>
+  ${data.rateioValue != null || data.sewageCost > 0 || data.kiteCarCost ? `<tr><td style="padding:0 24px 18px;"><table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;"><tr><td colspan="2" style="padding:9px 12px;background:#f8fafc;font-size:13px;font-weight:700;color:#334155;">Composição do valor</td></tr>${data.sewageCost > 0 ? `<tr><td style="padding:7px 12px;font-size:12px;color:#64748b;">Esgoto</td><td style="padding:7px 12px;text-align:right;font-size:12px;font-weight:600;">${fmtCurrency(data.sewageCost)}</td></tr>` : ''}${data.rateioValue != null ? `<tr><td style="padding:7px 12px;font-size:12px;color:#64748b;">Valor de rateio</td><td style="padding:7px 12px;text-align:right;font-size:12px;font-weight:600;">${fmtCurrency(data.rateioValue)}</td></tr>` : ''}${data.kiteCarCost ? `<tr><td style="padding:7px 12px;font-size:12px;color:#64748b;">Carro-pipa</td><td style="padding:7px 12px;text-align:right;font-size:12px;font-weight:600;">${fmtCurrency(data.kiteCarCost)}</td></tr>` : ''}</table></td></tr>` : ''}
+  ${analysisSection}
+  ${alertSection}
+  ${economySection}
+  <tr><td style="padding:2px 24px 28px;text-align:center;"><a href="${detailUrl}" style="display:inline-block;background:#075985;color:#fff;text-decoration:none;font-size:14px;font-weight:700;padding:12px 26px;border-radius:6px;">Ver extrato completo no AcquaX</a><p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Consulte o histórico, fotos do medidor, gráficos e alertas da unidade.</p></td></tr>
+  <tr><td style="padding:15px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;"><p style="margin:0;font-size:11px;line-height:1.5;color:#94a3b8;">Este é um e-mail automático do AcquaX Control. Não responda a esta mensagem.<br>Em caso de dúvidas, entre em contato com medicao@acquaxdobrasil.com.br ou 4003-7945.</p></td></tr>
+</table></td></tr></table>
+</body></html>`;
 
-          <!-- Header -->
-          <tr>
-            <td style="background:#1e88e5;padding:24px 32px;text-align:center;">
-              <p style="margin:0;color:#fff;font-size:20px;font-weight:700;">AcquaX do Brasil</p>
-              <p style="margin:4px 0 0 0;color:#bbdefb;font-size:13px;">Sistema de Medição e Controle</p>
-            </td>
-          </tr>
-
-          <!-- Conteúdo -->
-          <tr>
-            <td style="padding:28px 32px 8px 32px;">
-              <p style="margin:0 0 6px 0;font-size:18px;font-weight:700;color:#333;">Olá, ${data.residentName}!</p>
-              <p style="margin:0 0 20px 0;font-size:14px;color:#666;line-height:1.6;">
-                Sua filipeta de <strong>${utilityLabel.toLowerCase()}</strong> referente a <strong>${monthName}/${data.yearRef}</strong> está disponível.
-              </p>
-            </td>
-          </tr>
-
-          <!-- Resumo do consumo -->
-          <tr>
-            <td style="padding:0 32px 16px 32px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;padding:16px 20px;">
-                <tr>
-                  <td style="padding:4px 0;font-size:13px;color:#888;">Condomínio</td>
-                  <td style="padding:4px 0;font-size:13px;color:#333;font-weight:600;text-align:right;">${data.complexName}</td>
-                </tr>
-                <tr>
-                  <td style="padding:4px 0;font-size:13px;color:#888;">Unidade</td>
-                  <td style="padding:4px 0;font-size:13px;color:#333;font-weight:600;text-align:right;">${data.blockName} - ${data.apartmentName}</td>
-                </tr>
-                <tr>
-                  <td style="padding:4px 0;font-size:13px;color:#888;">Período de consumo</td>
-                  <td style="padding:4px 0;font-size:13px;color:#333;font-weight:600;text-align:right;">${periodStr}</td>
-                </tr>
-                <tr>
-                  <td style="padding:4px 0;font-size:13px;color:#888;">Consumo</td>
-                  <td style="padding:4px 0;font-size:13px;color:#333;font-weight:600;text-align:right;">${fmtNumber(data.totalConsumption ?? data.consumption)} m³</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Valores -->
-          ${costRows.length > 0 ? `
-          <tr>
-            <td style="padding:0 32px 16px 32px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="padding:0 20px;">
-                ${costRows.join('')}
-                <tr>
-                  <td style="padding:12px 0;font-size:16px;font-weight:700;color:#1e88e5;border-top:2px solid #1e88e5;">Valor Total</td>
-                  <td style="padding:12px 0;font-size:18px;font-weight:700;color:#1e88e5;border-top:2px solid #1e88e5;text-align:right;">${fmtCurrency(data.totalUnit)}</td>
-                </tr>
-              </table>
-            </td>
-          </tr>` : ''}
-
-          <!-- Alertas -->
-          ${alertSection}
-
-                    <!-- Análise de consumo -->
-          ${data.analysis ? `
-          <tr>
-            <td style="padding:0 32px 16px 32px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
-                <tr>
-                  <td style="background:#f8f9fa;color:#333;padding:10px 20px;font-size:13px;font-weight:600;">
-                    📊 Análise do seu consumo
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:16px 20px;">
-                    <p style="margin:0 0 12px 0;font-size:14px;color:#333;line-height:1.5;">
-                      <span style="font-size:16px;">${data.analysis.trendEmoji}</span>
-                      ${data.analysis.trendLabel}
-                    </p>
-                    <table width="100%" cellpadding="0" cellspacing="0">
-                      ${data.analysis.previousConsumption !== null ? `
-                      <tr>
-                        <td style="padding:6px 0;font-size:13px;color:#888;">Mês anterior</td>
-                        <td style="padding:6px 0;font-size:13px;color:#333;font-weight:600;text-align:right;">${fmtNumber(data.analysis.previousConsumption)} m³</td>
-                      </tr>` : ''}
-                      ${data.analysis.avg6Months !== null ? `
-                      <tr>
-                        <td style="padding:6px 0;font-size:13px;color:#888;">Média ${data.analysis.monthsAnalyzed > 0 ? 'últimos ' + data.analysis.monthsAnalyzed + ' meses' : 'histórica'}</td>
-                        <td style="padding:6px 0;font-size:13px;color:#333;font-weight:600;text-align:right;">${fmtNumber(data.analysis.avg6Months)} m³</td>
-                      </tr>` : ''}
-                      ${data.analysis.vsPreviousPct !== null ? `
-                      <tr>
-                        <td style="padding:6px 0;font-size:13px;color:#888;">Variação vs mês anterior</td>
-                        <td style="padding:6px 0;font-size:13px;font-weight:600;text-align:right;color:${data.analysis.vsPreviousPct > 10 ? '#e53935' : data.analysis.vsPreviousPct < -10 ? '#43a047' : '#666'};">
-                          ${data.analysis.vsPreviousPct > 0 ? '+' : ''}${data.analysis.vsPreviousPct}%
-                        </td>
-                      </tr>` : ''}
-                      ${data.analysis.vsAvgPct !== null ? `
-                      <tr>
-                        <td style="padding:6px 0;font-size:13px;color:#888;">Variação vs média histórica</td>
-                        <td style="padding:6px 0;font-size:13px;font-weight:600;text-align:right;color:${data.analysis.vsAvgPct > 10 ? '#e53935' : data.analysis.vsAvgPct < -10 ? '#43a047' : '#666'};">
-                          ${data.analysis.vsAvgPct > 0 ? '+' : ''}${data.analysis.vsAvgPct}%
-                        </td>
-                      </tr>` : ''}
-                    </table>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>` : ''}
-
-          ${economyTip ? `
-          <tr>
-            <td style="padding:0 32px 16px 32px;">
-              <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:12px 16px;">
-                <p style="margin:0 0 4px 0;font-size:13px;font-weight:700;color:#2e7d32;">💡 Dica de economia</p>
-                <p style="margin:0;font-size:13px;color:#2e7d32;line-height:1.5;">${economyTip}</p>
-              </div>
-            </td>
-          </tr>` : ''}
-
-                    <!-- CTA -->
-          <tr>
-            <td style="padding:0 32px 28px 32px;text-align:center;">
-              <a href="${baseUrl}/login?redirect=/filipeta&apt=${data.apartmentName}&ref=${data.monthRef}/${data.yearRef}"
-                 style="display:inline-block;background:#1e88e5;color:#fff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;">
-                Ver filipeta completa
-              </a>
-              <p style="margin:12px 0 0 0;font-size:12px;color:#999;">
-                Acesse o sistema para ver o detalhamento completo, histórico e fotos do medidor.
-              </p>
-            </td>
-          </tr>
-
-          <!-- Aviso de processamento de imagem -->
-          <tr>
-            <td style="padding:0 32px 12px 32px;">
-              <div style="background:#f0f4f8;border:1px solid #d0d8e0;border-radius:6px;padding:10px 14px;">
-                <p style="margin:0;font-size:11px;color:#666;line-height:1.5;text-align:left;">
-                  <strong>ℹ️ Sobre as imagens dos medidores:</strong> As imagens passam por processamento automatizado
-                  de aprimoramento óptico (ajuste de contraste, nitidez e reconhecimento de caracteres) para garantir
-                  a leitura mais precisa possível. Pequenas diferenças visuais entre a imagem e o medidor físico —
-                  como linhas, manchas ou variações de tonalidade — são artefatos naturais deste processo e não
-                  representam alteração dos valores registrados.
-                </p>
-              </div>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background:#f8f9fa;padding:16px 32px;border-top:1px solid #eee;">
-              <p style="margin:0;font-size:11px;color:#999;text-align:center;line-height:1.5;">
-                Este é um email automático do sistema AcquaXControl. Não responda a esta mensagem.<br>
-                Em caso de dúvidas, entre em contato com medicao@acquaxdobrasil.com.br e/ou 4003-7945.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-
-  const text = `AcquaX do Brasil - Sistema de Medição e Controle\n\nOlá, ${data.residentName}!\n\nSua filipeta de ${utilityLabel.toLowerCase()} referente a ${monthName}/${data.yearRef} está disponível.\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\nPeríodo: ${periodStr}\nConsumo: ${fmtNumber(data.totalConsumption ?? data.consumption)} m³\nValor Total: ${fmtCurrency(data.totalUnit)}\n\n${economyTip ? `\n💡 Dica de economia: ${economyTip}\n` : ''}
-Acesse ${baseUrl} para ver a filipeta completa.
-${data.analysis ? `
-Análise de consumo:
-${data.analysis.trendLabel}
-${data.analysis.previousConsumption !== null ? `Mês anterior: ${fmtNumber(data.analysis.previousConsumption)} m³` : ''}
-${data.analysis.avg6Months !== null ? `Média: ${fmtNumber(data.analysis.avg6Months)} m³` : ''}
-${data.analysis.vsPreviousPct !== null ? `Variação vs mês anterior: ${data.analysis.vsPreviousPct > 0 ? '+' : ''}${data.analysis.vsPreviousPct}%` : ''}` : ''}
-
-Em caso de dúvidas, entre em contato com medicao@acquaxdobrasil.com.br e/ou 4003-7945.\n\nEste é um email automático. Não responda a esta mensagem.`;
+  const text = `AcquaX do Brasil - Extrato de consumo individual\n\nPrezado(a) ${data.residentName},\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\nPeríodo: ${periodStr}\nPróxima leitura prevista: ${nextReading}\n\nCONSUMO INDIVIDUAL\nÍndice inicial: ${fmtNumber(data.initialReading)} m³\nÍndice final: ${fmtNumber(data.finalReading)} m³\nConsumo no período: ${fmtNumber(individualConsumption)} m³\nValor consumido: ${fmtCurrency(data.consumptionCost)}\nValor de rateio: ${fmtCurrency(data.rateioValue)}\nValor total: ${fmtCurrency(data.totalUnit)}\n\nCONSUMO DO CONDOMÍNIO\nConsumo medido: ${fmtNumber(data.condominiumConsumption)} m³\nValor da conta: ${fmtCurrency(data.condominiumBillValue)}\nConsumo por economia: ${fmtNumber(data.consumptionPerEconomy)} m³\n\nAcesse ${baseUrl} para consultar o extrato completo.`;
 
   return { subject, html, text };
 }

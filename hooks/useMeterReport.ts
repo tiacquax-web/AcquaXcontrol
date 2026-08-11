@@ -53,6 +53,7 @@ export interface MeterReportItem {
     id: string;
     totalDays?: number | null;
     readingDate?: string | null;
+    readingDateNext?: string | null;
     nextReadingDate?: string | null;
     dealership?: { name: string } | null;
     complex?: { socialName: string } | null;

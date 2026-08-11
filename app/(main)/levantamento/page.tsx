@@ -61,6 +61,37 @@ function monthLabel(m: string, y: string) {
   return mo ? mo.label : `${m}/${y}`;
 }
 
+function parseAppDate(value?: string | null): Date | null {
+  if (!value) return null;
+  const normalized = value.includes('T') ? value : value.includes(' ') ? value.replace(' ', 'T') : `${value}T00:00:00`;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatAppDate(value?: string | null): string {
+  const parsed = parseAppDate(value);
+  return parsed ? format(parsed, 'dd/MM/yyyy') : 'ref. pend.';
+}
+
+function deriveReadingSchedule(item: MeterReportItem) {
+  const currentReadingDate = item.lastReading?.readAtDate || item.dealershipReading?.readingDate || null;
+  const previousReadingDate = item.history?.[0]?.lastReading?.readAtDate || null;
+  const totalDays = Number(item.dealershipReading?.totalDays);
+  const derivedStart = parseAppDate(currentReadingDate) && Number.isFinite(totalDays)
+    ? new Date(parseAppDate(currentReadingDate)!.getTime() - totalDays * 24 * 60 * 60 * 1000).toISOString()
+    : null;
+  const nextReadingDate = item.lastReading?.nextReadingDate
+    || item.dealershipReading?.readingDateNext
+    || item.dealershipReading?.nextReadingDate
+    || null;
+
+  return {
+    periodStart: previousReadingDate || derivedStart,
+    periodEnd: currentReadingDate,
+    nextReadingDate,
+  };
+}
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface MonthData {
   month: string;
@@ -147,6 +178,7 @@ function MeterPhoto({ url, alt, monthLabel }: { url: string; alt?: string; month
 // Exibe foto em tamanho grande com todos os dados abaixo
 function MeterPhotoCard({
   photoUrl, label, currReading, prevReading, consumption, totalUnit, partial, waterSewage,
+  periodStart, periodEnd, nextReadingDate,
 }: {
   photoUrl: string | null;
   label: string;
@@ -156,6 +188,9 @@ function MeterPhotoCard({
   totalUnit: number | null;
   partial: number | null;
   waterSewage: number | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  nextReadingDate?: string | null;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -213,6 +248,18 @@ function MeterPhotoCard({
         <div className="bg-teal-50 rounded-lg p-2 text-center">
           <div className="text-teal-500 text-[10px] uppercase tracking-wide mb-0.5">Consumo do Período</div>
           <div className="font-bold text-teal-700 text-lg">{fmt(consumption)} <span className="text-sm font-normal">m³</span></div>
+        </div>
+
+        {/* Período e próxima leitura */}
+        <div className="border-t border-gray-100 pt-2 grid grid-cols-1 gap-1 text-[10px]">
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">Período de leitura</span>
+            <span className="font-medium text-gray-700 text-right">{formatAppDate(periodStart)} a {formatAppDate(periodEnd)}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">Próxima leitura prevista</span>
+            <span className="font-medium text-blue-700 text-right">{formatAppDate(nextReadingDate)}</span>
+          </div>
         </div>
 
         {/* Valores */}
@@ -429,6 +476,9 @@ export default function LevantamentoPage() {
       waterSewage: number | null;
       prevReading: number | null;
       currReading: number | null;
+      periodStart: string | null;
+      periodEnd: string | null;
+      nextReadingDate: string | null;
       photoUrl: string | null;
     }>;
     avgConsumption: number;
@@ -448,7 +498,7 @@ export default function LevantamentoPage() {
             apartmentId: aptId,
             aptName: item.apartment?.name ?? '',
             blockName: item.apartment?.block?.name ?? '',
-            months: monthsData.map(m2 => ({ label: m2.label, consumption: null, totalUnit: null, partial: null, waterSewage: null, prevReading: null, currReading: null, photoUrl: null })),
+            months: monthsData.map(m2 => ({ label: m2.label, consumption: null, totalUnit: null, partial: null, waterSewage: null, prevReading: null, currReading: null, periodStart: null, periodEnd: null, nextReadingDate: null, photoUrl: null })),
             avgConsumption: 0,
             maxConsumption: 0,
             minConsumption: 0,
@@ -466,6 +516,7 @@ export default function LevantamentoPage() {
             waterSewage: ws,
             prevReading: item.history?.[0]?.lastReading?.reading ?? null,
             currReading: item.lastReading?.reading ?? null,
+            ...deriveReadingSchedule(item),
             photoUrl: item.lastReading?.urlCover ? sanitizeImageUrl(item.lastReading.urlCover) : null,
           };
         }
@@ -799,6 +850,9 @@ export default function LevantamentoPage() {
                   totalUnit={m.totalUnit}
                   partial={m.partial}
                   waterSewage={m.waterSewage}
+                  periodStart={m.periodStart}
+                  periodEnd={m.periodEnd}
+                  nextReadingDate={m.nextReadingDate}
                 />
               ))}
             </div>
@@ -1068,6 +1122,22 @@ export default function LevantamentoPage() {
                                       <td className="pr-3 py-1.5 text-gray-500 whitespace-nowrap">Leit. Atual</td>
                                       {row.months.map((m, mi) => (
                                         <td key={mi} className="px-3 py-1.5 text-center font-semibold text-blue-700">{fmt(m.currReading)} m³</td>
+                                      ))}
+                                    </tr>
+                                    {/* Período de leitura */}
+                                    <tr>
+                                      <td className="pr-3 py-1.5 text-gray-500 whitespace-nowrap">Período de leitura</td>
+                                      {row.months.map((m, mi) => (
+                                        <td key={mi} className="px-3 py-1.5 text-center text-gray-700 whitespace-nowrap">
+                                          {formatAppDate(m.periodStart)} a {formatAppDate(m.periodEnd)}
+                                        </td>
+                                      ))}
+                                    </tr>
+                                    {/* Próxima leitura prevista */}
+                                    <tr>
+                                      <td className="pr-3 py-1.5 text-gray-500 whitespace-nowrap">Próxima leitura</td>
+                                      {row.months.map((m, mi) => (
+                                        <td key={mi} className="px-3 py-1.5 text-center font-medium text-blue-700 whitespace-nowrap">{formatAppDate(m.nextReadingDate)}</td>
                                       ))}
                                     </tr>
                                     {/* Consumo */}
