@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { validateUserSession } from '@/lib/users';
 import { GlImportService } from '@/lib/services/gl-import-service';
 
 export const runtime = 'nodejs';
@@ -6,6 +7,16 @@ export const maxDuration = 300;
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    const cronSecret = process.env.CRON_SECRET;
+    const authHeader = req.headers.get('authorization');
+    const cronAuthorized = Boolean(
+      cronSecret && authHeader === `Bearer ${cronSecret}`,
+    );
+    const { userId } = await validateUserSession(req);
+    if (!cronAuthorized && !userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const fromDaysAgo = body.fromDays ?? 27;
     const toDaysAgo = body.toDays ?? 0;

@@ -57,8 +57,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   // ── Execução da importação ────────────────────────────────────────────────
   const now = new Date();
-  const configuredLookback = Number.parseInt(process.env.GL_IMPORT_LOOKBACK_DAYS ?? '7', 10);
-  const lookbackDays = Math.min(Math.max(Number.isFinite(configuredLookback) ? configuredLookback : 7, 0), 14);
+  // Processa hoje e o dia anterior por execução. A janela menor evita timeout
+  // quando o fornecedor publica arquivos grandes; a execução recorrente mantém
+  // a recuperação contínua sem sobrecarregar a função serverless.
+  const configuredLookback = Number.parseInt(process.env.GL_IMPORT_LOOKBACK_DAYS ?? '1', 10);
+  const lookbackDays = Math.min(Math.max(Number.isFinite(configuredLookback) ? configuredLookback : 1, 0), 1);
   const dates: Date[] = [];
   for (let offset = lookbackDays; offset >= 0; offset -= 1) {
     const date = new Date(now);
