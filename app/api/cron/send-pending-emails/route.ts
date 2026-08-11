@@ -112,6 +112,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         });
         const meterToApartment = new Map(meters.map(m => [m.id, m.apartmentId]));
         for (const alarm of alarms) {
+          if (!alarm.meterId) continue;
           const apId = meterToApartment.get(alarm.meterId);
           if (apId) alarmCounts[apId] = (alarmCounts[apId] || 0) + 1;
         }
@@ -163,7 +164,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         let periodEnd: string | undefined;
 
         if (readingDate) {
-          periodEnd = typeof readingDate === 'string' ? readingDate.split(' ')[0] : readingDate.toISOString().split('T')[0];
+          periodEnd = String(readingDate).split(/[ T]/)[0];
           // Buscar período inicial: data da leitura anterior ou subtrair 30 dias
           // Por simplicidade, usar o readingDate do dealershipReading
           periodStart = undefined; // será calculado pelo template se não fornecido
@@ -197,7 +198,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           kiteCarConsumption: report.kiteCarConsumption ?? undefined,
           kiteCarCost: report.kiteCarCost ?? undefined,
           utilityType: report.utilityType || undefined,
-          readingDate: typeof report.lastReading?.readAtDate === 'string' ? report.lastReading.readAtDate : report.lastReading?.readAtDate?.toISOString(),
+          readingDate: report.lastReading?.readAtDate ? String(report.lastReading.readAtDate) : undefined,
           nextReadingDate: report.lastReading?.nextReadingDate || undefined,
           periodStart,
           periodEnd,

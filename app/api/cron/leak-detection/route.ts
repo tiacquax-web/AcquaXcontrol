@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { sendEmail } from '@/lib/services/email-service';
+import { findComplexManagementRecipients, isExternalNotificationEmail } from '@/lib/services/notification-recipients';
 import { detectLeaksForComplex } from '@/lib/services/leak-detection-service';
 
 export const runtime = 'nodejs';
@@ -35,28 +36,8 @@ export async function POST(req: NextRequest) {
     totalLeaks += leaks.length;
 
     // Buscar síndicos/administradoras
-    const recipients = await prisma.user.findMany({
-      where: {
-        deletedAt: null,
-        roleAssignments: {
-          some: {
-            deletedAt: null,
-            complexId: cx.id,
-            role: {
-              deletedAt: null,
-              name: { in: ['Síndico', 'Administradora', 'Sindico', 'Administrador', 'Admin'] },
-            },
-          },
-        },
-      },
-      select: { id: true, email: true, fullName: true },
-    });
-
-    if (recipients.length === 0) continue;
-
-    const validRecipients = recipients.filter(r =>
-      r.email && !r.email.includes('@acquax') && !r.email.includes('@acquaxdobrasil') && !r.email.includes('@acquaxcontrol')
-    );
+    const recipients = await findComplexManagementRecipients(cx.id);
+    const validRecipients = recipients.filter((recipient) => isExternalNotificationEmail(recipient.email));
 
     if (validRecipients.length === 0) continue;
 
@@ -139,7 +120,7 @@ Em caso de duvidas: medicao@acquaxdobrasil.com.br e/ou 4003-7945.`;
       try {
         await sendEmail({
           to: recipient.email,
-          toName: recipient.fullName,
+          toName: recipient.name,
           subject: `Possiveis Vazamentos - ${cx.socialName}`,
           html,
           text,

@@ -6,7 +6,7 @@ import { User } from '@prisma/client';
 import { NextRequest } from "next/server"
 
 // Função para normalizar email removendo acentos e caracteres especiais
-function normalizeEmail(email: string): string {
+export function normalizeEmail(email: string): string {
     // Mapa de caracteres acentuados para normais
     const accentMap: { [key: string]: string } = {
         'á': 'a', 'à': 'a', 'ã': 'a', 'â': 'a', 'ä': 'a',

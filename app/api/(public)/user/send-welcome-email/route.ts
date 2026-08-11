@@ -41,8 +41,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     // 1. Buscar condomínio
     const complex = await prisma.complex.findFirst({
-      where: { name: { contains: complexName, mode: 'insensitive' } },
-      select: { id: true, name: true },
+      where: { socialName: { contains: complexName, mode: 'insensitive' } },
+      select: { id: true, socialName: true },
     });
     if (!complex) return NextResponse.json({ message: 'Condominio nao encontrado: ' + complexName }, { status: 404 });
 
@@ -116,7 +116,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
               Ola <strong>${user.name || ''}</strong>,
             </p>
             <p style="color: #555; line-height: 1.6;">
-              Seu acesso ao sistema de medicao AcquaXcontrol foi liberado para a unidade <strong>${apartment.name}</strong> - Bloco <strong>${block.name}</strong> do condominio <strong>${complex.name}</strong>.
+              Seu acesso ao sistema de medicao AcquaXcontrol foi liberado para a unidade <strong>${apartment.name}</strong> - Bloco <strong>${block.name}</strong> do condominio <strong>${complex.socialName}</strong>.
             </p>
             <p style="color: #555; line-height: 1.6;">
               Atraves do sistema voce pode acompanhar seu consumo de agua, verificar filipetas mensais e monitorar seu gasto diario.
@@ -138,7 +138,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       const result = await sendEmail({
         to: user.email!,
         toName: user.name || undefined,
-        subject: 'Bem-vindo ao AcquaXcontrol - ' + complex.name,
+        subject: 'Bem-vindo ao AcquaXcontrol - ' + complex.socialName,
         html,
         text: 'Bem-vindo ao AcquaXcontrol! Seu acesso foi liberado para a unidade ' + apartment.name + ' - Bloco ' + block.name + '. Acesse www.acquaxcontrol.com.br',
       });
@@ -154,7 +154,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const allSent = results.every(r => r.sent);
     return NextResponse.json({
       success: allSent,
-      complex: complex.name,
+      complex: complex.socialName,
       block: block.name,
       apartment: apartment.name,
       results,

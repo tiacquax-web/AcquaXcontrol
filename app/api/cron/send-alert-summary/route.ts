@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { sendEmail } from '@/lib/services/email-service';
+import { findComplexManagementRecipients, isExternalNotificationEmail } from '@/lib/services/notification-recipients';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -20,9 +21,14 @@ const ALERT_LABELS: Record<string, string> = {
   OUTLIER_LOW: 'Consumo anormalmente baixo',
   ZERO_CONSUMPTION: 'Dias consecutivos sem consumo',
   HAS_ALERT: 'Alerta do dispositivo',
+  GL_ALARM: 'Alarme do medidor',
+  MAX_FLOW: 'Fluxo máximo excedido',
+  REVERSE_FLOW: 'Fluxo reverso detectado',
 };
 
-function isoDay(d: Date) { return d.toISOString().slice(0, 10); }
+function isoDay(d: Date | string | null | undefined) {
+  return d ? new Date(d).toISOString().slice(0, 10) : '—';
+}
 
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -37,7 +43,7 @@ export async function POST(req: NextRequest) {
   const metersWithReadings = await prisma.meter.findMany({
     where: {
       deletedAt: null,
-      readings: {
+      Readings: {
         some: { readAt: { gte: fromDate, lte: toDate }, deletedAt: null },
       },
     },
@@ -75,15 +81,33 @@ export async function POST(req: NextRequest) {
   for (const [complexId, { complexName, meters }] of Object.entries(byComplex)) {
     // 2. Buscar leituras do período para os medidores deste condomínio
     const meterIds = meters.map(m => m.id);
-    const readings = await prisma.reading.findMany({
-      where: {
-        meterId: { in: meterIds },
-        readAt: { gte: fromDate, lte: toDate },
-        deletedAt: null,
-      },
-      select: { id: true, meterId: true, reading: true, readAt: true, alerts: true },
-      orderBy: { readAt: 'asc' },
-    });
+    const [readings, glAlarms] = await Promise.all([
+      prisma.reading.findMany({
+        where: {
+          meterId: { in: meterIds },
+          readAt: { gte: fromDate, lte: toDate },
+          deletedAt: null,
+        },
+        select: { id: true, meterId: true, reading: true, readAt: true, alerts: true },
+        orderBy: { readAt: 'asc' },
+      }),
+      prisma.glAlarm.findMany({
+        where: {
+          meterId: { in: meterIds },
+          alarmAt: { gte: fromDate, lte: toDate },
+          deletedAt: null,
+        },
+        select: { id: true, meterId: true, alarmCode: true, criticality: true, alarmAt: true },
+        orderBy: { alarmAt: 'asc' },
+      }),
+    ]);
+    const alarmsByMeter = new Map<string, typeof glAlarms>();
+    for (const alarm of glAlarms) {
+      if (!alarm.meterId) continue;
+      const list = alarmsByMeter.get(alarm.meterId) || [];
+      list.push(alarm);
+      alarmsByMeter.set(alarm.meterId, list);
+    }
 
     // 3. Detectar anomalias por medidor
     const anomalies: { location: string; date: string; types: string[] }[] = [];
@@ -126,7 +150,7 @@ export async function POST(req: NextRequest) {
 
         if (meterReadings[i].alerts) {
           try {
-            const parsed: string[] = JSON.parse(meterReadings[i].alerts);
+            const parsed: string[] = JSON.parse(String(meterReadings[i].alerts));
             if (parsed.length) types.push('HAS_ALERT');
           } catch {}
         }
@@ -135,38 +159,26 @@ export async function POST(req: NextRequest) {
           anomalies.push({ location, date: isoDay(meterReadings[i].readAt), types });
         }
       }
+
+      // Alarmes GL são persistidos separadamente das leituras e também precisam
+      // aparecer no resumo enviado aos administradores.
+      for (const alarm of alarmsByMeter.get(meter.id) || []) {
+        anomalies.push({
+          location,
+          date: isoDay(alarm.alarmAt),
+          types: ['GL_ALARM', alarm.alarmCode],
+        });
+      }
     }
 
     if (anomalies.length === 0) continue;
     totalAnomalies += anomalies.length;
 
     // 4. Buscar síndicos e administradoras deste condomínio
-    const recipients = await prisma.user.findMany({
-      where: {
-        deletedAt: null,
-        roleAssignments: {
-          some: {
-            deletedAt: null,
-            complexId: complexId,
-            role: {
-              deletedAt: null,
-              name: { in: ['Síndico', 'Administradora', 'Sindico', 'Administrador', 'Admin'] },
-            },
-          },
-        },
-      },
-      select: { id: true, email: true, fullName: true },
-    });
+    const recipients = await findComplexManagementRecipients(complexId);
+    const validRecipients = recipients.filter((recipient) => isExternalNotificationEmail(recipient.email));
 
-    if (recipients.length === 0) continue;
-
-    // 5. Filtrar domínios internos
-    const validRecipients = recipients.filter(r =>
-      r.email &&
-      !r.email.includes('@acquax') &&
-      !r.email.includes('@acquaxdobrasil') &&
-      !r.email.includes('@acquaxcontrol')
-    );
+    if (validRecipients.length === 0) continue;
 
     if (validRecipients.length === 0) continue;
 
@@ -236,7 +248,7 @@ Em caso de duvidas: medicao@acquaxdobrasil.com.br e/ou 4003-7945.`;
       try {
         await sendEmail({
           to: recipient.email,
-          toName: recipient.fullName,
+          toName: recipient.name,
           subject: `Alertas de Consumo - ${complexName} (ultimos 7 dias)`,
           html,
           text,

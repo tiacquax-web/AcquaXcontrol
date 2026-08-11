@@ -133,13 +133,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             contextId: { in: apartmentIds },
             deletedAt: null,
           },
-          include: { user: { select: { id: true, email: true, name: true } } },
+          include: { User: { select: { id: true, email: true, name: true } } },
         })
       : [];
     const assignmentMap = new Map<string, { userId: string; email: string }>();
     for (const a of existingAssignments) {
-      if (a.user?.email) {
-        assignmentMap.set(a.contextId, { userId: a.user.id, email: a.user.email.toLowerCase() });
+      if (a.User?.email) {
+        assignmentMap.set(a.contextId, { userId: a.User.id, email: a.User.email.toLowerCase() });
       }
     }
 

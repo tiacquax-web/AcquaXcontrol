@@ -34,6 +34,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { gunzipSync } from 'zlib';
 import { sendEmail } from '@/lib/services/email-service';
+import { findApartmentRecipients, isExternalNotificationEmail } from '@/lib/services/notification-recipients';
 
 export interface GlAlarmImportResult {
   success: boolean;
@@ -286,10 +287,6 @@ export class GlAlarmImportService {
                   complex: { select: { id: true, socialName: true } },
                 },
               },
-              users: {
-                where: { deletedAt: null },
-                select: { email: true, fullName: true },
-              },
             },
           },
         },
@@ -297,12 +294,8 @@ export class GlAlarmImportService {
 
       if (!meter?.apartment) continue;
 
-      const residents = meter.apartment.users.filter(u =>
-        u.email &&
-        !u.email.includes('@acquax') &&
-        !u.email.includes('@acquaxdobrasil') &&
-        !u.email.includes('@acquaxcontrol')
-      );
+      const residents = (await findApartmentRecipients(meter.apartment.id))
+        .filter((resident) => isExternalNotificationEmail(resident.email));
 
       if (residents.length === 0) continue;
 
@@ -374,7 +367,7 @@ Em caso de duvidas: medicao@acquaxdobrasil.com.br e/ou 4003-7945.`;
         try {
           await sendEmail({
             to: resident.email,
-            toName: resident.fullName,
+            toName: resident.name,
             subject: `Alerta do Medidor - ${complexName} - ${blockName}/${aptName}`,
             html,
             text,

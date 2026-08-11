@@ -654,11 +654,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     console.log(`[IMPORT] Step 8: All writes done — readings: ${result.readingsCreated}, reports created: ${result.reportsCreated}, reports updated: ${result.reportsUpdated}`);
     // ── Trigger: criar EmailJobs para envio automático de filipetas ────────────
-    // Fire-and-forget: não bloquear a resposta da importação
+    // Aguardar a gravação da fila. Em funções serverless, tarefas fire-and-forget
+    // podem ser encerradas assim que a resposta HTTP é devolvida.
     if (dealershipReadingId && result.success) {
-      createEmailJobsForDealershipReading(dealershipReadingId, userId)
-        .then(() => console.log(`[Combined Import] EmailJobs criados para dealershipReading: ${dealershipReadingId}`))
-        .catch((emailErr: any) => console.error('[Combined Import] Erro ao criar EmailJobs:', emailErr?.message));
+      try {
+        const emailJobs = await createEmailJobsForDealershipReading(dealershipReadingId, userId);
+        console.log(`[Combined Import] EmailJobs criados: ${emailJobs.created}; pulados: ${emailJobs.skipped}`);
+      } catch (emailErr: any) {
+        console.error('[Combined Import] Erro ao criar EmailJobs:', emailErr?.message);
+        console.error(`[Combined Import] EmailJobs não preparados: ${emailErr?.message || 'desconhecido'}`);
+      }
     }
 
     return NextResponse.json(result);

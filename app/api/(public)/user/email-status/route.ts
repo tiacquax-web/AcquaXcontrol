@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { validateUserSession } from '@/lib/users';
-import { isEmailConfigured } from '@/lib/services/email-service';
+import { getEmailConfigSummary, verifyEmailConnection } from '@/lib/services/email-service';
 
 export const runtime = 'nodejs';
 
@@ -35,7 +35,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     // ── Coletar diagnósticos ──
-    const emailConfigured = isEmailConfigured();
+    const smtpSummary = getEmailConfigSummary();
+    const smtpVerification = req.nextUrl.searchParams.get('verify') === '1'
+      ? await verifyEmailConnection()
+      : null;
 
     // Contar jobs por status
     const [pending, sent, failed, skipped, total] = await Promise.all([
@@ -98,11 +101,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({
       smtp: {
-        configured: emailConfigured,
-        host: process.env.ZOHO_SMTP_HOST || 'smtp.zoho.com (default)',
-        port: process.env.ZOHO_SMTP_PORT || '465 (default)',
-        user: process.env.ZOHO_SMTP_USER ? process.env.ZOHO_SMTP_USER.substring(0, 3) + '***' : 'NOT SET',
-        fromName: process.env.ZOHO_SMTP_FROM_NAME || 'AcquaX do Brasil (default)',
+        ...smtpSummary,
+        verification: smtpVerification,
       },
       queue: {
         total,

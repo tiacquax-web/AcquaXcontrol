@@ -29,6 +29,17 @@ export interface ComputedStats {
 
 export function recomputeStats(meter: MonitoringMeterData, view: 'cumulative' | 'simple', sigma: number, filterAlerts?: string[]): ComputedStats {
   const rotation = meter.rotation || 'Crescente'
+  const serverAlarmAnomalies = (meter.stats?.anomalies || [])
+    .filter((anomaly: any) => String(anomaly.readingId || '').startsWith('gl-alarm:'))
+    .map((anomaly: any) => ({
+      readingId: String(anomaly.readingId),
+      readAt: new Date(anomaly.readAt),
+      delta: Number(anomaly.delta || 0),
+      anomalyTypes: Array.isArray(anomaly.anomalyTypes) ? anomaly.anomalyTypes : [],
+    }))
+    .filter((anomaly: any) =>
+      !filterAlerts || filterAlerts.length === 0 || anomaly.anomalyTypes.some((type: string) => filterAlerts.includes(type)),
+    )
   // Filtra por tipos de alerta se necessário
   const filteredReadings = meter.readings.filter(r => {
     if (!filterAlerts || filterAlerts.length === 0) return true
@@ -43,8 +54,8 @@ export function recomputeStats(meter: MonitoringMeterData, view: 'cumulative' | 
       maxDelta: null,
       stdDev: null,
       negativeCount: 0,
-      alertCount: filteredReadings.filter(r => r.alerts?.length).length,
-      anomalies: []
+      alertCount: filteredReadings.filter(r => r.alerts?.length).length + serverAlarmAnomalies.length,
+      anomalies: serverAlarmAnomalies
     }
   }
 
@@ -99,7 +110,18 @@ export function recomputeStats(meter: MonitoringMeterData, view: 'cumulative' | 
     }
   }
 
-  return { totalConsumed, avgDelta, minDelta, maxDelta, stdDev, negativeCount: negative.length, alertCount: ordered.filter(r=>r.alerts?.length).length, anomalies }
+  const allAnomalies = [...anomalies, ...serverAlarmAnomalies]
+    .sort((a, b) => b.readAt.getTime() - a.readAt.getTime())
+  return {
+    totalConsumed,
+    avgDelta,
+    minDelta,
+    maxDelta,
+    stdDev,
+    negativeCount: negative.length,
+    alertCount: ordered.filter(r => r.alerts?.length).length + serverAlarmAnomalies.length,
+    anomalies: allAnomalies,
+  }
 }
 
 function numericValue(v: number | string): number {

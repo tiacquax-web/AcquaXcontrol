@@ -32,9 +32,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
         if (!entityId) return NextResponse.json({ error: 'No entity id was informed. Set "entity_id" in the query params.' }, { status: 400 });
 
         console.log("######### Entity ID:", entityId)
+        const userBeforeUpdate = await prisma.user.findUnique({
+            where: { id: entityId },
+            select: { email: true },
+        });
+
         // Attempt to update the entity
         // const { entity: user, error: updateError, status: updateStatus } = await updateEntityData(userId, 'user', entityId, body);
-        const { user, error: updateError, status: updateStatus } = await updateUser(reqBody.id, body, userId);
+        const { user, error: updateError, status: updateStatus } = await updateUser(entityId, body, userId);
         if (updateError) return NextResponse.json({ error: updateError }, { status: updateStatus });
         if (!user) return NextResponse.json({ error: 'Internal Server Error - Entity not updated' }, { status: 500 });
 
@@ -42,10 +47,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
             user.password = undefined; // Remove password from the response
         }
 
-        // Enviar email de boas-vindas se o email foi atualizado e é valido
+        // Enviar aviso somente quando um email novo foi cadastrado/alterado.
         const updatedEmail = (user as any).email;
         const updatedName = (user as any).name;
-        if (updatedEmail && !isBlockedEmailDomain(updatedEmail) && isEmailConfigured()) {
+        const emailChanged = Boolean(
+            updatedEmail &&
+            updatedEmail.toLowerCase() !== (userBeforeUpdate?.email || '').toLowerCase(),
+        );
+        let emailSent = false;
+        let emailError: string | null = null;
+        if (emailChanged && !isBlockedEmailDomain(updatedEmail) && isEmailConfigured()) {
             try {
                 const welcomeHtml = `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -80,22 +91,31 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
                         </div>
                     </div>
                 `;
-                await sendEmail({
+                const emailResult = await sendEmail({
                     to: updatedEmail,
                     toName: updatedName || undefined,
                     subject: 'Bem-vindo(a) ao AcquaXcontrol!',
                     html: welcomeHtml,
                     text: 'Seu acesso ao AcquaX Control foi liberado com sucesso. Atraves da plataforma voce podera acompanhar seu consumo de agua, consultar filipetas mensais e monitorar seu consumo diario. Seja bem-vindo(a)! Acesse www.acquaxcontrol.com.br',
                 });
-                console.log('[User Update] Email de boas-vindas enviado para:', updatedEmail);
+                emailSent = emailResult.success;
+                emailError = emailResult.success ? null : (emailResult.error || 'Falha no envio');
+                if (emailResult.success) {
+                    console.log('[User Update] Email de boas-vindas enviado para:', updatedEmail);
+                } else {
+                    console.error('[User Update] Falha ao enviar email de boas-vindas:', emailError);
+                }
             } catch (emailErr: any) {
-                console.error('[User Update] Falha ao enviar email de boas-vindas:', emailErr?.message);
+                emailError = emailErr?.message || 'Erro ao enviar email';
+                console.error('[User Update] Falha ao enviar email de boas-vindas:', emailError);
                 // Nao falha o update se o email falhar
             }
+        } else if (emailChanged) {
+            emailError = isEmailConfigured() ? 'Domínio interno ou endereço inválido' : 'SMTP não configurado';
         }
 
         // Return the updated entity data
-        return NextResponse.json(user, {status: updateStatus});
+        return NextResponse.json({ ...user, emailSent, emailError }, {status: updateStatus});
 
     } catch (error: any) {
         // Log and handle unexpected errors

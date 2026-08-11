@@ -1,40 +1,44 @@
-/**
- * lib/services/email-service.ts
- *
- * Serviço de envio de emails via Zoho SMTP usando Nodemailer.
- *
- * Env vars necessárias (configurar na Vercel):
- *   ZOHO_SMTP_HOST     — smtp.zoho.com (padrão)
- *   ZOHO_SMTP_PORT     — 465 (SSL) ou 587 (STARTTLS)
- *   ZOHO_SMTP_USER     — email@dominio.com.br
- *   ZOHO_SMTP_PASS     — senha ou app-specific password
- *   ZOHO_SMTP_FROM_NAME — "AcquaX do Brasil" (padrão)
- *
- * APP_BASE_URL — URL base do sistema para links nas filipetas
- *   ex: https://www.acquaxcontrol.com.br
- */
-
 import nodemailer from 'nodemailer';
 
-let _transporter: nodemailer.Transporter | null = null;
+let transporter: nodemailer.Transporter | null = null;
+
+export interface EmailConfig {
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  fromName: string;
+  fromEmail: string;
+}
+
+function getEmailConfig(): EmailConfig {
+  const host = process.env.ZOHO_SMTP_HOST || process.env.EMAIL_HOST || 'smtp.zoho.com';
+  const rawPort = process.env.ZOHO_SMTP_PORT || process.env.EMAIL_PORT || '465';
+  const parsedPort = Number.parseInt(rawPort, 10);
+  const port = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 465;
+  const user = process.env.ZOHO_SMTP_USER || process.env.EMAIL_USER || '';
+  const pass = process.env.ZOHO_SMTP_PASS || process.env.EMAIL_PASS || '';
+  const fromName = process.env.ZOHO_SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'AcquaX do Brasil';
+  const fromEmail = process.env.ZOHO_SMTP_FROM || process.env.EMAIL_FROM || user;
+
+  return { host, port, user, pass, fromName, fromEmail };
+}
 
 function getTransporter(): nodemailer.Transporter {
-  if (_transporter) return _transporter;
+  if (transporter) return transporter;
 
-  const host = process.env.ZOHO_SMTP_HOST || 'smtp.zoho.com';
-  const port = parseInt(process.env.ZOHO_SMTP_PORT || '465', 10);
-  const user = process.env.ZOHO_SMTP_USER;
-  const pass = process.env.ZOHO_SMTP_PASS;
-
-  if (!user || !pass) {
-    throw new Error('ZOHO_SMTP_USER e ZOHO_SMTP_PASS devem estar configurados.');
+  const config = getEmailConfig();
+  if (!config.user || !config.pass) {
+    throw new Error(
+      'SMTP não configurado: defina ZOHO_SMTP_USER/ZOHO_SMTP_PASS ou EMAIL_USER/EMAIL_PASS.',
+    );
   }
 
-  _transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465, // true para 465 (SSL), false para 587 (STARTTLS)
-    auth: { user, pass },
+  transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.port === 465,
+    auth: { user: config.user, pass: config.pass },
     connectionTimeout: 30_000,
     greetingTimeout: 15_000,
     socketTimeout: 30_000,
@@ -43,7 +47,7 @@ function getTransporter(): nodemailer.Transporter {
     maxMessages: 100,
   });
 
-  return _transporter;
+  return transporter;
 }
 
 export interface SendEmailParams {
@@ -55,28 +59,61 @@ export interface SendEmailParams {
 }
 
 export async function sendEmail({ to, toName, subject, html, text }: SendEmailParams): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  try {
-    const transporter = getTransporter();
-    const fromName = process.env.ZOHO_SMTP_FROM_NAME || 'AcquaX do Brasil';
-    const fromEmail = process.env.ZOHO_SMTP_USER!;
+  if (!to || !to.includes('@')) {
+    return { success: false, error: 'Destinatário de e-mail inválido.' };
+  }
 
-    const info = await transporter.sendMail({
-      from: `"${fromName}" <${fromEmail}>`,
+  try {
+    const config = getEmailConfig();
+    const mailTransporter = getTransporter();
+    const info = await mailTransporter.sendMail({
+      from: `"${config.fromName}" <${config.fromEmail}>`,
       to: toName ? `"${toName}" <${to}>` : to,
       subject,
       html,
       text: text || html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 500),
+      ...(process.env.EMAIL_REPLY_TO ? { replyTo: process.env.EMAIL_REPLY_TO } : {}),
     });
 
     return { success: true, messageId: info.messageId };
   } catch (error: any) {
-    return { success: false, error: error?.message || 'Erro ao enviar email' };
+    const message = error?.response ? `${error.message} (${error.response})` : error?.message;
+    console.error('[EmailService] Falha no envio:', message || error);
+    return { success: false, error: message || 'Erro ao enviar email' };
   }
 }
 
-/**
- * Verifica se as credenciais Zoho estão configuradas.
- */
+/** Retorna se há credenciais suficientes para tentar o envio. */
 export function isEmailConfigured(): boolean {
-  return !!(process.env.ZOHO_SMTP_USER && process.env.ZOHO_SMTP_PASS);
+  const config = getEmailConfig();
+  return Boolean(config.user && config.pass && config.fromEmail);
+}
+
+/**
+ * Verifica a conexão SMTP sem enviar uma mensagem. Útil para diagnósticos
+ * administrativos e para diferenciar configuração ausente de credencial rejeitada.
+ */
+export async function verifyEmailConnection(): Promise<{ success: boolean; error?: string }> {
+  if (!isEmailConfigured()) {
+    return { success: false, error: 'SMTP não configurado.' };
+  }
+
+  try {
+    await getTransporter().verify();
+    return { success: true };
+  } catch (error: any) {
+    const message = error?.response ? `${error.message} (${error.response})` : error?.message;
+    return { success: false, error: message || 'Não foi possível verificar o SMTP.' };
+  }
+}
+
+export function getEmailConfigSummary() {
+  const config = getEmailConfig();
+  return {
+    host: config.host,
+    port: String(config.port),
+    user: config.user ? `${config.user.substring(0, 3)}***` : 'NOT SET',
+    fromName: config.fromName,
+    configured: isEmailConfigured(),
+  };
 }

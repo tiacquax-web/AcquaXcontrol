@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { sendEmail } from '@/lib/services/email-service';
+import { findComplexManagementRecipients, isExternalNotificationEmail } from '@/lib/services/notification-recipients';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -132,28 +133,8 @@ export async function POST(req: NextRequest) {
       : null;
 
     // 4. Buscar síndicos e administradoras
-    const recipients = await prisma.user.findMany({
-      where: {
-        deletedAt: null,
-        roleAssignments: {
-          some: {
-            deletedAt: null,
-            complexId,
-            role: {
-              deletedAt: null,
-              name: { in: ['Síndico', 'Administradora', 'Sindico', 'Administrador', 'Admin'] },
-            },
-          },
-        },
-      },
-      select: { id: true, email: true, fullName: true },
-    });
-
-    if (recipients.length === 0) continue;
-
-    const validRecipients = recipients.filter(r =>
-      r.email && !r.email.includes('@acquax') && !r.email.includes('@acquaxdobrasil') && !r.email.includes('@acquaxcontrol')
-    );
+    const recipients = await findComplexManagementRecipients(complexId);
+    const validRecipients = recipients.filter((recipient) => isExternalNotificationEmail(recipient.email));
 
     if (validRecipients.length === 0) continue;
 
@@ -277,7 +258,7 @@ Em caso de duvidas: medicao@acquaxdobrasil.com.br e/ou 4003-7945.`;
       try {
         await sendEmail({
           to: recipient.email,
-          toName: recipient.fullName,
+          toName: recipient.name,
           subject: `Resumo Mensal - ${complexName} - ${monthName}/${yearRef}`,
           html,
           text,

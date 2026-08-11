@@ -147,7 +147,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           kiteCarConsumption: report.kiteCarConsumption ?? undefined,
           kiteCarCost: report.kiteCarCost ?? undefined,
           utilityType: report.utilityType || undefined,
-          readingDate: typeof readingDate === 'string' ? readingDate : readingDate?.toISOString(),
+          readingDate: readingDate ? String(readingDate) : undefined,
           nextReadingDate: report.lastReading?.nextReadingDate || undefined,
           analysis,
         });

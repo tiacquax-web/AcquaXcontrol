@@ -367,20 +367,21 @@ export default function ResidentMonitoringCard({ apartmentId }: { apartmentId: s
                 const isNegative = alert.alerts.includes('NEGATIVE_CONSUMPTION')
                 const isOutlierHigh = alert.alerts.includes('OUTLIER_HIGH')
                 const isOutlierLow = alert.alerts.includes('OUTLIER_LOW')
-                const isDeviceAlert = alert.alerts.includes('HAS_ALERT')
+                const isGlAlarm = alert.alerts.includes('GL_ALARM')
+                const isDeviceAlert = alert.alerts.includes('HAS_ALERT') || isGlAlarm
                 return (
                   <div key={i} className="flex items-center gap-2 rounded-lg border p-2 text-xs">
                     <div className="shrink-0">
                       {isNegative && <TrendingDown className="w-4 h-4 text-red-500" />}
                       {isOutlierHigh && <TrendingUp className="w-4 h-4 text-orange-500" />}
                       {isOutlierLow && <TrendingDown className="w-4 h-4 text-blue-500" />}
-                      {isDeviceAlert && !isNegative && !isOutlierHigh && !isOutlierLow && <AlertTriangle className="w-4 h-4 text-amber-500" />}
+                      {isDeviceAlert && !isNegative && !isOutlierHigh && !isOutlierLow && <AlertTriangle className={`w-4 h-4 ${isGlAlarm ? 'text-red-500' : 'text-amber-500'}`} />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium truncate max-w-[160px]" title={alert.register}>{alert.register}</span>
                         <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 shrink-0">
-                          {isNegative ? 'Consumo negativo' : isOutlierHigh ? 'Pico alto' : isOutlierLow ? 'Baixo consumo' : 'Alerta dispositivo'}
+                          {isGlAlarm ? 'Alarme do medidor' : isNegative ? 'Consumo negativo' : isOutlierHigh ? 'Pico alto' : isOutlierLow ? 'Baixo consumo' : 'Alerta dispositivo'}
                         </Badge>
                       </div>
                       <span className="text-muted-foreground text-[10px]">

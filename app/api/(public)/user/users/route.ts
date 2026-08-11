@@ -3,6 +3,9 @@ import { createEntity, deleteEntity, getAvailableComplexesForEntity, getEntityLi
 import { createUser, createBulkResidentsUsers, isSessionValid, validateUserSession } from "@/lib/users"
 import { ContextType } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
+import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
+import { generateWelcomeEmail } from '@/lib/services/welcome-email-template';
+import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 
 // Função para normalizar email removendo acentos e caracteres especiais
 function normalizeEmail(email: string): string {
@@ -278,10 +281,43 @@ export async function POST(req: NextRequest): Promise<Response> {
                 console.time('------------- Creating bulk residents users');
                 
                 const result = await createBulkResidentsUsers(usersData, userId, role.id);
-                
+
+                let emailsSent = 0;
+                let emailErrors = 0;
+                if (isEmailConfigured()) {
+                    const emailResults = await Promise.allSettled(
+                        result.success
+                            .filter((resident) => resident.email && !isBlockedEmailDomain(resident.email))
+                            .map(async (resident) => {
+                                const { subject, html, text } = generateWelcomeEmail({
+                                    residentName: resident.name || `Morador ${resident.apartmentName}`,
+                                    apartmentName: resident.apartmentName,
+                                    blockName: resident.blockName,
+                                    complexName: '',
+                                    email: resident.email,
+                                    provisionalPassword: resident.password,
+                                });
+                                const sent = await sendEmail({
+                                    to: resident.email,
+                                    toName: resident.name || undefined,
+                                    subject,
+                                    html,
+                                    text,
+                                });
+                                if (!sent.success) throw new Error(sent.error || 'Falha no envio');
+                                return sent;
+                            }),
+                    );
+                    emailsSent = emailResults.filter((item) => item.status === 'fulfilled').length;
+                    emailErrors = emailResults.filter((item) => item.status === 'rejected').length;
+                } else {
+                    emailErrors = result.success.length;
+                }
+
                 console.timeEnd('------------- Creating bulk residents users');
                 return NextResponse.json({
                     ...result,
+                    emailStatus: { configured: isEmailConfigured(), sent: emailsSent, errors: emailErrors },
                     totalApartments
                 }, { status: 201 });
             } catch (error: any) {
@@ -293,13 +329,40 @@ export async function POST(req: NextRequest): Promise<Response> {
         const body = cleanEntityBody(reqBody); // Clean the body to remove unwanted fields
         if (!body) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
         if (Object.keys(body).length === 0) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
+        const provisionalPassword = typeof body.password === 'string' ? body.password : '';
         const { user, error: creationError, status: creationStatus } = await createUser(body, userId);
         if (creationError) return NextResponse.json({ error: creationError }, { status: creationStatus });
         if (!user) return NextResponse.json({ error: 'Internal Server Error - Entity not created' }, { status: 500 });
         if ('password' in user) {
             user.password = undefined; // Remove password from the response
         }
-        return NextResponse.json(user, { status: creationStatus });
+
+        let emailSent = false;
+        let emailError: string | null = null;
+        const createdEmail = (user as any).email;
+        if (createdEmail && provisionalPassword && !isBlockedEmailDomain(createdEmail) && isEmailConfigured()) {
+            const { subject, html, text } = generateWelcomeEmail({
+                residentName: (user as any).name || 'Usuário',
+                apartmentName: '-',
+                blockName: '-',
+                complexName: '',
+                email: createdEmail,
+                provisionalPassword,
+            });
+            const emailResult = await sendEmail({
+                to: createdEmail,
+                toName: (user as any).name || undefined,
+                subject,
+                html,
+                text,
+            });
+            emailSent = emailResult.success;
+            emailError = emailResult.success ? null : (emailResult.error || 'Falha no envio');
+        } else if (createdEmail && provisionalPassword) {
+            emailError = isEmailConfigured() ? 'Domínio interno ou endereço inválido' : 'SMTP não configurado';
+        }
+
+        return NextResponse.json({ ...user, emailSent, emailError }, { status: creationStatus });
     } catch (error: any) {
         console.error("Error creating user:", error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

@@ -1,28 +1,14 @@
-import nodemailer from 'nodemailer';
+import { sendEmail as sendEmailService } from '@/lib/services/email-service';
 
-// Usa Zoho SMTP (mesmas credenciais do email-service.ts)
-// Mantém compatibilidade com EMAIL_USER/EMAIL_PASS como fallback
-const host = process.env.ZOHO_SMTP_HOST || 'smtp.zoho.com';
-const port = parseInt(process.env.ZOHO_SMTP_PORT || '465', 10);
-const user = process.env.ZOHO_SMTP_USER || process.env.EMAIL_USER;
-const pass = process.env.ZOHO_SMTP_PASS || process.env.EMAIL_PASS;
-
-const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-    connectionTimeout: 30_000,
-    greetingTimeout: 15_000,
-    socketTimeout: 30_000,
-});
-
+/**
+ * Compatibilidade com a assinatura antiga usada pelo fluxo de recuperação de senha.
+ * Todos os novos envios devem preferir o serviço nomeado em services/email-service.
+ */
 export default async function sendEmail(to: string, subject: string, text: string, html?: string) {
-    await transporter.sendMail({
-        from: `"${process.env.ZOHO_SMTP_FROM_NAME || 'AcquaX do Brasil'}" <${user}>`,
-        to,
-        subject,
-        text,
-        ...(html ? { html } : {}),
-    });
+  return sendEmailService({
+    to,
+    subject,
+    text,
+    html: html || `<p>${text}</p>`,
+  });
 }

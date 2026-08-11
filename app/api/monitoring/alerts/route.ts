@@ -119,29 +119,54 @@ export async function POST(req: NextRequest) {
     const meterMap = new Map(meters.map((m) => [m.id, m]));
 
     // ── Buscar leituras do período ───────────────────────────────────────────
-    const rawReadings = await prisma.reading.findMany({
-      where: {
-        meterId: { in: meterIds },
-        readAt:  { gte: from, lte: to },
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        meterId: true,
-        reading: true,
-        readAt: true,
-        isManualReading: true,
-        alerts: true,
-      },
-      orderBy: { readAt: 'asc' },
-    });
+    const [rawReadings, rawGlAlarms] = await Promise.all([
+      prisma.reading.findMany({
+        where: {
+          meterId: { in: meterIds },
+          readAt:  { gte: from, lte: to },
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          meterId: true,
+          reading: true,
+          readAt: true,
+          isManualReading: true,
+          alerts: true,
+        },
+        orderBy: { readAt: 'asc' },
+      }),
+      prisma.glAlarm.findMany({
+        where: {
+          meterId: { in: meterIds },
+          alarmAt: { gte: from, lte: to },
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          meterId: true,
+          alarmCode: true,
+          criticality: true,
+          alarmAt: true,
+          acknowledged: true,
+        },
+        orderBy: { alarmAt: 'asc' },
+      }),
+    ]);
 
     // ── Agrupar por medidor ──────────────────────────────────────────────────
     const byMeter: Record<string, typeof rawReadings> = {};
+    const alarmsByMeter = new Map<string, typeof rawGlAlarms>();
     for (const r of rawReadings) {
       if (!r.meterId) continue;
       if (!byMeter[r.meterId]) byMeter[r.meterId] = [];
       byMeter[r.meterId].push(r);
+    }
+    for (const alarm of rawGlAlarms) {
+      if (!alarm.meterId) continue;
+      const list = alarmsByMeter.get(alarm.meterId) || [];
+      list.push(alarm);
+      alarmsByMeter.set(alarm.meterId, list);
     }
 
     // ── Calcular anomalias por medidor ───────────────────────────────────────
@@ -151,6 +176,7 @@ export async function POST(req: NextRequest) {
     for (const meterId of meterIds) {
       const meter = meterMap.get(meterId)!;
       let readings = byMeter[meterId] ?? [];
+      const meterAlarms = alarmsByMeter.get(meterId) ?? [];
 
       // Pegar última leitura por dia (dailyLast)
       const dayMap = new Map<string, typeof rawReadings[0]>();
@@ -161,7 +187,7 @@ export async function POST(req: NextRequest) {
       }
       readings = Array.from(dayMap.values()).sort((a, b) => a.readAt.getTime() - b.readAt.getTime());
 
-      if (readings.length < 2) continue;
+      if (readings.length < 2 && meterAlarms.length === 0) continue;
 
       const rotation = meter.rotation || 'Crescente';
 
@@ -252,6 +278,21 @@ export async function POST(req: NextRequest) {
           zeroDaysCount = 0;
           zeroStart = null;
         }
+      }
+
+      // Alarmes GL são eventos independentes das leituras e devem aparecer no
+      // mesmo painel, inclusive quando ainda não há duas leituras para calcular delta.
+      for (const alarm of meterAlarms) {
+        meterAnomalies.push({
+          readingId: `gl-alarm:${alarm.id}`,
+          date: isoDay(alarm.alarmAt),
+          readAt: alarm.alarmAt.toISOString(),
+          delta: 0,
+          types: ['GL_ALARM', alarm.alarmCode],
+          criticality: alarm.criticality,
+          acknowledged: alarm.acknowledged,
+          isManual: false,
+        });
       }
 
       if (meterAnomalies.length > 0) {

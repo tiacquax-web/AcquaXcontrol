@@ -155,10 +155,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           contextId: apartment.id,
           deletedAt: null,
         },
-        include: { user: { select: { id: true, email: true, name: true } } },
+        include: { User: { select: { id: true, email: true, name: true } } },
       });
 
-      const existingUserEmail = existingAssignment?.user?.email?.toLowerCase();
+      const existingUserEmail = existingAssignment?.User?.email?.toLowerCase();
 
       // Caso 1: apartamento já tem morador com o MESMO email → skip
       if (existingAssignment && existingUserEmail === email) {
@@ -169,14 +169,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       // Caso 2: apartamento já tem morador com email DIFERENTE (provavelmente interno/provisório)
       // → atualizar o email, gerar nova senha provisória, enviar welcome email
-      if (existingAssignment && existingAssignment.user && existingUserEmail !== email) {
+      if (existingAssignment && existingAssignment.User && existingUserEmail !== email) {
         // Verificar se o email novo já existe em outro usuário
         const userWithEmail = await prisma.user.findFirst({
           where: { email, deletedAt: null },
           select: { id: true },
         });
 
-        if (userWithEmail && userWithEmail.id !== existingAssignment.user.id) {
+        if (userWithEmail && userWithEmail.id !== existingAssignment.User.id) {
           // O email novo pertence a outro usuário (morador de outro condomínio)
           // → vincular o usuário existente ao apartamento E remover o vínculo do usuário antigo
           await prisma.roleAssignment.update({
@@ -199,7 +199,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         const hashedPassword = await hash(provisionalPassword, 10);
 
         await prisma.user.update({
-          where: { id: existingAssignment.user.id },
+          where: { id: existingAssignment.User.id },
           data: {
             email,
             ...(residentName ? { name: residentName } : {}),
@@ -216,7 +216,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         if (emailConfigured && !isBlockedEmailDomain(email)) {
           try {
             const { subject, html, text } = generateWelcomeEmail({
-              residentName: residentName || existingAssignment.user.name || `Morador ${apartment.name}`,
+              residentName: residentName || existingAssignment.User.name || `Morador ${apartment.name}`,
               apartmentName: apartment.name,
               blockName: apartment.blockName,
               complexName: complex.socialName || '',
@@ -252,7 +252,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             roleId: moradorRole.id,
             contextType: ContextType.apartment,
             contextId: apartment.id,
-            complexId,
             createdByUserId: userId,
           },
         });
@@ -286,7 +285,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           roleId: moradorRole.id,
           contextType: ContextType.apartment,
           contextId: apartment.id,
-          complexId,
           createdByUserId: userId,
         },
       });

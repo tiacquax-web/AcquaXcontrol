@@ -34,7 +34,7 @@ export async function detectLeaksForComplex(complexId: string): Promise<LeakDete
     where: {
       deletedAt: null,
       complexId,
-      readings: {
+      Readings: {
         some: {
           readAt: { gte: fromDate, lte: toDate },
           deletedAt: null,

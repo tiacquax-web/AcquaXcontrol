@@ -5,6 +5,21 @@ interface AnomaliesListProps {
   items: Array<{ meterId: string; register: string; anomalies: Array<{ readingId: string; readAt: Date; delta: number; anomalyTypes: string[] }> }>
 }
 
+const ALERT_LABELS: Record<string, string> = {
+  GL_ALARM: 'Alarme do medidor',
+  MAX_FLOW: 'Fluxo máximo',
+  REVERSE_FLOW: 'Fluxo reverso',
+  NEGATIVE_CONSUMPTION: 'Consumo negativo',
+  OUTLIER_HIGH: 'Consumo alto',
+  OUTLIER_LOW: 'Consumo baixo',
+  ZERO_CONSUMPTION: 'Consumo zero',
+  HAS_ALERT: 'Alerta IoT',
+}
+
+function formatAlertType(type: string) {
+  return ALERT_LABELS[type] || type.replaceAll('_', ' ')
+}
+
 export default function AnomaliesList({ items }: AnomaliesListProps) {
   const flat = items.flatMap(m => m.anomalies.map(a => ({...a, meterId: m.meterId, register: m.register})))
   if (!flat.length) return <div className='text-xs text-muted-foreground'>Nenhuma anomalia no recorte atual.</div>
@@ -25,7 +40,7 @@ export default function AnomaliesList({ items }: AnomaliesListProps) {
               <td className='py-1 pr-2 whitespace-nowrap'>{a.readAt.toLocaleString()}</td>
               <td className='py-1 pr-2'>{a.register}</td>
               <td className='py-1 pr-2 font-mono'>{a.delta.toFixed(3)}</td>
-              <td className='py-1 pr-2'>{a.anomalyTypes.join(', ')}</td>
+              <td className='py-1 pr-2'>{a.anomalyTypes.map(formatAlertType).join(', ')}</td>
             </tr>
           ))}
         </tbody>

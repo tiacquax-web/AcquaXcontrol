@@ -1,17 +1,24 @@
-import { NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import sendEmail from '@/lib/sendEmail';
+import { normalizeEmail } from '@/lib/users';
 
 export async function POST(req: Request) {
     try {
         const { email } = await req.json();
+        const normalizedEmail = typeof email === 'string' ? normalizeEmail(email) : '';
 
-        if (!email) {
+        if (!normalizedEmail) {
             return NextResponse.json({ error: 'Email é obrigatório' }, { status: 400 });
         }
 
-        const user = await prisma.user.findFirst({ where: { email, deletedAt: null } });
+        const user = await prisma.user.findFirst({
+            where: {
+                email: { equals: normalizedEmail, mode: 'insensitive' },
+                deletedAt: null,
+            },
+        });
 
         if (!user) {
             // Por segurança, não revelamos se o email existe ou não
@@ -26,7 +33,11 @@ export async function POST(req: Request) {
             data: { resetToken, resetTokenExpiry },
         });
 
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://acquaxcontrol.com.br';
+        const baseUrl = (
+            process.env.NEXT_PUBLIC_APP_URL ||
+            process.env.NEXT_PUBLIC_BASE_URL ||
+            'https://www.acquaxcontrol.com.br'
+        ).replace(/\/$/, '');
         const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
 
         const htmlBody = `
@@ -61,7 +72,24 @@ export async function POST(req: Request) {
           </div>
         `;
 
-        await sendEmail(email, 'Redefinição de Senha — AcquaX Control', `Redefina sua senha: ${resetUrl}`, htmlBody);
+        const emailResult = await sendEmail(
+            normalizedEmail,
+            'Redefinição de Senha — AcquaX Control',
+            `Redefina sua senha: ${resetUrl}`,
+            htmlBody,
+        );
+
+        if (!emailResult.success) {
+            await prisma.user.update({
+                where: { id: user.id },
+                data: { resetToken: null, resetTokenExpiry: null },
+            });
+            console.error('[PasswordRecovery] Falha no envio:', emailResult.error);
+            return NextResponse.json(
+                { error: 'Não foi possível enviar o e-mail agora. Tente novamente mais tarde ou procure a administração.' },
+                { status: 503 },
+            );
+        }
 
         return NextResponse.json({ message: 'Se o email estiver cadastrado, você receberá as instruções.' });
     } catch (error) {
