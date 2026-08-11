@@ -24,7 +24,7 @@ import { Separator } from '@/components/ui/separator'
 import { usePermissionChecker } from '@/hooks/use-permission-checker'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
-import { Calendar as CalendarIcon } from 'lucide-react'
+import { Calendar as CalendarIcon, Printer } from 'lucide-react'
 import { useUserContext } from '@/hooks/useUserContext'
 import { useMeters } from '@/hooks/useMeters'
 import { AlertTriangle } from 'lucide-react'
@@ -261,8 +261,22 @@ export default function MonitoringPage() {
   }
 
   return (
-    <div className='p-4 space-y-4'>
-      <h1 className='text-2xl font-semibold'>Dashboard de Monitoramento</h1>
+    <div className='monitoring-page p-4 space-y-4'>
+      <div className='flex items-center justify-between gap-3 monitoring-print-header'>
+        <h1 className='text-2xl font-semibold'>Dashboard de Monitoramento</h1>
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          className='no-print gap-2'
+          onClick={() => window.print()}
+          disabled={loading || metersWithData.length === 0}
+        >
+          <Printer className='h-4 w-4' />
+          Imprimir monitoramento
+        </Button>
+      </div>
+      <p className='print-only text-sm text-muted-foreground'>Período analisado: {rangeLabel}</p>
       {selectedMeters.length > 0 && (
         <Card className={dataHealth.status === 'stale' ? 'border-amber-300 bg-amber-50/60' : dataHealth.status === 'empty' ? 'border-slate-200' : 'border-emerald-200 bg-emerald-50/50'}>
           <CardContent className='p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'>
@@ -281,10 +295,10 @@ export default function MonitoringPage() {
           </CardContent>
         </Card>
       )}
-      <div className='grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 items-start'>
+      <div className='monitoring-layout grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 items-start'>
         {/* Área Principal (agora primeiro para que painel fique à direita em telas grandes) */}
-        <div className='flex flex-col gap-4'>
-          <Card className='shadow-sm'>
+        <div className='monitoring-main flex flex-col gap-4'>
+          <Card className='shadow-sm monitoring-range-card no-print'>
             <CardHeader className='pb-2'>
               <CardTitle className='text-sm'>Período analisado</CardTitle>
             </CardHeader>
@@ -355,7 +369,7 @@ export default function MonitoringPage() {
           </div>
         </div>
         {/* Painel Lateral (agora à direita) */}
-        <div className='flex flex-col gap-4 xl:sticky xl:top-4'>
+        <div className='monitoring-sidebar no-print flex flex-col gap-4 xl:sticky xl:top-4'>
           <Card className='shadow-sm'>
             <CardHeader className='pb-2'><CardTitle className='text-sm'>Contexto</CardTitle></CardHeader>
             <CardContent className='space-y-2'>

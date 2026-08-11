@@ -603,3 +603,67 @@
 .table-responsive-wrapper {
   width: 100%;
 }
+
+
+/* ── Monitoramento: impressão do relatório sem filtros laterais ── */
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  .monitoring-page {
+    padding: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .monitoring-layout {
+    display: block !important;
+  }
+
+  .monitoring-main {
+    width: 100% !important;
+    gap: 10px !important;
+  }
+
+  .monitoring-sidebar,
+  .monitoring-range-card,
+  .monitoring-page .no-print {
+    display: none !important;
+  }
+
+  .monitoring-print-header {
+    display: block !important;
+    margin-bottom: 8px !important;
+  }
+
+  .monitoring-print-header h1 {
+    font-size: 18px !important;
+    color: #111 !important;
+  }
+
+  .monitoring-page .print-only {
+    display: block !important;
+    color: #444 !important;
+    margin-bottom: 8px !important;
+  }
+
+  .monitoring-page .shadow-sm {
+    box-shadow: none !important;
+  }
+
+  .monitoring-page .recharts-responsive-container {
+    width: 100% !important;
+    height: 280px !important;
+  }
+
+  .monitoring-page .card,
+  .monitoring-page [data-slot='card'] {
+    break-inside: avoid;
+  }
+}

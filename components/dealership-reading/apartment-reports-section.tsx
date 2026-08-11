@@ -233,6 +233,7 @@ export function ApartmentReportsSection({
             const response = await fetch('/api/user/trigger-emails', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dealershipReadingId }),
             })
             const data = await response.json()
 
@@ -242,7 +243,7 @@ export function ApartmentReportsSection({
 
             toast({
                 title: "Emails processados",
-                description: `${data.sent || 0} enviados, ${data.failed || 0} falhas, ${data.skipped || 0} pulados${data.message ? ' — ' + data.message : ''}`,
+                description: `${data.sent || 0} enviados, ${data.failed || 0} falhas, ${data.skipped || 0} pulados${data.jobsCreated ? `, ${data.jobsCreated} jobs criados` : ''}${data.message ? ' — ' + data.message : ''}`,
             })
         } catch (error: any) {
             toast({

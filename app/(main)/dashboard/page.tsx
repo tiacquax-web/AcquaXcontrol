@@ -36,6 +36,7 @@ import {
 } from 'recharts';
 
 import ResidentMonitoringCard from '@/components/dashboard/ResidentMonitoringCard';
+import AreaCommonAnnualDashboard from '@/components/dashboard/AreaCommonAnnualDashboard';
 import { useRolePreview } from '@/contexts/RolePreviewContext';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -908,6 +909,11 @@ function ComplexDetailPanel({ complex, onBack }: { complex: any; onBack: () => v
           </CardContent>
         </Card>
       </div>
+
+      <AreaCommonAnnualDashboard
+        complexId={complex.id}
+        complexName={complex.socialName || complex.aliasName}
+      />
 
       {/* Month selector + consumption table */}
       <Card>

@@ -73,16 +73,17 @@ function formatAppDate(value?: string | null): string {
   return parsed ? format(parsed, 'dd/MM/yyyy') : 'ref. pend.';
 }
 
-function deriveReadingSchedule(item: MeterReportItem) {
-  const currentReadingDate = item.lastReading?.readAtDate || item.dealershipReading?.readingDate || null;
+function deriveReadingSchedule(item: MeterReportItem, fallbackDealershipReading?: MeterReportItem['dealershipReading'] | null) {
+  const dealershipReading = item.dealershipReading ?? fallbackDealershipReading ?? null;
+  const currentReadingDate = item.lastReading?.readAtDate || dealershipReading?.readingDate || null;
   const previousReadingDate = item.history?.[0]?.lastReading?.readAtDate || null;
-  const totalDays = Number(item.dealershipReading?.totalDays);
+  const totalDays = Number(dealershipReading?.totalDays);
   const derivedStart = parseAppDate(currentReadingDate) && Number.isFinite(totalDays)
     ? new Date(parseAppDate(currentReadingDate)!.getTime() - totalDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
   const nextReadingDate = item.lastReading?.nextReadingDate
-    || item.dealershipReading?.readingDateNext
-    || item.dealershipReading?.nextReadingDate
+    || dealershipReading?.readingDateNext
+    || dealershipReading?.nextReadingDate
     || null;
 
   return {
@@ -98,6 +99,7 @@ interface MonthData {
   year: string;
   label: string;
   items: MeterReportItem[];
+  dealershipReading: MeterReportItem['dealershipReading'] | null;
   loading: boolean;
   error: string | null;
 }
@@ -421,8 +423,14 @@ export default function LevantamentoPage() {
     const params: Record<string, string> = { month, year };
     if (complexId) params.complex_id = complexId;
     if (aptId) params.apartment_id = aptId;
-    const res = await axios.get<{ list: MeterReportItem[] }>(`${API}/meter-report`, { params, withCredentials: true });
-    return res.data.list;
+    const res = await axios.get<{
+    list: MeterReportItem[];
+    dealershipReadings?: MeterReportItem['dealershipReading'][];
+  }>(`${API}/meter-report`, { params, withCredentials: true });
+    return {
+      items: res.data.list ?? [],
+      dealershipReading: res.data.dealershipReadings?.[0] ?? null,
+    };
   }, []);
 
   useEffect(() => {
@@ -437,6 +445,7 @@ export default function LevantamentoPage() {
       year: m.year,
       label: m.label,
       items: [],
+      dealershipReading: null,
       loading: true,
       error: null,
     })));
@@ -444,10 +453,15 @@ export default function LevantamentoPage() {
     // Busca paralela
     selectedMonths.forEach(async (m, idx) => {
       try {
-        const items = await fetchMonth(m.month, m.year, selectedComplexId!, apartmentIdFilter);
+        const result = await fetchMonth(m.month, m.year, selectedComplexId!, apartmentIdFilter);
         setMonthsData(prev => {
           const next = [...prev];
-          if (next[idx]) next[idx] = { ...next[idx], items, loading: false };
+          if (next[idx]) next[idx] = {
+            ...next[idx],
+            items: result.items,
+            dealershipReading: result.dealershipReading,
+            loading: false,
+          };
           return next;
         });
       } catch (e: any) {
@@ -516,7 +530,7 @@ export default function LevantamentoPage() {
             waterSewage: ws,
             prevReading: item.history?.[0]?.lastReading?.reading ?? null,
             currReading: item.lastReading?.reading ?? null,
-            ...deriveReadingSchedule(item),
+            ...deriveReadingSchedule(item, md.dealershipReading),
             photoUrl: item.lastReading?.urlCover ? sanitizeImageUrl(item.lastReading.urlCover) : null,
           };
         }

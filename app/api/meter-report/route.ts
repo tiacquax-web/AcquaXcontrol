@@ -61,17 +61,55 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     const currentReports = await prisma.apartmentConsumptionReport.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        monthRef: true,
+        yearRef: true,
+        consumption: true,
+        totalUnit: true,
+        partial: true,
+        apartmentId: true,
+        complexId: true,
+        dealershipReadingId: true,
+        utilityType: true,
         apartment: {
-          include: {
+          select: {
+            id: true,
+            name: true,
             block: {
-              include: {
-                complex: { include: { company: true } },
+              select: {
+                id: true,
+                name: true,
+                complex: {
+                  select: {
+                    id: true,
+                    socialName: true,
+                    aliasName: true,
+                    street: true,
+                    number: true,
+                    neighborhood: true,
+                    city: true,
+                    state: true,
+                    zipcode: true,
+                    company: { select: { id: true, socialName: true, name: true } },
+                  },
+                },
               },
             },
           },
         },
-        lastReading: true,
+        lastReading: {
+          select: {
+            id: true,
+            reading: true,
+            readAtDate: true,
+            nextReadingDate: true,
+            readingDate: true,
+            readingDateNext: true,
+            urlCover: true,
+            registerName: true,
+          },
+        },
       },
       orderBy: [{ complexId: 'asc' }],
     });
@@ -101,7 +139,22 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     const dealershipReadings = await prisma.dealershipReading.findMany({
       where: drWhere,
-      include: { complex: { include: { company: true } }, dealership: true },
+      select: {
+        id: true,
+        type: true,
+        complexId: true,
+        monthRef: true,
+        yearRef: true,
+        readingDate: true,
+        readingDateNext: true,
+        totalDays: true,
+        diffCost: true,
+        totalValue: true,
+        dealershipConsumption: true,
+        monthlyConsumption: true,
+        complex: { select: { id: true, socialName: true, aliasName: true, company: { select: { id: true, socialName: true, name: true } } } },
+        dealership: { select: { id: true, name: true, service: true } },
+      },
     });
 
     // Index dealership readings by id for quick lookup
@@ -141,7 +194,14 @@ export async function GET(req: NextRequest): Promise<Response> {
         ],
         AND: [{ OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }],
       },
-      include: { lastReading: true },
+      select: {
+        id: true,
+        apartmentId: true,
+        monthRef: true,
+        yearRef: true,
+        consumption: true,
+        lastReading: { select: { reading: true, readAtDate: true } },
+      },
       orderBy: { yearRef: 'desc' },
     });
 
@@ -178,7 +238,6 @@ export async function GET(req: NextRequest): Promise<Response> {
         select: {
           id: true,
           apartmentId: true,
-          urlCover: true,
           reading: true,
           readAt: true,
           readAtDate: true,

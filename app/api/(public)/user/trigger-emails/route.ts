@@ -5,6 +5,7 @@ import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
 import { generateFilipetaEmail } from '@/lib/services/filipeta-email-template';
 import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 import { getConsumptionAnalysis } from '@/lib/services/consumption-analysis';
+import { createEmailJobsForDealershipReading } from '@/lib/services/filipeta-email-dispatcher';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -62,6 +63,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ message: 'Apenas administradores podem acionar o envio manual' }, { status: 403 });
     }
 
+    const body = await req.json().catch(() => ({}));
+    const dealershipReadingId = typeof body?.dealershipReadingId === 'string'
+      ? body.dealershipReadingId
+      : null;
+
+    // Quando acionado pela aba Contas, garantir que a leitura selecionada tenha
+    // jobs criados antes de processar a fila. Antes, o botão só processava jobs
+    // que já existissem e por isso frequentemente retornava zero enviados.
+    let jobsCreated = 0;
+    let jobsSkipped = 0;
+    if (dealershipReadingId) {
+      const created = await createEmailJobsForDealershipReading(dealershipReadingId, userId);
+      jobsCreated = created.created;
+      jobsSkipped = created.skipped;
+    }
+
     // Verificar configuração de email
     if (!isEmailConfigured()) {
       return NextResponse.json({
@@ -81,8 +98,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         processed: 0,
         sent: 0,
         failed: 0,
-        skipped: 0,
-        message: 'Nenhum email pendente na fila.'
+        skipped: jobsSkipped,
+        jobsCreated,
+        message: dealershipReadingId
+          ? 'Nenhum email pendente para esta leitura.'
+          : 'Nenhum email pendente na fila.'
       });
     }
 
@@ -243,7 +263,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     console.log(`[TriggerEmails] Processados: ${pendingJobs.length}, enviados: ${sent}, falhas: ${failed}, pulados: ${skipped}`);
-    return NextResponse.json({ processed: pendingJobs.length, sent, failed, skipped });
+    return NextResponse.json({
+      processed: pendingJobs.length,
+      sent,
+      failed,
+      skipped: skipped + jobsSkipped,
+      jobsCreated,
+    });
   } catch (error: any) {
     console.error('[TriggerEmails] Erro:', error);
     return NextResponse.json({ message: 'Erro interno', error: error?.message }, { status: 500 });

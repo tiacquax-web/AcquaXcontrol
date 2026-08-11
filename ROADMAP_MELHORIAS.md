@@ -75,3 +75,49 @@ A arquitetura deve ser preparada para múltiplas concessionárias e fornecedores
 3. Confirmar com o novo condomínio quais campos de custo representam exatamente consumo, esgoto, rateio, carro-pipa e valor total na regra contratada.
 4. Definir o SLA de atualização por fornecedor, por exemplo, “dados atualizados em até 6 horas” e “alerta crítico após 24 horas”.
 5. Criar testes automatizados para: e-mail completo, datas de período, reprocessamento idempotente, arquivo S3 ausente, medidor sem `glId` e fila SMTP indisponível.
+
+
+## Análise de melhorias por perfil de usuário
+
+### Morador
+
+O morador precisa encontrar rapidamente três respostas: quanto consumiu, quanto vai pagar e se existe algum problema na unidade. A experiência recomendada é um portal inicial com o extrato do mês, leitura anterior e atual, período, próxima leitura prevista, foto do medidor, comparação com a média da própria unidade e um aviso simples quando houver consumo atípico. O sistema deve evitar termos técnicos sem explicação e diferenciar claramente “sem foto”, “sem leitura”, “consumo zero” e “dados atrasados”.
+
+As notificações devem ser configuráveis por canal e severidade. Um alerta crítico de possível vazamento pode ser enviado imediatamente, enquanto um resumo mensal pode ser enviado por e-mail e disponibilizado no portal. O morador também deve conseguir contestar uma leitura, anexar comentário e acompanhar o status da análise sem precisar abrir um chamado separado.
+
+### Síndico
+
+O síndico precisa acompanhar o condomínio, não apenas uma unidade isolada. O painel ideal deve mostrar consumo total, consumo médio por economia, custo da conta, Área Comum, unidades sem leitura, unidades com consumo acima do padrão, medidores sem atualização e alertas críticos agrupados por bloco. O novo dashboard anual de Área Comum deve evoluir para permitir comparação entre meses, acumulado do ano, variação percentual e explicação dos principais picos.
+
+Também é importante oferecer ações operacionais rápidas: reenviar extratos de um período, exportar a lista de unidades pendentes, imprimir ou compartilhar um relatório resumido, registrar uma ocorrência e confirmar que um alerta foi tratado. O síndico deve receber um resumo semanal configurável, em vez de vários avisos repetidos.
+
+### Administradora
+
+A administradora precisa de visão multi- condomínio e padronização. Recomenda-se uma central com indicadores de atualização, status de e-mails, inadimplência operacional de dados, consumo por condomínio, evolução da Área Comum e ranking de unidades que exigem atenção. Filtros salvos por cliente, permissões por carteira e relatórios agendados reduziriam trabalho manual.
+
+A auditoria deve registrar quem importou, alterou ou reenviou cada relatório. Para cada ciclo mensal, o sistema deveria mostrar uma checklist: conta recebida, leituras importadas, relatórios calculados, referências preenchidas, e-mails criados, e-mails enviados e pendências. Isso transforma uma operação atualmente reativa em uma rotina previsível.
+
+### Equipe de medição e operação
+
+A equipe operacional precisa de ferramentas para resolver exceções. A tela de ingestão deve mostrar a última execução bem-sucedida, arquivos encontrados, registros importados, registros sem vínculo, erros de formato, medidores sem correspondência e tempo de processamento. Para medições por foto, recomenda-se fila de validação com imagem, leitura reconhecida, confiança da leitura, comparação com leitura anterior e aprovação manual.
+
+O sistema também deve possuir retentativa controlada de e-mails, limite por lote, histórico do SMTP, motivo de falha compreensível e ação de reprocessamento por condomínio e competência. O botão da aba Contas deve sempre informar quantos jobs foram criados, enviados, falharam e ficaram pendentes.
+
+### Priorização recomendada
+
+| Prioridade | Melhoria | Benefício principal | Complexidade |
+|---|---|---|---|
+| P0 | Corrigir referências, fila de e-mail e impressão do Monitoramento | Remove falhas visíveis e reduz reclamações imediatas | Baixa/média |
+| P0 | Checklist mensal de processamento por condomínio | Evita que uma etapa fique silenciosamente parada | Média |
+| P0 | Dashboard de saúde de dados e fila SMTP | Dá visibilidade operacional para agir antes da reclamação | Média |
+| P1 | Resumo semanal do síndico | Reduz acompanhamento manual | Média |
+| P1 | Comparativo de consumo da unidade e do condomínio | Torna o extrato compreensível e acionável | Média |
+| P1 | Central de pendências de leitura, foto e vínculo IoT | Acelera a correção das exceções | Média/alta |
+| P1 | Contestação de leitura pelo morador | Melhora transparência e rastreabilidade | Média |
+| P2 | Detecção de vazamento por faixa esperada e sazonalidade | Cria diferenciação e prevenção | Alta |
+| P2 | OCR/visão computacional com confiança e revisão | Reduz digitação e erros de leitura manual | Alta |
+| P2 | Relatórios agendados e exportações versionadas | Escala a operação de administradoras | Média |
+
+### Indicadores de sucesso
+
+As melhorias devem ser acompanhadas por métricas: percentual de condomínios com dados atualizados dentro do SLA; percentual de e-mails enviados na primeira tentativa; tempo médio para corrigir uma pendência; número de unidades sem leitura por competência; taxa de contestação resolvida; redução de consumo após alertas de vazamento; e tempo gasto pela administradora para fechar um ciclo mensal.
