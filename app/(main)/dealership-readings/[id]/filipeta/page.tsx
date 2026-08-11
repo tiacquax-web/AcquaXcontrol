@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { Printer, AlertTriangle, LoaderCircle, X, Search } from 'lucide-react';
+import { Printer, Download, AlertTriangle, LoaderCircle, X, Search } from 'lucide-react';
 
 import {
   useDealershipFilipetaData,
@@ -17,7 +17,8 @@ import SelectApartment from '@/components/ComboboxApartment';
 import BlocksCombobox from '@/components/ComboboxBlock';
 import type { Block, Apartment } from '@prisma/client';
 
-const PRINT_BATCH_SIZE = 20;
+const BROWSER_PRINT_MAX_REPORTS = 20;
+const SCREEN_PAGE_SIZE = 30;
 
 const FilipetaPage = () => {
   const params = useParams();
@@ -60,34 +61,44 @@ const FilipetaPage = () => {
   });
 
   const { hasPermission, loading: permissionsLoading } = usePermissionChecker();
-  const [printBatch, setPrintBatch] = useState<number | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [screenPage, setScreenPage] = useState(0);
 
-  const totalPrintBatches = data ? Math.ceil(data.list.length / PRINT_BATCH_SIZE) : 0;
-  const reportsToRender = data && printBatch !== null
-    ? data.list.slice(printBatch * PRINT_BATCH_SIZE, (printBatch + 1) * PRINT_BATCH_SIZE)
-    : data?.list ?? [];
+  const totalScreenPages = data ? Math.ceil(data.list.length / SCREEN_PAGE_SIZE) : 0;
+  const visibleReports = data
+    ? data.list.slice(screenPage * SCREEN_PAGE_SIZE, (screenPage + 1) * SCREEN_PAGE_SIZE)
+    : [];
 
-  // O Chrome mobile pode encerrar a aba quando window.print() tenta montar
-  // centenas de páginas e imagens de uma única vez. Após o diálogo fechar,
-  // avançamos para o próximo lote sem abrir outro diálogo automaticamente.
-  useEffect(() => {
-    const handleAfterPrint = () => {
-      setPrintBatch(current => {
-        if (current === null || totalPrintBatches <= 1) return null;
-        return current + 1 < totalPrintBatches ? current + 1 : null;
-      });
-    };
+  const handleDownloadPdf = () => {
+    if (!data || data.list.length === 0 || pdfLoading) return;
 
-    window.addEventListener('afterprint', handleAfterPrint);
-    return () => window.removeEventListener('afterprint', handleAfterPrint);
-  }, [totalPrintBatches]);
+    setPdfLoading(true);
+    const qs = new URLSearchParams();
+    if (order) qs.set('order', order);
+    if (filterBlockId) qs.set('block_id', filterBlockId);
+    if (filterAptId) qs.set('apartment_id', filterAptId);
+    if (description) qs.set('description', description);
+
+    // Download direto: o PDF é montado no servidor e o tablet não precisa
+    // renderizar centenas de fotos ou manter o arquivo inteiro em JavaScript.
+    const link = document.createElement('a');
+    link.href = `/api/dealership-readings/${encodeURIComponent(String(id))}/filipeta/pdf?${qs.toString()}`;
+    link.rel = 'noopener';
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.setTimeout(() => setPdfLoading(false), 5000);
+  };
 
   const handlePrint = () => {
     if (!data || data.list.length === 0) return;
 
-    if (data.list.length > PRINT_BATCH_SIZE && printBatch === null) {
-      setPrintBatch(0);
-      window.setTimeout(() => window.print(), 180);
+    // A partir de 21 unidades, evita window.print(): o Android tenta montar
+    // todas as páginas e imagens na memória e pode encerrar o app de impressão.
+    if (data.list.length > BROWSER_PRINT_MAX_REPORTS) {
+      handleDownloadPdf();
       return;
     }
 
@@ -97,13 +108,13 @@ const FilipetaPage = () => {
   const hasFilters = !!(filterBlock || filterApartment);
 
   const clearFilters = () => {
-    setPrintBatch(null);
+    setScreenPage(0);
     setFilterBlock(undefined);
     setFilterApartment(undefined);
   };
 
   const handleSearch = () => {
-    setPrintBatch(null);
+    setScreenPage(0);
     setFetchEnabled(true);
     setFetchKey(k => k + 1);
   };
@@ -168,7 +179,7 @@ const FilipetaPage = () => {
 
     return (
       <div id="filipeta-body" className="space-y-0">
-        {reportsToRender.map(report => (
+        {visibleReports.map(report => (
           <FilipetaGridReport
             key={report.id || report.apartmentId}
             report={report}
@@ -176,6 +187,29 @@ const FilipetaPage = () => {
             description={description}
           />
         ))}
+        {totalScreenPages > 1 && (
+          <div className="no-print flex flex-wrap items-center justify-center gap-3 py-4 text-sm">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={screenPage === 0}
+              onClick={() => setScreenPage(page => Math.max(0, page - 1))}
+            >
+              Anteriores
+            </Button>
+            <span className="text-muted-foreground">
+              Unidades {screenPage * SCREEN_PAGE_SIZE + 1}–{Math.min((screenPage + 1) * SCREEN_PAGE_SIZE, data.list.length)} de {data.list.length}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={screenPage >= totalScreenPages - 1}
+              onClick={() => setScreenPage(page => Math.min(totalScreenPages - 1, page + 1))}
+            >
+              Próximas
+            </Button>
+          </div>
+        )}
       </div>
     );
   };
@@ -187,16 +221,22 @@ const FilipetaPage = () => {
         <div className="flex justify-between items-center flex-wrap gap-3">
           <h1 className="text-2xl font-bold">Filipeta de Leitura</h1>
           <div className="flex items-center gap-2">
-            {printBatch !== null && totalPrintBatches > 1 && (
-              <span className="text-xs text-muted-foreground text-right max-w-[220px]">
-                Lote {printBatch + 1} de {totalPrintBatches}. Após fechar a impressão, clique novamente para o próximo lote.
+            {data && data.list.length > BROWSER_PRINT_MAX_REPORTS && (
+              <span className="text-xs text-muted-foreground text-right max-w-[280px]">
+                Esta quantidade será gerada como PDF no servidor para não travar o dispositivo.
               </span>
             )}
-            <Button onClick={handlePrint} disabled={!data || data.list.length === 0}>
-              <Printer className="mr-2 h-4 w-4" />
-              {printBatch !== null && totalPrintBatches > 1
-                ? `Imprimir lote ${printBatch + 1}/${totalPrintBatches}`
-                : 'Imprimir'}
+            <Button onClick={handlePrint} disabled={!data || data.list.length === 0 || pdfLoading}>
+              {data && data.list.length > BROWSER_PRINT_MAX_REPORTS ? (
+                <Download className="mr-2 h-4 w-4" />
+              ) : (
+                <Printer className="mr-2 h-4 w-4" />
+              )}
+              {pdfLoading
+                ? 'Gerando PDF no servidor...'
+                : data && data.list.length > BROWSER_PRINT_MAX_REPORTS
+                  ? 'Baixar PDF completo'
+                  : 'Imprimir'}
             </Button>
           </div>
         </div>

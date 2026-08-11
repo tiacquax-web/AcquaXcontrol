@@ -78,7 +78,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
       include: {
         apartment: { include: { block: { include: { complex: { include: { company: true } } } } } },
-        lastReading: true,
+        // Nunca enviar coverBase64: uma única resposta pode conter centenas de
+        // imagens originais e causar estouro de memória no tablet/navegador.
+        lastReading: {
+          select: {
+            id: true,
+            reading: true,
+            readAt: true,
+            readAtDate: true,
+            nextReadingDate: true,
+            readingDate: true,
+            readingDateNext: true,
+            urlCover: true,
+            isPreReading: true,
+            registerName: true,
+          },
+        },
       },
     });
 
@@ -125,7 +140,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         })),
       },
       include: {
-        lastReading: true,
+        // O histórico só precisa de leitura e data; fotos históricas não são
+        // usadas na filipeta e aumentam muito o payload.
+        lastReading: {
+          select: {
+            reading: true,
+            readAtDate: true,
+          },
+        },
       },
       orderBy: {
         yearRef: 'desc',
