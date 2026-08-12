@@ -73,18 +73,37 @@ function formatAppDate(value?: string | null): string {
   return parsed ? format(parsed, 'dd/MM/yyyy') : 'ref. pend.';
 }
 
-function deriveReadingSchedule(item: MeterReportItem, fallbackDealershipReading?: MeterReportItem['dealershipReading'] | null) {
+function deriveReadingSchedule(item: MeterReportItem, fallbackDealershipReading?: MeterReportItem['dealershipReading'] | null, monthRef?: string, yearRef?: string) {
   const dealershipReading = item.dealershipReading ?? fallbackDealershipReading ?? null;
-  const currentReadingDate = item.lastReading?.readAtDate || dealershipReading?.readingDate || null;
+  let currentReadingDate = item.lastReading?.readAtDate || dealershipReading?.readingDate || null;
+  
+  if (!currentReadingDate && monthRef && yearRef) {
+    const mNum = parseInt(monthRef, 10);
+    const yNum = parseInt(yearRef, 10);
+    if (!isNaN(mNum) && !isNaN(yNum)) {
+      const lastDay = new Date(yNum, mNum, 0);
+      currentReadingDate = lastDay.toISOString();
+    }
+  }
+
   const previousReadingDate = item.history?.[0]?.lastReading?.readAtDate || null;
-  const totalDays = Number(dealershipReading?.totalDays);
+  const totalDays = Number(dealershipReading?.totalDays) || 30;
   const derivedStart = parseAppDate(currentReadingDate) && Number.isFinite(totalDays)
     ? new Date(parseAppDate(currentReadingDate)!.getTime() - totalDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
-  const nextReadingDate = item.lastReading?.nextReadingDate
+
+  let nextReadingDate = item.lastReading?.nextReadingDate
     || dealershipReading?.readingDateNext
     || dealershipReading?.nextReadingDate
     || null;
+
+  if (!nextReadingDate && currentReadingDate) {
+    const parsedCurrent = parseAppDate(currentReadingDate);
+    if (parsedCurrent) {
+      const nextDate = new Date(parsedCurrent.getTime() + 30 * 24 * 60 * 60 * 1000);
+      nextReadingDate = nextDate.toISOString();
+    }
+  }
 
   return {
     periodStart: previousReadingDate || derivedStart,
@@ -530,7 +549,7 @@ export default function LevantamentoPage() {
             waterSewage: ws,
             prevReading: item.history?.[0]?.lastReading?.reading ?? null,
             currReading: item.lastReading?.reading ?? null,
-            ...deriveReadingSchedule(item, md.dealershipReading),
+            ...deriveReadingSchedule(item, md.dealershipReading, md.month, md.year),
             photoUrl: item.lastReading?.urlCover ? sanitizeImageUrl(item.lastReading.urlCover) : null,
           };
         }
