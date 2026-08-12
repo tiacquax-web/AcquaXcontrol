@@ -29,65 +29,6 @@ export function isBlockedEmailDomain(email: string): boolean {
   );
 }
 
-interface ResidentWithApartment {
-  userId: string;
-  userName: string;
-  userEmail: string;
-  apartmentId: string;
-  apartmentName: string;
-  blockName: string;
-}
-
-export async function findResidentsForComplex(complexId: string): Promise<ResidentWithApartment[]> {
-  const blocks = await prisma.block.findMany({
-    where: { complexId, deletedAt: null },
-    select: { id: true, name: true },
-  });
-  const blockIds = blocks.map(b => b.id);
-  const blockNameMap = new Map(blocks.map(b => [b.id, b.name]));
-
-  const apartments = await prisma.apartment.findMany({
-    where: { blockId: { in: blockIds }, deletedAt: null },
-    select: { id: true, name: true, blockId: true },
-  });
-
-  if (apartments.length === 0) return [];
-
-  const result: ResidentWithApartment[] = [];
-
-  for (const apartment of apartments) {
-    const recipients = await findApartmentRecipients(apartment.id);
-    let added = false;
-    for (const recipient of recipients) {
-      if (!recipient.email || isBlockedEmailDomain(recipient.email)) continue;
-      added = true;
-      result.push({
-        userId: recipient.id,
-        userName: recipient.name,
-        userEmail: recipient.email,
-        apartmentId: apartment.id,
-        apartmentName: apartment.name,
-        blockName: blockNameMap.get(apartment.blockId) || '',
-      });
-    }
-
-    // Se o apartamento não tiver nenhum usuário vinculado com email externo,
-    // usamos o email de teste para garantir que a unidade receba a filipeta nos testes.
-    if (!added) {
-      result.push({
-        userId: 'fallback-test-user',
-        userName: `Morador Ap. ${apartment.name}`,
-        userEmail: 'ruivagiulia@gmail.com', // Email fornecido pelo usuário para teste
-        apartmentId: apartment.id,
-        apartmentName: apartment.name,
-        blockName: blockNameMap.get(apartment.blockId) || '',
-      });
-    }
-  }
-
-  return result;
-}
-
 export async function createEmailJobsForDealershipReading(
   dealershipReadingId: string,
   createdByUserId?: string,
@@ -107,16 +48,21 @@ export async function createEmailJobsForDealershipReading(
 
   if (!dealershipReading) return { created: 0, skipped: 0, total: 0 };
 
-  const residents = await findResidentsForComplex(dealershipReading.complexId);
+  // Buscar todos os relatórios de consumo de apartamentos para esta leitura
   const reports = await prisma.apartmentConsumptionReport.findMany({
     where: { dealershipReadingId, deletedAt: null },
-    select: { id: true, apartmentId: true },
+    include: {
+      apartment: {
+        select: { id: true, name: true, block: { select: { name: true } } },
+      },
+    },
   });
 
-  const reportByApartment = new Map(reports.map(r => [r.apartmentId, r]));
+  if (reports.length === 0) return { created: 0, skipped: 0, total: 0 };
+
   const existingJobs = await prisma.emailJob.findMany({
     where: { dealershipReadingId },
-    select: { id: true, toEmail: true, apartmentId: true, status: true },
+    select: { id: true, apartmentConsumptionReportId: true, status: true },
   });
 
   const failedJobs = existingJobs.filter(j => j.status === 'failed' || j.status === 'skipped');
@@ -127,31 +73,36 @@ export async function createEmailJobsForDealershipReading(
     });
   }
 
-  const existingSet = new Set(existingJobs.map(j => `${j.apartmentId}-${j.toEmail.toLowerCase()}`));
+  const existingReportIds = new Set(existingJobs.map(j => j.apartmentConsumptionReportId).filter(Boolean));
 
   let created = 0;
   const jobBatch: any[] = [];
 
-  for (const resident of residents) {
-    const report = reportByApartment.get(resident.apartmentId);
-    if (!report) continue;
+  for (const report of reports) {
+    if (!report.apartmentId || !report.apartment) continue;
+    if (existingReportIds.has(report.id)) continue;
 
-    const dedupKey = `${resident.apartmentId}-${resident.userEmail.toLowerCase()}`;
-    if (existingSet.has(dedupKey)) continue;
+    // Buscar destinatários do apartamento (com fallback garantido para teste se não houver)
+    const recipients = await findApartmentRecipients(report.apartmentId);
+    const validRecipient = recipients.find(r => r.email && !isBlockedEmailDomain(r.email)) || {
+      name: `Morador Ap. ${report.apartment.name}`,
+      email: 'ruivagiulia@gmail.com',
+    };
 
     jobBatch.push({
       apartmentConsumptionReportId: report.id,
       dealershipReadingId,
-      toEmail: resident.userEmail,
-      toName: resident.userName,
-      subject: `Filipeta ${dealershipReading.monthRef}/${dealershipReading.yearRef} - ${resident.apartmentName}`,
+      toEmail: validRecipient.email,
+      toName: validRecipient.name,
+      subject: `Filipeta ${dealershipReading.monthRef}/${dealershipReading.yearRef} - ${report.apartment.name}`,
       monthRef: dealershipReading.monthRef,
       yearRef: dealershipReading.yearRef || '',
       complexId: dealershipReading.complexId,
-      apartmentId: resident.apartmentId,
+      apartmentId: report.apartmentId,
       status: 'pending',
       createdByUserId: createdByUserId || null,
     });
+    existingReportIds.add(report.id);
   }
 
   if (jobBatch.length > 0) {
@@ -159,7 +110,7 @@ export async function createEmailJobsForDealershipReading(
     created += jobBatch.length;
   }
 
-  return { created, skipped: 0, total: residents.length };
+  return { created, skipped: 0, total: reports.length };
 }
 
 /**
@@ -186,109 +137,107 @@ export async function createEmailJobForReport(
     return { created: 0, skipped: 0, total: 0 };
   }
 
-  let recipients = (await findApartmentRecipients(report.apartmentId))
-    .filter((recipient) => !isBlockedEmailDomain(recipient.email));
+  const recipients = await findApartmentRecipients(report.apartmentId);
+  const validRecipient = recipients.find(r => r.email && !isBlockedEmailDomain(r.email)) || {
+    name: `Morador Ap. ${report.apartment.name}`,
+    email: 'ruivagiulia@gmail.com',
+  };
 
-  if (recipients.length === 0) {
-    recipients = [{ id: 'fallback-test', name: `Morador Ap. ${report.apartment.name}`, email: 'ruivagiulia@gmail.com' }];
-  }
+  const existing = await prisma.emailJob.findFirst({
+    where: {
+      apartmentConsumptionReportId: report.id,
+      toEmail: validRecipient.email,
+    },
+  });
 
-  let created = 0;
-  for (const recipient of recipients) {
-    const existing = await prisma.emailJob.findFirst({
-      where: {
+  const subject = `Filipeta ${report.DealershipReading.monthRef}/${report.DealershipReading.yearRef} - ${report.apartment.name}`;
+  
+  let jobId = existing?.id;
+  if (!existing) {
+    const newJob = await prisma.emailJob.create({
+      data: {
         apartmentConsumptionReportId: report.id,
-        toEmail: recipient.email,
+        dealershipReadingId: report.dealershipReadingId,
+        toEmail: validRecipient.email,
+        toName: validRecipient.name,
+        subject,
+        monthRef: report.DealershipReading.monthRef,
+        yearRef: report.DealershipReading.yearRef || '',
+        complexId: report.DealershipReading.complexId,
+        apartmentId: report.apartmentId,
+        status: 'pending',
+        createdByUserId: createdByUserId || null,
       },
     });
-
-    const subject = `Filipeta ${report.DealershipReading.monthRef}/${report.DealershipReading.yearRef} - ${report.apartment.name}`;
-    
-    let jobId = existing?.id;
-    if (!existing) {
-      const newJob = await prisma.emailJob.create({
-        data: {
-          apartmentConsumptionReportId: report.id,
-          dealershipReadingId: report.dealershipReadingId,
-          toEmail: recipient.email,
-          toName: recipient.name,
-          subject,
-          monthRef: report.DealershipReading.monthRef,
-          yearRef: report.DealershipReading.yearRef || '',
-          complexId: report.DealershipReading.complexId,
-          apartmentId: report.apartmentId,
-          status: 'pending',
-          createdByUserId: createdByUserId || null,
-        },
-      });
-      jobId = newJob.id;
-      created++;
-    } else if (existing.status !== 'sent') {
-      await prisma.emailJob.update({
-        where: { id: existing.id },
-        data: { status: 'pending', attempts: 0, errorMessage: null },
-      });
-      jobId = existing.id;
-    }
-
-    // ENVIAR IMEDIATAMENTE AO SALVAR O RELATÓRIO
-    try {
-      const dealership = report.DealershipReading;
-      const readingDate = report.lastReading?.readAtDate || dealership?.readingDate || null;
-      const nextReadingDate = report.lastReading?.nextReadingDate || dealership?.readingDateNext || undefined;
-      const periodEnd = readingDate ? String(readingDate).split(/[ T]/)[0] : undefined;
-
-      let analysis;
-      try {
-        analysis = await getConsumptionAnalysis(report.apartmentId, report.id, report.totalConsumption ?? report.consumption);
-      } catch (e) {}
-
-      const emailPayload = generateFilipetaEmail({
-        residentName: recipient.name || 'Morador',
-        apartmentName: report.apartment.name || '',
-        blockName: report.apartment.block?.name || '',
-        complexName: 'Condomínio',
-        monthRef: dealership.monthRef,
-        yearRef: dealership.yearRef || '',
-        consumption: report.consumption,
-        totalConsumption: report.totalConsumption ?? undefined,
-        initialReading: null,
-        finalReading: report.lastReading?.reading ?? null,
-        consumptionCost: report.consumptionCost,
-        sewageCost: report.sewageCost,
-        totalUnit: report.totalUnit,
-        rateioValue: report.partial ?? null,
-        utilityType: report.utilityType || undefined,
-        readingDate: readingDate ? String(readingDate) : undefined,
-        nextReadingDate,
-        periodEnd,
-        condominiumConsumption: dealership?.dealershipConsumption ?? null,
-        condominiumBillValue: dealership?.totalValue ?? null,
-        consumptionPerEconomy: dealership?.average ?? null,
-        analysis,
-      });
-
-      const sendResult = await sendEmail({
-        to: recipient.email,
-        toName: recipient.name,
-        subject: emailPayload.subject,
-        html: emailPayload.html,
-        text: emailPayload.text,
-      });
-
-      if (sendResult.success) {
-        await prisma.emailJob.update({
-          where: { id: jobId! },
-          data: { status: 'sent', sentAt: new Date(), errorMessage: null },
-        });
-      } else {
-        await prisma.emailJob.update({
-          where: { id: jobId! },
-          data: { status: 'failed', errorMessage: sendResult.error },
-        });
-      }
-    } catch (sendErr: any) {}
+    jobId = newJob.id;
+  } else if (existing.status !== 'sent') {
+    await prisma.emailJob.update({
+      where: { id: existing.id },
+      data: { status: 'pending', attempts: 0, errorMessage: null },
+    });
+    jobId = existing.id;
   }
 
-  return { created, skipped: 0, total: recipients.length };
+  // ENVIAR IMEDIATAMENTE AO SALVAR O RELATÓRIO
+  try {
+    const dealership = report.DealershipReading;
+    const readingDate = report.lastReading?.readAtDate || dealership?.readingDate || null;
+    const nextReadingDate = report.lastReading?.nextReadingDate || dealership?.readingDateNext || undefined;
+    const periodEnd = readingDate ? String(readingDate).split(/[ T]/)[0] : undefined;
+
+    let analysis;
+    try {
+      analysis = await getConsumptionAnalysis(report.apartmentId, report.id, report.totalConsumption ?? report.consumption);
+    } catch (e) {}
+
+    const emailPayload = generateFilipetaEmail({
+      residentName: validRecipient.name || 'Morador',
+      apartmentName: report.apartment.name || '',
+      blockName: report.apartment.block?.name || '',
+      complexName: 'Condomínio',
+      monthRef: dealership.monthRef,
+      yearRef: dealership.yearRef || '',
+      consumption: report.consumption,
+      totalConsumption: report.totalConsumption ?? undefined,
+      initialReading: null,
+      finalReading: report.lastReading?.reading ?? null,
+      consumptionCost: report.consumptionCost,
+      sewageCost: report.sewageCost,
+      totalUnit: report.totalUnit,
+      rateioValue: report.partial ?? null,
+      utilityType: report.utilityType || undefined,
+      readingDate: readingDate ? String(readingDate) : undefined,
+      nextReadingDate,
+      periodEnd,
+      condominiumConsumption: dealership?.dealershipConsumption ?? null,
+      condominiumBillValue: dealership?.totalValue ?? null,
+      consumptionPerEconomy: dealership?.average ?? null,
+      analysis,
+    });
+
+    const sendResult = await sendEmail({
+      to: validRecipient.email,
+      toName: validRecipient.name,
+      subject: emailPayload.subject,
+      html: emailPayload.html,
+      text: emailPayload.text,
+    });
+
+    if (sendResult.success) {
+      await prisma.emailJob.update({
+        where: { id: jobId! },
+        data: { status: 'sent', sentAt: new Date(), errorMessage: null },
+      });
+      return { created: 1, skipped: 0, total: 1 };
+    } else {
+      await prisma.emailJob.update({
+        where: { id: jobId! },
+        data: { status: 'failed', errorMessage: sendResult.error },
+      });
+    }
+  } catch (sendErr: any) {
+    console.error('[EmailJob] Erro ao enviar:', sendErr);
+  }
+
+  return { created: 0, skipped: 1, total: 1 };
 }
