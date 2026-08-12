@@ -53,7 +53,7 @@ export async function findComplexManagementRecipients(complexId: string): Promis
 }
 
 /**
- * Retorna usuários vinculados ao apartamento e garante email de teste se não houver.
+ * Retorna usuários vinculados diretamente ao apartamento. Sem fallback para evitar sobrecarga.
  */
 export async function findApartmentRecipients(apartmentId: string): Promise<NotificationRecipient[]> {
   if (!apartmentId) return [];
@@ -71,22 +71,7 @@ export async function findApartmentRecipients(apartmentId: string): Promise<Noti
     },
   });
 
-  const recipients = uniqueRecipients(assignments.map((assignment) => assignment.User));
-
-  if (recipients.length === 0) {
-    const apt = await prisma.apartment.findUnique({
-      where: { id: apartmentId },
-      select: { name: true },
-    });
-    // Fallback garantido para teste do morador
-    return [{
-      id: 'fallback-resident-' + apartmentId,
-      name: `Morador Ap. ${apt?.name || ''}`,
-      email: 'ruivagiulia@gmail.com',
-    }];
-  }
-
-  return recipients;
+  return uniqueRecipients(assignments.map((assignment) => assignment.User));
 }
 
 export function isExternalNotificationEmail(email: string): boolean {
