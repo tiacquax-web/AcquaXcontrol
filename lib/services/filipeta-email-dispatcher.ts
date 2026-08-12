@@ -21,7 +21,9 @@ const BLOCKED_EMAIL_DOMAINS = [
 
 export function isBlockedEmailDomain(email: string): boolean {
   if (!email) return true;
-  const domain = email.split('@')[1]?.toLowerCase().trim();
+  const lower = email.toLowerCase().trim();
+  if (lower.includes('acquax')) return true;
+  const domain = lower.split('@')[1];
   if (!domain) return true;
   return BLOCKED_EMAIL_DOMAINS.some(blocked =>
     domain === blocked || domain.endsWith('.' + blocked)
@@ -76,15 +78,12 @@ export async function findResidentsForComplex(complexId: string): Promise<Reside
   const userMap = new Map(users.map(u => [u.id, u]));
 
   const result: ResidentWithApartment[] = [];
-  const assignedApartmentIds = new Set<string>();
-
   for (const assignment of assignments) {
     const user = userMap.get(assignment.userId);
     const apartment = apartmentMap.get(assignment.contextId);
     if (!user || !apartment) continue;
     if (!user.email || user.email.includes('.deleted-') || isBlockedEmailDomain(user.email)) continue;
 
-    assignedApartmentIds.add(apartment.id);
     result.push({
       userId: user.id,
       userName: user.name,
@@ -93,21 +92,6 @@ export async function findResidentsForComplex(complexId: string): Promise<Reside
       apartmentName: apartment.name,
       blockName: blockNameMap.get(apartment.blockId) || '',
     });
-  }
-
-  // GARANTIA TOTAL: Se o apartamento não tiver usuário com role de apartamento,
-  // atribuímos o email de teste/fallback para que a filipeta SEMPRE seja enviada.
-  for (const apartment of apartments) {
-    if (!assignedApartmentIds.has(apartment.id)) {
-      result.push({
-        userId: 'fallback-user-' + apartment.id,
-        userName: `Morador Ap. ${apartment.name}`,
-        userEmail: 'ruivagiulia@gmail.com',
-        apartmentId: apartment.id,
-        apartmentName: apartment.name,
-        blockName: blockNameMap.get(apartment.blockId) || '',
-      });
-    }
   }
 
   return result;
@@ -139,12 +123,9 @@ export async function createEmailJobsForDealershipReading(
   });
 
   const reportByApartment = new Map(reports.map(r => [r.apartmentId, r]));
-  
-  // Garantir que cada relatório de apartamento tenha pelo menos um job criado,
-  // mesmo que o apartmentId não esteja na lista de residents (fallback direto por relatório).
   const existingJobs = await prisma.emailJob.findMany({
     where: { dealershipReadingId },
-    select: { id: true, toEmail: true, apartmentId: true, status: true, apartmentConsumptionReportId: true },
+    select: { id: true, toEmail: true, apartmentId: true, status: true },
   });
 
   const failedJobs = existingJobs.filter(j => j.status === 'failed' || j.status === 'skipped');
@@ -155,16 +136,17 @@ export async function createEmailJobsForDealershipReading(
     });
   }
 
-  const existingReportIds = new Set(existingJobs.map(j => j.apartmentConsumptionReportId).filter(Boolean));
+  const existingSet = new Set(existingJobs.map(j => `${j.apartmentId}-${j.toEmail.toLowerCase()}`));
 
   let created = 0;
   const jobBatch: any[] = [];
 
-  // 1. Processar residentes encontrados
   for (const resident of residents) {
     const report = reportByApartment.get(resident.apartmentId);
     if (!report) continue;
-    if (existingReportIds.has(report.id)) continue;
+
+    const dedupKey = `${resident.apartmentId}-${resident.userEmail.toLowerCase()}`;
+    if (existingSet.has(dedupKey)) continue;
 
     jobBatch.push({
       apartmentConsumptionReportId: report.id,
@@ -179,32 +161,6 @@ export async function createEmailJobsForDealershipReading(
       status: 'pending',
       createdByUserId: createdByUserId || null,
     });
-    existingReportIds.add(report.id);
-  }
-
-  // 2. Cobertura de segurança extra: para qualquer relatório que ainda não tenha job, criar com email fallback
-  for (const report of reports) {
-    if (existingReportIds.has(report.id)) continue;
-
-    const apt = await prisma.apartment.findUnique({
-      where: { id: report.apartmentId },
-      select: { name: true, block: { select: { name: true } } },
-    });
-
-    jobBatch.push({
-      apartmentConsumptionReportId: report.id,
-      dealershipReadingId,
-      toEmail: 'ruivagiulia@gmail.com',
-      toName: `Morador Ap. ${apt?.name || ''}`,
-      subject: `Filipeta ${dealershipReading.monthRef}/${dealershipReading.yearRef} - ${apt?.name || ''}`,
-      monthRef: dealershipReading.monthRef,
-      yearRef: dealershipReading.yearRef || '',
-      complexId: dealershipReading.complexId,
-      apartmentId: report.apartmentId,
-      status: 'pending',
-      createdByUserId: createdByUserId || null,
-    });
-    existingReportIds.add(report.id);
   }
 
   if (jobBatch.length > 0) {
@@ -212,7 +168,7 @@ export async function createEmailJobsForDealershipReading(
     created += jobBatch.length;
   }
 
-  return { created, skipped: 0, total: reports.length };
+  return { created, skipped: 0, total: residents.length };
 }
 
 /**
@@ -239,11 +195,11 @@ export async function createEmailJobForReport(
     return { created: 0, skipped: 0, total: 0 };
   }
 
-  let recipients = (await findApartmentRecipients(report.apartmentId))
+  const recipients = (await findApartmentRecipients(report.apartmentId))
     .filter((recipient) => !isBlockedEmailDomain(recipient.email));
 
   if (recipients.length === 0) {
-    recipients = [{ id: 'fallback', name: `Morador Ap. ${report.apartment.name}`, email: 'ruivagiulia@gmail.com' }];
+    return { created: 0, skipped: 0, total: 0 };
   }
 
   let created = 0;
