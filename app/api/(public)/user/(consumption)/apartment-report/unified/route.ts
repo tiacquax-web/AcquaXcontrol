@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateUserSession } from '@/lib/users';
 import prisma from '@/lib/prisma';
-import { createEmailJobsForDealershipReading } from "@/lib/services/filipeta-email-dispatcher";
+import { createEmailJobsForDealershipReading, createEmailJobForReport } from "@/lib/services/filipeta-email-dispatcher";
 import { scheduleEmailQueueProcessing } from '@/lib/services/email-queue-trigger';
 
 // Request payload types (kept local to route to avoid broad type coupling)
@@ -285,6 +285,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // ── Trigger: criar EmailJobs para envio automático de filipetas ────────────
+    // No fluxo individual/unificado curto, cria o job diretamente para cada
+    // relatório salvo. Para importações grandes, mantém a criação em lote.
+    if (items.length <= 10) {
+      for (const result of results) {
+        if (!result.reportId || (!result.createdReport && !result.updatedReport)) continue;
+        try {
+          const directJob = await createEmailJobForReport(result.reportId, userId);
+          console.log(`[Unified Import] Job direto ${result.reportId}:`, directJob);
+        } catch (emailErr: any) {
+          console.error(`[Unified Import] Erro no job direto ${result.reportId}:`, emailErr?.message || emailErr);
+        }
+      }
+    }
+
     // Coleta os dealershipReadingIds únicos dos relatórios processados
     const dealershipReadingIds = new Set<string>();
     for (const r of results) {
@@ -306,7 +320,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     if (dealershipReadingIds.size > 0) {
-      scheduleEmailQueueProcessing(req, `unified:${[...dealershipReadingIds].join(',')}`);
+      scheduleEmailQueueProcessing(req, `unified:${[...dealershipReadingIds].join(',')}`, [...dealershipReadingIds]);
     }
 
     const response: UnifiedResponse = {

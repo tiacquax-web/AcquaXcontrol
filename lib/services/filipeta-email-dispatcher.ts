@@ -11,6 +11,7 @@
  */
 
 import prisma from '@/lib/prisma';
+import { findApartmentRecipients } from '@/lib/services/notification-recipients';
 
 /**
  * Domínios internos/da empresa que não devem receber filipetas.
@@ -246,4 +247,89 @@ export async function createEmailJobsForDealershipReading(
 
   console.log(`[EmailDispatcher] Jobs criados: ${created}, pulados: ${skipped}, moradores: ${residents.length}`);
   return { created, skipped, total: residents.length };
+}
+
+/**
+ * Cria o job apenas para o relatório que acabou de ser salvo.
+ * Usado pelos endpoints de criação/edição individual, que não passam pelo
+ * salvamento unificado e, portanto, não têm como aguardar uma leitura em lote.
+ */
+export async function createEmailJobForReport(
+  reportId: string,
+  createdByUserId?: string,
+): Promise<{ created: number; skipped: number; total: number }> {
+  const report = await prisma.apartmentConsumptionReport.findUnique({
+    where: { id: reportId },
+    select: {
+      id: true,
+      apartmentId: true,
+      dealershipReadingId: true,
+      apartment: {
+        select: {
+          name: true,
+          block: { select: { name: true } },
+        },
+      },
+      DealershipReading: {
+        select: {
+          complexId: true,
+          monthRef: true,
+          yearRef: true,
+        },
+      },
+    },
+  });
+
+  if (!report || !report.apartmentId || !report.dealershipReadingId || !report.DealershipReading) {
+    return { created: 0, skipped: 0, total: 0 };
+  }
+
+  const recipients = (await findApartmentRecipients(report.apartmentId))
+    .filter((recipient) => !isBlockedEmailDomain(recipient.email));
+  if (recipients.length === 0) return { created: 0, skipped: 0, total: 0 };
+
+  const existingJobs = await prisma.emailJob.findMany({
+    where: {
+      apartmentConsumptionReportId: report.id,
+      toEmail: { in: recipients.map((recipient) => recipient.email) },
+    },
+    select: { id: true, toEmail: true, status: true },
+  });
+  const activeEmails = new Set(
+    existingJobs
+      .filter((job) => job.status === 'pending' || job.status === 'sent')
+      .map((job) => job.toEmail.toLowerCase()),
+  );
+
+  // Reabrir jobs falhos para que um novo salvamento tente o envio novamente.
+  const failedJobs = existingJobs.filter((job) => job.status === 'failed' || job.status === 'skipped');
+  for (const failedJob of failedJobs) {
+    await prisma.emailJob.update({
+      where: { id: failedJob.id },
+      data: { status: 'pending', attempts: 0, errorMessage: null, sentAt: null },
+    });
+    activeEmails.add(failedJob.toEmail.toLowerCase());
+  }
+
+  const jobs = recipients
+    .filter((recipient) => !activeEmails.has(recipient.email.toLowerCase()))
+    .map((recipient) => ({
+      apartmentConsumptionReportId: report.id,
+      dealershipReadingId: report.dealershipReadingId,
+      toEmail: recipient.email,
+      toName: recipient.name,
+      subject: `Filipeta ${report.DealershipReading!.monthRef}/${report.DealershipReading!.yearRef} - ${report.apartment.name}`,
+      monthRef: report.DealershipReading!.monthRef,
+      yearRef: report.DealershipReading!.yearRef || '',
+      complexId: report.DealershipReading!.complexId,
+      apartmentId: report.apartmentId,
+      status: 'pending',
+      createdByUserId: createdByUserId || null,
+    }));
+
+  if (jobs.length > 0) {
+    await prisma.emailJob.createMany({ data: jobs });
+  }
+
+  return { created: jobs.length, skipped: recipients.length - jobs.length, total: recipients.length };
 }

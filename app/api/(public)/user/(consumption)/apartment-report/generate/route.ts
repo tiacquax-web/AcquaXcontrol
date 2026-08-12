@@ -127,7 +127,7 @@ export async function POST(req: NextRequest): Promise<Response> {
             }
         }
 
-        scheduleEmailQueueProcessing(req, `generate:${dealershipReadingId}`)
+        scheduleEmailQueueProcessing(req, `generate:${dealershipReadingId}`, [dealershipReadingId])
 
         return NextResponse.json({ 
             success: true, 

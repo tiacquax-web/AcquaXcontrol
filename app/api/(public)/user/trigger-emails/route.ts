@@ -6,6 +6,7 @@ import { generateFilipetaEmail } from '@/lib/services/filipeta-email-template';
 import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 import { getConsumptionAnalysis } from '@/lib/services/consumption-analysis';
 import { createEmailJobsForDealershipReading } from '@/lib/services/filipeta-email-dispatcher';
+import { enqueueManagementInsightJobs, buildManagementInsightEmail, cleanManagementInsightSubject, isManagementInsightJob } from '@/lib/services/management-insights-email';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -77,6 +78,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const created = await createEmailJobsForDealershipReading(dealershipReadingId, userId);
       jobsCreated = created.created;
       jobsSkipped = created.skipped;
+      const insightJobs = await enqueueManagementInsightJobs(dealershipReadingId, userId);
+      jobsCreated += insightJobs.created;
+      jobsSkipped += insightJobs.skipped;
     }
 
     // Verificar configuração de email
@@ -169,6 +173,31 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           where: { id: job.id },
           data: { attempts: { increment: 1 } },
         });
+
+        if (isManagementInsightJob(job.subject)) {
+          if (!job.complexId) {
+            await prisma.emailJob.update({ where: { id: job.id }, data: { status: 'failed', errorMessage: 'Insight sem condomínio associado' } });
+            failed++;
+            continue;
+          }
+          const insight = await buildManagementInsightEmail(job.complexId, job.monthRef, job.yearRef, job.toName);
+          const insightResult = await sendEmail({
+            to: job.toEmail,
+            toName: job.toName || undefined,
+            subject: cleanManagementInsightSubject(job.subject),
+            html: insight.html,
+            text: insight.text,
+          });
+          if (insightResult.success) {
+            await prisma.emailJob.update({ where: { id: job.id }, data: { status: 'sent', sentAt: new Date() } });
+            sent++;
+          } else {
+            const newAttempts = job.attempts + 1;
+            await prisma.emailJob.update({ where: { id: job.id }, data: { status: newAttempts >= MAX_ATTEMPTS ? 'failed' : 'pending', errorMessage: insightResult.error } });
+            failed++;
+          }
+          continue;
+        }
 
         const report = job.apartmentConsumptionReportId ? reportMap.get(job.apartmentConsumptionReportId) : null;
         const apartment = job.apartmentId ? apartmentMap.get(job.apartmentId) : null;

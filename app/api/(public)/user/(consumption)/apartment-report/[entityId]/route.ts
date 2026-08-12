@@ -3,6 +3,7 @@ import { deleteEntity, updateEntityData } from "@/lib/userData";
 import { validateUserSession } from "@/lib/users";
 import { NextRequest, NextResponse } from "next/server";
 import { scheduleEmailQueueProcessing } from '@/lib/services/email-queue-trigger';
+import { createEmailJobForReport } from '@/lib/services/filipeta-email-dispatcher';
 
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ entityId: string }> }): Promise<Response> {
@@ -31,7 +32,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
 
         const dealershipReadingId = (entity as any)?.dealershipReadingId || body?.dealershipReadingId;
         if (dealershipReadingId) {
-            scheduleEmailQueueProcessing(req, `update-report:${dealershipReadingId}`);
+            try {
+                const emailJobResult = await createEmailJobForReport((entity as any).id, userId);
+                console.log(`[ReportSave] update-report ${(entity as any).id}:`, emailJobResult);
+            } catch (emailError: any) {
+                console.error('[ReportSave] Erro ao criar job do relatório atualizado:', emailError?.message || emailError);
+            }
+            scheduleEmailQueueProcessing(req, `update-report:${dealershipReadingId}`, [dealershipReadingId]);
         }
 
         // Return the updated entity data
