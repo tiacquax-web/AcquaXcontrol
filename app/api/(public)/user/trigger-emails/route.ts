@@ -10,7 +10,7 @@ import { enqueueManagementInsightJobs, buildManagementInsightEmail, cleanManagem
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
-const MAX_BATCH = 200; // Aumentado para processar todas as unidades de uma vez
+const MAX_BATCH = 100;
 const MAX_ATTEMPTS = 3;
 
 function previousMonth(monthRef: string, yearRef: string) {
@@ -161,138 +161,143 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     let sent = 0, failed = 0, skipped = 0;
 
-    for (const job of pendingJobs) {
-      try {
-        if (isBlockedEmailDomain(job.toEmail)) {
+    // Processar em paralelo com blocos de 5 para evitar sobrecarga no SMTP e timeout
+    const CHUNK_SIZE = 5;
+    for (let i = 0; i < pendingJobs.length; i += CHUNK_SIZE) {
+      const chunk = pendingJobs.slice(i, i + CHUNK_SIZE);
+      await Promise.all(chunk.map(async (job) => {
+        try {
+          if (isBlockedEmailDomain(job.toEmail)) {
+            await prisma.emailJob.update({
+              where: { id: job.id },
+              data: { status: 'skipped', errorMessage: 'Domínio interno bloqueado', sentAt: new Date() },
+            });
+            skipped++;
+            return;
+          }
+
           await prisma.emailJob.update({
             where: { id: job.id },
-            data: { status: 'skipped', errorMessage: 'Domínio interno bloqueado', sentAt: new Date() },
+            data: { attempts: { increment: 1 } },
           });
-          skipped++;
-          continue;
-        }
 
-        await prisma.emailJob.update({
-          where: { id: job.id },
-          data: { attempts: { increment: 1 } },
-        });
-
-        if (isManagementInsightJob(job.subject)) {
-          if (!job.complexId) {
-            await prisma.emailJob.update({ where: { id: job.id }, data: { status: 'failed', errorMessage: 'Insight sem condomínio associado' } });
-            failed++;
-            continue;
+          if (isManagementInsightJob(job.subject)) {
+            if (!job.complexId) {
+              await prisma.emailJob.update({ where: { id: job.id }, data: { status: 'failed', errorMessage: 'Insight sem condomínio associado' } });
+              failed++;
+              return;
+            }
+            const insight = await buildManagementInsightEmail(job.complexId, job.monthRef, job.yearRef, job.toName);
+            const insightResult = await sendEmail({
+              to: job.toEmail,
+              toName: job.toName || undefined,
+              subject: cleanManagementInsightSubject(job.subject),
+              html: insight.html,
+              text: insight.text,
+            });
+            if (insightResult.success) {
+              await prisma.emailJob.update({ where: { id: job.id }, data: { status: 'sent', sentAt: new Date() } });
+              sent++;
+            } else {
+              const newAttempts = job.attempts + 1;
+              await prisma.emailJob.update({ where: { id: job.id }, data: { status: newAttempts >= MAX_ATTEMPTS ? 'failed' : 'pending', errorMessage: insightResult.error } });
+              failed++;
+            }
+            return;
           }
-          const insight = await buildManagementInsightEmail(job.complexId, job.monthRef, job.yearRef, job.toName);
-          const insightResult = await sendEmail({
-            to: job.toEmail,
-            toName: job.toName || undefined,
-            subject: cleanManagementInsightSubject(job.subject),
-            html: insight.html,
-            text: insight.text,
+
+          const report = job.apartmentConsumptionReportId ? reportMap.get(job.apartmentConsumptionReportId) : null;
+          const apartment = job.apartmentId ? apartmentMap.get(job.apartmentId) : null;
+          const complex = job.complexId ? complexMap.get(job.complexId) : null;
+
+          if (!report || !apartment || !complex) {
+            await prisma.emailJob.update({
+              where: { id: job.id },
+              data: { status: 'failed', errorMessage: 'Dados não encontrados' },
+            });
+            failed++;
+            return;
+          }
+
+          const blockName = apartment.block?.name || '';
+          const dealership = report.dealershipReadingId ? dealershipMap.get(report.dealershipReadingId) : null;
+          const previousRef = previousMonth(job.monthRef, job.yearRef);
+          const previousReport = job.apartmentId
+            ? previousReportMap.get(reportKey(job.apartmentId, previousRef.monthRef, previousRef.yearRef))
+            : null;
+
+          const readingDate = report.lastReading?.readAtDate || dealership?.readingDate || null;
+          const periodEnd = readingDate ? String(readingDate).split(/[ T]/)[0] : undefined;
+          const periodStart = previousReport?.lastReading?.readAtDate
+            ? String(previousReport.lastReading.readAtDate).split(/[ T]/)[0]
+            : derivePeriodStart(periodEnd, dealership?.totalDays);
+          const nextReadingDate = report.lastReading?.nextReadingDate || dealership?.readingDateNext || undefined;
+
+          let analysis;
+          try {
+            const currentConsumption = report.totalConsumption ?? report.consumption;
+            analysis = await getConsumptionAnalysis(job.apartmentId || apartment.id, report.id, currentConsumption);
+          } catch (e) {}
+
+          const { subject, html, text } = generateFilipetaEmail({
+            residentName: job.toName || 'Morador',
+            apartmentName: apartment.name || '',
+            blockName,
+            complexName: complex.socialName || '',
+            monthRef: job.monthRef,
+            yearRef: job.yearRef,
+            consumption: report.consumption,
+            totalConsumption: report.totalConsumption ?? undefined,
+            initialReading: previousReport?.lastReading?.reading ?? null,
+            finalReading: report.lastReading?.reading ?? null,
+            consumptionCost: report.consumptionCost,
+            sewageCost: report.sewageCost,
+            totalUnit: report.totalUnit,
+            rateioValue: report.partial ?? null,
+            kiteCarConsumption: report.kiteCarConsumption ?? undefined,
+            kiteCarCost: report.kiteCarCost ?? undefined,
+            utilityType: report.utilityType || undefined,
+            readingDate: readingDate ? String(readingDate) : undefined,
+            nextReadingDate,
+            periodStart,
+            periodEnd,
+            condominiumConsumption: dealership?.dealershipConsumption ?? null,
+            condominiumBillValue: dealership?.totalValue ?? null,
+            consumptionPerEconomy: dealership?.average ?? null,
+            analysis,
           });
-          if (insightResult.success) {
-            await prisma.emailJob.update({ where: { id: job.id }, data: { status: 'sent', sentAt: new Date() } });
+
+          const result = await sendEmail({ to: job.toEmail, toName: job.toName || undefined, subject, html, text });
+
+          if (result.success) {
+            await prisma.emailJob.update({
+              where: { id: job.id },
+              data: { status: 'sent', sentAt: new Date() },
+            });
             sent++;
           } else {
             const newAttempts = job.attempts + 1;
-            await prisma.emailJob.update({ where: { id: job.id }, data: { status: newAttempts >= MAX_ATTEMPTS ? 'failed' : 'pending', errorMessage: insightResult.error } });
+            await prisma.emailJob.update({
+              where: { id: job.id },
+              data: {
+                status: newAttempts >= MAX_ATTEMPTS ? 'failed' : 'pending',
+                errorMessage: result.error,
+              },
+            });
             failed++;
           }
-          continue;
-        }
-
-        const report = job.apartmentConsumptionReportId ? reportMap.get(job.apartmentConsumptionReportId) : null;
-        const apartment = job.apartmentId ? apartmentMap.get(job.apartmentId) : null;
-        const complex = job.complexId ? complexMap.get(job.complexId) : null;
-
-        if (!report || !apartment || !complex) {
-          await prisma.emailJob.update({
-            where: { id: job.id },
-            data: { status: 'failed', errorMessage: 'Dados do relatório/apartamento/condomínio não encontrados para o job' },
-          });
-          failed++;
-          continue;
-        }
-
-        const blockName = apartment.block?.name || '';
-        const dealership = report.dealershipReadingId ? dealershipMap.get(report.dealershipReadingId) : null;
-        const previousRef = previousMonth(job.monthRef, job.yearRef);
-        const previousReport = job.apartmentId
-          ? previousReportMap.get(reportKey(job.apartmentId, previousRef.monthRef, previousRef.yearRef))
-          : null;
-
-        const readingDate = report.lastReading?.readAtDate || dealership?.readingDate || null;
-        const periodEnd = readingDate ? String(readingDate).split(/[ T]/)[0] : undefined;
-        const periodStart = previousReport?.lastReading?.readAtDate
-          ? String(previousReport.lastReading.readAtDate).split(/[ T]/)[0]
-          : derivePeriodStart(periodEnd, dealership?.totalDays);
-        const nextReadingDate = report.lastReading?.nextReadingDate || dealership?.readingDateNext || undefined;
-
-        let analysis;
-        try {
-          const currentConsumption = report.totalConsumption ?? report.consumption;
-          analysis = await getConsumptionAnalysis(job.apartmentId || apartment.id, report.id, currentConsumption);
-        } catch (e) {}
-
-        const { subject, html, text } = generateFilipetaEmail({
-          residentName: job.toName || 'Morador',
-          apartmentName: apartment.name || '',
-          blockName,
-          complexName: complex.socialName || '',
-          monthRef: job.monthRef,
-          yearRef: job.yearRef,
-          consumption: report.consumption,
-          totalConsumption: report.totalConsumption ?? undefined,
-          initialReading: previousReport?.lastReading?.reading ?? null,
-          finalReading: report.lastReading?.reading ?? null,
-          consumptionCost: report.consumptionCost,
-          sewageCost: report.sewageCost,
-          totalUnit: report.totalUnit,
-          rateioValue: report.partial ?? null,
-          kiteCarConsumption: report.kiteCarConsumption ?? undefined,
-          kiteCarCost: report.kiteCarCost ?? undefined,
-          utilityType: report.utilityType || undefined,
-          readingDate: readingDate ? String(readingDate) : undefined,
-          nextReadingDate,
-          periodStart,
-          periodEnd,
-          condominiumConsumption: dealership?.dealershipConsumption ?? null,
-          condominiumBillValue: dealership?.totalValue ?? null,
-          consumptionPerEconomy: dealership?.average ?? null,
-          analysis,
-        });
-
-        const result = await sendEmail({ to: job.toEmail, toName: job.toName || undefined, subject, html, text });
-
-        if (result.success) {
-          await prisma.emailJob.update({
-            where: { id: job.id },
-            data: { status: 'sent', sentAt: new Date() },
-          });
-          sent++;
-        } else {
+        } catch (err: any) {
           const newAttempts = job.attempts + 1;
           await prisma.emailJob.update({
             where: { id: job.id },
             data: {
               status: newAttempts >= MAX_ATTEMPTS ? 'failed' : 'pending',
-              errorMessage: result.error,
+              errorMessage: err?.message || 'Erro inesperado',
             },
           });
           failed++;
         }
-      } catch (err: any) {
-        const newAttempts = job.attempts + 1;
-        await prisma.emailJob.update({
-          where: { id: job.id },
-          data: {
-            status: newAttempts >= MAX_ATTEMPTS ? 'failed' : 'pending',
-            errorMessage: err?.message || 'Erro inesperado',
-          },
-        });
-        failed++;
-      }
+      }));
     }
 
     console.log(`[TriggerEmails] Processados: ${pendingJobs.length}, enviados: ${sent}, falhas: ${failed}, pulados: ${skipped}`);
