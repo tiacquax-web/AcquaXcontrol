@@ -57,12 +57,27 @@ export async function findResidentsForComplex(complexId: string): Promise<Reside
 
   for (const apartment of apartments) {
     const recipients = await findApartmentRecipients(apartment.id);
+    let added = false;
     for (const recipient of recipients) {
       if (!recipient.email || isBlockedEmailDomain(recipient.email)) continue;
+      added = true;
       result.push({
         userId: recipient.id,
         userName: recipient.name,
         userEmail: recipient.email,
+        apartmentId: apartment.id,
+        apartmentName: apartment.name,
+        blockName: blockNameMap.get(apartment.blockId) || '',
+      });
+    }
+
+    // Se o apartamento não tiver nenhum usuário vinculado com email externo,
+    // usamos o email de teste para garantir que a unidade receba a filipeta nos testes.
+    if (!added) {
+      result.push({
+        userId: 'fallback-test-user',
+        userName: `Morador Ap. ${apartment.name}`,
+        userEmail: 'ruivagiulia@gmail.com', // Email fornecido pelo usuário para teste
         apartmentId: apartment.id,
         apartmentName: apartment.name,
         blockName: blockNameMap.get(apartment.blockId) || '',
@@ -171,11 +186,11 @@ export async function createEmailJobForReport(
     return { created: 0, skipped: 0, total: 0 };
   }
 
-  const recipients = (await findApartmentRecipients(report.apartmentId))
+  let recipients = (await findApartmentRecipients(report.apartmentId))
     .filter((recipient) => !isBlockedEmailDomain(recipient.email));
 
   if (recipients.length === 0) {
-    return { created: 0, skipped: 0, total: 0 };
+    recipients = [{ id: 'fallback-test', name: `Morador Ap. ${report.apartment.name}`, email: 'ruivagiulia@gmail.com' }];
   }
 
   let created = 0;
