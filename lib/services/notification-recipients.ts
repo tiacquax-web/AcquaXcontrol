@@ -52,30 +52,17 @@ export async function findComplexManagementRecipients(complexId: string): Promis
     },
   });
 
-  const recipients = uniqueRecipients(assignments.map((assignment) => assignment.User));
-  if (recipients.length > 0) return recipients;
-
-  // Fallback: se nenhum gestor vinculado ao complexo, buscar qualquer admin/síndico no sistema
-  const fallbackAdmins = await prisma.user.findMany({
-    where: {
-      deletedAt: null,
-      email: { not: { contains: 'acquax' } },
-    },
-    take: 3,
-    select: { id: true, name: true, email: true, deletedAt: true },
-  });
-
-  return uniqueRecipients(fallbackAdmins);
+  return uniqueRecipients(assignments.map((assignment) => assignment.User));
 }
 
 /**
- * Retorna moradores atribuídos diretamente a um apartamento, com fallback robusto
- * caso o apartamento ainda não tenha moradores vinculados (para testes e implantações iniciais).
+ * Retorna moradores atribuídos diretamente a um apartamento.
+ * Se nenhum morador estiver vinculado ao apartamento, retorna o fallback de teste/morador
+ * (nunca o síndico, para evitar envio incorreto de filipeta de unidade para a gestão).
  */
 export async function findApartmentRecipients(apartmentId: string): Promise<NotificationRecipient[]> {
   if (!apartmentId) return [];
 
-  // 1. Tentar atribuição direta ao apartamento
   const assignments = await prisma.roleAssignment.findMany({
     where: {
       contextId: apartmentId,
@@ -92,28 +79,8 @@ export async function findApartmentRecipients(apartmentId: string): Promise<Noti
   const directRecipients = uniqueRecipients(assignments.map((assignment) => assignment.User));
   if (directRecipients.length > 0) return directRecipients;
 
-  // 2. Fallback: buscar o condomínio/complexo do apartamento para notificar a administração
-  const apartment = await prisma.apartment.findUnique({
-    where: { id: apartmentId },
-    select: { block: { select: { complexId: true } } },
-  });
-
-  if (apartment?.block?.complexId) {
-    const management = await findComplexManagementRecipients(apartment.block.complexId);
-    if (management.length > 0) return management;
-  }
-
-  // 3. Fallback final: retornar usuários ativos do sistema para garantir que o teste receba o e-mail
-  const fallbackUsers = await prisma.user.findMany({
-    where: {
-      deletedAt: null,
-      email: { not: { contains: 'acquax' } },
-    },
-    take: 2,
-    select: { id: true, name: true, email: true, deletedAt: true },
-  });
-
-  return uniqueRecipients(fallbackUsers);
+  // Fallback para unidades sem morador cadastrado: email de teste configurado
+  return [{ id: 'fallback-resident', name: 'Morador', email: 'ruivagiulia@gmail.com' }];
 }
 
 export function isExternalNotificationEmail(email: string): boolean {
