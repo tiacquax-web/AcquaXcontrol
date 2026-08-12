@@ -106,6 +106,11 @@ const nextConfig: NextConfig = {
     ];
   },
 
+  // ─── Experimental features ───────────────────────────────────────────────────
+  experimental: {
+    after: true,
+  },
+
   // ─── Image domains ────────────────────────────────────────────────────────
   images: {
     remotePatterns: [

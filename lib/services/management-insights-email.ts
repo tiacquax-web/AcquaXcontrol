@@ -60,20 +60,21 @@ export async function enqueueManagementInsightJobs(
     },
     select: { id: true, toEmail: true, status: true },
   });
-  const activeEmails = new Set(
-    existing
-      .filter((job) => job.status === 'pending' || job.status === 'sent')
-      .map((job) => job.toEmail.toLowerCase()),
-  );
 
+  // Reabrir jobs falhos/pulados
   const failed = existing.filter((job) => job.status === 'failed' || job.status === 'skipped');
   for (const job of failed) {
     await prisma.emailJob.update({
       where: { id: job.id },
       data: { status: 'pending', attempts: 0, errorMessage: null, sentAt: null },
     });
-    activeEmails.add(job.toEmail.toLowerCase());
   }
+
+  const activeEmails = new Set(
+    existing
+      .filter((job) => job.status === 'pending' || job.status === 'sent' || job.status === 'failed' || job.status === 'skipped')
+      .map((job) => job.toEmail.toLowerCase()),
+  );
 
   const jobs: Prisma.EmailJobCreateManyInput[] = recipients
     .filter((recipient) => !activeEmails.has(recipient.email.toLowerCase()))

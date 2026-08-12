@@ -186,9 +186,19 @@ export async function createEmailJobsForDealershipReading(
   // Verificar se já existem jobs criados para este dealershipReading (evitar duplicatas)
   const existingJobs = await prisma.emailJob.findMany({
     where: { dealershipReadingId },
-    select: { toEmail: true, apartmentId: true },
+    select: { id: true, toEmail: true, apartmentId: true, status: true },
   });
-  const existingSet = new Set(existingJobs.map(j => `${j.apartmentId}-${j.toEmail}`));
+  
+  // Reabrir jobs falhos/pulados para que uma nova tentativa ocorra
+  const failedJobs = existingJobs.filter(j => j.status === 'failed' || j.status === 'skipped');
+  for (const fJob of failedJobs) {
+    await prisma.emailJob.update({
+      where: { id: fJob.id },
+      data: { status: 'pending', attempts: 0, errorMessage: null, sentAt: null }
+    });
+  }
+
+  const existingSet = new Set(existingJobs.map(j => `${j.apartmentId}-${j.toEmail.toLowerCase()}`));
 
   let created = 0;
   let skipped = 0;
@@ -204,7 +214,7 @@ export async function createEmailJobsForDealershipReading(
       continue;
     }
 
-    const dedupKey = `${resident.apartmentId}-${resident.userEmail}`;
+    const dedupKey = `${resident.apartmentId}-${resident.userEmail.toLowerCase()}`;
     if (existingSet.has(dedupKey)) {
       skipped++;
       continue;

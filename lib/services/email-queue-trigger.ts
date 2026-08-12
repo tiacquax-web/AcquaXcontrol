@@ -19,7 +19,8 @@ export function scheduleEmailQueueProcessing(req: NextRequest, reason: string, d
         }
       }
 
-      const url = new URL('/api/cron/send-pending-emails', req.url);
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.get('host')}` || 'https://www.acquaxcontrol.com.br';
+      const url = new URL('/api/cron/send-pending-emails', baseUrl);
       const headers: HeadersInit = { 'cache-control': 'no-cache' };
       const cronSecret = process.env.CRON_SECRET;
       if (cronSecret) headers.authorization = `Bearer ${cronSecret}`;
