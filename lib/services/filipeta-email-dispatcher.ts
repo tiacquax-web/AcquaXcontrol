@@ -48,7 +48,6 @@ export async function createEmailJobsForDealershipReading(
 
   if (!dealershipReading) return { created: 0, skipped: 0, total: 0 };
 
-  // Buscar todos os relatórios de consumo de apartamentos para esta leitura
   const reports = await prisma.apartmentConsumptionReport.findMany({
     where: { dealershipReadingId, deletedAt: null },
     include: {
@@ -60,18 +59,16 @@ export async function createEmailJobsForDealershipReading(
 
   if (reports.length === 0) return { created: 0, skipped: 0, total: 0 };
 
-  const existingJobs = await prisma.emailJob.findMany({
+  // REABRIDOR GERAL: No disparo manual, colocamos TODOS os jobs como pending para garantir o reenvio completo
+  await prisma.emailJob.updateMany({
     where: { dealershipReadingId },
-    select: { id: true, apartmentConsumptionReportId: true, status: true },
+    data: { status: 'pending', attempts: 0, errorMessage: null, sentAt: null },
   });
 
-  const failedJobs = existingJobs.filter(j => j.status === 'failed' || j.status === 'skipped');
-  for (const fJob of failedJobs) {
-    await prisma.emailJob.update({
-      where: { id: fJob.id },
-      data: { status: 'pending', attempts: 0, errorMessage: null, sentAt: null },
-    });
-  }
+  const existingJobs = await prisma.emailJob.findMany({
+    where: { dealershipReadingId },
+    select: { id: true, apartmentConsumptionReportId: true },
+  });
 
   const existingReportIds = new Set(existingJobs.map(j => j.apartmentConsumptionReportId).filter(Boolean));
 
@@ -82,7 +79,6 @@ export async function createEmailJobsForDealershipReading(
     if (!report.apartmentId || !report.apartment) continue;
     if (existingReportIds.has(report.id)) continue;
 
-    // Buscar destinatários do apartamento (com fallback garantido para teste se não houver)
     const recipients = await findApartmentRecipients(report.apartmentId);
     const validRecipient = recipients.find(r => r.email && !isBlockedEmailDomain(r.email)) || {
       name: `Morador Ap. ${report.apartment.name}`,
@@ -170,10 +166,10 @@ export async function createEmailJobForReport(
       },
     });
     jobId = newJob.id;
-  } else if (existing.status !== 'sent') {
+  } else {
     await prisma.emailJob.update({
       where: { id: existing.id },
-      data: { status: 'pending', attempts: 0, errorMessage: null },
+      data: { status: 'pending', attempts: 0, errorMessage: null, sentAt: null },
     });
     jobId = existing.id;
   }
