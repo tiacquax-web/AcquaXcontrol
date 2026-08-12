@@ -29,9 +29,6 @@ function uniqueRecipients(
   return recipients;
 }
 
-/**
- * Retorna síndicos e administradoras atribuídos diretamente ao condomínio.
- */
 export async function findComplexManagementRecipients(complexId: string): Promise<NotificationRecipient[]> {
   if (!complexId) return [];
 
@@ -56,9 +53,7 @@ export async function findComplexManagementRecipients(complexId: string): Promis
 }
 
 /**
- * Retorna moradores atribuídos diretamente a um apartamento.
- * Se nenhum morador estiver vinculado ao apartamento, retorna o fallback de teste/morador
- * (nunca o síndico, para evitar envio incorreto de filipeta de unidade para a gestão).
+ * Retorna QUALQUER usuário vinculado diretamente ao apartamento, sem exigir um nome de cargo específico.
  */
 export async function findApartmentRecipients(apartmentId: string): Promise<NotificationRecipient[]> {
   if (!apartmentId) return [];
@@ -76,11 +71,7 @@ export async function findApartmentRecipients(apartmentId: string): Promise<Noti
     },
   });
 
-  const directRecipients = uniqueRecipients(assignments.map((assignment) => assignment.User));
-  if (directRecipients.length > 0) return directRecipients;
-
-  // Fallback para unidades sem morador cadastrado: email de teste configurado
-  return [{ id: 'fallback-resident', name: 'Morador', email: 'ruivagiulia@gmail.com' }];
+  return uniqueRecipients(assignments.map((assignment) => assignment.User));
 }
 
 export function isExternalNotificationEmail(email: string): boolean {

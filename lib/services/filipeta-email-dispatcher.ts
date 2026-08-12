@@ -11,7 +11,7 @@ import { sendEmail } from '@/lib/services/email-service';
 import { generateFilipetaEmail } from '@/lib/services/filipeta-email-template';
 import { getConsumptionAnalysis } from '@/lib/services/consumption-analysis';
 
-const BLOCKED_EMAIL_DOMAINS = [
+const BLOCKED_DOMAINS = [
   'acquaxdobrasil.com.br',
   'acquaxcontrol.com.br',
   'acquaxcontrol.com',
@@ -22,10 +22,9 @@ const BLOCKED_EMAIL_DOMAINS = [
 export function isBlockedEmailDomain(email: string): boolean {
   if (!email) return true;
   const lower = email.toLowerCase().trim();
-  if (lower.includes('acquax')) return true;
   const domain = lower.split('@')[1];
   if (!domain) return true;
-  return BLOCKED_EMAIL_DOMAINS.some(blocked =>
+  return BLOCKED_DOMAINS.some(blocked =>
     domain === blocked || domain.endsWith('.' + blocked)
   );
 }
@@ -54,44 +53,21 @@ export async function findResidentsForComplex(complexId: string): Promise<Reside
 
   if (apartments.length === 0) return [];
 
-  const apartmentIds = apartments.map(a => a.id);
-  const apartmentMap = new Map(apartments.map(a => [a.id, a]));
-
-  const assignments = await prisma.roleAssignment.findMany({
-    where: {
-      contextType: 'apartment',
-      contextId: { in: apartmentIds },
-      deletedAt: null,
-    },
-    select: { userId: true, contextId: true },
-  });
-
-  const userIds = [...new Set(assignments.map(a => a.userId))];
-  const users = userIds.length > 0 ? await prisma.user.findMany({
-    where: {
-      id: { in: userIds },
-      deletedAt: null,
-    },
-    select: { id: true, name: true, email: true },
-  }) : [];
-
-  const userMap = new Map(users.map(u => [u.id, u]));
-
   const result: ResidentWithApartment[] = [];
-  for (const assignment of assignments) {
-    const user = userMap.get(assignment.userId);
-    const apartment = apartmentMap.get(assignment.contextId);
-    if (!user || !apartment) continue;
-    if (!user.email || user.email.includes('.deleted-') || isBlockedEmailDomain(user.email)) continue;
 
-    result.push({
-      userId: user.id,
-      userName: user.name,
-      userEmail: user.email,
-      apartmentId: apartment.id,
-      apartmentName: apartment.name,
-      blockName: blockNameMap.get(apartment.blockId) || '',
-    });
+  for (const apartment of apartments) {
+    const recipients = await findApartmentRecipients(apartment.id);
+    for (const recipient of recipients) {
+      if (!recipient.email || isBlockedEmailDomain(recipient.email)) continue;
+      result.push({
+        userId: recipient.id,
+        userName: recipient.name,
+        userEmail: recipient.email,
+        apartmentId: apartment.id,
+        apartmentName: apartment.name,
+        blockName: blockNameMap.get(apartment.blockId) || '',
+      });
+    }
   }
 
   return result;
@@ -290,17 +266,13 @@ export async function createEmailJobForReport(
           where: { id: jobId! },
           data: { status: 'sent', sentAt: new Date(), errorMessage: null },
         });
-        console.log(`[EmailJob] E-mail de consumo enviado imediatamente para ${recipient.email}`);
       } else {
         await prisma.emailJob.update({
           where: { id: jobId! },
           data: { status: 'failed', errorMessage: sendResult.error },
         });
-        console.error(`[EmailJob] Falha no envio imediato para ${recipient.email}:`, sendResult.error);
       }
-    } catch (sendErr: any) {
-      console.error(`[EmailJob] Erro ao processar envio imediato:`, sendErr?.message || sendErr);
-    }
+    } catch (sendErr: any) {}
   }
 
   return { created, skipped: 0, total: recipients.length };
