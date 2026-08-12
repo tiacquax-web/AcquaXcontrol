@@ -1,4 +1,3 @@
-import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { validateUserSession } from '@/lib/users';
 import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
@@ -36,8 +35,6 @@ function derivePeriodStart(value: string | null | undefined, totalDays: number |
  * POST /api/user/trigger-emails
  * 
  * Endpoint manual para processar a fila de EmailJobs pendentes.
- * Disponível para Administradores e Programadores — usado como fallback
- * quando o cron automático não está funcionando ou para forçar o envio.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -49,7 +46,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ message: 'Não autorizado' }, { status: 401 });
     }
 
-    // Verificar se é admin ou programador via RoleAssignment
     const systemAssignments = await prisma.roleAssignment.findMany({
       where: {
         userId,
@@ -69,9 +65,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       ? body.dealershipReadingId
       : null;
 
-    // Quando acionado pela aba Contas, garantir que a leitura selecionada tenha
-    // jobs criados antes de processar a fila. Antes, o botão só processava jobs
-    // que já existissem e por isso frequentemente retornava zero enviados.
     let jobsCreated = 0;
     let jobsSkipped = 0;
     if (dealershipReadingId) {
@@ -83,19 +76,35 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       jobsSkipped += insightJobs.skipped;
     }
 
-    // Verificar configuração de email
     if (!isEmailConfigured()) {
       return NextResponse.json({
         message: 'Zoho SMTP não configurado. Configure ZOHO_SMTP_USER e ZOHO_SMTP_PASS na Vercel.'
       }, { status: 500 });
     }
 
-    // Buscar jobs pendentes
-    const pendingJobs = await prisma.emailJob.findMany({
-      where: { status: 'pending', attempts: { lt: MAX_ATTEMPTS } },
+    // PRIORIZAR JOBS DA LEITURA SELECIONADA SE FORNECIDA
+    const whereClause: any = {
+      status: 'pending',
+      attempts: { lt: MAX_ATTEMPTS },
+    };
+    if (dealershipReadingId) {
+      whereClause.dealershipReadingId = dealershipReadingId;
+    }
+
+    let pendingJobs = await prisma.emailJob.findMany({
+      where: whereClause,
       orderBy: { createdAt: 'asc' },
       take: MAX_BATCH,
     });
+
+    // Se não houver jobs específicos para esta leitura mas houver gerais, buscar gerais se não foi especificado
+    if (pendingJobs.length === 0 && !dealershipReadingId) {
+      pendingJobs = await prisma.emailJob.findMany({
+        where: { status: 'pending', attempts: { lt: MAX_ATTEMPTS } },
+        orderBy: { createdAt: 'asc' },
+        take: MAX_BATCH,
+      });
+    }
 
     if (pendingJobs.length === 0) {
       return NextResponse.json({
@@ -110,7 +119,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
     }
 
-    // Buscar dados em batch
     const reportIds = pendingJobs.map(j => j.apartmentConsumptionReportId).filter(Boolean) as string[];
     const apartmentIds = pendingJobs.map(j => j.apartmentId).filter(Boolean) as string[];
     const complexIds = [...new Set(pendingJobs.map(j => j.complexId).filter(Boolean))] as string[];
@@ -118,7 +126,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const [reports, apartments, complexes] = await Promise.all([
       reportIds.length > 0 ? prisma.apartmentConsumptionReport.findMany({
         where: { id: { in: reportIds } },
-        include: { lastReading: { select: { reading: true, readAtDate: true, nextReadingDate: true, readAt: true } } },
+        include: {
+          lastReading: {
+            select: { reading: true, readAtDate: true, nextReadingDate: true, readAt: true },
+          },
+        },
       }) : [],
       apartmentIds.length > 0 ? prisma.apartment.findMany({
         where: { id: { in: apartmentIds } },
@@ -218,6 +230,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         const previousReport = job.apartmentId
           ? previousReportMap.get(reportKey(job.apartmentId, previousRef.monthRef, previousRef.yearRef))
           : null;
+
         const readingDate = report.lastReading?.readAtDate || dealership?.readingDate || null;
         const periodEnd = readingDate ? String(readingDate).split(/[ T]/)[0] : undefined;
         const periodStart = previousReport?.lastReading?.readAtDate
