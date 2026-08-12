@@ -55,7 +55,6 @@ export async function findResidentsForComplex(complexId: string): Promise<Reside
   const apartmentIds = apartments.map(a => a.id);
   const apartmentMap = new Map(apartments.map(a => [a.id, a]));
 
-  // Buscar todas as atribuições de contexto 'apartment' para estes apartamentos
   const assignments = await prisma.roleAssignment.findMany({
     where: {
       contextType: 'apartment',
@@ -96,8 +95,8 @@ export async function findResidentsForComplex(complexId: string): Promise<Reside
     });
   }
 
-  // Garantir que nenhum apartamento fique sem envio: se algum apto não tiver usuário atribuído,
-  // usar o fallback de teste/morador para que a filipeta seja gerada e enviada.
+  // Garantir 100% de cobertura: para cada apartamento do condomínio, garantir que exista
+  // um destinatário (se não tiver usuário vinculado, usar o email de teste/fallback configurado).
   for (const apartment of apartments) {
     if (!assignedApartmentIds.has(apartment.id)) {
       result.push({

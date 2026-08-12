@@ -10,7 +10,7 @@ import { enqueueManagementInsightJobs, buildManagementInsightEmail, cleanManagem
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
-const MAX_BATCH = 100;
+const MAX_BATCH = 200; // Aumentado para processar todas as unidades de uma vez
 const MAX_ATTEMPTS = 3;
 
 function previousMonth(monthRef: string, yearRef: string) {
@@ -31,11 +31,6 @@ function derivePeriodStart(value: string | null | undefined, totalDays: number |
   return date.toISOString().slice(0, 10);
 }
 
-/**
- * POST /api/user/trigger-emails
- * 
- * Endpoint manual para processar a fila de EmailJobs pendentes.
- */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
@@ -82,7 +77,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }, { status: 500 });
     }
 
-    // PRIORIZAR JOBS DA LEITURA SELECIONADA SE FORNECIDA
     const whereClause: any = {
       status: 'pending',
       attempts: { lt: MAX_ATTEMPTS },
@@ -97,7 +91,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       take: MAX_BATCH,
     });
 
-    // Se não houver jobs específicos para esta leitura mas houver gerais, buscar gerais se não foi especificado
     if (pendingJobs.length === 0 && !dealershipReadingId) {
       pendingJobs = await prisma.emailJob.findMany({
         where: { status: 'pending', attempts: { lt: MAX_ATTEMPTS } },
@@ -113,9 +106,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         failed: 0,
         skipped: jobsSkipped,
         jobsCreated,
-        message: dealershipReadingId
-          ? 'Nenhum email pendente para esta leitura.'
-          : 'Nenhum email pendente na fila.'
+        message: 'Nenhum email pendente para processamento.'
       });
     }
 
@@ -218,7 +209,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         if (!report || !apartment || !complex) {
           await prisma.emailJob.update({
             where: { id: job.id },
-            data: { status: 'failed', errorMessage: 'Dados não encontrados' },
+            data: { status: 'failed', errorMessage: 'Dados do relatório/apartamento/condomínio não encontrados para o job' },
           });
           failed++;
           continue;
@@ -242,7 +233,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         try {
           const currentConsumption = report.totalConsumption ?? report.consumption;
           analysis = await getConsumptionAnalysis(job.apartmentId || apartment.id, report.id, currentConsumption);
-        } catch (e) { /* analysis é opcional */ }
+        } catch (e) {}
 
         const { subject, html, text } = generateFilipetaEmail({
           residentName: job.toName || 'Morador',
