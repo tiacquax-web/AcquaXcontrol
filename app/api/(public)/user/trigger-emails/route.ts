@@ -5,7 +5,6 @@ import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
 import { generateFilipetaEmail } from '@/lib/services/filipeta-email-template';
 import { getConsumptionAnalysis } from '@/lib/services/consumption-analysis';
 import { createEmailJobsForDealershipReading } from '@/lib/services/filipeta-email-dispatcher';
-import { enqueueManagementInsightJobs, buildManagementInsightEmail, cleanManagementInsightSubject, isManagementInsightJob } from '@/lib/services/management-insights-email';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -46,12 +45,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let jobsCreated = 0;
     let jobsSkipped = 0;
     if (dealershipReadingId) {
+      // Limpar jobs antigos de insights para garantir foco 100% nas unidades
+      await prisma.emailJob.deleteMany({
+        where: { dealershipReadingId, subject: { startsWith: '[ACQUAX_INSIGHT]' } }
+      });
+
       const created = await createEmailJobsForDealershipReading(dealershipReadingId, userId);
       jobsCreated = created.created;
       jobsSkipped = created.skipped;
-      const insightJobs = await enqueueManagementInsightJobs(dealershipReadingId, userId);
-      jobsCreated += insightJobs.created;
-      jobsSkipped += insightJobs.skipped;
     }
 
     if (!isEmailConfigured()) {
@@ -60,10 +61,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }, { status: 500 });
     }
 
-    // BUSCAR TODOS OS JOBS PENDENTES (MORADORES PRIMEIRO)
+    // BUSCAR APENAS JOBS DE MORADORES (EXCLUINDO INSIGHTS)
     const whereClause: any = {
       status: 'pending',
       attempts: { lt: 3 },
+      NOT: { subject: { startsWith: '[ACQUAX_INSIGHT]' } }
     };
     if (dealershipReadingId) {
       whereClause.dealershipReadingId = dealershipReadingId;
@@ -71,12 +73,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const pendingJobs = await prisma.emailJob.findMany({
       where: whereClause,
-      orderBy: [
-        // Ordenar para que e-mails que NÃO são insights venham primeiro (moradores)
-        { subject: 'asc' },
-        { createdAt: 'asc' },
-      ],
-      take: 100,
+      orderBy: { createdAt: 'asc' },
+      take: 150,
     });
 
     if (pendingJobs.length === 0) {
@@ -84,15 +82,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         success: true,
         processed: 0,
         sent: 0,
-        message: 'Nenhum email pendente encontrado para disparo.'
+        jobsCreated,
+        message: 'Nenhum email de morador pendente para disparo.'
       });
     }
 
     const reportIds = pendingJobs.map(j => j.apartmentConsumptionReportId).filter(Boolean) as string[];
     const apartmentIds = pendingJobs.map(j => j.apartmentId).filter(Boolean) as string[];
-    const complexIds = [...new Set(pendingJobs.map(j => j.complexId).filter(Boolean))] as string[];
 
-    const [reports, apartments, complexes] = await Promise.all([
+    const [reports, apartments] = await Promise.all([
       reportIds.length > 0 ? prisma.apartmentConsumptionReport.findMany({
         where: { id: { in: reportIds } },
         include: {
@@ -103,17 +101,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }) : [],
       apartmentIds.length > 0 ? prisma.apartment.findMany({
         where: { id: { in: apartmentIds } },
-        include: { block: { select: { name: true, complexId: true } } },
-      }) : [],
-      complexIds.length > 0 ? prisma.complex.findMany({
-        where: { id: { in: complexIds } },
-        select: { id: true, socialName: true },
+        include: { block: { select: { name: true } } },
       }) : [],
     ]);
 
     const reportMap = new Map(reports.map(r => [r.id, r]));
     const apartmentMap = new Map(apartments.map(a => [a.id, a]));
-    const complexMap = new Map(complexes.map(c => [c.id, c]));
 
     const dealershipReadingIds = [...new Set(reports.map(r => r.dealershipReadingId).filter(Boolean))] as string[];
     const previousRefs = pendingJobs.map(job => {
@@ -141,7 +134,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let sent = 0;
     let failed = 0;
 
-    // Executar envio síncrono controlado (moradores primeiro, depois síndico) para garantir feedback imediato e sucesso
     for (const job of pendingJobs) {
       try {
         await prisma.emailJob.update({
@@ -149,38 +141,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           data: { attempts: { increment: 1 } },
         });
 
-        if (isManagementInsightJob(job.subject)) {
-          if (!job.complexId) {
-            await prisma.emailJob.update({ where: { id: job.id }, data: { status: 'failed', errorMessage: 'Sem complexId' } });
-            failed++;
-            continue;
-          }
-          const insight = await buildManagementInsightEmail(job.complexId, job.monthRef, job.yearRef, job.toName);
-          const res = await sendEmail({
-            to: job.toEmail,
-            toName: job.toName || undefined,
-            subject: cleanManagementInsightSubject(job.subject),
-            html: insight.html,
-            text: insight.text,
-          });
-          if (res.success) {
-            await prisma.emailJob.update({ where: { id: job.id }, data: { status: 'sent', sentAt: new Date() } });
-            sent++;
-          } else {
-            await prisma.emailJob.update({ where: { id: job.id }, data: { status: 'failed', errorMessage: res.error } });
-            failed++;
-          }
-          continue;
-        }
-
         const report = job.apartmentConsumptionReportId ? reportMap.get(job.apartmentConsumptionReportId) : null;
         const apartment = job.apartmentId ? apartmentMap.get(job.apartmentId) : null;
-        const complex = job.complexId ? complexMap.get(job.complexId) : null;
 
-        if (!report || !apartment || !complex) {
+        if (!report || !apartment) {
           await prisma.emailJob.update({
             where: { id: job.id },
-            data: { status: 'failed', errorMessage: 'Dados do relatório não encontrados' },
+            data: { status: 'failed', errorMessage: 'Dados do relatório/apartamento não encontrados' },
           });
           failed++;
           continue;
@@ -209,7 +176,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           residentName: job.toName || 'Morador',
           apartmentName: apartment.name || '',
           blockName,
-          complexName: complex.socialName || '',
+          complexName: 'Condomínio',
           monthRef: job.monthRef,
           yearRef: job.yearRef,
           consumption: report.consumption,
