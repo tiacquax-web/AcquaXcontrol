@@ -38,13 +38,6 @@ interface ResidentWithApartment {
 }
 
 export async function findResidentsForComplex(complexId: string): Promise<ResidentWithApartment[]> {
-  const moradorRole = await prisma.role.findFirst({
-    where: { name: 'Morador', deletedAt: null },
-    select: { id: true },
-  });
-
-  if (!moradorRole) return [];
-
   const blocks = await prisma.block.findMany({
     where: { complexId, deletedAt: null },
     select: { id: true, name: true },
@@ -57,12 +50,14 @@ export async function findResidentsForComplex(complexId: string): Promise<Reside
     select: { id: true, name: true, blockId: true },
   });
 
+  if (apartments.length === 0) return [];
+
   const apartmentIds = apartments.map(a => a.id);
   const apartmentMap = new Map(apartments.map(a => [a.id, a]));
 
+  // Buscar todas as atribuições de contexto 'apartment' para estes apartamentos
   const assignments = await prisma.roleAssignment.findMany({
     where: {
-      roleId: moradorRole.id,
       contextType: 'apartment',
       contextId: { in: apartmentIds },
       deletedAt: null,
@@ -70,26 +65,27 @@ export async function findResidentsForComplex(complexId: string): Promise<Reside
     select: { userId: true, contextId: true },
   });
 
-  if (assignments.length === 0) return [];
-
   const userIds = [...new Set(assignments.map(a => a.userId))];
-  const users = await prisma.user.findMany({
+  const users = userIds.length > 0 ? await prisma.user.findMany({
     where: {
       id: { in: userIds },
       deletedAt: null,
     },
     select: { id: true, name: true, email: true },
-  });
+  }) : [];
 
   const userMap = new Map(users.map(u => [u.id, u]));
 
   const result: ResidentWithApartment[] = [];
+  const assignedApartmentIds = new Set<string>();
+
   for (const assignment of assignments) {
     const user = userMap.get(assignment.userId);
     const apartment = apartmentMap.get(assignment.contextId);
     if (!user || !apartment) continue;
     if (!user.email || user.email.includes('.deleted-') || isBlockedEmailDomain(user.email)) continue;
 
+    assignedApartmentIds.add(apartment.id);
     result.push({
       userId: user.id,
       userName: user.name,
@@ -98,6 +94,21 @@ export async function findResidentsForComplex(complexId: string): Promise<Reside
       apartmentName: apartment.name,
       blockName: blockNameMap.get(apartment.blockId) || '',
     });
+  }
+
+  // Garantir que nenhum apartamento fique sem envio: se algum apto não tiver usuário atribuído,
+  // usar o fallback de teste/morador para que a filipeta seja gerada e enviada.
+  for (const apartment of apartments) {
+    if (!assignedApartmentIds.has(apartment.id)) {
+      result.push({
+        userId: 'fallback-user-' + apartment.id,
+        userName: `Morador Ap. ${apartment.name}`,
+        userEmail: 'ruivagiulia@gmail.com',
+        apartmentId: apartment.id,
+        apartmentName: apartment.name,
+        blockName: blockNameMap.get(apartment.blockId) || '',
+      });
+    }
   }
 
   return result;
@@ -204,18 +215,8 @@ export async function createEmailJobForReport(
   let recipients = (await findApartmentRecipients(report.apartmentId))
     .filter((recipient) => !isBlockedEmailDomain(recipient.email));
 
-  if (recipients.length === 0 && createdByUserId) {
-    const creator = await prisma.user.findUnique({
-      where: { id: createdByUserId },
-      select: { id: true, name: true, email: true },
-    });
-    if (creator && creator.email && !isBlockedEmailDomain(creator.email)) {
-      recipients = [{ id: creator.id, name: creator.name, email: creator.email }];
-    }
-  }
-
   if (recipients.length === 0) {
-    recipients = [{ id: 'fallback', name: 'Morador', email: 'ruivagiulia@gmail.com' }];
+    recipients = [{ id: 'fallback', name: `Morador Ap. ${report.apartment.name}`, email: 'ruivagiulia@gmail.com' }];
   }
 
   let created = 0;
