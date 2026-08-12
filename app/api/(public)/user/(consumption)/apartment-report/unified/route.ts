@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateUserSession } from '@/lib/users';
 import prisma from '@/lib/prisma';
 import { createEmailJobsForDealershipReading } from "@/lib/services/filipeta-email-dispatcher";
+import { scheduleEmailQueueProcessing } from '@/lib/services/email-queue-trigger';
 
 // Request payload types (kept local to route to avoid broad type coupling)
 interface UnifiedReadingPayload {
@@ -40,6 +41,7 @@ interface UnifiedItemPayload {
 
 interface UnifiedItemResult {
   apartmentId: string;
+  dealershipReadingId?: string;
   reportId?: string;
   readingId?: string;
   createdReport?: boolean;
@@ -72,7 +74,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const routeErrors: string[] = [];
 
     for (const payload of items) {
-      const r: UnifiedItemResult = { apartmentId: payload.report?.apartmentId }; // base result
+      const r: UnifiedItemResult = {
+        apartmentId: payload.report?.apartmentId,
+        dealershipReadingId: payload.report?.dealershipReadingId,
+      }; // base result
       const errors: string[] = [];
       const warnings: string[] = [];
       try {
@@ -298,6 +303,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         // Não falha a importação se o email falhar — só loga
         console.error('[Unified Import] Erro ao criar EmailJobs:', emailErr?.message);
       }
+    }
+
+    if (dealershipReadingIds.size > 0) {
+      scheduleEmailQueueProcessing(req, `unified:${[...dealershipReadingIds].join(',')}`);
     }
 
     const response: UnifiedResponse = {

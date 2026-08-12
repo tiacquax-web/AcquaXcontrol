@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { isSessionValid } from "@/lib/users"
 import { PrismaClient } from "@prisma/client"
 import { createEmailJobsForDealershipReading } from "@/lib/services/filipeta-email-dispatcher"
+import { scheduleEmailQueueProcessing } from '@/lib/services/email-queue-trigger'
 
 const prisma = new PrismaClient()
 
@@ -125,6 +126,8 @@ export async function POST(req: NextRequest): Promise<Response> {
                 console.error('[Generate Reports] Erro ao criar EmailJobs:', emailErr?.message);
             }
         }
+
+        scheduleEmailQueueProcessing(req, `generate:${dealershipReadingId}`)
 
         return NextResponse.json({ 
             success: true, 

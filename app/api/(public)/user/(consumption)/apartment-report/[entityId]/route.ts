@@ -2,6 +2,7 @@ import { cleanEntityBody } from "@/lib/prisma";
 import { deleteEntity, updateEntityData } from "@/lib/userData";
 import { validateUserSession } from "@/lib/users";
 import { NextRequest, NextResponse } from "next/server";
+import { scheduleEmailQueueProcessing } from '@/lib/services/email-queue-trigger';
 
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ entityId: string }> }): Promise<Response> {
@@ -27,6 +28,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
         const { entity, error: updateError, status: updateStatus } = await updateEntityData(userId, 'apartmentConsumptionReport', entityId, body);
         if (updateError) return NextResponse.json({ error: updateError }, { status: updateStatus });
         if (!entity) return NextResponse.json({ error: 'Internal Server Error - Entity not updated' }, { status: 500 });
+
+        const dealershipReadingId = (entity as any)?.dealershipReadingId || body?.dealershipReadingId;
+        if (dealershipReadingId) {
+            scheduleEmailQueueProcessing(req, `update-report:${dealershipReadingId}`);
+        }
 
         // Return the updated entity data
         return NextResponse.json(entity);

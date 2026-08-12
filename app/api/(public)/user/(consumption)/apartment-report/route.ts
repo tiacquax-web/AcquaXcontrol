@@ -4,6 +4,7 @@ import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ApartmentConsumptionReport, ContextType, DealershipType } from "@prisma/client"
 import prisma from '@/lib/prisma'
 import { NextRequest, NextResponse } from "next/server"
+import { scheduleEmailQueueProcessing } from '@/lib/services/email-queue-trigger'
 
 function getQueryParams(req: NextRequest) {
     // query params - custom
@@ -188,6 +189,10 @@ export async function POST(req: NextRequest): Promise<Response> {
         const { entity, error: creationError, status: creationStatus } = await createEntity(userId, 'apartmentConsumptionReport', bodyData);
         if (creationError) return NextResponse.json({ error: creationError }, { status: creationStatus });
         if (!entity) return NextResponse.json({ error: 'Internal Server Error - Entity not created' }, { status: 500 });
+
+        if (body.dealershipReadingId) {
+            scheduleEmailQueueProcessing(req, `create-report:${body.dealershipReadingId}`);
+        }
 
         // Return the created entity data
         return NextResponse.json(entity);
