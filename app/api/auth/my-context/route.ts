@@ -27,12 +27,10 @@ export async function GET(req: NextRequest): Promise<Response> {
             );
         }
     } catch (suspErr) {
-        // Se a verificação falhar, não bloqueia o acesso (fail-open)
         console.error('[my-context] Erro ao verificar suspensão:', suspErr);
     }
 
     try {
-        // Busca todos os role assignments do usuário (incluindo nome do papel)
         const assignments = await prisma.roleAssignment.findMany({
             where: {
                 userId,
@@ -55,7 +53,13 @@ export async function GET(req: NextRequest): Promise<Response> {
         const complexIds = assignments.filter(a => a.contextType === 'complex').map(a => a.contextId).filter(Boolean) as string[];
         const companyIds = assignments.filter(a => a.contextType === 'company').map(a => a.contextId).filter(Boolean) as string[];
 
-        // Busca dados completos dos apartamentos vinculados diretamente
+        // Se for admin do sistema, buscar todos os condomínios
+        let targetComplexIds = complexIds;
+        if (isSystem) {
+            const allCx = await prisma.complex.findMany({ where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }, select: { id: true } });
+            targetComplexIds = allCx.map(c => c.id);
+        }
+
         const apartments = apartmentIds.length > 0
             ? await prisma.apartment.findMany({
                 where: {
@@ -74,7 +78,6 @@ export async function GET(req: NextRequest): Promise<Response> {
             })
             : [];
 
-        // Busca blocos vinculados diretamente
         const blocks = blockIds.length > 0
             ? await prisma.block.findMany({
                 where: {
@@ -85,44 +88,48 @@ export async function GET(req: NextRequest): Promise<Response> {
             })
             : [];
 
-        // Busca condomínios vinculados diretamente
-        const complexes = complexIds.length > 0
+        // Coleta blocos das empresas vinculadas se houver
+        if (companyIds.length > 0) {
+            const companyBlocks = await prisma.block.findMany({
+                where: {
+                    complex: { companyId: { in: companyIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                },
+                select: { id: true }
+            });
+            companyBlocks.forEach(b => blockIds.push(b.id));
+        }
+
+        const accessibleComplexIds = [
+            ...new Set([
+                ...apartments.map(a => (a.block as any)?.complexId).filter(Boolean),
+                ...blocks.map(b => b.complexId).filter(Boolean),
+                ...targetComplexIds,
+            ])
+        ];
+
+        // Busca dados completos de todos os condomínios acessíveis
+        const complexes = accessibleComplexIds.length > 0
             ? await prisma.complex.findMany({
                 where: {
-                    id: { in: complexIds },
+                    id: { in: accessibleComplexIds },
                     OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
                 },
                 include: { company: true }
             })
             : [];
 
-        // Helper: IDs únicos de condomínios que o usuário acessa (via apartamento, bloco ou direto)
-        const accessibleComplexIds = [
-            ...new Set([
-                ...apartments.map(a => (a.block as any)?.complexId).filter(Boolean),
-                ...blocks.map(b => b.complexId).filter(Boolean),
-                ...complexIds,
-            ])
-        ];
-
-        // ─── GL Detection ───────────────────────────────────────────────────
-        // Busca condomínios que possuem medidores com glId vinculado.
-        // Isso determina se as abas de Monitoramento, Alertas e Medidores de Nível
-        // devem aparecer no sidebar e se a página deve mostrar dados.
         let glComplexIds: string[] = [];
         if (isSystem) {
-            // Admin/programador: busca todos os condomínios com GL
             const glMeters = await prisma.meter.findMany({
                 where: {
                     glId: { not: null, notIn: [''] },
                     OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
                 },
                 select: { complexId: true },
-                distinct: ['complexId'],
             });
             glComplexIds = glMeters.map(m => m.complexId).filter(Boolean) as string[];
         } else if (accessibleComplexIds.length > 0) {
-            // Síndico/morador/administradora: busca GL apenas nos condomínios acessíveis
             const glMeters = await prisma.meter.findMany({
                 where: {
                     glId: { not: null, notIn: [''] },
