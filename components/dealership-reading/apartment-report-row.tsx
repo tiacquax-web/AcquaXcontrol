@@ -72,6 +72,8 @@ export function ApartmentReportRow({
         kiteCarCost: report.kiteCarCost || 0,
         consumptionGasValue: report.consumptionGasValue || 0,
         totalGasValue: report.totalGasValue || 0,
+        consumptionEnergyValue: (report as any).consumptionEnergyValue || 0,
+        totalEnergyValue: (report as any).totalEnergyValue || 0,
         dealershipReadingId: report.dealershipReadingId || dealershipReadingId,
         apartmentId: report.apartmentId || report.apartment.id,
         nextReadingDate: undefined,
@@ -93,6 +95,8 @@ export function ApartmentReportRow({
         kiteCarCost: report.id ? normalizeValue(report.kiteCarCost) : undefined,
         consumptionGasValue: report.id ? normalizeValue(report.consumptionGasValue) : undefined,
         totalGasValue: report.id ? normalizeValue(report.totalGasValue) : undefined,
+        consumptionEnergyValue: report.id ? normalizeValue((report as any).consumptionEnergyValue) : undefined,
+        totalEnergyValue: report.id ? normalizeValue((report as any).totalEnergyValue) : undefined,
     })// Track if the report has been modified or needs to be created
     const [isModified, setIsModified] = useState(false)
     const [isNewReport, setIsNewReport] = useState(!report.id) // Track if this is a new report
@@ -126,7 +130,9 @@ export function ApartmentReportRow({
             !valuesAreEqual(localReport.kiteCarConsumption, originalReport.current.kiteCarConsumption) ||
             !valuesAreEqual(localReport.kiteCarCost, originalReport.current.kiteCarCost) ||
             !valuesAreEqual(localReport.consumptionGasValue, originalReport.current.consumptionGasValue) ||
-            !valuesAreEqual(localReport.totalGasValue, originalReport.current.totalGasValue)
+            !valuesAreEqual(localReport.totalGasValue, originalReport.current.totalGasValue) ||
+            !valuesAreEqual((localReport as any).consumptionEnergyValue, (originalReport.current as any).consumptionEnergyValue) ||
+            !valuesAreEqual((localReport as any).totalEnergyValue, (originalReport.current as any).totalEnergyValue)
 
         setIsModified(hasChanged)
         
@@ -146,6 +152,8 @@ export function ApartmentReportRow({
             kiteCarCost: normalizeValue(report.kiteCarCost),
             consumptionGasValue: normalizeValue(report.consumptionGasValue),
             totalGasValue: normalizeValue(report.totalGasValue),
+            consumptionEnergyValue: normalizeValue((report as any).consumptionEnergyValue),
+            totalEnergyValue: normalizeValue((report as any).totalEnergyValue),
             dealershipReadingId: report.dealershipReadingId || dealershipReadingId,
             apartmentId: report.apartmentId || report.apartment.id,
             yearRef: report.yearRef || dealershipReading.yearRef || undefined,
@@ -183,11 +191,13 @@ export function ApartmentReportRow({
                 kiteCarCost: normalizeValue(report.kiteCarCost),
                 consumptionGasValue: normalizeValue(report.consumptionGasValue),
                 totalGasValue: normalizeValue(report.totalGasValue),
+                consumptionEnergyValue: normalizeValue((report as any).consumptionEnergyValue),
+                totalEnergyValue: normalizeValue((report as any).totalEnergyValue),
             }
         }
     }, [report.id, report.consumption, report.totalConsumption, report.consumptionCost, 
         report.sewageCost, report.partial, report.totalUnit, report.kiteCarConsumption,
-        report.kiteCarCost, report.consumptionGasValue, report.totalGasValue])
+        report.kiteCarCost, report.consumptionGasValue, report.totalGasValue, (report as any).consumptionEnergyValue, (report as any).totalEnergyValue])
 
     // Handle input changes
     const handleInputChange = (field: keyof ApartmentConsumptionReport, value: number) => {
@@ -210,6 +220,8 @@ export function ApartmentReportRow({
             kiteCarCost: normalizeValue(savedData.kiteCarCost),
             consumptionGasValue: normalizeValue(savedData.consumptionGasValue),
             totalGasValue: normalizeValue(savedData.totalGasValue),
+            consumptionEnergyValue: normalizeValue((savedData as any).consumptionEnergyValue),
+            totalEnergyValue: normalizeValue((savedData as any).totalEnergyValue),
         }
         
         // After saving, it's no longer a new report and doesn't need saving
@@ -266,6 +278,8 @@ export function ApartmentReportRow({
                         kiteCarCost: localReport.kiteCarCost,
                         consumptionGasValue: localReport.consumptionGasValue,
                         totalGasValue: localReport.totalGasValue,
+                        consumptionEnergyValue: (localReport as any).consumptionEnergyValue,
+                        totalEnergyValue: (localReport as any).totalEnergyValue,
                     },
                     reading: {
                         enabled: true,
@@ -463,6 +477,31 @@ export function ApartmentReportRow({
                                 type="number"
                                 value={localReport.totalGasValue || 0}
                                 onChange={(e) => handleInputChange("totalGasValue", Number.parseFloat(e.target.value))}
+                                step="0.01"
+                                min="0"
+                                className="w-24"
+                            />
+                        </TableCell>
+                    </>
+                ) : dealershipReading.type === 'energy' ? (
+                    <>
+                        {/* consumo_energia_kwh */}
+                        <TableCell>
+                            <Input
+                                type="number"
+                                value={localReport.consumption || 0}
+                                onChange={(e) => handleInputChange("consumption", Number.parseFloat(e.target.value))}
+                                step="0.001"
+                                min="0"
+                                className="w-24"
+                            />
+                        </TableCell>
+                        {/* valor_consumo_energia */}
+                        <TableCell>
+                            <Input
+                                type="number"
+                                value={(localReport as any).consumptionEnergyValue || 0}
+                                onChange={(e) => handleInputChange("consumptionEnergyValue" as any, Number.parseFloat(e.target.value))}
                                 step="0.01"
                                 min="0"
                                 className="w-24"

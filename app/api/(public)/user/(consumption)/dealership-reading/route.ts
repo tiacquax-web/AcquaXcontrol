@@ -18,7 +18,7 @@ function getQueryParams(req: NextRequest) {
     const dealershipReadingId = req.nextUrl.searchParams.get('id') || undefined
     const startDate = req.nextUrl.searchParams.get('start_date') || undefined
     const endDate = req.nextUrl.searchParams.get('end_date') || undefined
-    const type = req.nextUrl.searchParams.get('type') || undefined // 'water' | 'gas'
+    const type = req.nextUrl.searchParams.get('type') || undefined // 'water' | 'gas' | 'energy'
 
     // query params - default
     const search = req.nextUrl.searchParams.get('search') || undefined
@@ -77,7 +77,7 @@ export async function GET(req: NextRequest): Promise<Response> {
                 gte: startDate ? startDate.slice(0, 10) : undefined,
                 lte: endDate ? endDate.slice(0, 10) : undefined
             } : undefined,
-            type: type && (type === 'water' || type === 'gas') ? type : undefined,
+            type: type && (type === 'water' || type === 'gas' || type === 'energy') ? type : undefined,
         }
 
         // get apartment consumption report

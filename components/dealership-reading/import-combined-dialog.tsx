@@ -158,19 +158,19 @@ export function ImportCombinedDialog({
         "condominio", "ano_ref", "mes_ref", "bloco", "apartamento",
         "chassi_medidor", "leitura_atual", "data_leitura", "prox_leitura", "foto", "pre_leitura", "leitura_anterior", "data_leitura_anterior",
         "consumo_agua_m3", "valor_consumo_agua", "valor_esgoto", "consumo_pipa_m3", "custo_pipa",
-        "rateio_agua", "consumo_total_agua_m3", "valor_total_agua_unidade", "consumo_gas_m3", "valor_consumo_gas"
+        "rateio_agua", "consumo_total_agua_m3", "valor_total_agua_unidade", "consumo_gas_m3", "valor_consumo_gas", "consumo_energia_kwh", "valor_consumo_energia"
       ],
       [
         "Condomínio Exemplo", yearRef, monthRef, "A", "101",
         "12345", 150.5, "31/12/2024", "31/01/2025", "https://exemplo.com/foto1.jpg", "Não", 148.2, "30/11/2024",
         2.3, 15.50, 8.75, 0, 0,
-        0.25, 2.3, 24.25, 0, 0
+        0.25, 2.3, 24.25, 0, 0, 120.5, 95.40
       ],
       [
         "Condomínio Exemplo", yearRef, monthRef, "A", "102",
         "12346", 75.8, "31/12/2024", "31/01/2025", "", "Sim", "", "",
         "", 18.20, 10.30, 0.5, 25.00,
-        0.30, "", 28.50, 0, 0
+        0.30, "", 28.50, 0, 0, 0, 0
       ]
     ];
 
