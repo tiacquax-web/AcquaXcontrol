@@ -77,9 +77,13 @@ export async function findApartmentRecipients(apartmentId: string): Promise<Noti
 export function isExternalNotificationEmail(email: string): boolean {
   const normalized = email.trim().toLowerCase();
   if (!normalized || !normalized.includes('@')) return false;
-  return ![
-    '@acquax',
-    '@acquaxdobrasil',
-    '@acquaxcontrol',
+
+  // Bloqueio rigoroso de domínios internos e variações de "acquax"
+  const isInternal = [
+    'acquax',
+    'acquaxdobrasil',
+    'acquaxcontrol',
   ].some((blocked) => normalized.includes(blocked));
+
+  return !isInternal;
 }
