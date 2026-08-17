@@ -1429,15 +1429,14 @@ export default function Dashboard() {
   const isProgramador = isSystem && !isAdministrador;
   const isMorador = useMemo(() => {
     if (!effectiveCtx) return false;
-    // Se for admin do sistema ou tiver acesso a empresas/condomínios/blocos, NÃO é apenas morador
-    if (effectiveCtx.isSystem || 
-        effectiveCtx.companyIds.length > 0 || 
-        effectiveCtx.complexes.length > 0 || 
-        effectiveCtx.blocks.length > 0) {
+    // Se for admin do sistema ou tiver acesso a empresas, NÃO é morador
+    if (effectiveCtx.isSystem || effectiveCtx.companyIds.length > 0) {
       return false;
     }
-    // Se não tem nada acima, mas tem apartamentos, é morador
-    return effectiveCtx.apartments.length > 0;
+    // Morador é quem tem apartamentos mas NÃO tem acesso administrativo a condomínios ou blocos inteiros
+    return effectiveCtx.apartments.length > 0 && 
+           effectiveCtx.complexes.length === 0 && 
+           effectiveCtx.blocks.length === 0;
   }, [effectiveCtx]);
 
   const renderDashboard = () => {
@@ -1481,7 +1480,7 @@ export default function Dashboard() {
               <DialogDescription>Selecione o contexto e o medidor que deseja visualizar no dashboard.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <div><Label>Condomínio</Label><SelectComplex getAvailableForEntity="reading" setSelectedComplex={setSelectedComplex} complex={selectedComplex} modal required /></div>
+              <div><Label>Condomínio</Label><SelectComplex getAvailableForEntity="reading" setSelectedComplex={setSelectedComplex} complex={selectedComplex} modal required autoSelectSingle={!isSystem} /></div>
               <div><Label>Bloco</Label><SelectBlock getAvailableForEntity="reading" setSelectedBlock={setSelectedBlock} block={selectedBlock} complexId={selectedComplex?.id} modal required /></div>
               <div><Label>Apartamento</Label><SelectApartment getAvailableForEntity="reading" setSelectedApartment={setSelectedApartment} apartment={selectedApartment} blockId={selectedBlock?.id} complexId={selectedComplex?.id} modal required /></div>
               <div><Label>Medidor</Label><SelectMeter setSelectedMeter={setSelectedMeter} meter={selectedMeter} apartmentId={selectedApartment?.id} modal required /></div>

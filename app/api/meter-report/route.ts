@@ -36,8 +36,52 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     // Determinar contexto do usuário (morador vs admin)
     const contexts = await getUserContextsForActionOnEntity(userId, 'apartmentConsumptionReport', 'read');
+    
+    // Admin se tiver permissão de sistema, empresa, condomínio ou bloco
     const isSystem = contexts.system || contexts.companyIds.length > 0 || contexts.complexIds.length > 0 || contexts.blockIds.length > 0;
     const userApartmentIds = contexts.apartmentIds;
+
+    // Se for um teste de preview (IDs começando com preview-), simulamos sucesso se for admin
+    const isPreviewApt = apartmentId?.startsWith('preview-');
+    if (isPreviewApt && isSystem) {
+        return NextResponse.json({
+            list: [{
+                id: 'preview-report',
+                monthRef: monthRef.padStart(2, '0'),
+                yearRef,
+                consumption: 12.5,
+                totalUnit: 150.0,
+                partial: 1.0,
+                apartmentId: 'preview-apt',
+                complexId: 'preview-complex',
+                utilityType: 'Agua',
+                apartment: {
+                    id: 'preview-apt',
+                    name: '101',
+                    block: {
+                        id: 'preview-block',
+                        name: 'Bloco A',
+                        complex: {
+                            id: 'preview-complex',
+                            socialName: 'Condomínio Preview',
+                            aliasName: 'Preview',
+                            company: { id: 'preview-co', name: 'AcquaX', socialName: 'AcquaX' }
+                        }
+                    }
+                },
+                lastReading: {
+                    id: 'preview-reading',
+                    reading: 123.456,
+                    readAtDate: new Date().toISOString().split('T')[0],
+                    nextReadingDate: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0]
+                },
+                history: [],
+                dealershipReading: null
+            }],
+            totalCount: 1,
+            dealershipReadings: []
+        });
+    }
 
     // Build where clause for reports
     const where: any = {
