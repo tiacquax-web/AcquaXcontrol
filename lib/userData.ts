@@ -678,9 +678,35 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     ...(extraWhere?.complexId ? { OR: [{ complexId: extraWhere.complexId }, { apartment: { block: { complexId: extraWhere.complexId } } }] } : {}),
                     ...(extraWhere?.blockId ? { blockId: extraWhere.blockId } : {}),
                 };
+                
                 const cleanReportExtraWhere = { ...extraWhere };
                 delete cleanReportExtraWhere.complexId;
                 delete cleanReportExtraWhere.blockId;
+
+                // ✅ CORREÇÃO CRÍTICA: Se dealershipReadingId for fornecido, buscamos por ID OU por contexto (mês/ano/complexo).
+                // Isso garante que relatórios importados via Excel (que podem não ter o ID técnico da leitura) apareçam na listagem.
+                let dealershipReadingFilter = {};
+                if (cleanReportExtraWhere.dealershipReadingId) {
+                    const drId = cleanReportExtraWhere.dealershipReadingId;
+                    const dr = await prisma.dealershipReading.findUnique({
+                        where: { id: drId },
+                        select: { complexId: true, monthRef: true, yearRef: true, type: true }
+                    });
+                    if (dr) {
+                        dealershipReadingFilter = {
+                            OR: [
+                                { dealershipReadingId: drId },
+                                {
+                                    complexId: dr.complexId,
+                                    monthRef: dr.monthRef,
+                                    yearRef: dr.yearRef,
+                                    utilityType: dr.type
+                                }
+                            ]
+                        };
+                        delete cleanReportExtraWhere.dealershipReadingId;
+                    }
+                }
 
                 const apartmentConsumptionReportQuery = {
                     where: cleanWhere({
@@ -689,6 +715,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                                 ...mergedReportContext,
                                 OR: reportUserOr && reportUserOr.length > 0 ? reportUserOr : undefined,
                             },
+                            dealershipReadingFilter,
                             // Busca por nome do apartment fica nos includes, se necessário
                             search ? {
                                 apartment: {
