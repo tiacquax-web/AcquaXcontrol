@@ -357,7 +357,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 const blockWhereOr = hasSystemPermission ? undefined : [
                     ...(contexts.blockIds.length > 0 ? [{ id: { in: contexts.blockIds } }] : []),
                     ...(contexts.complexIds.length > 0 ? [{ complexId: { in: contexts.complexIds } }] : []),
-                    ...(contexts.companyIds.length > 0 ? [{ companyId: { in: contexts.companyIds } }] : []),
+                    ...(contexts.companyIds.length > 0 ? [{ complex: { companyId: { in: contexts.companyIds } } }] : []),
                 ];
                 const blocksQuery = {
                     where: cleanWhere({
@@ -367,8 +367,8 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
                                 complexId: contextType === ContextType.complex ? contextId : undefined,
                                 companyId: contextType === ContextType.company ? contextId : undefined,
-                                OR: blockWhereOr && blockWhereOr.length > 0 ? blockWhereOr : undefined,
                             },
+                            blockWhereOr && blockWhereOr.length > 0 ? { OR: blockWhereOr } : {},
                             extraWhere,
                         ]
                     }),
@@ -407,9 +407,9 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             notDeleted,
                             {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
-                                ...mergedContextFilter,
-                                OR: aptWhereOr && aptWhereOr.length > 0 ? aptWhereOr : undefined,
                             },
+                            mergedContextFilter,
+                            aptWhereOr && aptWhereOr.length > 0 ? { OR: aptWhereOr } : {},
                             cleanExtraWhere,
                         ]
                     }),
@@ -693,12 +693,15 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                         select: { complexId: true, monthRef: true, yearRef: true, type: true }
                     });
                     if (dr) {
+                        const paddedMonth = dr.monthRef ? (dr.monthRef.length === 1 ? `0${dr.monthRef}` : dr.monthRef) : dr.monthRef;
+                        const unpaddedMonth = dr.monthRef ? (dr.monthRef.startsWith('0') ? dr.monthRef.substring(1) : dr.monthRef) : dr.monthRef;
+                        
                         dealershipReadingFilter = {
                             OR: [
                                 { dealershipReadingId: drId },
                                 {
                                     complexId: dr.complexId,
-                                    monthRef: dr.monthRef,
+                                    monthRef: { in: [paddedMonth, unpaddedMonth].filter(Boolean) as string[] },
                                     yearRef: dr.yearRef,
                                     utilityType: dr.type
                                 }
