@@ -291,36 +291,39 @@ export function ApartmentReportsSection({
                     </div>
                 ) : error ? (
                     <div className="text-center py-8 text-destructive">Erro ao carregar relatórios {error}</div>
-                ) : (apartmentReports.length === 0 || (reportsForSelectedMonth.length === 0 && importedReports.length === 0)) ? (
+                ) : (apartmentReports.length === 0 && reportsForSelectedMonth.length === 0 && importedReports.length === 0) ? (
                     <div className="space-y-4">
                         <p className="text-center py-4 text-muted-foreground">
-                            {apartmentReports.length === 0 
-                                ? "Nenhum apartamento encontrado para este condomínio." 
+                            {apartments.length === 0 
+                                ? "Nenhum apartamento encontrado para este condomínio. Verifique o cadastro." 
                                 : "Não há relatórios de apartamentos para este período."}
                         </p>
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                            <div className="space-y-2 flex-1">
-                                <label htmlFor="calculation-method" className="text-sm font-medium">
-                                    Método de Cálculo
-                                </label>
-                                <Select
-                                    value={calculationMethod}
-                                    onValueChange={(value) => setCalculationMethod(value as CalculationMethod)}
-                                >
-                                    <SelectTrigger id="calculation-method">
-                                        <SelectValue placeholder="Selecione um método de cálculo" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="proportional">Rateio Proporcional</SelectItem>
-                                        <SelectItem value="equal">Rateio Igual</SelectItem>
-                                        <SelectItem value="consumption">Baseado no Consumo</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>                            <Button onClick={handleGenerateReports} disabled={generate.loading} className="min-w-[200px]">
-                                {generate.loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Gerar Relatórios
-                            </Button>
-                        </div>
+                        {apartments.length > 0 && (
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                                <div className="space-y-2 flex-1">
+                                    <label htmlFor="calculation-method" className="text-sm font-medium">
+                                        Método de Cálculo
+                                    </label>
+                                    <Select
+                                        value={calculationMethod}
+                                        onValueChange={(value) => setCalculationMethod(value as CalculationMethod)}
+                                    >
+                                        <SelectTrigger id="calculation-method">
+                                            <SelectValue placeholder="Selecione um método de cálculo" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="proportional">Rateio Proporcional</SelectItem>
+                                            <SelectItem value="equal">Rateio Igual</SelectItem>
+                                            <SelectItem value="consumption">Baseado no Consumo</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <Button onClick={handleGenerateReports} disabled={generate.loading} className="min-w-[200px]">
+                                    {generate.loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Gerar Relatórios
+                                </Button>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="space-y-4">                        <div className="flex justify-between items-center">

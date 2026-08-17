@@ -714,10 +714,9 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 const apartmentConsumptionReportQuery = {
                     where: cleanWhere({
                         AND: [
-                            {
-                                ...mergedReportContext,
-                                OR: reportUserOr && reportUserOr.length > 0 ? reportUserOr : undefined,
-                            },
+                            notDeleted,
+                            mergedReportContext,
+                            reportUserOr && reportUserOr.length > 0 ? { OR: reportUserOr } : {},
                             dealershipReadingFilter,
                             // Busca por nome do apartment fica nos includes, se necessário
                             search ? {
@@ -3849,9 +3848,10 @@ async function getAvailableApartmentsForEntity(
         AND: [
             notDeleted,
             apartmentId ? { id: apartmentId } : {},
-            { OR: aptOrConditions.length > 0 ? aptOrConditions : undefined },
+            aptOrConditions.length > 0 ? { OR: aptOrConditions } : {},
             { name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined },
-            { blockId: blockId ? blockId : undefined },
+            blockId ? { blockId: blockId } : {},
+            complexId ? { block: { complexId: complexId } } : {},
         ]
     });
 
