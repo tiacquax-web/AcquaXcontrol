@@ -391,16 +391,26 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                                       contextType === ContextType.complex ? { OR: [{ complexId: contextId }, { block: { complexId: contextId } }] } :
                                       contextType === ContextType.company ? { OR: [{ companyId: contextId }, { block: { complex: { companyId: contextId } } }] } : {};
 
+                // Se houver extraWhere com blockId ou complexId específico (ex: vindo da rota), prioriza ele
+                const mergedContextFilter = {
+                    ...contextFilter,
+                    ...(extraWhere?.blockId ? { blockId: extraWhere.blockId } : {}),
+                    ...(extraWhere?.complexId ? { OR: [{ complexId: extraWhere.complexId }, { block: { complexId: extraWhere.complexId } }] } : {}),
+                };
+                const cleanExtraWhere = { ...extraWhere };
+                delete cleanExtraWhere.blockId;
+                delete cleanExtraWhere.complexId;
+
                 const apartmentsQuery = {
                     where: cleanWhere({
                         AND: [
                             notDeleted,
                             {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
-                                ...contextFilter,
+                                ...mergedContextFilter,
                                 OR: aptWhereOr && aptWhereOr.length > 0 ? aptWhereOr : undefined,
                             },
-                            extraWhere,
+                            cleanExtraWhere,
                         ]
                     }),
                     include: include ? include : undefined,
@@ -663,11 +673,20 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     ...(contexts.companyIds.length > 0 ? [{ OR: [{ companyId: { in: contexts.companyIds } }, { apartment: { block: { complex: { companyId: { in: contexts.companyIds } } } } }] }] : []),
                 ];
 
+                const mergedReportContext = {
+                    ...reportContextFilter,
+                    ...(extraWhere?.complexId ? { OR: [{ complexId: extraWhere.complexId }, { apartment: { block: { complexId: extraWhere.complexId } } }] } : {}),
+                    ...(extraWhere?.blockId ? { blockId: extraWhere.blockId } : {}),
+                };
+                const cleanReportExtraWhere = { ...extraWhere };
+                delete cleanReportExtraWhere.complexId;
+                delete cleanReportExtraWhere.blockId;
+
                 const apartmentConsumptionReportQuery = {
-                    where: {
+                    where: cleanWhere({
                         AND: [
                             {
-                                ...reportContextFilter,
+                                ...mergedReportContext,
                                 OR: reportUserOr && reportUserOr.length > 0 ? reportUserOr : undefined,
                             },
                             // Busca por nome do apartment fica nos includes, se necessário
@@ -676,9 +695,9 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                                     name: { contains: search, mode: "insensitive" }
                                 }
                             } : {},
-                            extraWhere,
+                            cleanReportExtraWhere,
                         ]
-                    }
+                    })
                 }
 
                 const apartmentConsumptionReports = await prisma.apartmentConsumptionReport.findMany({
