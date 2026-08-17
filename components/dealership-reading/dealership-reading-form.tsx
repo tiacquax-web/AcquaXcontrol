@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { Droplet, Flame, Loader2 } from "lucide-react"
+import { Droplet, Flame, GaugeCircle, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -37,7 +37,7 @@ const formSchema = z.object({
   dealershipId: z.string({ required_error: "Selecione uma concessionária" }),
 
   // Tipo de concessionária
-  type: z.enum(["water", "gas"], { required_error: "Selecione o tipo de concessionária" }),
+  type: z.enum(["water", "gas", "energy"], { required_error: "Selecione o tipo de concessionária" }),
 
   // Datas
   readingDate: z.date({ required_error: "Informe a data da leitura" }),
@@ -256,8 +256,18 @@ export function DealershipReadingForm({ mode, initialData, id }: DealershipReadi
   }
 
   // Helper function to determine dealership type from service
-  const getDealershipTypeFromService = (service: string): "water" | "gas" => {
+  const getDealershipTypeFromService = (service: string): "water" | "gas" | "energy" => {
     const normalizedService = service.toLowerCase().trim()
+
+    // Check for energy-related terms
+    if (normalizedService.includes('energia') ||
+      normalizedService.includes('luz') ||
+      normalizedService.includes('eletrica') ||
+      normalizedService.includes('elétrica') ||
+      normalizedService.includes('energy') ||
+      normalizedService.includes('light')) {
+      return "energy"
+    }
 
     // Check for water-related terms
     if (normalizedService.includes('agua') ||
@@ -443,10 +453,15 @@ export function DealershipReadingForm({ mode, initialData, id }: DealershipReadi
                                   <Droplet className="h-4 w-4 text-blue-500" />
                                   <span>Água</span>
                                 </div>
-                              ) : (
+                              ) : field.value === "gas" ? (
                                 <div className="flex items-center gap-2">
                                   <Flame className="h-4 w-4 text-orange-500" />
                                   <span>Gás</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <GaugeCircle className="h-4 w-4 text-yellow-500" />
+                                  <span>Energia</span>
                                 </div>
                               )}
                             </div>

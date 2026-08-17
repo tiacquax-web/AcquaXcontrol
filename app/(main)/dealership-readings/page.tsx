@@ -1,6 +1,6 @@
 "use client"
 
-import { Building, Building2, BuildingIcon, BuildingIcon as Buildings, ChevronDown, ChevronRight, Download, Eye, Filter, House, HousePlus, Plus, Flame, Droplets } from "lucide-react"
+import { Building, Building2, BuildingIcon, BuildingIcon as Buildings, ChevronDown, ChevronRight, Download, Eye, Filter, House, HousePlus, Plus, Flame, Droplets, GaugeCircle } from "lucide-react"
 import { useState } from "react"
 import { Company, PermissionableEntity, type Block, type Complex } from "@prisma/client"
 import { Separator } from "@/components/ui/separator"
@@ -33,7 +33,7 @@ export default function ReadingsPage() {
     const router = useRouter()
     const [searchType, setSearchType] = useState<'Cards' | 'Table'>('Table')
     const [dateRange, setDateRange] = useState({ from: sixtyDaysAgo, to: new Date() })
-    const [utilityType, setUtilityType] = useState<'all' | 'water' | 'gas'>('all')
+    const [utilityType, setUtilityType] = useState<'all' | 'water' | 'gas' | 'energy'>('all')
 
     const [filters, setFilters] = useState<{ company: Company | undefined, complex: Complex | undefined; block: Block | undefined, take: number, skip: number }>({ company: undefined, complex: undefined, block: undefined, take: 10, skip: 0 })
     const { company: selectedCompany, complex: selectedComplex, block: selectedBlock } = filters
@@ -96,7 +96,7 @@ export default function ReadingsPage() {
     const TypeFilter = (
         <div className="flex items-center space-x-2">
             <Filter className="h-5 w-5 text-muted-foreground" />
-            <Select value={utilityType} onValueChange={(v: 'all' | 'water' | 'gas') => setUtilityType(v)}>
+            <Select value={utilityType} onValueChange={(v: 'all' | 'water' | 'gas' | 'energy') => setUtilityType(v)}>
                 <SelectTrigger className="w-[140px]">
                     <SelectValue placeholder="Tipo" />
                 </SelectTrigger>
@@ -104,6 +104,7 @@ export default function ReadingsPage() {
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="water">Água</SelectItem>
                     <SelectItem value="gas">Gás</SelectItem>
+                    <SelectItem value="energy">Energia</SelectItem>
                 </SelectContent>
             </Select>
         </div>
@@ -180,6 +181,8 @@ export default function ReadingsPage() {
                                                             <Badge variant="secondary" className="gap-1"><Droplets className="h-3 w-3" /> Água</Badge>
                                                         ) : reading.type === 'gas' ? (
                                                             <Badge variant="secondary" className="gap-1"><Flame className="h-3 w-3" /> Gás</Badge>
+                                                        ) : reading.type === 'energy' ? (
+                                                            <Badge variant="secondary" className="gap-1 text-yellow-600 border-yellow-200 bg-yellow-50"><GaugeCircle className="h-3 w-3" /> Energia</Badge>
                                                         ) : (
                                                             <Badge variant="outline">-</Badge>
                                                         )}
