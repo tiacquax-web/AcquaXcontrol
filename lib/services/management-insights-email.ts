@@ -48,15 +48,16 @@ export async function enqueueManagementInsightJobs(
   const readingYearRef = reading.yearRef || '';
   const recipients = (await findComplexManagementRecipients(reading.complexId))
     .filter((recipient) => isExternalNotificationEmail(recipient.email));
+  
   if (recipients.length === 0) return { created: 0, skipped: 0, total: 0 };
 
+  // Filtro de duplicidade por complexo e período para e-mails de gestão
   const existing = await prisma.emailJob.findMany({
     where: {
       complexId: reading.complexId,
       monthRef: readingMonthRef,
       yearRef: readingYearRef,
       subject: { startsWith: MANAGEMENT_INSIGHT_PREFIX },
-      toEmail: { in: recipients.map((recipient) => recipient.email) },
     },
     select: { id: true, toEmail: true, status: true },
   });
