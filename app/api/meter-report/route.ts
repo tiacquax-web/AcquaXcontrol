@@ -29,6 +29,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     const yearRef = req.nextUrl.searchParams.get('year') || '';
     const complexId = req.nextUrl.searchParams.get('complex_id') || undefined;
     const apartmentId = req.nextUrl.searchParams.get('apartment_id') || undefined;
+    const utilityType = req.nextUrl.searchParams.get('utility_type') || undefined;
 
     if (!monthRef || !yearRef) {
       return NextResponse.json({ error: 'month and year are required' }, { status: 400 });
@@ -87,6 +88,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     const where: any = {
       monthRef: monthRef.padStart(2, '0'),
       yearRef,
+      utilityType: utilityType || undefined,
       OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
     };
 
@@ -177,6 +179,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     const drWhere: any = {
       monthRef: monthRef.padStart(2, '0'),
       yearRef,
+      type: utilityType || undefined,
       OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
     };
     if (complexId) drWhere.complexId = complexId;

@@ -21,15 +21,17 @@ async function getUserContexts(userId: string) {
                 { deletedAt: { isSet: false } },
             ],
         },
-        select: { contextId: true, contextType: true },
+        include: { Role: true },
     });
+
+    const isSystem = assignments.some((a) => a.contextType === ContextType.system || a.Role?.name === 'Administrador' || a.Role?.name === 'Programador');
 
     return {
         apartmentIds: assignments.filter((a) => a.contextType === ContextType.apartment).map((a) => a.contextId),
         blockIds: assignments.filter((a) => a.contextType === ContextType.block).map((a) => a.contextId),
         complexIds: assignments.filter((a) => a.contextType === ContextType.complex).map((a) => a.contextId),
         companyIds: assignments.filter((a) => a.contextType === ContextType.company).map((a) => a.contextId),
-        system: assignments.some((a) => a.contextType === ContextType.system),
+        system: isSystem,
     };
 }
 

@@ -937,6 +937,8 @@ model ApartmentConsumptionReport {
   // Valores de Gás (se aplicável)
   consumptionGasValue Float?        // "consumption_gas_value" no banco antigo - Consumo de Gás em m³
   totalGasValue       Float?        // "total_gas_value" no banco antigo - Valor Total do Gás em Reais
+  consumptionEnergyValue Float?     // Consumo de Energia em kWh
+  totalEnergyValue    Float?        // Valor Total da Energia em Reais
   coeficiente         Float?        // "coeficiente" no banco antigo - Não usar (dealershipreading já usa)
   metodoCalculo       String?       // "metodocalculo" no banco antigo - Não usar (dealershipreading já usa)
 
@@ -996,6 +998,7 @@ model ApartmentConsumptionReport {
 enum DealershipType {
   water
   gas
+  energy
 }
 
 model DealershipReading {

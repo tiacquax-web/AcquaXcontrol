@@ -157,7 +157,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
         // Define utility type: explicit param wins, else infer from dealershipReading
         let resolvedUtilityType: DealershipType | undefined = undefined;
-        if (body.utilityType && (body.utilityType === 'water' || body.utilityType === 'gas')) {
+        if (body.utilityType && (body.utilityType === 'water' || body.utilityType === 'gas' || body.utilityType === 'energy')) {
             resolvedUtilityType = body.utilityType as DealershipType;
         } else if (body.dealershipReadingId) {
             const dr = await prisma.dealershipReading.findUnique({ where: { id: body.dealershipReadingId }, select: { type: true } });
@@ -176,13 +176,12 @@ export async function POST(req: NextRequest): Promise<Response> {
             monthRef: body.monthRef,
             yearRef: body.yearRef,
             utilityType: resolvedUtilityType,
-            // kiteCarConsumption: body.kiteCarConsumption,
-            // kiteCarCost: body.kiteCarCost,
-            // editor: body.editor,
-            // consumptionGasValue: body.consumptionGasValue,
-            // totalGasValue: body.totalGasValue,
-            // coeficiente: body.coeficiente,
-            // metodoCalculo: body.metodoCalculo,
+            kiteCarConsumption: body.kiteCarConsumption,
+            kiteCarCost: body.kiteCarCost,
+            consumptionGasValue: body.consumptionGasValue,
+            totalGasValue: body.totalGasValue,
+            consumptionEnergyValue: body.consumptionEnergyValue,
+            totalEnergyValue: body.totalEnergyValue,
         }
 
 
