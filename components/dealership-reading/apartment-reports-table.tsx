@@ -51,6 +51,11 @@ export function ApartmentReportsTable({
                 <TableHead>Consumo Gás (m³)</TableHead>
                 <TableHead>Valor Consumo Gás (R$)</TableHead>
               </>
+            ) : dealershipReading.type === 'energy' ? (
+              <>
+                <TableHead>Consumo Energia (kWh)</TableHead>
+                <TableHead>Valor Consumo Energia (R$)</TableHead>
+              </>
             ) : (
               <>
                 <TableHead>Consumo Água (m³)</TableHead>

@@ -293,13 +293,30 @@ export function ApartmentReportsSection({
                     <div className="text-center py-8 text-destructive">Erro ao carregar relatórios {error}</div>
                 ) : (apartmentReports.length === 0 && reportsForSelectedMonth.length === 0 && importedReports.length === 0) ? (
                     <div className="space-y-4">
-                        <p className="text-center py-4 text-muted-foreground">
-                            {apartments.length === 0 
-                                ? "Nenhum apartamento encontrado para este condomínio. Verifique o cadastro." 
-                                : "Não há relatórios de apartamentos para este período."}
-                        </p>
+                        <div className="flex justify-between items-center">
+                            <p className="text-muted-foreground">
+                                {apartments.length === 0 
+                                    ? "Nenhum apartamento encontrado para este condomínio. Verifique o cadastro." 
+                                    : "Não há relatórios de apartamentos para este período."}
+                            </p>
+                            <div className="flex gap-2">
+                                <ImportApartmentReportsDialog
+                                    monthRef={monthRef}
+                                    yearRef={yearRef}
+                                    complexId={complexId}
+                                    onImportSuccess={handleImportSuccess}
+                                />
+                                <ImportCombinedDialog
+                                    monthRef={monthRef}
+                                    yearRef={yearRef}
+                                    complexId={complexId}
+                                    dealershipReadingId={dealershipReadingId}
+                                    onImportSuccess={handleCombinedImportSuccess}
+                                />
+                            </div>
+                        </div>
                         {apartments.length > 0 && (
-                            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-end border p-4 rounded-md bg-muted/20">
                                 <div className="space-y-2 flex-1">
                                     <label htmlFor="calculation-method" className="text-sm font-medium">
                                         Método de Cálculo
