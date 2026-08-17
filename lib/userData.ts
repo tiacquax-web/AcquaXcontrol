@@ -383,19 +383,21 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 const aptWhereOr = hasSystemPermission ? undefined : [
                     ...(contexts.apartmentIds.length > 0 ? [{ id: { in: contexts.apartmentIds } }] : []),
                     ...(contexts.blockIds.length > 0 ? [{ blockId: { in: contexts.blockIds } }] : []),
-                    ...(contexts.complexIds.length > 0 ? [{ complexId: { in: contexts.complexIds } }] : []),
-                    ...(contexts.companyIds.length > 0 ? [{ companyId: { in: contexts.companyIds } }] : []),
+                    ...(contexts.complexIds.length > 0 ? [{ OR: [{ complexId: { in: contexts.complexIds } }, { block: { complexId: { in: contexts.complexIds } } }] }] : []),
+                    ...(contexts.companyIds.length > 0 ? [{ OR: [{ companyId: { in: contexts.companyIds } }, { block: { complex: { companyId: { in: contexts.companyIds } } } }] }] : []),
                 ];
+                const contextFilter = contextType === ContextType.apartment ? { id: contextId } :
+                                      contextType === ContextType.block ? { blockId: contextId } :
+                                      contextType === ContextType.complex ? { OR: [{ complexId: contextId }, { block: { complexId: contextId } }] } :
+                                      contextType === ContextType.company ? { OR: [{ companyId: contextId }, { block: { complex: { companyId: contextId } } }] } : {};
+
                 const apartmentsQuery = {
                     where: cleanWhere({
                         AND: [
                             notDeleted,
                             {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
-                                id: contextType === ContextType.apartment ? contextId : undefined,
-                                blockId: contextType === ContextType.block ? contextId : undefined,
-                                complexId: contextType === ContextType.complex ? contextId : undefined,
-                                companyId: contextType === ContextType.company ? contextId : undefined,
+                                ...contextFilter,
                                 OR: aptWhereOr && aptWhereOr.length > 0 ? aptWhereOr : undefined,
                             },
                             extraWhere,
@@ -649,23 +651,24 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
 
                 return { entity: dealershipReadings, totalCount: dealershipReadingsCount, error: null, status: 200 };
             case PermissionableEntity.apartmentConsumptionReport:
+                const reportContextFilter = contextType === ContextType.apartment ? { apartmentId: contextId } :
+                                            contextType === ContextType.block ? { blockId: contextId } :
+                                            contextType === ContextType.complex ? { OR: [{ complexId: contextId }, { apartment: { block: { complexId: contextId } } }] } :
+                                            contextType === ContextType.company ? { OR: [{ companyId: contextId }, { apartment: { block: { complex: { companyId: contextId } } } }] } : {};
+
+                const reportUserOr = hasSystemPermission ? undefined : [
+                    ...(contexts.apartmentIds.length > 0 ? [{ apartmentId: { in: contexts.apartmentIds } }] : []),
+                    ...(contexts.blockIds.length > 0 ? [{ blockId: { in: contexts.blockIds } }] : []),
+                    ...(contexts.complexIds.length > 0 ? [{ OR: [{ complexId: { in: contexts.complexIds } }, { apartment: { block: { complexId: { in: contexts.complexIds } } } }] }] : []),
+                    ...(contexts.companyIds.length > 0 ? [{ OR: [{ companyId: { in: contexts.companyIds } }, { apartment: { block: { complex: { companyId: { in: contexts.companyIds } } } } }] }] : []),
+                ];
+
                 const apartmentConsumptionReportQuery = {
                     where: {
                         AND: [
                             {
-                                // Filtros de contexto BUSCADO - usando campos desnormalizados diretos
-                                apartmentId: contextType === ContextType.apartment ? contextId : undefined,
-                                blockId: contextType === ContextType.block ? contextId : undefined,
-                                complexId: contextType === ContextType.complex ? contextId : undefined,
-                                companyId: contextType === ContextType.company ? contextId : undefined,
-
-                                // Filtros de permissão do USUÁRIO - usando campos desnormalizados SEM ANINHAMENTO!
-                                OR: hasSystemPermission ? undefined : [
-                                    { apartmentId: { in: contexts.apartmentIds } }, // Apartamentos diretos (desnormalizado)
-                                    { blockId: { in: contexts.blockIds } }, // Blocos do usuário (desnormalizado)  
-                                    { complexId: { in: contexts.complexIds } }, // Condomínios do usuário (desnormalizado)
-                                    { companyId: { in: contexts.companyIds } }, // Empresas do usuário (desnormalizado)
-                                ]
+                                ...reportContextFilter,
+                                OR: reportUserOr && reportUserOr.length > 0 ? reportUserOr : undefined,
                             },
                             // Busca por nome do apartment fica nos includes, se necessário
                             search ? {
