@@ -290,6 +290,8 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
   const [selectedMonthVal, setSelectedMonthVal] = useState(allMonthOptions[0].value);
   const selectedMonthOpt = allMonthOptions.find(o => o.value === selectedMonthVal) || allMonthOptions[0];
 
+  const [selectedUtility, setSelectedUtility] = useState<'water' | 'gas' | 'energy'>('water');
+
   const singleApartment = useMemo(() => {
     if (!context || apartments.length !== 1) return null;
     return apartments[0];
@@ -303,6 +305,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
     month: selectedMonthOpt.month,
     year: selectedMonthOpt.year,
     apartmentId: activeAptId ?? undefined,
+    utilityType: selectedUtility,
     enabled: !!activeAptId,
   });
 
@@ -351,12 +354,40 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
         <>
           <ResidentMonitoringCard apartmentId={activeAptId} />
 
+          {/* Seletor de Utilitário */}
+          <div className="flex gap-2">
+            <Button 
+              variant={selectedUtility === 'water' ? 'default' : 'outline'} 
+              size="sm" 
+              onClick={() => setSelectedUtility('water')}
+              className="gap-1.5 text-xs"
+            >
+              <Droplets className="w-3.5 h-3.5" /> Água
+            </Button>
+            <Button 
+              variant={selectedUtility === 'gas' ? 'default' : 'outline'} 
+              size="sm" 
+              onClick={() => setSelectedUtility('gas')}
+              className="gap-1.5 text-xs"
+            >
+              <Activity className="w-3.5 h-3.5" /> Gás
+            </Button>
+            <Button 
+              variant={selectedUtility === 'energy' ? 'default' : 'outline'} 
+              size="sm" 
+              onClick={() => setSelectedUtility('energy')}
+              className="gap-1.5 text-xs"
+            >
+              <GaugeCircle className="w-3.5 h-3.5" /> Energia
+            </Button>
+          </div>
+
           {/* Card de Resumo de Consumo do Mês (Fallback / Garantia) */}
           <Card>
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <FileText className="w-5 h-5 text-teal-600" />
-                Meu Consumo — {selectedMonthOpt.labelShort}
+                Meu Consumo ({selectedUtility === 'water' ? 'Água' : selectedUtility === 'gas' ? 'Gás' : 'Energia'}) — {selectedMonthOpt.labelShort}
               </CardTitle>
               <MonthSelect value={selectedMonthVal} onChange={setSelectedMonthVal} />
             </CardHeader>
@@ -366,8 +397,10 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
               ) : userReport ? (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl bg-muted/40 border">
                   <div>
-                    <p className="text-xs text-muted-foreground">Consumo de Água</p>
-                    <p className="text-xl font-bold text-teal-600 mt-0.5">{userReport.consumption?.toFixed(2) ?? '0.00'} m³</p>
+                    <p className="text-xs text-muted-foreground">Consumo</p>
+                    <p className="text-xl font-bold text-teal-600 mt-0.5">
+                      {userReport.consumption?.toFixed(2) ?? '0.00'} {selectedUtility === 'energy' ? 'kWh' : 'm³'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Valor da Unidade</p>
@@ -375,7 +408,9 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Leitura Final</p>
-                    <p className="text-base font-semibold mt-1">{userReport.lastReading?.reading?.toFixed(3) ?? '—'} m³</p>
+                    <p className="text-base font-semibold mt-1">
+                      {userReport.lastReading?.reading?.toFixed(3) ?? '—'} {selectedUtility === 'energy' ? 'kWh' : 'm³'}
+                    </p>
                   </div>
                   <div className="flex items-center justify-end">
                     <Link href={`/apartment-report/${userReport.id}`}>
@@ -388,7 +423,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
               ) : (
                 <div className="text-center py-8 text-muted-foreground text-xs">
                   <Droplets className="w-8 h-8 mx-auto mb-2 opacity-30 text-teal-500" />
-                  <p>Nenhum relatório de consumo fechado para {selectedMonthOpt.labelShort}.</p>
+                  <p>Nenhum relatório de {selectedUtility === 'water' ? 'água' : selectedUtility === 'gas' ? 'gás' : 'energia'} fechado para {selectedMonthOpt.labelShort}.</p>
                 </div>
               )}
             </CardContent>
@@ -613,7 +648,7 @@ function SindicoDashboard() {
     complexId: selectedComplex?.id ?? undefined,
     withDealership: true,
     withComplex: true,
-    take: 50,
+    take: 100, // Aumentado para suportar mais tipos de utilitários
   });
 
   const billReading = useMemo(() => {

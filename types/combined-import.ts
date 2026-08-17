@@ -27,6 +27,8 @@ export interface CombinedReadingAndReportImport {
   valor_total_agua_unidade?: number;
   consumo_gas_m3?: number;
   valor_consumo_gas?: number;
+  consumo_energia_kwh?: number;
+  valor_consumo_energia?: number;
 }
 
 export interface ProcessedCombinedData {
@@ -101,6 +103,8 @@ export interface ApartmentConsumptionReport {
   kiteCarCost?: number;
   consumptionGasValue?: number;
   totalGasValue?: number;
+  consumptionEnergyValue?: number;
+  totalEnergyValue?: number;
   dealershipReadingId: string;
   apartmentId: string;
   lastReadingId?: string;

@@ -386,7 +386,9 @@ export class CombinedImportService {
       (row.valor_consumo_agua !== null && row.valor_consumo_agua !== undefined) ||
       (row.valor_esgoto !== null && row.valor_esgoto !== undefined) ||
       (row.consumo_gas_m3 !== null && row.consumo_gas_m3 !== undefined) ||
-      (row.valor_consumo_gas !== null && row.valor_consumo_gas !== undefined)
+      (row.valor_consumo_gas !== null && row.valor_consumo_gas !== undefined) ||
+      (row.consumo_energia_kwh !== null && row.consumo_energia_kwh !== undefined) ||
+      (row.valor_consumo_energia !== null && row.valor_consumo_energia !== undefined)
     );
 
     // Processar dados de leitura
@@ -438,16 +440,18 @@ export class CombinedImportService {
         yearRef: row.ano_ref.toString(),
         apartmentId,
         dealershipReadingId,
-        consumption: row.consumo_agua_m3 || 0,
-        totalConsumption: row.consumo_total_agua_m3 || row.consumo_agua_m3 || 0,
-        consumptionCost: row.valor_consumo_agua || 0,
+        consumption: row.consumo_agua_m3 || row.consumo_energia_kwh || 0,
+        totalConsumption: row.consumo_total_agua_m3 || row.consumo_agua_m3 || row.consumo_energia_kwh || 0,
+        consumptionCost: row.valor_consumo_agua || row.valor_consumo_energia || 0,
         sewageCost: row.valor_esgoto || 0,
         partial: row.rateio_agua || 0,
         totalUnit: row.valor_total_agua_unidade || 0,
         kiteCarConsumption: row.consumo_pipa_m3 || 0,
         kiteCarCost: row.custo_pipa || 0,
         consumptionGasValue: row.consumo_gas_m3 || 0,
-        totalGasValue: row.valor_consumo_gas || 0
+        totalGasValue: row.valor_consumo_gas || 0,
+        consumptionEnergyValue: row.consumo_energia_kwh || 0,
+        totalEnergyValue: row.valor_consumo_energia || 0
       };
     }
 

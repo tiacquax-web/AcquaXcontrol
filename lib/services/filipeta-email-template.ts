@@ -63,8 +63,10 @@ function generateEconomyTip(analysis?: ConsumptionAnalysis): string | undefined 
 export function generateFilipetaEmail(data: FilipetaEmailData): { subject: string; html: string; text: string } {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.acquaxcontrol.com.br';
   const monthName = MONTH_NAMES[parseInt(data.monthRef, 10) - 1] || data.monthRef;
-  const isWater = data.utilityType !== 'gas';
-  const utilityLabel = isWater ? 'Água' : 'Gás';
+  const isGas = data.utilityType === 'gas';
+  const isEnergy = data.utilityType === 'energy';
+  const utilityLabel = isEnergy ? 'Energia' : isGas ? 'Gás' : 'Água';
+  const unit = isEnergy ? 'kWh' : 'm³';
 
   const fmtCurrency = (v: number | null | undefined) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
@@ -141,16 +143,16 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
     <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;">
       <tr><td colspan="3" style="padding:9px 12px;background:#6b7280;color:#fff;text-align:center;font-size:14px;font-weight:700;">Consumo individual</td></tr>
       <tr style="background:#f8fafc;"><th style="padding:8px;border-right:1px solid #cbd5e1;font-size:12px;">Índice inicial</th><th style="padding:8px;border-right:1px solid #cbd5e1;font-size:12px;">Índice final</th><th style="padding:8px;font-size:12px;">Consumo no período</th></tr>
-      <tr><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtNumber(data.initialReading)} m³</td><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtNumber(data.finalReading)} m³</td><td style="padding:9px;text-align:center;font-size:13px;font-weight:700;color:#075985;">${fmtNumber(individualConsumption)} m³</td></tr>
+      <tr><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtNumber(data.initialReading)} ${unit}</td><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtNumber(data.finalReading)} ${unit}</td><td style="padding:9px;text-align:center;font-size:13px;font-weight:700;color:#075985;">${fmtNumber(individualConsumption)} ${unit}</td></tr>
       <tr style="background:#f8fafc;"><th style="padding:8px;border-top:1px solid #cbd5e1;border-right:1px solid #cbd5e1;font-size:12px;">Consumo total</th><th style="padding:8px;border-top:1px solid #cbd5e1;border-right:1px solid #cbd5e1;font-size:12px;">Valor consumido</th><th style="padding:8px;border-top:1px solid #cbd5e1;font-size:12px;">Valor total</th></tr>
-      <tr><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtNumber(individualConsumption)} m³</td><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtCurrency(data.consumptionCost)}</td><td style="padding:9px;text-align:center;font-size:14px;font-weight:700;color:#075985;">${fmtCurrency(data.totalUnit)}</td></tr>
+      <tr><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtNumber(individualConsumption)} ${unit}</td><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtCurrency(data.consumptionCost)}</td><td style="padding:9px;text-align:center;font-size:14px;font-weight:700;color:#075985;">${fmtCurrency(data.totalUnit)}</td></tr>
     </table>
   </td></tr>
   <tr><td style="padding:0 24px 18px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;">
       <tr><td colspan="3" style="padding:9px 12px;background:#6b7280;color:#fff;text-align:center;font-size:14px;font-weight:700;">Consumo do condomínio</td></tr>
       <tr style="background:#f8fafc;"><th style="padding:8px;border-right:1px solid #cbd5e1;font-size:12px;">Consumo medido</th><th style="padding:8px;border-right:1px solid #cbd5e1;font-size:12px;">Valor da conta</th><th style="padding:8px;font-size:12px;">Consumo por economia</th></tr>
-      <tr><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtNumber(data.condominiumConsumption)} m³</td><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtCurrency(data.condominiumBillValue)}</td><td style="padding:9px;text-align:center;font-size:13px;">${fmtNumber(data.consumptionPerEconomy)} m³</td></tr>
+      <tr><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtNumber(data.condominiumConsumption)} ${unit}</td><td style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${fmtCurrency(data.condominiumBillValue)}</td><td style="padding:9px;text-align:center;font-size:13px;">${fmtNumber(data.consumptionPerEconomy)} ${unit}</td></tr>
       <tr style="background:#f8fafc;"><th colspan="2" style="padding:8px;border-top:1px solid #cbd5e1;border-right:1px solid #cbd5e1;font-size:12px;">Período de referência</th><th style="padding:8px;border-top:1px solid #cbd5e1;font-size:12px;">Data próx. leitura</th></tr>
       <tr><td colspan="2" style="padding:9px;text-align:center;border-right:1px solid #cbd5e1;font-size:13px;">${periodStr}</td><td style="padding:9px;text-align:center;font-size:13px;">${nextReading}</td></tr>
     </table>
@@ -164,7 +166,7 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
 </table></td></tr></table>
 </body></html>`;
 
-  const text = `AcquaX do Brasil - Extrato de consumo individual\n\nPrezado(a) ${data.residentName},\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\nPeríodo: ${periodStr}\nPróxima leitura prevista: ${nextReading}\n\nCONSUMO INDIVIDUAL\nÍndice inicial: ${fmtNumber(data.initialReading)} m³\nÍndice final: ${fmtNumber(data.finalReading)} m³\nConsumo no período: ${fmtNumber(individualConsumption)} m³\nValor consumido: ${fmtCurrency(data.consumptionCost)}\nValor de rateio: ${fmtCurrency(data.rateioValue)}\nValor total: ${fmtCurrency(data.totalUnit)}\n\nCONSUMO DO CONDOMÍNIO\nConsumo medido: ${fmtNumber(data.condominiumConsumption)} m³\nValor da conta: ${fmtCurrency(data.condominiumBillValue)}\nConsumo por economia: ${fmtNumber(data.consumptionPerEconomy)} m³\n\nAcesse ${baseUrl} para consultar o extrato completo.`;
+  const text = `AcquaX do Brasil - Extrato de consumo individual\n\nPrezado(a) ${data.residentName},\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\nPeríodo: ${periodStr}\nPróxima leitura prevista: ${nextReading}\n\nCONSUMO INDIVIDUAL\nÍndice inicial: ${fmtNumber(data.initialReading)} ${unit}\nÍndice final: ${fmtNumber(data.finalReading)} ${unit}\nConsumo no período: ${fmtNumber(individualConsumption)} ${unit}\nValor consumido: ${fmtCurrency(data.consumptionCost)}\nValor de rateio: ${fmtCurrency(data.rateioValue)}\nValor total: ${fmtCurrency(data.totalUnit)}\n\nCONSUMO DO CONDOMÍNIO\nConsumo medido: ${fmtNumber(data.condominiumConsumption)} ${unit}\nValor da conta: ${fmtCurrency(data.condominiumBillValue)}\nConsumo por economia: ${fmtNumber(data.consumptionPerEconomy)} ${unit}\n\nAcesse ${baseUrl} para consultar o extrato completo.`;
 
   return { subject, html, text };
 }
