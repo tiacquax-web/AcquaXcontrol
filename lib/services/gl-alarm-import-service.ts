@@ -34,7 +34,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { gunzipSync } from 'zlib';
 import { sendEmail } from '@/lib/services/email-service';
-import { findApartmentRecipients, isExternalNotificationEmail } from '@/lib/services/notification-recipients';
+import { findApartmentRecipients, findComplexManagementRecipients, isExternalNotificationEmail } from '@/lib/services/notification-recipients';
 
 export interface GlAlarmImportResult {
   success: boolean;
@@ -299,10 +299,12 @@ export class GlAlarmImportService {
         select: {
           id: true,
           register: true,
+          complexId: true,
           apartment: {
             select: {
               id: true,
               name: true,
+              alertsEnabled: true,
               block: {
                 select: {
                   name: true,
@@ -316,10 +318,21 @@ export class GlAlarmImportService {
 
       if (!meter?.apartment) continue;
 
+      // Respeitar a preferência de alertas do apartamento
+      if (meter.apartment.alertsEnabled === false) {
+        console.log(`[GL Alarm] Alertas desabilitados para o apto ${meter.apartment.name}`);
+        continue;
+      }
+
       const residents = (await findApartmentRecipients(meter.apartment.id))
         .filter((resident) => isExternalNotificationEmail(resident.email));
 
-      if (residents.length === 0) continue;
+      const complexId = meter.apartment.block?.complex?.id || meter.complexId;
+      const managementRecipients = complexId 
+        ? (await findComplexManagementRecipients(complexId)).filter(r => isExternalNotificationEmail(r.email))
+        : [];
+
+      if (residents.length === 0 && managementRecipients.length === 0) continue;
 
       const complexName = meter.apartment.block?.complex?.socialName ?? '-';
       const blockName = meter.apartment.block?.name ?? '-';
@@ -385,17 +398,23 @@ Acesse ${baseUrl}/monitoring para ver os detalhes.
 
 Em caso de duvidas: medicao@acquaxdobrasil.com.br e/ou 4003-7945.`;
 
-      for (const resident of residents) {
+      // Enviar para moradores e gestão
+      const allRecipients = [
+        ...residents.map(r => ({ ...r, type: 'Morador' })),
+        ...managementRecipients.map(r => ({ ...r, type: 'Gestão' }))
+      ];
+
+      for (const recipient of allRecipients) {
         try {
           await sendEmail({
-            to: resident.email,
-            toName: resident.name,
+            to: recipient.email,
+            toName: recipient.name,
             subject: `Alerta do Medidor - ${complexName} - ${blockName}/${aptName}`,
             html,
             text,
           });
         } catch (e) {
-          console.error(`[GL Alarm] Erro ao notificar ${resident.email}:`, e);
+          console.error(`[GL Alarm] Erro ao notificar ${recipient.email}:`, e);
         }
       }
     }
