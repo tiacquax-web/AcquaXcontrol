@@ -66,21 +66,18 @@ const items = [
     url: "/monitoring",
     icon: Gauge,
     group: 'Geral',
-    requiresGL: true,
   },
   {
     title: "Central de Alertas",
     url: "/alerts",
     icon: BellDot,
     group: 'Geral',
-    requiresGL: true,
   },
   {
     title: "Medidores de Nível",
     url: "/reservoir-monitoring",
     icon: Droplets,
     group: 'Geral',
-    requiresGL: true,
   },
   {
     title: "Apuração",
