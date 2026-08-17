@@ -2,7 +2,7 @@ import { PermissionableEntity } from '@prisma/client';
 import axios from 'axios';
 import type { Apartment } from '@prisma/client';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
+const NEXT_PUBLIC_API_URL = '/api';
 
 interface getApartmentsProps {
   companyId?: string;
@@ -55,7 +55,6 @@ export const getApartments = async ({ getAvailableForEntity, withBlock, withComp
     
     console.log("📨 Resposta da API de apartamentos:", response.data);
     
-    return response.data;
     return response.data;
   } catch (error) {
     console.error('Error fetching apartments:', error);

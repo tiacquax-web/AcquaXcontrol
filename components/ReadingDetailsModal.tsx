@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import { Camera } from "lucide-react";
+import { Camera, Info } from "lucide-react";
 import React, { useState, useEffect } from "react";
 
 interface ReadingDetailsModalProps {
@@ -51,6 +51,20 @@ export default function ReadingDetailsModal({ open, onOpenChange, reading }: Rea
                 </div>
               )}
             </div>
+
+            {/* Aviso de processamento de imagem */}
+            {hasPhoto && (
+              <div className="mt-3 w-80 flex items-start gap-2 rounded-md bg-muted/60 border border-border px-3 py-2">
+                <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                <p className="text-[11px] leading-tight text-muted-foreground">
+                  As imagens dos medidores passam por processamento automatizado de aprimoramento óptico
+                  (ajuste de contraste, nitidez e reconhecimento de caracteres) para garantir a leitura
+                  mais precisa possível. Pequenas diferenças visuais — como linhas, manchas ou variações
+                  de tonalidade — são artefatos naturais deste processo e não representam alteração dos
+                  valores registrados.
+                </p>
+              </div>
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <Table>

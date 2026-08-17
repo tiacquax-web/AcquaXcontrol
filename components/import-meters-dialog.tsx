@@ -6,18 +6,21 @@ import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert"
-import { AlertCircle, Upload, X, FileSpreadsheet, Loader2, Trash2 } from "lucide-react"
+import { AlertCircle, Upload, X, FileSpreadsheet, Loader2, Trash2, Link2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Progress } from "./ui/progress"
 import * as XLSX from "xlsx"
 import { useMeterMutations } from "@/hooks/useMeters"
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "./ui/table"
 import { getTypeMeters } from "@/services/typemetersService"
+import axios from "axios"
 
 interface ImportMetersDialogProps {
     open: boolean
     onOpenChange: (open: boolean) => void
     onImportComplete: () => void
+    /** Modo simplificado: apenas atualiza glId de medidores existentes via chassi+gl_id */
+    updateOnly?: boolean
 }
 
 interface ImportError {
@@ -34,7 +37,7 @@ interface InvalidRow {
     row: any
 }
 
-export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: ImportMetersDialogProps) {
+export function ImportMetersDialog({ open, onOpenChange, onImportComplete, updateOnly = false }: ImportMetersDialogProps) {
     const { toast } = useToast()
     const [file, setFile] = useState<File | null>(null)
     const [isUploading, setIsUploading] = useState(false)
@@ -45,6 +48,8 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
     const [availableTypes, setAvailableTypes] = useState<{ id: string; name: string; acronym: string }[]>([])
     const fileInputRef = useRef<HTMLInputElement>(null)
     const { createMetersFromSheet, loading: loadingMutation } = useMeterMutations()
+    // updateOnly result state
+    const [updateOnlyResult, setUpdateOnlyResult] = useState<{ updated: number; skipped: number; notFound: string[]; errors: string[] } | null>(null)
 
     // Fetch available meter types when dialog opens
     useEffect(() => {
@@ -276,10 +281,34 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
         })
     }
 
+    // Validação simplificada para modo updateOnly: apenas chassi + gl_id obrigatórios
+    const validateUpdateOnlyRows = (rows: any[]) => {
+        const invalid: InvalidRow[] = []
+        rows.forEach((row, index) => {
+            const chassi = row.chassi !== undefined && row.chassi !== null ? String(row.chassi).trim() : ''
+            const glId = (row.gl_id !== undefined && row.gl_id !== null ? String(row.gl_id).trim() : '')
+                || (row.glId !== undefined && row.glId !== null ? String(row.glId).trim() : '')
+            const missingFields: string[] = []
+            if (!chassi) missingFields.push('chassi')
+            if (!glId) missingFields.push('gl_id')
+            if (missingFields.length > 0) {
+                invalid.push({ index, rowNumber: index + 2, missingFields, row })
+            }
+        })
+        setInvalidRows(invalid)
+        if (invalid.length > 0) {
+            toast({ variant: 'destructive', title: 'Linhas inválidas', description: `${invalid.length} linha(s) sem chassi ou gl_id.` })
+        }
+    }
+
     // Effect para validar quando importRows mudar
     useEffect(() => {
         if (importRows && importRows.length > 0) {
-            validateImportRows(importRows)
+            if (updateOnly) {
+                validateUpdateOnlyRows(importRows)
+            } else {
+                validateImportRows(importRows)
+            }
         }
     }, [importRows])
     
@@ -345,6 +374,43 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
         setIsUploading(true)
         setProgress(0)
         setErrors([])
+        setUpdateOnlyResult(null)
+
+        // ── Modo updateOnly: apenas atualiza glId ────────────────────────────────
+        if (updateOnly) {
+            try {
+                const resp = await axios.post('/api/admin/gl/update-meter-glids', { rows: importRows })
+                const result = resp.data
+                setUpdateOnlyResult(result)
+                if (result.errors && result.errors.length > 0) {
+                    toast({
+                        variant: "destructive",
+                        title: "Atualização com erros",
+                        description: `${result.updated} atualizados, ${result.errors.length} erros.`,
+                    })
+                } else {
+                    toast({
+                        title: "glIds atualizados",
+                        description: `✅ ${result.updated} medidores atualizados, ${result.skipped ?? 0} já estavam corretos.${result.notFoundCount ? ` ⚠️ ${result.notFoundCount} chassi não encontrados.` : ''}`,
+                    })
+                    onImportComplete()
+                    if (!result.notFound?.length && !result.errors?.length) onOpenChange(false)
+                }
+            } catch (error: any) {
+                const data = error?.response?.data
+                toast({
+                    variant: "destructive",
+                    title: "Erro ao atualizar glIds",
+                    description: data?.error || error?.message || "Ocorreu um erro.",
+                })
+                if (data?.details) setErrors(data.details.map((msg: string, i: number) => ({ row: i + 2, message: msg })))
+            } finally {
+                setIsUploading(false)
+            }
+            return
+        }
+
+        // ── Modo normal: criar + atualizar medidores ──────────────────────────────
         try {
             const result = await createMetersFromSheet(importRows)
             // Se o backend retornar erro de importação em massa (status 400), pode vir como { error, details, created }
@@ -409,9 +475,11 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
             >
                 <div className="flex flex-col flex-1 overflow-y-auto p-6">
                     <DialogHeader>
-                        <DialogTitle>Importar Medidores</DialogTitle>
+                        <DialogTitle>{updateOnly ? 'Vincular glIds via Planilha' : 'Importar Medidores'}</DialogTitle>
                         <DialogDescription>
-                            Faça upload de uma planilha com os dados dos medidores. O sistema irá atualizar os registros existentes ou criar novos conforme necessário.
+                            {updateOnly
+                                ? 'Faça upload de uma planilha com as colunas chassi e gl_id para vincular medidores existentes à integração GroupLink (GL). Nenhum outro dado será alterado.'
+                                : 'Faça upload de uma planilha com os dados dos medidores. O sistema irá atualizar os registros existentes ou criar novos conforme necessário.'}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
@@ -583,27 +651,61 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
                             </Alert>
                         )}
                         <div className="text-sm text-muted-foreground">
-                            <p>O arquivo deve conter as seguintes colunas:</p>
-                            <ul className="list-disc pl-5">
-                                <li>chassi</li>
-                                <li>
-                                    tipo
-                                    {availableTypes.length > 0 && (
-                                        <span className="ml-1 text-xs text-foreground font-medium">
-                                            — valores aceitos: {availableTypes.map(t => t.name).join(', ')}
-                                        </span>
-                                    )}
-                                </li>
-                                <li>condominio</li>
-                                <li>bloco</li>
-                                <li>apartamento</li>
-                                <li>localizacao (opcional)</li>
-                                <li>leitura_inicial (opcional)</li>
-                                <li>ano_fabricacao (opcional)</li>
-                                <li>principal (Sim/Não)</li>
-                                <li>rotacao (Crescente/Decrescente)</li>
-                            </ul>
+                            {updateOnly ? (
+                                <>
+                                    <p className="font-medium text-foreground mb-1">Colunas obrigatórias (modo vincular glId):</p>
+                                    <ul className="list-disc pl-5">
+                                        <li><span className="font-medium text-foreground">chassi</span> — número de série do medidor (deve já existir no sistema)</li>
+                                        <li><span className="font-medium text-foreground">gl_id</span> — ID remote_id do GroupLink a vincular</li>
+                                    </ul>
+                                    <p className="mt-2 text-xs">Apenas medidores já cadastrados serão atualizados. Nenhum medidor novo será criado.</p>
+                                </>
+                            ) : (
+                                <>
+                                    <p>O arquivo deve conter as seguintes colunas:</p>
+                                    <ul className="list-disc pl-5">
+                                        <li>chassi</li>
+                                        <li>
+                                            tipo
+                                            {availableTypes.length > 0 && (
+                                                <span className="ml-1 text-xs text-foreground font-medium">
+                                                    — valores aceitos: {availableTypes.map(t => t.name).join(', ')}
+                                                </span>
+                                            )}
+                                        </li>
+                                        <li>condominio</li>
+                                        <li>bloco</li>
+                                        <li>apartamento</li>
+                                        <li>localizacao (opcional)</li>
+                                        <li>leitura_inicial (opcional)</li>
+                                        <li>ano_fabricacao (opcional)</li>
+                                        <li>principal (Sim/Não)</li>
+                                        <li>rotacao (Crescente/Decrescente)</li>
+                                        <li>gl_id (opcional — ID de integração GroupLink)</li>
+                                    </ul>
+                                </>
+                            )}
                         </div>
+
+                        {/* updateOnly result summary */}
+                        {updateOnly && updateOnlyResult && (
+                            <Alert className={updateOnlyResult.errors?.length ? 'border-destructive' : 'border-green-500'}>
+                                <Link2 className="h-4 w-4" />
+                                <AlertTitle>Resultado da vinculação</AlertTitle>
+                                <AlertDescription>
+                                    <ul className="text-sm space-y-0.5 mt-1">
+                                        <li>✅ <strong>{updateOnlyResult.updated}</strong> medidores com glId atualizado</li>
+                                        {(updateOnlyResult.skipped ?? 0) > 0 && <li>⏭️ <strong>{updateOnlyResult.skipped}</strong> já tinham o glId correto (sem alteração)</li>}
+                                        {updateOnlyResult.notFound?.length > 0 && (
+                                            <li className="text-orange-600">⚠️ <strong>{updateOnlyResult.notFound.length}</strong> chassi não encontrados: {updateOnlyResult.notFound.slice(0, 5).join(', ')}{updateOnlyResult.notFound.length > 5 ? '…' : ''}</li>
+                                        )}
+                                        {updateOnlyResult.errors?.length > 0 && (
+                                            <li className="text-destructive">❌ <strong>{updateOnlyResult.errors.length}</strong> erros de atualização</li>
+                                        )}
+                                    </ul>
+                                </AlertDescription>
+                            </Alert>
+                        )}
                     </div>
                 </div>
                 <DialogFooter className="flex justify-between sm:justify-between px-6 pb-6 pt-2">
@@ -633,11 +735,17 @@ export function ImportMetersDialog({ open, onOpenChange, onImportComplete }: Imp
                     <Button 
                         onClick={handleImport} 
                         disabled={!file || isUploading || invalidRows.some(row => row.missingFields.length > 0)}
+                        variant={updateOnly ? "default" : "default"}
                     >
                         {isUploading ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 Processando...
+                            </>
+                        ) : updateOnly ? (
+                            <>
+                                <Link2 className="mr-2 h-4 w-4" />
+                                Vincular glIds
                             </>
                         ) : (
                             <>

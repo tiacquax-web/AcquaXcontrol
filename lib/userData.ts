@@ -3,6 +3,15 @@ import { ContextType, PermissionableEntity, Prisma } from '@prisma/client';
 import { getUserContexts, getUserContextsForActionOnEntity, getUserContextsForEntity } from '@/lib/userContexts';
 import { cleanWhere } from './utils';
 
+// MongoDB-safe "not deleted" filter — matches records where deletedAt is null
+// OR where the field was never set (absent in older MongoDB documents).
+const notDeleted = {
+    OR: [
+        { deletedAt: null },
+        { deletedAt: { isSet: false } },
+    ],
+};
+
 // Função para normalizar email removendo acentos e caracteres especiais
 function normalizeEmail(email: string): string {
     // Mapa de caracteres acentuados para normais
@@ -319,130 +328,133 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     take: take < 200 ? take : 200,
                 });
                 return { entity: companies, error: null, status: 200 };
-            case PermissionableEntity.complex:
-                const complexes = await prisma.complex.findMany({
-                    where: {
+            case PermissionableEntity.complex: {
+                const complexWhereOr = hasSystemPermission ? undefined : [
+                    ...(contexts.complexIds.length > 0 ? [{ id: { in: contexts.complexIds } }] : []),
+                    ...(contexts.companyIds.length > 0 ? [{ companyId: { in: contexts.companyIds } }] : []),
+                ];
+                const complexesQuery = {
+                    where: cleanWhere({
                         AND: [
+                            notDeleted,
                             {
                                 socialName: search ? { contains: search, mode: "insensitive" } : undefined,
-
-                                // Filtro do contexto BUSCADO
                                 companyId: contextType === ContextType.company ? contextId : undefined,
-
-                                // Filtro do contexto do USUÁRIO
-                                OR: hasSystemPermission ? undefined : [
-                                    { id: { in: contexts.complexIds } }, // Condomínios diretos
-                                    { companyId: { in: contexts.companyIds } }, // Condomínios das empresas do usuário
-                                ]
+                                OR: complexWhereOr && complexWhereOr.length > 0 ? complexWhereOr : undefined,
                             },
                             extraWhere,
                         ]
-                    },
+                    }),
                     include: include ? include : undefined,
                     take: take < 200 ? take : 200,
                     skip: skip ? skip : 0,
-                });
-                return { entity: complexes, error: null, status: 200 };
-            case PermissionableEntity.block:
+                };
+                const complexes = await prisma.complex.findMany(complexesQuery);
+                const complexesCount = await prisma.complex.count({ where: complexesQuery.where });
+                return { entity: complexes, totalCount: complexesCount, error: null, status: 200 };
+            }
+            case PermissionableEntity.block: {
+                const blockWhereOr = hasSystemPermission ? undefined : [
+                    ...(contexts.blockIds.length > 0 ? [{ id: { in: contexts.blockIds } }] : []),
+                    ...(contexts.complexIds.length > 0 ? [{ complexId: { in: contexts.complexIds } }] : []),
+                    ...(contexts.companyIds.length > 0 ? [{ complex: { companyId: { in: contexts.companyIds } } }] : []),
+                ];
                 const blocksQuery = {
-                    where: {
+                    where: cleanWhere({
                         AND: [
-                            {
-                                deletedAt: null,
-                            },
+                            notDeleted,
                             {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
-
-                                // Filtro do contexto BUSCADO (usando campos desnormalizados)
                                 complexId: contextType === ContextType.complex ? contextId : undefined,
                                 companyId: contextType === ContextType.company ? contextId : undefined,
-
-                                // Filtro do contexto do USUÁRIO (usando campos desnormalizados)
-                                OR: hasSystemPermission ? undefined : [
-                                    { id: { in: contexts.blockIds } }, // Blocos diretos
-                                    { complexId: { in: contexts.complexIds } }, // Blocos dentro dos condomínios do usuário
-                                    { companyId: { in: contexts.companyIds } }, // Blocos dentro das empresas do usuário (desnormalizado)
-                                ]
                             },
+                            blockWhereOr && blockWhereOr.length > 0 ? { OR: blockWhereOr } : {},
                             extraWhere,
                         ]
-                    },
+                    }),
                     include: include ? include : undefined,
                     take: take < 200 ? take : 200,
                 };
                 const blocks = await prisma.block.findMany(blocksQuery);
-                const blocksCount = await prisma.block.count({ where: cleanWhere({ ...blocksQuery.where, deletedAt: null }) });
+                const blocksCount = await prisma.block.count({ where: blocksQuery.where });
                 return { entity: blocks, totalCount: blocksCount, error: null, status: 200 };
-            case PermissionableEntity.apartment:
+            }
+            case PermissionableEntity.apartment: {
+                const aptWhereOr = hasSystemPermission ? undefined : [
+                    ...(contexts.apartmentIds.length > 0 ? [{ id: { in: contexts.apartmentIds } }] : []),
+                    ...(contexts.blockIds.length > 0 ? [{ blockId: { in: contexts.blockIds } }] : []),
+                    ...(contexts.complexIds.length > 0 ? [{ OR: [{ complexId: { in: contexts.complexIds } }, { block: { complexId: { in: contexts.complexIds } } }] }] : []),
+                    ...(contexts.companyIds.length > 0 ? [{ OR: [{ companyId: { in: contexts.companyIds } }, { block: { complex: { companyId: { in: contexts.companyIds } } } }] }] : []),
+                ];
+                const contextFilter = contextType === ContextType.apartment ? { id: contextId } :
+                                      contextType === ContextType.block ? { blockId: contextId } :
+                                      contextType === ContextType.complex ? { OR: [{ complexId: contextId }, { block: { complexId: contextId } }] } :
+                                      contextType === ContextType.company ? { OR: [{ companyId: contextId }, { block: { complex: { companyId: contextId } } }] } : {};
+
+                // Se houver extraWhere com blockId ou complexId específico (ex: vindo da rota), prioriza ele
+                const mergedContextFilter = {
+                    ...contextFilter,
+                    ...(extraWhere?.blockId ? { blockId: extraWhere.blockId } : {}),
+                    ...(extraWhere?.complexId ? { OR: [{ complexId: extraWhere.complexId }, { block: { complexId: extraWhere.complexId } }] } : {}),
+                };
+                const cleanExtraWhere = { ...extraWhere };
+                delete cleanExtraWhere.blockId;
+                delete cleanExtraWhere.complexId;
+
                 const apartmentsQuery = {
-                    where: {
-                        deletedAt: null,
+                    where: cleanWhere({
                         AND: [
+                            notDeleted,
                             {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
-
-                                // Filtro do contexto BUSCADO (usando campos desnormalizados)
-                                id: contextType === ContextType.apartment ? contextId : undefined,
-                                blockId: contextType === ContextType.block ? contextId : undefined,
-                                complexId: contextType === ContextType.complex ? contextId : undefined,
-                                companyId: contextType === ContextType.company ? contextId : undefined,
-
-                                // Filtro do contexto do USUÁRIO (usando campos desnormalizados)
-                                OR: hasSystemPermission ? undefined : [
-                                    { id: { in: contexts.apartmentIds } }, // Apartamentos diretos
-                                    { blockId: { in: contexts.blockIds } }, // Apartamentos dentro dos blocos do usuário
-                                    { complexId: { in: contexts.complexIds } }, // Apartamentos dentro dos condomínios do usuário (desnormalizado)
-                                    { companyId: { in: contexts.companyIds } }, // Apartamentos dentro das empresas do usuário (desnormalizado)
-                                ]
                             },
-                            extraWhere,
+                            mergedContextFilter,
+                            aptWhereOr && aptWhereOr.length > 0 ? { OR: aptWhereOr } : {},
+                            cleanExtraWhere,
                         ]
-                    },
+                    }),
                     include: include ? include : undefined,
                     take: take < 2000 ? take : 2000,
-                    // orderBy: orderBy ? { [orderBy]: orderDirection } : undefined,
+                    skip: skip ?? 0,
+                    orderBy: orderBy ? { [orderBy]: orderDirection } : undefined,
                 };
                 const apartments = await prisma.apartment.findMany(apartmentsQuery);
-                const apartmentsCount = await prisma.apartment.count({ where: cleanWhere({ ...apartmentsQuery.where, deletedAt: null }) });
+                const apartmentsCount = await prisma.apartment.count({ where: apartmentsQuery.where });
                 return { entity: apartments, totalCount: apartmentsCount, error: null, status: 200 };
+            }
 
             // Meters and Devices
             case PermissionableEntity.meter:
                 console.log('########## getEntityListData - meter ##########')
-                const query:any = {
-                    where: {
+                const meterWhereOr = hasSystemPermission ? undefined : [
+                    ...(contexts.apartmentIds.length > 0 ? [{ apartmentId: { in: contexts.apartmentIds } }] : []),
+                    ...(contexts.blockIds.length > 0 ? [{ blockId: { in: contexts.blockIds } }] : []),
+                    ...(contexts.complexIds.length > 0 ? [{ complexId: { in: contexts.complexIds } }] : []),
+                    ...(contexts.companyIds.length > 0 ? [{ companyId: { in: contexts.companyIds } }] : []),
+                ];
+                const meterQuery = {
+                    where: cleanWhere({
                         AND: [
+                            notDeleted,
                             {
                                 register: search ? { contains: search.toUpperCase() } : undefined,
-
-                                // Filtro do contexto BUSCADO (usando campos desnormalizados)
                                 apartmentId: contextType === ContextType.apartment ? contextId : undefined,
                                 blockId: contextType === ContextType.block ? contextId : undefined,
                                 complexId: contextType === ContextType.complex ? contextId : undefined,
                                 companyId: contextType === ContextType.company ? contextId : undefined,
-
-                                // Filtro do contexto do USUÁRIO (usando campos desnormalizados)
-                                OR: hasSystemPermission ? undefined : [
-                                    { apartmentId: { in: contexts.apartmentIds } }, // Apartamentos diretos
-                                    { blockId: { in: contexts.blockIds } }, // Blocos do usuário (desnormalizado)
-                                    { complexId: { in: contexts.complexIds } }, // Condomínios do usuário (desnormalizado)
-                                    { companyId: { in: contexts.companyIds } }, // Empresas do usuário (desnormalizado)
-                                ]
+                                OR: meterWhereOr && meterWhereOr.length > 0 ? meterWhereOr : undefined,
                             }
                         ]
-                    },
-                }
-                console.warn(JSON.stringify(query, null, 2))
+                    }),
+                };
                 const meters = await prisma.meter.findMany({
-                    ...query,
+                    ...meterQuery,
                     include: include && Object.keys(include).length > 0 ? include : undefined,
                     take: take < 200 ? take : 200,
                     skip: skip ? skip : 0,
-                    orderBy: {
-                        [orderBy]: orderDirection,
-                    },
+                    orderBy: { [orderBy]: orderDirection },
                 });
-                const metersCount = await prisma.meter.count({ where: cleanWhere({ ...query.where, deletedAt: null }) });
+                const metersCount = await prisma.meter.count({ where: meterQuery.where });
                 return { entity: meters, totalCount: metersCount, error: null, status: 200 };
             case PermissionableEntity.typeMeter:
                 const typeMeters = await prisma.typeMeter.findMany({
@@ -649,33 +661,72 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
 
                 return { entity: dealershipReadings, totalCount: dealershipReadingsCount, error: null, status: 200 };
             case PermissionableEntity.apartmentConsumptionReport:
-                const apartmentConsumptionReportQuery = {
-                    where: {
-                        AND: [
-                            {
-                                // Filtros de contexto BUSCADO - usando campos desnormalizados diretos
-                                apartmentId: contextType === ContextType.apartment ? contextId : undefined,
-                                blockId: contextType === ContextType.block ? contextId : undefined,
-                                complexId: contextType === ContextType.complex ? contextId : undefined,
-                                companyId: contextType === ContextType.company ? contextId : undefined,
+                const reportContextFilter = contextType === ContextType.apartment ? { apartmentId: contextId } :
+                                            contextType === ContextType.block ? { blockId: contextId } :
+                                            contextType === ContextType.complex ? { OR: [{ complexId: contextId }, { apartment: { block: { complexId: contextId } } }] } :
+                                            contextType === ContextType.company ? { OR: [{ companyId: contextId }, { apartment: { block: { complex: { companyId: contextId } } } }] } : {};
 
-                                // Filtros de permissão do USUÁRIO - usando campos desnormalizados SEM ANINHAMENTO!
-                                OR: hasSystemPermission ? undefined : [
-                                    { apartmentId: { in: contexts.apartmentIds } }, // Apartamentos diretos (desnormalizado)
-                                    { blockId: { in: contexts.blockIds } }, // Blocos do usuário (desnormalizado)  
-                                    { complexId: { in: contexts.complexIds } }, // Condomínios do usuário (desnormalizado)
-                                    { companyId: { in: contexts.companyIds } }, // Empresas do usuário (desnormalizado)
-                                ]
-                            },
+                const reportUserOr = hasSystemPermission ? undefined : [
+                    ...(contexts.apartmentIds.length > 0 ? [{ apartmentId: { in: contexts.apartmentIds } }] : []),
+                    ...(contexts.blockIds.length > 0 ? [{ blockId: { in: contexts.blockIds } }] : []),
+                    ...(contexts.complexIds.length > 0 ? [{ OR: [{ complexId: { in: contexts.complexIds } }, { apartment: { block: { complexId: { in: contexts.complexIds } } } }] }] : []),
+                    ...(contexts.companyIds.length > 0 ? [{ OR: [{ companyId: { in: contexts.companyIds } }, { apartment: { block: { complex: { companyId: { in: contexts.companyIds } } } } }] }] : []),
+                ];
+
+                const mergedReportContext = {
+                    ...reportContextFilter,
+                    ...(extraWhere?.complexId ? { OR: [{ complexId: extraWhere.complexId }, { apartment: { block: { complexId: extraWhere.complexId } } }] } : {}),
+                    ...(extraWhere?.blockId ? { blockId: extraWhere.blockId } : {}),
+                };
+                
+                const cleanReportExtraWhere = { ...extraWhere };
+                delete cleanReportExtraWhere.complexId;
+                delete cleanReportExtraWhere.blockId;
+
+                // ✅ CORREÇÃO CRÍTICA: Se dealershipReadingId for fornecido, buscamos por ID OU por contexto (mês/ano/complexo).
+                // Isso garante que relatórios importados via Excel (que podem não ter o ID técnico da leitura) apareçam na listagem.
+                let dealershipReadingFilter = {};
+                if (cleanReportExtraWhere.dealershipReadingId) {
+                    const drId = cleanReportExtraWhere.dealershipReadingId;
+                    const dr = await prisma.dealershipReading.findUnique({
+                        where: { id: drId },
+                        select: { complexId: true, monthRef: true, yearRef: true, type: true }
+                    });
+                    if (dr) {
+                        const paddedMonth = dr.monthRef ? (dr.monthRef.length === 1 ? `0${dr.monthRef}` : dr.monthRef) : dr.monthRef;
+                        const unpaddedMonth = dr.monthRef ? (dr.monthRef.startsWith('0') ? dr.monthRef.substring(1) : dr.monthRef) : dr.monthRef;
+                        
+                        dealershipReadingFilter = {
+                            OR: [
+                                { dealershipReadingId: drId },
+                                {
+                                    complexId: dr.complexId,
+                                    monthRef: { in: [paddedMonth, unpaddedMonth].filter(Boolean) as string[] },
+                                    yearRef: dr.yearRef,
+                                    utilityType: dr.type
+                                }
+                            ]
+                        };
+                        delete cleanReportExtraWhere.dealershipReadingId;
+                    }
+                }
+
+                const apartmentConsumptionReportQuery = {
+                    where: cleanWhere({
+                        AND: [
+                            notDeleted,
+                            mergedReportContext,
+                            reportUserOr && reportUserOr.length > 0 ? { OR: reportUserOr } : {},
+                            dealershipReadingFilter,
                             // Busca por nome do apartment fica nos includes, se necessário
                             search ? {
                                 apartment: {
                                     name: { contains: search, mode: "insensitive" }
                                 }
                             } : {},
-                            extraWhere,
+                            cleanReportExtraWhere,
                         ]
-                    }
+                    })
                 }
 
                 const apartmentConsumptionReports = await prisma.apartmentConsumptionReport.findMany({
@@ -695,7 +746,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 return { entity: apartmentConsumptionReports, totalCount: apartmentConsumptionReportsCount, error: null, status: 200 };
 
             // Users and Roles
-            case PermissionableEntity.user:
+            case PermissionableEntity.user: {
                 // Verificar se o usuário tem permissão para listar usuários em qualquer contexto
                 const hasUserListPermission = contexts.system || 
                                              contexts.companyIds.length > 0 || 
@@ -704,20 +755,123 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                                              contexts.apartmentIds.length > 0;
                 
                 if (!hasUserListPermission) return { entity: null, error: 'Não autorizado', status: 401 };
+
+                // Filtro de escopo por contexto do solicitante:
+                // - Sistema (admin/programador): vê todos os usuários sem restrição adicional
+                // - Administradora (companyIds): vê usuários vinculados aos condomínios da empresa
+                // - Síndico (complexIds): vê APENAS usuários dos condomínios vinculados a ele
+                // - Bloco/apartamento: vê apenas usuários daquele bloco/apartamento
+                let scopedUserIds: string[] | undefined = undefined;
+
+                if (!contexts.system) {
+                    // Montar OR conditions para buscar role assignments no escopo do solicitante
+                    const scopeOrConditions: any[] = [];
+
+                    if (contexts.companyIds.length > 0) {
+                        // Usuários com role assignment em condomínios da empresa
+                        const complexesOfCompany = await prisma.complex.findMany({
+                            where: {
+                                companyId: { in: contexts.companyIds },
+                                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                            },
+                            select: { id: true },
+                        });
+                        const complexIdsOfCompany = complexesOfCompany.map(c => c.id);
+                        if (complexIdsOfCompany.length > 0) {
+                            scopeOrConditions.push({ contextId: { in: complexIdsOfCompany }, contextType: 'complex' });
+                        }
+                        if (contexts.companyIds.length > 0) {
+                            scopeOrConditions.push({ contextId: { in: contexts.companyIds }, contextType: 'company' });
+                        }
+                    }
+
+                    if (contexts.complexIds.length > 0) {
+                        scopeOrConditions.push({ contextId: { in: contexts.complexIds }, contextType: 'complex' });
+                        // Incluir também usuários de blocos e apartamentos dentro dos condomínios
+                        const blocksInComplexes = await prisma.block.findMany({
+                            where: {
+                                complexId: { in: contexts.complexIds },
+                                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                            },
+                            select: { id: true },
+                        });
+                        const blockIdsInComplexes = blocksInComplexes.map(b => b.id);
+                        if (blockIdsInComplexes.length > 0) {
+                            scopeOrConditions.push({ contextId: { in: blockIdsInComplexes }, contextType: 'block' });
+                        }
+                        // Buscar apartamentos por complexId desnormalizado E por blockId (cobre registros antigos sem complexId)
+                        const apartmentsInComplexes = await prisma.apartment.findMany({
+                            where: {
+                                OR: [
+                                    // Via campo desnormalizado (registros novos)
+                                    ...(contexts.complexIds.length > 0 ? [{ complexId: { in: contexts.complexIds } }] : []),
+                                    // Via bloco (registros antigos sem complexId)
+                                    ...(blockIdsInComplexes.length > 0 ? [{ blockId: { in: blockIdsInComplexes } }] : []),
+                                ],
+                                AND: [{ OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }],
+                            },
+                            select: { id: true },
+                        });
+                        const aptIdsInComplexes = [...new Set(apartmentsInComplexes.map(a => a.id))];
+                        if (aptIdsInComplexes.length > 0) {
+                            scopeOrConditions.push({ contextId: { in: aptIdsInComplexes }, contextType: 'apartment' });
+                        }
+                    }
+
+                    if (contexts.blockIds.length > 0) {
+                        scopeOrConditions.push({ contextId: { in: contexts.blockIds }, contextType: 'block' });
+                        const apartmentsInBlocks = await prisma.apartment.findMany({
+                            where: {
+                                blockId: { in: contexts.blockIds },
+                                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                            },
+                            select: { id: true },
+                        });
+                        const aptIdsInBlocks = apartmentsInBlocks.map(a => a.id);
+                        if (aptIdsInBlocks.length > 0) {
+                            scopeOrConditions.push({ contextId: { in: aptIdsInBlocks }, contextType: 'apartment' });
+                        }
+                    }
+
+                    if (contexts.apartmentIds.length > 0) {
+                        scopeOrConditions.push({ contextId: { in: contexts.apartmentIds }, contextType: 'apartment' });
+                    }
+
+                    if (scopeOrConditions.length > 0) {
+                        const scopedAssignments = await prisma.roleAssignment.findMany({
+                            where: {
+                                AND: [
+                                    { OR: scopeOrConditions },
+                                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                                ],
+                            },
+                            select: { userId: true },
+                        });
+                        scopedUserIds = [...new Set(scopedAssignments.map(a => a.userId))];
+                    } else {
+                        // Sem escopo definido → retornar vazio (segurança)
+                        return { entity: [], totalCount: 0, error: null, status: 200 };
+                    }
+                }
+
+                const usersWhere: any = cleanWhere({
+                    AND: [
+                        // Filtro de busca: só inclui quando há texto de pesquisa
+                        ...(search ? [{
+                            OR: [
+                                { name: { contains: search, mode: "insensitive" } },
+                                { email: { contains: search, mode: "insensitive" } },
+                                { documentPerson: { contains: search, mode: "insensitive" } },
+                            ]
+                        }] : []),
+                        // Filtro de escopo: apenas usuários dos condomínios vinculados
+                        ...(scopedUserIds !== undefined ? [{ id: { in: scopedUserIds } }] : []),
+                        extraWhere,
+                    ]
+                });
                 
                 const usersQuery = {
-                    where: {
-                        AND: [
-                            {
-                                OR: [
-                                    { name: search ? { contains: search, mode: "insensitive" } : undefined },
-                                    { email: search ? { contains: search, mode: "insensitive" } : undefined },
-                                    { documentPerson: search ? { contains: search, mode: "insensitive" } : undefined },
-                                ]
-                            },
-                            extraWhere,
-                        ]
-                    },
+                    where: usersWhere,
                     take: take < 200 ? take : 200,
                     skip: skip ? skip : 0,
                     include: include ? include : undefined,
@@ -728,10 +882,11 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 const usersCount = await prisma.user.count({ where: cleanWhere({ ...usersQuery.where, deletedAt: null }) });
                 
                 return { entity: users, totalCount: usersCount, error: null, status: 200 };
+            }
             case PermissionableEntity.role:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 
-                const whereCondition = {
+                const whereCondition = cleanWhere({
                     AND: [
                         {
                             OR: [
@@ -741,7 +896,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                         },
                         extraWhere,
                     ],
-                };
+                });
 
                 const roles = await prisma.role.findMany({
                     where: whereCondition,
@@ -758,7 +913,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
             case PermissionableEntity.roleAssignment:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 const roleAssignments = await prisma.roleAssignment.findMany({
-                    where: {
+                    where: cleanWhere({
                         AND: [
                             {
                                 OR: [
@@ -768,7 +923,7 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             },
                             extraWhere,
                         ]
-                    },
+                    }),
                     include: include ? include : undefined,
                     take: take < 200 ? take : 200,
                 });
@@ -898,6 +1053,10 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
     try {
         data.deletedAt = null;
         data.createdByUserId = userId;
+        // Guarantee createdAt/updatedAt are real Date objects, not strings
+        // (Prisma @db.Timestamp requires native Date — ISO strings cause P2023 corruption)
+        if (data.createdAt !== undefined) delete data.createdAt;
+        if (data.updatedAt !== undefined) delete data.updatedAt;
 
         const contexts = await getUserContextsForActionOnEntity(userId, entityType, 'create');
         const hasSystemPermission = !!contexts.system;
@@ -916,6 +1075,17 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                 return { entity: company, status: 201, error: null };
 
             case PermissionableEntity.complex:
+                // Se nenhuma empresa foi informada, vincula automaticamente à empresa padrão "Acqua X do Brasil"
+                // (o usuário pode trocar depois editando o condomínio)
+                if (!data.companyId) {
+                    const defaultCompany = await prisma.company.findFirst({
+                        where: { name: { contains: 'Acqua', mode: 'insensitive' }, deletedAt: null },
+                        orderBy: { createdAt: 'asc' },
+                        select: { id: true },
+                    });
+                    if (defaultCompany) data.companyId = defaultCompany.id;
+                }
+
                 if (!hasSystemPermission && !contexts.companyIds.includes(data.companyId))
                     return { entity: null, error: 'Não autorizado', status: 401 };
 
@@ -1228,6 +1398,18 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
                     data.email = normalizeEmail(data.email);
                 }
                 
+                // Verificar se já existe um usuário ATIVO com o mesmo email (ignora soft-deleted)
+                const existingUser = await prisma.user.findFirst({
+                    where: {
+                        email: data.email,
+                        deletedAt: null,
+                    },
+                    select: { id: true },
+                });
+                if (existingUser) {
+                    return { entity: null, error: 'Já existe um usuário ativo com este e-mail.', status: 409 };
+                }
+                
                 const user = await prisma.user.create({ data: { ...data } });
                 return { entity: user, status: 201, error: null };
             case PermissionableEntity.role:
@@ -1317,8 +1499,32 @@ async function createEntity(userId: string, entityType: PermissionableEntity, da
         }
     }
     catch (error) {
-        console.error("Error creating entity:", error);
-        return { error: 'Internal Server Error', status: 500, entity: null };
+        console.error("[createEntity] Error creating entity:", error);
+        // Traduz erros Prisma conhecidos em mensagens úteis
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            if (error.code === 'P2002') {
+                const target = error.meta?.target;
+                const fields = Array.isArray(target)
+                    ? target.join(', ')
+                    : typeof target === 'string'
+                        ? target
+                        : 'campos';
+                return { error: `Já existe um registro com os mesmos valores para: ${fields}. Verifique duplicidade.`, status: 409, entity: null };
+            }
+            if (error.code === 'P2003') {
+                const field = (error.meta?.field_name as string | undefined) ?? 'campo relacionado';
+                return { error: `Registro relacionado não encontrado: ${field}. Verifique os IDs informados.`, status: 400, entity: null };
+            }
+            if (error.code === 'P2025') {
+                return { error: `Registro não encontrado para atualização. Verifique o ID informado.`, status: 404, entity: null };
+            }
+            return { error: `Erro no banco de dados (${error.code}): ${error.message}`, status: 500, entity: null };
+        }
+        if (error instanceof Prisma.PrismaClientValidationError) {
+            console.error("[createEntity] Validation error details:", error.message);
+            return { error: `Dados inválidos para criação. Verifique os campos obrigatórios e seus tipos.`, status: 400, entity: null };
+        }
+        return { error: 'Erro interno ao criar registro. Consulte os logs do servidor.', status: 500, entity: null };
     }
 }
 
@@ -1910,8 +2116,32 @@ async function bulkCreateEntity(userId: string, entityType: PermissionableEntity
         }
     }
     catch (error) {
-        console.error("Error creating entity:", error);
-        return { error: 'Internal Server Error', status: 500, entity: null };
+        console.error("[bulkCreateEntity] Error creating entity:", error);
+        // Traduz erros Prisma conhecidos em mensagens úteis
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            if (error.code === 'P2002') {
+                const target = error.meta?.target;
+                const fields = Array.isArray(target)
+                    ? target.join(', ')
+                    : typeof target === 'string'
+                        ? target
+                        : 'campos';
+                return { error: `Já existe um registro com os mesmos valores para: ${fields}. Verifique duplicidade.`, status: 409, entity: null };
+            }
+            if (error.code === 'P2003') {
+                const field = (error.meta?.field_name as string | undefined) ?? 'campo relacionado';
+                return { error: `Registro relacionado não encontrado: ${field}. Verifique os IDs informados.`, status: 400, entity: null };
+            }
+            if (error.code === 'P2025') {
+                return { error: `Registro não encontrado para atualização. Verifique o ID informado.`, status: 404, entity: null };
+            }
+            return { error: `Erro no banco de dados (${error.code}): ${error.message}`, status: 500, entity: null };
+        }
+        if (error instanceof Prisma.PrismaClientValidationError) {
+            console.error("[bulkCreateEntity] Validation error details:", error.message);
+            return { error: `Dados inválidos para criação em lote. Verifique os campos obrigatórios e seus tipos.`, status: 400, entity: null };
+        }
+        return { error: 'Erro interno ao criar registros em lote. Consulte os logs do servidor.', status: 500, entity: null };
     }
 }
 
@@ -2438,8 +2668,8 @@ async function updateEntityData(userId: string, entityType: PermissionableEntity
                 }
 
             // Users and Roles
-            case PermissionableEntity.user:
-                // Verificar se o usuário tem permissão para atualizar usuários em qualquer contexto
+            case PermissionableEntity.user: {
+                // 1. Verificar se o solicitante tem permissão de update em algum contexto
                 const hasUserUpdatePermission = contexts.system || 
                                                contexts.companyIds.length > 0 || 
                                                contexts.complexIds.length > 0 || 
@@ -2447,6 +2677,73 @@ async function updateEntityData(userId: string, entityType: PermissionableEntity
                                                contexts.apartmentIds.length > 0;
                 
                 if (!hasUserUpdatePermission) return { entity: null, error: 'Não autorizado', status: 401 };
+
+                // 2. Se não for sistema, verificar se o usuário-alvo está no escopo do solicitante
+                if (!hasSystemPermission) {
+                    const scopeOrConditionsUpdate: any[] = [];
+
+                    if (contexts.companyIds.length > 0) {
+                        const complexesOfCompany = await prisma.complex.findMany({
+                            where: { companyId: { in: contexts.companyIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                            select: { id: true },
+                        });
+                        const complexIdsOfCompany = complexesOfCompany.map(c => c.id);
+                        if (complexIdsOfCompany.length > 0) scopeOrConditionsUpdate.push({ contextId: { in: complexIdsOfCompany }, contextType: 'complex' });
+                        scopeOrConditionsUpdate.push({ contextId: { in: contexts.companyIds }, contextType: 'company' });
+                    }
+                    if (contexts.complexIds.length > 0) {
+                        scopeOrConditionsUpdate.push({ contextId: { in: contexts.complexIds }, contextType: 'complex' });
+                        const blocksInComplexes = await prisma.block.findMany({
+                            where: { complexId: { in: contexts.complexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                            select: { id: true },
+                        });
+                        const blockIdsInComplexes = blocksInComplexes.map(b => b.id);
+                        if (blockIdsInComplexes.length > 0) scopeOrConditionsUpdate.push({ contextId: { in: blockIdsInComplexes }, contextType: 'block' });
+                        const apartmentsInComplexes = await prisma.apartment.findMany({
+                            where: {
+                                OR: [
+                                    ...(contexts.complexIds.length > 0 ? [{ complexId: { in: contexts.complexIds } }] : []),
+                                    ...(blockIdsInComplexes.length > 0 ? [{ blockId: { in: blockIdsInComplexes } }] : []),
+                                ],
+                                AND: [{ OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }],
+                            },
+                            select: { id: true },
+                        });
+                        const aptIdsInComplexes = [...new Set(apartmentsInComplexes.map(a => a.id))];
+                        if (aptIdsInComplexes.length > 0) scopeOrConditionsUpdate.push({ contextId: { in: aptIdsInComplexes }, contextType: 'apartment' });
+                    }
+                    if (contexts.blockIds.length > 0) {
+                        scopeOrConditionsUpdate.push({ contextId: { in: contexts.blockIds }, contextType: 'block' });
+                        const apartmentsInBlocks = await prisma.apartment.findMany({
+                            where: { blockId: { in: contexts.blockIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                            select: { id: true },
+                        });
+                        const aptIdsInBlocks = apartmentsInBlocks.map(a => a.id);
+                        if (aptIdsInBlocks.length > 0) scopeOrConditionsUpdate.push({ contextId: { in: aptIdsInBlocks }, contextType: 'apartment' });
+                    }
+                    if (contexts.apartmentIds.length > 0) {
+                        scopeOrConditionsUpdate.push({ contextId: { in: contexts.apartmentIds }, contextType: 'apartment' });
+                    }
+
+                    if (scopeOrConditionsUpdate.length > 0) {
+                        const scopedAssignmentsUpdate = await prisma.roleAssignment.findMany({
+                            where: {
+                                AND: [
+                                    { OR: scopeOrConditionsUpdate },
+                                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                                    { userId: entityId },
+                                ],
+                            },
+                            select: { userId: true },
+                            take: 1,
+                        });
+                        if (scopedAssignmentsUpdate.length === 0) {
+                            return { entity: null, error: 'Não autorizado: usuário fora do seu escopo de condomínio', status: 403 };
+                        }
+                    } else {
+                        return { entity: null, error: 'Não autorizado', status: 403 };
+                    }
+                }
                 
                 // Normalizar email se estiver sendo atualizado
                 if (data.email) {
@@ -2455,6 +2752,7 @@ async function updateEntityData(userId: string, entityType: PermissionableEntity
                 
                 const user = await prisma.user.update({ where: { id: entityId }, data });
                 return { entity: user, status: 200, error: null };
+            }
             case PermissionableEntity.role:
                 if (!hasSystemPermission) return { entity: null, error: 'Não autorizado', status: 401 };
                 const role = await prisma.role.update({ where: { id: entityId }, data });
@@ -2472,8 +2770,26 @@ async function updateEntityData(userId: string, entityType: PermissionableEntity
                 return { entity: null, error: 'Entidade não permitida para edição', status: 401 };
         }
     } catch (error) {
-        console.error("Error updating entity data:", error);
-        return { entity: null, error: 'Internal Server Error - Error updating entity data', status: 500 };
+        console.error("[updateEntityData] Error updating entity data:", error);
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            if (error.code === 'P2002') {
+                const target = error.meta?.target;
+                const fields = Array.isArray(target)
+                    ? target.join(', ')
+                    : typeof target === 'string'
+                        ? target
+                        : 'campos';
+                return { entity: null, error: `Já existe um registro com os mesmos valores para: ${fields}.`, status: 409 };
+            }
+            if (error.code === 'P2025') {
+                return { entity: null, error: 'Registro não encontrado para atualização.', status: 404 };
+            }
+            return { entity: null, error: `Erro no banco de dados (${error.code}): ${error.message}`, status: 500 };
+        }
+        if (error instanceof Prisma.PrismaClientValidationError) {
+            return { entity: null, error: 'Dados inválidos para atualização. Verifique os campos informados.', status: 400 };
+        }
+        return { entity: null, error: 'Erro interno ao atualizar registro. Consulte os logs do servidor.', status: 500 };
     }
 }
 
@@ -2678,18 +2994,120 @@ async function deleteEntity(userId: string, entityType: PermissionableEntity, en
                 return { error: null, status: 200, entity: reservoirReading }
 
             // Users and Roles
-            case PermissionableEntity.user:
-                // Verificar se o usuário tem permissão para deletar usuários em qualquer contexto
+            case PermissionableEntity.user: {
+                // 1. Verificar se o solicitante tem permissão de delete em algum contexto
                 const hasUserDeletePermission = contexts.system || 
                                                contexts.companyIds.length > 0 || 
                                                contexts.complexIds.length > 0 || 
                                                contexts.blockIds.length > 0 || 
                                                contexts.apartmentIds.length > 0;
                 
-                if (!hasUserDeletePermission) return { error: 'Não autorizado', status: 401, entity: null }
+                if (!hasUserDeletePermission) return { error: 'Não autorizado', status: 401, entity: null };
+
+                // 1b. Proteção: Programador não pode deletar usuário com papel "Administrador"
+                if (hasSystemPermission) {
+                    // Buscar os papéis do solicitante para verificar se é Administrador
+                    const requesterAssignments = await prisma.roleAssignment.findMany({
+                        where: {
+                            userId,
+                            contextType: 'system',
+                            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                        },
+                        select: { Role: { select: { name: true } } },
+                    });
+                    const requesterSystemRoles = requesterAssignments.map(a => a.Role?.name).filter(Boolean) as string[];
+                    const isRequesterAdmin = requesterSystemRoles.includes('Administrador');
+
+                    if (!isRequesterAdmin) {
+                        // Solicitante é Programador (ou outro system não-admin)
+                        // Verificar se o usuário-alvo tem papel de Administrador
+                        const targetAssignments = await prisma.roleAssignment.findMany({
+                            where: {
+                                userId: entityId,
+                                contextType: 'system',
+                                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                            },
+                            select: { Role: { select: { name: true } } },
+                        });
+                        const targetSystemRoles = targetAssignments.map(a => a.Role?.name).filter(Boolean) as string[];
+                        const isTargetAdmin = targetSystemRoles.includes('Administrador');
+
+                        if (isTargetAdmin) {
+                            return { error: 'Programadores não podem excluir usuários Administrador', status: 403, entity: null };
+                        }
+                    }
+                }
+
+                // 2. Se não for sistema, verificar se o usuário-alvo está no escopo
+                if (!hasSystemPermission) {
+                    const scopeOrConditionsDelete: any[] = [];
+
+                    if (contexts.companyIds.length > 0) {
+                        const complexesOfCompanyDel = await prisma.complex.findMany({
+                            where: { companyId: { in: contexts.companyIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                            select: { id: true },
+                        });
+                        const complexIdsOfCompanyDel = complexesOfCompanyDel.map(c => c.id);
+                        if (complexIdsOfCompanyDel.length > 0) scopeOrConditionsDelete.push({ contextId: { in: complexIdsOfCompanyDel }, contextType: 'complex' });
+                        scopeOrConditionsDelete.push({ contextId: { in: contexts.companyIds }, contextType: 'company' });
+                    }
+                    if (contexts.complexIds.length > 0) {
+                        scopeOrConditionsDelete.push({ contextId: { in: contexts.complexIds }, contextType: 'complex' });
+                        const blocksInComplexesDel = await prisma.block.findMany({
+                            where: { complexId: { in: contexts.complexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                            select: { id: true },
+                        });
+                        const blockIdsInComplexesDel = blocksInComplexesDel.map(b => b.id);
+                        if (blockIdsInComplexesDel.length > 0) scopeOrConditionsDelete.push({ contextId: { in: blockIdsInComplexesDel }, contextType: 'block' });
+                        const apartmentsInComplexesDel = await prisma.apartment.findMany({
+                            where: {
+                                OR: [
+                                    ...(contexts.complexIds.length > 0 ? [{ complexId: { in: contexts.complexIds } }] : []),
+                                    ...(blockIdsInComplexesDel.length > 0 ? [{ blockId: { in: blockIdsInComplexesDel } }] : []),
+                                ],
+                                AND: [{ OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }],
+                            },
+                            select: { id: true },
+                        });
+                        const aptIdsInComplexesDel = [...new Set(apartmentsInComplexesDel.map(a => a.id))];
+                        if (aptIdsInComplexesDel.length > 0) scopeOrConditionsDelete.push({ contextId: { in: aptIdsInComplexesDel }, contextType: 'apartment' });
+                    }
+                    if (contexts.blockIds.length > 0) {
+                        scopeOrConditionsDelete.push({ contextId: { in: contexts.blockIds }, contextType: 'block' });
+                        const apartmentsInBlocksDel = await prisma.apartment.findMany({
+                            where: { blockId: { in: contexts.blockIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                            select: { id: true },
+                        });
+                        const aptIdsInBlocksDel = apartmentsInBlocksDel.map(a => a.id);
+                        if (aptIdsInBlocksDel.length > 0) scopeOrConditionsDelete.push({ contextId: { in: aptIdsInBlocksDel }, contextType: 'apartment' });
+                    }
+                    if (contexts.apartmentIds.length > 0) {
+                        scopeOrConditionsDelete.push({ contextId: { in: contexts.apartmentIds }, contextType: 'apartment' });
+                    }
+
+                    if (scopeOrConditionsDelete.length > 0) {
+                        const scopedAssignmentsDelete = await prisma.roleAssignment.findMany({
+                            where: {
+                                AND: [
+                                    { OR: scopeOrConditionsDelete },
+                                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                                    { userId: entityId },
+                                ],
+                            },
+                            select: { userId: true },
+                            take: 1,
+                        });
+                        if (scopedAssignmentsDelete.length === 0) {
+                            return { error: 'Não autorizado: usuário fora do seu escopo de condomínio', status: 403, entity: null };
+                        }
+                    } else {
+                        return { error: 'Não autorizado', status: 403, entity: null };
+                    }
+                }
                 
-                const user = await prisma.user.delete({ where: { id: entityId } });
-                return { error: null, status: 200, entity: user }
+                const userDel = await prisma.user.delete({ where: { id: entityId } });
+                return { error: null, status: 200, entity: userDel };
+            }
             case PermissionableEntity.role:
                 if (!hasSystemPermission) return { error: 'Não autorizado', status: 401, entity: null }
                 const role = await prisma.role.delete({ where: { id: entityId } });
@@ -2971,15 +3389,17 @@ async function getAvailableComplexesForEntity(
             apartmentIds,
         }, null, 2));
 
+        const complexOrConditions = [
+            ...(companyIds.length > 0 ? [{ companyId: { in: companyIds } }] : []),
+            ...(complexIds.length > 0 ? [{ id: { in: complexIds } }] : []),
+            ...(blockIds.length > 0 ? [{ blocks: { some: { id: { in: blockIds } } } }] : []),
+            ...(apartmentIds.length > 0 ? [{ blocks: { some: { apartments: { some: { id: { in: apartmentIds } } } } } }] : []),
+        ];
+
         finalWhere = {
             AND: [
                 {
-                    OR: [
-                        { companyId: { in: companyIds } }, // Condomínios da empresa do usuário
-                        { id: { in: complexIds } }, // Condomínios diretos do usuário
-                        { blocks: { some: { id: { in: blockIds } } } }, // Condomínios com blocos do usuário
-                        { blocks: { some: { apartments: { some: { id: { in: apartmentIds } } } } } }, // Condomínios com apartamentos do usuário
-                    ],
+                    OR: complexOrConditions.length > 0 ? complexOrConditions : undefined,
                     socialName: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
                     companyId: companyId ? companyId : undefined,
                 },
@@ -2999,15 +3419,22 @@ async function getAvailableComplexesForEntity(
 
     // Query principal para buscar complexes
     console.time("getAvailableComplexesForEntity - prisma.complex.findMany");
+    // Add notDeleted filter to finalWhere
+    const finalWhereWithNotDeleted = cleanWhere({
+        AND: [
+            notDeleted,
+            ...(finalWhere.AND || [finalWhere]),
+        ]
+    });
     const [availableComplexes, availableComplexCount] = await Promise.all([
         prisma.complex.findMany({
-            where: finalWhere,
+            where: finalWhereWithNotDeleted,
             select: baseSelect,
             take: take,
             skip: skip
         }),
         prisma.complex.count({
-            where: { ...finalWhere, deletedAt: null },
+            where: finalWhereWithNotDeleted,
         })
     ]);
     console.timeEnd("getAvailableComplexesForEntity - prisma.complex.findMany");
@@ -3029,7 +3456,7 @@ async function getAvailableComplexesForEntity(
                 by: ['complexId'],
                 where: {
                     complexId: { in: complexIds_found },
-                    deletedAt: null
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
                 },
                 _count: true
             }).then(results => {
@@ -3046,7 +3473,7 @@ async function getAvailableComplexesForEntity(
             prisma.block.findMany({
                 where: {
                     complexId: { in: complexIds_found },
-                    deletedAt: null
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
                 },
                 select: {
                     id: true,
@@ -3054,7 +3481,7 @@ async function getAvailableComplexesForEntity(
                     _count: {
                         select: {
                             apartments: {
-                                where: { deletedAt: null }
+                                where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
                             }
                         }
                     }
@@ -3080,17 +3507,17 @@ async function getAvailableComplexesForEntity(
             prisma.block.findMany({
                 where: {
                     complexId: { in: complexIds_found },
-                    deletedAt: null
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
                 },
                 select: {
                     complexId: true,
                     apartments: {
-                        where: { deletedAt: null },
+                        where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
                         select: {
                             _count: {
                                 select: {
                                     meters: {
-                                        where: { deletedAt: null }
+                                        where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
                                     }
                                 }
                             }
@@ -3131,7 +3558,7 @@ async function getAvailableComplexesForEntity(
         blocksData = await prisma.block.findMany({
             where: {
                 complexId: { in: complexIds_found },
-                deletedAt: null
+                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
             },
             select: {
                 id: true,
@@ -3144,7 +3571,7 @@ async function getAvailableComplexesForEntity(
             const apartments = await prisma.apartment.findMany({
                 where: {
                     blockId: { in: blocksData.map(b => b.id) },
-                    deletedAt: null
+                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
                 },
                 select: {
                     id: true,
@@ -3275,6 +3702,7 @@ async function getAvailableBlocksForEntity(
         const availableBlocks = await prisma.block.findMany({
             where: {
                 AND: [
+                    notDeleted,
                     {
                         complexId: complexId ? complexId : undefined,
                         name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
@@ -3290,18 +3718,20 @@ async function getAvailableBlocksForEntity(
         return { list: availableBlocks, totalCount: availableBlocks.length }
     }
 
-    if (companyIds.length === 0 && complexIds.length === 0 && blockIds.length === 0 && apartmentIds.length === 0) return [];
+    if (companyIds.length === 0 && complexIds.length === 0 && blockIds.length === 0 && apartmentIds.length === 0) return { list: [], totalCount: 0 };
 
+    const nonSystemBlockOr = [
+        ...(blockIds.length > 0 ? [{ id: { in: blockIds } }] : []),
+        ...(complexIds.length > 0 ? [{ complexId: { in: complexIds } }] : []),
+        ...(companyIds.length > 0 ? [{ complex: { companyId: { in: companyIds } } }] : []),
+        ...(apartmentIds.length > 0 ? [{ apartments: { some: { id: { in: apartmentIds } } } }] : []),
+    ];
     const availableBlocks = await prisma.block.findMany({
-        where: {
+        where: cleanWhere({
             AND: [
+                notDeleted,
                 {
-                    OR: [
-                        { id: { in: blockIds } }, // Blocos diretos
-                        { complexId: { in: complexIds } }, // Blocos dentro dos condomínios do usuário
-                        { complex: { companyId: { in: companyIds } } }, // Blocos dentro dos condomínios da empresa do usuário
-                        { apartments: { some: { id: { in: apartmentIds } } } }, // Blocos com apartamentos do usuário
-                    ],
+                    OR: nonSystemBlockOr.length > 0 ? nonSystemBlockOr : undefined,
                     complexId: complexId ? complexId : undefined,
                     name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
                     complex: complexNameSearchTerm ? {
@@ -3310,7 +3740,7 @@ async function getAvailableBlocksForEntity(
                 },
                 extraWhere
             ]
-        },
+        }),
         include
     })
 
@@ -3363,10 +3793,10 @@ async function getAvailableApartmentsForEntity(
         const [availableApartments, totalCount] = await Promise.all([
             prisma.apartment.findMany({
                 where: {
-                    id: apartmentId ?? undefined,
-                    deletedAt: null,
                     AND: [
+                        notDeleted,
                         {
+                            id: apartmentId ?? undefined,
                             name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
                             blockId: blockId ? blockId : undefined,
                             block: {
@@ -3378,7 +3808,7 @@ async function getAvailableApartmentsForEntity(
                 include: {
                     ...include,
                     _count: {
-                        select: { meters: { where: { deletedAt: null } } }
+                        select: { meters: { where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } } }
                     }
                 },
                 orderBy: orderBy ? { [orderBy]: orderDirection } : undefined,
@@ -3387,10 +3817,10 @@ async function getAvailableApartmentsForEntity(
             }),
             prisma.apartment.count({
                 where: {
-                    id: apartmentId ?? undefined,
-                    deletedAt: null,
                     AND: [
+                        notDeleted,
                         {
+                            id: apartmentId ?? undefined,
                             name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
                             blockId: blockId ? blockId : undefined,
                             block: {
@@ -3407,23 +3837,27 @@ async function getAvailableApartmentsForEntity(
 
     if (companyIds.length === 0 && complexIds.length === 0 && blockIds.length === 0 && apartmentIds.length === 0) return { list: [], totalCount: 0 };
 
+    const aptOrConditions = [
+        ...(apartmentIds.length > 0 ? [{ id: { in: apartmentIds } }] : []),
+        ...(blockIds.length > 0 ? [{ blockId: { in: blockIds } }] : []),
+        ...(complexIds.length > 0 ? [{ block: { complexId: { in: complexIds } } }] : []),
+        ...(companyIds.length > 0 ? [{ block: { complex: { companyId: { in: companyIds } } } }] : []),
+    ];
+
+    const aptNonSystemWhere = cleanWhere({
+        AND: [
+            notDeleted,
+            apartmentId ? { id: apartmentId } : {},
+            aptOrConditions.length > 0 ? { OR: aptOrConditions } : {},
+            { name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined },
+            blockId ? { blockId: blockId } : {},
+            complexId ? { block: { complexId: complexId } } : {},
+        ]
+    });
+
     const [availableApartments, totalCount] = await Promise.all([
         prisma.apartment.findMany({
-            where: {
-                AND: [
-                    { id: apartmentId ?? undefined },
-                    {
-                        OR: [
-                            { id: { in: apartmentIds } }, // Apartamentos diretos
-                            { blockId: { in: blockIds } }, // Apartamentos dentro dos blocos do usuário
-                            { block: { complexId: { in: complexIds } } }, // Apartamentos dentro dos condomínios do usuário
-                            { block: { complex: { companyId: { in: companyIds } } }, }, // Apartamentos dentro dos condomínios da empresa do usuário
-                        ],
-                    },
-                    { name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined },
-                    { blockId: blockId ? blockId : undefined },
-                ]
-            },
+            where: aptNonSystemWhere,
             include: {
                 ...include,
                 _count: {
@@ -3435,21 +3869,7 @@ async function getAvailableApartmentsForEntity(
             orderBy: { [orderBy ?? 'name']: orderDirection || 'desc' },
         }),
         prisma.apartment.count({
-            where: {
-                AND: [
-                    { id: apartmentId ?? undefined },
-                    {
-                        OR: [
-                            { id: { in: apartmentIds } }, // Apartamentos diretos
-                            { blockId: { in: blockIds } }, // Apartamentos dentro dos blocos do usuário
-                            { block: { complexId: { in: complexIds } } }, // Apartamentos dentro dos condomínios do usuário
-                            { block: { complex: { companyId: { in: companyIds } } }, }, // Apartamentos dentro dos condomínios da empresa do usuário
-                        ],
-                    },
-                    { name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined },
-                    { blockId: blockId ? blockId : undefined },
-                ]
-            }
+            where: aptNonSystemWhere,
         })
     ]);
 

@@ -233,19 +233,33 @@ export const useCombinedImport = (): UseCombinedImportResult => {
       });
 
       // Chamar a API de importação combinada
-      const response = await fetch('/api/user/combined-import', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          rows: validationResult.validRows,
-          dealershipReadingId,
-          monthRef: validationResult.validRows[0]?.mes_ref,
-          yearRef: validationResult.validRows[0]?.ano_ref,
-          conflictPolicy: 'replace'
-        }),
-      });
+      const controller2 = new AbortController();
+      const timeoutId2 = setTimeout(() => controller2.abort(), 240000);
+      
+      let response;
+      try {
+        response = await fetch('/api/user/combined-import', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            rows: validationResult.validRows,
+            dealershipReadingId,
+            monthRef: validationResult.validRows[0]?.mes_ref,
+            yearRef: validationResult.validRows[0]?.ano_ref,
+            conflictPolicy: 'replace'
+          }),
+          signal: controller2.signal,
+        });
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId2);
+        if (fetchErr?.name === 'AbortError') {
+          throw new Error('A importação demorou demais (timeout). Tente novamente ou contate o suporte.');
+        }
+        throw fetchErr;
+      }
+      clearTimeout(timeoutId2);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -254,6 +268,7 @@ export const useCombinedImport = (): UseCombinedImportResult => {
 
       const result: CombinedImportResult = await response.json();
       
+      clearInterval(progressInterval);
       setImportResult(result);
       setImportProgress(prev => ({ 
         ...prev, 
@@ -281,19 +296,48 @@ export const useCombinedImport = (): UseCombinedImportResult => {
 
     setIsImporting(true);
     setImportResult(null);
+    // Declarar fora do try para que o finally consiga limpar corretamente
+    let progressInterval: ReturnType<typeof setInterval> | null = null;
     try {
       setImportProgress({ total: validationResult.validRows.length, processed: 0, step: 'importing-readings' });
-      const response = await fetch('/api/user/combined-import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rows: validationResult.validRows,
-          dealershipReadingId,
-          monthRef: validationResult.validRows[0]?.mes_ref,
-          yearRef: validationResult.validRows[0]?.ano_ref,
-          conflictPolicy
-        }),
-      });
+      
+      // Simular progresso enquanto a API processa (a barra não fica parada em 0%)
+      let simulatedProcessed = 0;
+      let stepIdx = 0;
+      const steps = ['importing-readings', 'importing-reports', 'linking'] as const;
+      const total = validationResult.validRows.length;
+      progressInterval = setInterval(() => {
+        simulatedProcessed = Math.min(simulatedProcessed + Math.max(1, Math.floor(total * 0.05)), Math.floor(total * 0.9));
+        stepIdx = Math.min(stepIdx + 1, steps.length - 1);
+        setImportProgress(prev => ({ ...prev, processed: simulatedProcessed, step: steps[stepIdx] as any }));
+      }, 3000);
+      
+      // Timeout de 240s: se a API não responder, abortar e mostrar erro
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 240000);
+      
+      let response;
+      try {
+        response = await fetch('/api/user/combined-import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rows: validationResult.validRows,
+            dealershipReadingId,
+            monthRef: validationResult.validRows[0]?.mes_ref,
+            yearRef: validationResult.validRows[0]?.ano_ref,
+            conflictPolicy
+          }),
+          signal: controller.signal,
+        });
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        if (fetchErr?.name === 'AbortError') {
+          throw new Error('A importação demorou demais (timeout). Tente novamente ou contate o suporte.');
+        }
+        throw fetchErr;
+      }
+      clearTimeout(timeoutId);
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || 'Erro ao importar dados');
@@ -305,6 +349,7 @@ export const useCombinedImport = (): UseCombinedImportResult => {
     } catch (error) {
       throw error;
     } finally {
+      if (progressInterval !== null) clearInterval(progressInterval);
       setIsImporting(false);
     }
   };

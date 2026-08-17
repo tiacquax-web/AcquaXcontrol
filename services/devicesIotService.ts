@@ -1,7 +1,7 @@
 import axios from "axios";
 import type { IotDevice } from "@prisma/client";
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
+const NEXT_PUBLIC_API_URL = '/api';
 
 export interface GetDevicesIotFilters {
     semLink?: boolean;

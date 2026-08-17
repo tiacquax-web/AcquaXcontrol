@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Calculator, Download, Loader2, RefreshCw, Save, Upload, X, AlertTriangle, Info, FileText } from "lucide-react"
+import { Calculator, Download, Loader2, RefreshCw, Save, Upload, X, AlertTriangle, Info, FileText, Mail } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -49,6 +49,7 @@ export function ApartmentReportsSection({
     const [combinedImportResult, setCombinedImportResult] = useState<CombinedImportResult | null>(null)
     const [showIssuesModal, setShowIssuesModal] = useState(false)
     const [isDescriptionModalOpen, setIsDescriptionModalOpen] = useState(false) // State for the new modal
+    const [isSendingEmails, setIsSendingEmails] = useState(false)
 
     const { apartmentReports: existingReports, totalCount, loading, error, refetch } = useApartmentsReports({ dealershipReadingId, withApartment: true, take: 2000, skip: 0 })
     const { apartments } = useApartments({ complexId, take: 2000, skip: 0, withBlock: true })
@@ -68,39 +69,25 @@ export function ApartmentReportsSection({
         })
     }
 
-    const apartmentReports: ApartmentWithConsumptionReport[] = apartments.map((apartment) => {
-        // Agora busca somente dentro do mês/ano selecionados
+    // 1. Mapear apartamentos existentes para relatórios (completando com vazios se necessário)
+    const reportsFromApartments: ApartmentWithConsumptionReport[] = apartments.map((apartment) => {
         const existingReport = reportsForSelectedMonth.find((report) => report.apartmentId === apartment.id) || {} as ApartmentWithConsumptionReport
-        if (!existingReport.id) {
-            // limitar volume de logs
-            if (typeof window !== 'undefined') {
-                const g: any = window as any
-                g.__AX_MISSING_REPORTS__ = g.__AX_MISSING_REPORTS__ || 0
-                if (g.__AX_MISSING_REPORTS__ < 40) {
-                    g.__AX_MISSING_REPORTS__++
-                    console.debug('[AX_DIAG] Report ausente para apt', {
-                        apartmentId: apartment.id,
-                        block: apartment.block?.name,
-                        apartment: apartment.name
-                    })
-                }
-            }
-        }
-        
-        // Check if there's imported data for this apartment
         const importedReport = importedReports.find((imported) => imported.apartmentId === apartment.id)
         
-        // Merge existing, imported, and apartment data
-        const mergedReport = {
+        return {
             ...existingReport,
             ...(importedReport || {}),
             dealershipReadingId,
             apartmentId: apartment.id,
             apartment
         } as ApartmentWithConsumptionReport
+    });
 
-        return mergedReport
-    }).sort((a, b) => {
+    // 2. Identificar relatórios que existem mas não estão na lista de apartamentos (segurança para importações Excel)
+    const orphanReports = reportsForSelectedMonth.filter(r => !apartments.find(a => a.id === r.apartmentId)) as ApartmentWithConsumptionReport[];
+    
+    // 3. Unir e ordenar
+    const apartmentReports = [...reportsFromApartments, ...orphanReports].sort((a, b) => {
         // Sort by block name first
         const blockA = a.apartment.block?.name || ''
         const blockB = b.apartment.block?.name || ''
@@ -224,7 +211,38 @@ export function ApartmentReportsSection({
                 description: generate.error || "Ocorreu um erro ao gerar os relatórios.",
                 variant: "destructive",
             })
-        }    }    // Function to handle completion of a single save operation
+        }    }
+    // Function to manually trigger pending email jobs
+    const handleTriggerEmails = async () => {
+        setIsSendingEmails(true)
+        try {
+            const response = await fetch('/api/user/trigger-emails', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dealershipReadingId }),
+            })
+            const data = await response.json()
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Erro ao disparar emails')
+            }
+
+            toast({
+                title: "Emails processados",
+                description: `${data.sent || 0} enviados, ${data.failed || 0} falhas, ${data.skipped || 0} pulados${data.jobsCreated ? `, ${data.jobsCreated} jobs criados` : ''}${data.message ? ' — ' + data.message : ''}`,
+            })
+        } catch (error: any) {
+            toast({
+                title: "Erro ao disparar emails",
+                description: error?.message || "Ocorreu um erro ao processar a fila de emails.",
+                variant: "destructive",
+            })
+        } finally {
+            setIsSendingEmails(false)
+        }
+    }
+
+    // Function to handle completion of a single save operation
     const handleSaveCompleted = () => {
         setSaveAllProgress(prev => {
             const newCompleted = prev.completed + 1
@@ -273,34 +291,39 @@ export function ApartmentReportsSection({
                     </div>
                 ) : error ? (
                     <div className="text-center py-8 text-destructive">Erro ao carregar relatórios {error}</div>
-                ) : apartmentReports.length === 0 ? (
+                ) : (apartmentReports.length === 0 && reportsForSelectedMonth.length === 0 && importedReports.length === 0) ? (
                     <div className="space-y-4">
                         <p className="text-center py-4 text-muted-foreground">
-                            Não há relatórios de apartamentos para esta leitura de concessionária.
+                            {apartments.length === 0 
+                                ? "Nenhum apartamento encontrado para este condomínio. Verifique o cadastro." 
+                                : "Não há relatórios de apartamentos para este período."}
                         </p>
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                            <div className="space-y-2 flex-1">
-                                <label htmlFor="calculation-method" className="text-sm font-medium">
-                                    Método de Cálculo
-                                </label>
-                                <Select
-                                    value={calculationMethod}
-                                    onValueChange={(value) => setCalculationMethod(value as CalculationMethod)}
-                                >
-                                    <SelectTrigger id="calculation-method">
-                                        <SelectValue placeholder="Selecione um método de cálculo" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="proportional">Rateio Proporcional</SelectItem>
-                                        <SelectItem value="equal">Rateio Igual</SelectItem>
-                                        <SelectItem value="consumption">Baseado no Consumo</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>                            <Button onClick={handleGenerateReports} disabled={generate.loading} className="min-w-[200px]">
-                                {generate.loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Gerar Relatórios
-                            </Button>
-                        </div>
+                        {apartments.length > 0 && (
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                                <div className="space-y-2 flex-1">
+                                    <label htmlFor="calculation-method" className="text-sm font-medium">
+                                        Método de Cálculo
+                                    </label>
+                                    <Select
+                                        value={calculationMethod}
+                                        onValueChange={(value) => setCalculationMethod(value as CalculationMethod)}
+                                    >
+                                        <SelectTrigger id="calculation-method">
+                                            <SelectValue placeholder="Selecione um método de cálculo" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="proportional">Rateio Proporcional</SelectItem>
+                                            <SelectItem value="equal">Rateio Igual</SelectItem>
+                                            <SelectItem value="consumption">Baseado no Consumo</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <Button onClick={handleGenerateReports} disabled={generate.loading} className="min-w-[200px]">
+                                    {generate.loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Gerar Relatórios
+                                </Button>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="space-y-4">                        <div className="flex justify-between items-center">
@@ -356,6 +379,21 @@ export function ApartmentReportsSection({
                                     <Button variant="outline" onClick={() => setIsDescriptionModalOpen(true)}>
                                         <FileText className="h-4 w-4 mr-2" />
                                         Gerar Filipeta
+                                    </Button>
+                                )}
+                                {hasPermission('generateFilipeta', 'do') && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={handleTriggerEmails}
+                                        disabled={isSendingEmails}
+                                        className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                                    >
+                                        {isSendingEmails ? (
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        ) : (
+                                            <Mail className="h-4 w-4 mr-2" />
+                                        )}
+                                        Disparar Emails
                                     </Button>
                                 )}
                                 <Button variant="outline" onClick={() => router.refresh()} disabled={generate.loading}>

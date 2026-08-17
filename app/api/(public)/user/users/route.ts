@@ -3,6 +3,9 @@ import { createEntity, deleteEntity, getAvailableComplexesForEntity, getEntityLi
 import { createUser, createBulkResidentsUsers, isSessionValid, validateUserSession } from "@/lib/users"
 import { ContextType } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
+import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
+import { generateWelcomeEmail } from '@/lib/services/welcome-email-template';
+import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 
 // Função para normalizar email removendo acentos e caracteres especiais
 function normalizeEmail(email: string): string {
@@ -55,8 +58,12 @@ function getQueryParams(req: NextRequest) {
     const skip = parseInt(req.nextUrl.searchParams.get('skip') || '0')
     const orderBy = req.nextUrl.searchParams.get('orderBy') || 'createdAt'
     const orderDirection = req.nextUrl.searchParams.get('orderDirection') || 'desc'
+    const complexId = req.nextUrl.searchParams.get('complex_id') || undefined
+    const blockId = req.nextUrl.searchParams.get('block_id') || undefined
+    const apartmentId = req.nextUrl.searchParams.get('apartment_id') || undefined
+    const roleId = req.nextUrl.searchParams.get('role_id') || undefined
 
-    return { getAvailableForEntity, userId, roleName, contextType, contextId, search, take, skip, orderBy, orderDirection }
+    return { getAvailableForEntity, userId, roleName, contextType, contextId, search, take, skip, orderBy, orderDirection, complexId, blockId, apartmentId, roleId }
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -70,15 +77,88 @@ export async function GET(req: NextRequest): Promise<Response> {
         const userId = validSession.userId
 
         // get query params
-        const { userId: searchUserId, search, take, contextId: roleContextId, contextType: roleContextType, roleName, skip, orderBy, orderDirection } = getQueryParams(req)
+        const { userId: searchUserId, search, take, contextId: roleContextId, contextType: roleContextType, roleName, skip, orderBy, orderDirection, complexId, blockId, apartmentId, roleId } = getQueryParams(req)
+
+        // Filtrar por complexo/bloco/apartamento via RoleAssignment
+        let userIdsByContext: string[] | undefined = undefined;
+        if (complexId || blockId || apartmentId) {
+            if (apartmentId) {
+                // Filtro exato por apartamento
+                const assigns = await prisma.roleAssignment.findMany({
+                    where: { deletedAt: null, contextId: apartmentId, contextType: ContextType.apartment },
+                    select: { userId: true }
+                });
+                userIdsByContext = [...new Set(assigns.map(a => a.userId))];
+            } else {
+                // Passo 1: resolver blockIds do complexo (ou usar o blockId direto do filtro)
+                const resolvedBlockIds: string[] = blockId
+                    ? [blockId]
+                    : (await prisma.block.findMany({
+                        where: { complexId, deletedAt: null }, select: { id: true }
+                    })).map(b => b.id);
+
+                // Passo 2: resolver apartamentos — usa OR[complexId, blockId: {in: resolvedBlockIds}]
+                // Cobrir tanto registros com complexId desnormalizado (populado)
+                // quanto registros legados que só têm blockId (complexId = null/ausente).
+                const aptIds = (await prisma.apartment.findMany({
+                    where: {
+                        OR: [
+                            ...(complexId ? [{ complexId, deletedAt: null }] : []),
+                            ...(resolvedBlockIds.length ? [{ blockId: { in: resolvedBlockIds }, deletedAt: null }] : []),
+                        ]
+                    },
+                    select: { id: true }
+                })).map(a => a.id);
+
+                // Passo 3: RoleAssignments — buscar por complex, blocks e apartments
+                const assigns = await prisma.roleAssignment.findMany({
+                    where: {
+                        deletedAt: null,
+                        OR: [
+                            ...(complexId ? [{ contextId: complexId, contextType: ContextType.complex }] : []),
+                            ...(resolvedBlockIds.length ? [{ contextId: { in: resolvedBlockIds }, contextType: ContextType.block }] : []),
+                            ...(aptIds.length ? [{ contextId: { in: aptIds }, contextType: ContextType.apartment }] : []),
+                        ]
+                    },
+                    select: { userId: true }
+                });
+                userIdsByContext = [...new Set(assigns.map(a => a.userId))];
+            }
+        }
+
+        // Filtrar por papel
+        let userIdsByRole: string[] | undefined = undefined;
+        if (roleId) {
+            const assigns = await prisma.roleAssignment.findMany({
+                where: { roleId, deletedAt: null }, select: { userId: true }
+            });
+            userIdsByRole = [...new Set(assigns.map(a => a.userId))];
+        }
+
+        // Early-return guards: if a filter was specified but resolved to zero users,
+        // return empty immediately. This prevents cleanWhere() from stripping
+        // { id: { in: [] } } (empty array → removed) which would otherwise let
+        // Prisma match ALL users instead of none.
+        if ((complexId || blockId || apartmentId) && userIdsByContext !== undefined && userIdsByContext.length === 0) {
+            return NextResponse.json({ list: [], totalCount: 0, hasNextPage: false, hasPreviousPage: false });
+        }
+        if (roleId && userIdsByRole !== undefined && userIdsByRole.length === 0) {
+            return NextResponse.json({ list: [], totalCount: 0, hasNextPage: false, hasPreviousPage: false });
+        }
 
         // identify context
         const contextType: ContextType | undefined = undefined
         const contextId = undefined
 
+        // Build AND filters for userIds
+        const andFilters: any[] = [];
+        if (userIdsByContext !== undefined) andFilters.push({ id: { in: userIdsByContext } });
+        if (userIdsByRole !== undefined) andFilters.push({ id: { in: userIdsByRole } });
+
         // extra where
-        const where = {
+        const where: any = {
             id: searchUserId ?? undefined,
+            ...(andFilters.length > 0 ? { AND: andFilters } : {}),
             Roles: !roleName ? undefined : {
                 some: {
                     Role: {
@@ -93,7 +173,12 @@ export async function GET(req: NextRequest): Promise<Response> {
         }
 
         // get users
-        const { entity, error, status, totalCount } = await getEntityListData(userId, 'user', contextType, contextId, search, where, take, {}, skip, orderBy, orderDirection as 'asc' | 'desc')
+        const { entity, error, status, totalCount } = await getEntityListData(userId, 'user', contextType, contextId, search, where, take, {
+            Roles: {
+                where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                select: { id: true, contextType: true, Role: { select: { name: true } } }
+            }
+        }, skip, orderBy, orderDirection as 'asc' | 'desc')
         if (error) return NextResponse.json({ error }, { status })
         if (!entity) return NextResponse.json({ error: 'Internal Server Error - Entity not found' }, { status: 500 })
 
@@ -196,10 +281,43 @@ export async function POST(req: NextRequest): Promise<Response> {
                 console.time('------------- Creating bulk residents users');
                 
                 const result = await createBulkResidentsUsers(usersData, userId, role.id);
-                
+
+                let emailsSent = 0;
+                let emailErrors = 0;
+                if (isEmailConfigured()) {
+                    const emailResults = await Promise.allSettled(
+                        result.success
+                            .filter((resident) => resident.email && !isBlockedEmailDomain(resident.email))
+                            .map(async (resident) => {
+                                const { subject, html, text } = generateWelcomeEmail({
+                                    residentName: resident.name || `Morador ${resident.apartmentName}`,
+                                    apartmentName: resident.apartmentName,
+                                    blockName: resident.blockName,
+                                    complexName: '',
+                                    email: resident.email,
+                                    provisionalPassword: resident.password,
+                                });
+                                const sent = await sendEmail({
+                                    to: resident.email,
+                                    toName: resident.name || undefined,
+                                    subject,
+                                    html,
+                                    text,
+                                });
+                                if (!sent.success) throw new Error(sent.error || 'Falha no envio');
+                                return sent;
+                            }),
+                    );
+                    emailsSent = emailResults.filter((item) => item.status === 'fulfilled').length;
+                    emailErrors = emailResults.filter((item) => item.status === 'rejected').length;
+                } else {
+                    emailErrors = result.success.length;
+                }
+
                 console.timeEnd('------------- Creating bulk residents users');
                 return NextResponse.json({
                     ...result,
+                    emailStatus: { configured: isEmailConfigured(), sent: emailsSent, errors: emailErrors },
                     totalApartments
                 }, { status: 201 });
             } catch (error: any) {
@@ -211,13 +329,40 @@ export async function POST(req: NextRequest): Promise<Response> {
         const body = cleanEntityBody(reqBody); // Clean the body to remove unwanted fields
         if (!body) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
         if (Object.keys(body).length === 0) return NextResponse.json({ error: 'No body was informed.' }, { status: 400 });
+        const provisionalPassword = typeof body.password === 'string' ? body.password : '';
         const { user, error: creationError, status: creationStatus } = await createUser(body, userId);
         if (creationError) return NextResponse.json({ error: creationError }, { status: creationStatus });
         if (!user) return NextResponse.json({ error: 'Internal Server Error - Entity not created' }, { status: 500 });
         if ('password' in user) {
             user.password = undefined; // Remove password from the response
         }
-        return NextResponse.json(user, { status: creationStatus });
+
+        let emailSent = false;
+        let emailError: string | null = null;
+        const createdEmail = (user as any).email;
+        if (createdEmail && provisionalPassword && !isBlockedEmailDomain(createdEmail) && isEmailConfigured()) {
+            const { subject, html, text } = generateWelcomeEmail({
+                residentName: (user as any).name || 'Usuário',
+                apartmentName: '-',
+                blockName: '-',
+                complexName: '',
+                email: createdEmail,
+                provisionalPassword,
+            });
+            const emailResult = await sendEmail({
+                to: createdEmail,
+                toName: (user as any).name || undefined,
+                subject,
+                html,
+                text,
+            });
+            emailSent = emailResult.success;
+            emailError = emailResult.success ? null : (emailResult.error || 'Falha no envio');
+        } else if (createdEmail && provisionalPassword) {
+            emailError = isEmailConfigured() ? 'Domínio interno ou endereço inválido' : 'SMTP não configurado';
+        }
+
+        return NextResponse.json({ ...user, emailSent, emailError }, { status: creationStatus });
     } catch (error: any) {
         console.error("Error creating user:", error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

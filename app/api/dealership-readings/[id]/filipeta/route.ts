@@ -32,25 +32,133 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Bad Request: Dealership Reading ID is required' }, { status: 400 });
     }
 
+    // Optional filters: block and apartment
+    const blockId = req.nextUrl.searchParams.get('block_id') || undefined;
+    const apartmentId = req.nextUrl.searchParams.get('apartment_id') || undefined;
+    // meta_only=1 → return only the dealershipReading record (no apartment queries)
+    // Used by the pre-load filter pattern so the page knows complexId immediately.
+    const metaOnly = req.nextUrl.searchParams.get('meta_only') === '1';
+
     const dealershipReading = await prisma.dealershipReading.findUnique({
       where: { id: dealershipReadingId },
-      include: { complex: { include: { company: true } }, dealership: true },
+      select: {
+        id: true,
+        type: true,
+        readingDate: true,
+        readingDateNext: true,
+        totalDays: true,
+        diffCost: true,
+        monthRef: true,
+        yearRef: true,
+        complexId: true,
+        complex: {
+          select: {
+            id: true,
+            socialName: true,
+            aliasName: true,
+            zipcode: true,
+            street: true,
+            number: true,
+            neighborhood: true,
+            state: true,
+            city: true,
+            company: { select: { id: true, name: true, socialName: true } },
+          },
+        },
+        dealership: { select: { id: true, name: true, service: true } },
+      },
     });
 
     if (!dealershipReading) {
       return NextResponse.json({ error: 'Not Found: Dealership reading not found' }, { status: 404 });
     }
 
+    // Fast path: caller only needs metadata (e.g. complexId for pre-loading filters)
+    if (metaOnly) {
+      return NextResponse.json({
+        list: [],
+        totalCount: 0,
+        dealershipReading,
+      });
+    }
+
+    // Build apartment filter.
+    // When BOTH blockId and apartmentId are provided, enforce both constraints so
+    // the two dropdowns behave as fully independent, AND-combined filters.
+    // When only one is provided, filter by that one alone.
+    const apartmentFilter = apartmentId && blockId
+      ? { id: apartmentId, blockId: blockId }   // both selected → AND-filter
+      : apartmentId
+        ? { id: apartmentId }                   // only apartment selected
+        : blockId
+          ? { blockId: blockId }                // only block selected
+          : undefined;                          // no filter
+
+    // deletedAt filter is handled globally by the Prisma soft-delete middleware —
+    // do NOT add explicit { deletedAt: null } here (absent-key docs would be excluded).
     const currentReports = await prisma.apartmentConsumptionReport.findMany({
-      where: { dealershipReadingId: dealershipReadingId, deletedAt: null },
-      include: {
-        apartment: { include: { block: { include: { complex: { include: { company: true } } } } } },
-        lastReading: true,
+      where: {
+        dealershipReadingId: dealershipReadingId,
+        ...(apartmentFilter ? { apartment: apartmentFilter } : {}),
+      },
+      select: {
+        id: true,
+        monthRef: true,
+        yearRef: true,
+        consumption: true,
+        partial: true,
+        totalUnit: true,
+        apartmentId: true,
+        lastReadingId: true,
+        apartment: {
+          select: {
+            id: true,
+            name: true,
+            block: {
+              select: {
+                id: true,
+                name: true,
+                complex: {
+                  select: {
+                    id: true,
+                    socialName: true,
+                    aliasName: true,
+                    zipcode: true,
+                    street: true,
+                    number: true,
+                    neighborhood: true,
+                    state: true,
+                    city: true,
+                    company: { select: { id: true, name: true, socialName: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+        // Nunca enviar coverBase64: uma única resposta pode conter centenas de
+        // imagens originais e causar estouro de memória no tablet/navegador.
+        lastReading: {
+          select: {
+            id: true,
+            reading: true,
+            readAt: true,
+            readAtDate: true,
+            nextReadingDate: true,
+            readingDate: true,
+            readingDateNext: true,
+            urlCover: true,
+            isPreReading: true,
+            registerName: true,
+          },
+        },
       },
     });
 
     if (!currentReports || currentReports.length === 0) {
-      return NextResponse.json({ error: 'Not Found: No apartment reports found for this dealership reading' }, { status: 404 });
+      // Return empty list (not 404) when filters narrow to zero results so the
+      // UI can display "nenhuma filipeta encontrada" rather than crashing.
+      return NextResponse.json({ list: [], totalCount: 0, dealershipReading });
     }
 
     const order = req.nextUrl.searchParams.get('order') || 'block_apartment';
@@ -84,14 +192,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const historicalReports = await prisma.apartmentConsumptionReport.findMany({
       where: {
         apartmentId: { in: apartmentIds },
-        deletedAt: null,
         OR: previousMonthRefs.map(ref => ({
           monthRef: ref.monthRef,
           yearRef: ref.yearRef,
         })),
       },
-      include: {
-        lastReading: true,
+      select: {
+        id: true,
+        monthRef: true,
+        yearRef: true,
+        consumption: true,
+        apartmentId: true,
+        lastReading: {
+          select: {
+            reading: true,
+            readAtDate: true,
+          },
+        },
       },
       orderBy: {
         yearRef: 'desc',
@@ -99,12 +216,59 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     const historicalReportsByApartment = historicalReports.reduce((acc, report) => {
-      if (!acc[report.apartmentId]) {
-        acc[report.apartmentId] = [];
+      if (!acc[report.apartmentId!]) {
+        acc[report.apartmentId!] = [];
       }
-      acc[report.apartmentId].push(report);
+      acc[report.apartmentId!].push(report);
       return acc;
     }, {} as Record<string, any[]>);
+
+    // ── Fallback de urlCover ──────────────────────────────────────────────────
+    // Quando um relatório não tem lastReadingId (ex: importado via combined-import
+    // com policy=skip, ou medidor não encontrado pelo chassi), buscamos a leitura
+    // mais recente do apartamento no mesmo mês/ano para preencher a foto.
+    const reportsWithoutLastReading = currentReports.filter(r => !r.lastReadingId);
+    let fallbackReadingsByApartment: Record<string, any> = {};
+
+    if (reportsWithoutLastReading.length > 0) {
+      const fallbackApartmentIds = reportsWithoutLastReading.map(r => r.apartmentId);
+      // Usar o mês/ano do primeiro relatório (todos são do mesmo dealershipReading → mesmo período)
+      const fallbackMonthRef = firstReport.monthRef;
+      const fallbackYearRef = firstReport.yearRef;
+
+      const fallbackReadings = await prisma.reading.findMany({
+        where: {
+          apartmentId: { in: fallbackApartmentIds },
+          monthRef: fallbackMonthRef,
+          yearRef: fallbackYearRef,
+          deletedAt: null,
+          urlCover: { not: null },
+        },
+        orderBy: { readAt: 'desc' },
+        select: {
+          id: true,
+          apartmentId: true,
+          urlCover: true,
+          reading: true,
+          readAt: true,
+          readAtDate: true,
+          monthRef: true,
+          yearRef: true,
+          meterId: true,
+          isManualReading: true,
+          isPreReading: true,
+          registerName: true,
+          nextReadingDate: true,
+        },
+      });
+
+      // Manter apenas a leitura mais recente por apartamento (já está ordenado por readAt desc)
+      for (const r of fallbackReadings) {
+        if (!fallbackReadingsByApartment[r.apartmentId!]) {
+          fallbackReadingsByApartment[r.apartmentId!] = r;
+        }
+      }
+    }
 
     const enrichedReports = currentReports.map(currentReport => {
       const history = historicalReportsByApartment[currentReport.apartmentId] || [];
@@ -114,8 +278,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         const dateB = new Date(Number(b.yearRef), Number(b.monthRef) - 1);
         return dateB.getTime() - dateA.getTime();
       });
+
+      // Se não tem lastReading, usar o fallback (leitura mais recente do período com urlCover)
+      const effectiveLastReading = currentReport.lastReading
+        ?? fallbackReadingsByApartment[currentReport.apartmentId]
+        ?? null;
+
       return {
         ...currentReport,
+        lastReading: effectiveLastReading,
         history: history, // Attach all found historical reports
       };
     });

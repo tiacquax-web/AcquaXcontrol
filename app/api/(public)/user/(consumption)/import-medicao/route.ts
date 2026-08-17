@@ -64,7 +64,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Buscar condomínios disponíveis para o usuário para fazer o match
     const complexes = await prisma.complex.findMany({
       where: { deletedAt: null },
-      select: { id: true, socialName: true, aliasName: true, dealershipName: true, cdnPhotoPattern: true },
+      select: { id: true, socialName: true, aliasName: true },
     });
 
     // Buscar concessionárias cadastradas
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         ...conta,
         complexId: complexMatch?.id || null,
         complexSocialName: complexMatch?.socialName || null,
-        cdnPhotoPattern: complexMatch?.cdnPhotoPattern || null,
+        
         dealershipId: dealerMatch?.id || null,
         dealershipMatchedName: dealerMatch?.name || null,
         unidadesCount: parsed.unidades[conta.sheetName]?.length || 0,

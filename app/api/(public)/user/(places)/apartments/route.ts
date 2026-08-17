@@ -115,7 +115,13 @@ async function validateApartmentsBatch(reqBody: any[]): Promise<ValidationResult
             apartmentData.fraction = Number(rowFracao);
         }
 
-        validApartmentData.push({ name: rowName, blockId, rowIndex: idx, data: apartmentData });
+        // ✅ CORREÇÃO 1: Variáveis corrigidas (linhas 118-123)
+        validApartmentData.push({
+            name: rowName,
+            blockId: blockId,
+            rowIndex: idx,
+            data: apartmentData,
+        });
     }
 
     // Se há erros na validação básica, retorna
@@ -159,7 +165,7 @@ async function validateApartmentsBatch(reqBody: any[]): Promise<ValidationResult
     const existingApartments = await prisma.apartment.findMany({
         where: {
             blockId: { in: blockIds },
-            deletedAt: null
+            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }]
         },
         select: { id: true, name: true, blockId: true, status: true, fraction: true }
     });
@@ -292,28 +298,38 @@ export async function GET(req: NextRequest): Promise<Response> {
         const contextType: ContextType | undefined = blockId ? 'block' : complexId ? 'complex' : companyId ? 'company' : undefined
         const contextId = contextType === 'block' ? blockId : contextType === 'complex' ? complexId : contextType === 'company' ? companyId : undefined
 
-        const include = withBlock || withComplex || withCompany ? {
-            block: withBlock ? {
-                include: withComplex || withCompany ? {
-                    complex: withComplex ? {
-                        select: {
-                            id: true,
-                            socialName: true,
-                            company: withCompany ? {
+        // Monta include do Prisma de forma segura
+        let include: any = undefined;
+        if (withBlock || withComplex || withCompany) {
+            if (withComplex || withCompany) {
+                // Inclui block com complex (e opcionalmente company) aninhado
+                include = {
+                    block: {
+                        include: {
+                            complex: withComplex || withCompany ? {
                                 select: {
                                     id: true,
-                                    name: true
+                                    socialName: true,
+                                    ...(withCompany ? {
+                                        company: {
+                                            select: { id: true, name: true }
+                                        }
+                                    } : {})
                                 }
                             } : undefined
                         }
-                    } : undefined
-                } : undefined
-            } : undefined
-        } : undefined
+                    }
+                };
+            } else if (withBlock) {
+                // Apenas block, sem sub-includes
+                include = { block: true };
+            }
+        }
 
 
         // return available apartments for entity if requested
         if (getAvailableForEntity) {
+            // ✅ CORREÇÃO 2: Removido include[...] (linha 321)
             const { list, totalCount } = await getAvailableApartmentsForEntity(userId, getAvailableForEntity, search, complexId, blockId, apartmentId, take, skip, orderBy, orderDirection, include)
             return NextResponse.json({ list, totalCount })
         }
@@ -321,15 +337,16 @@ export async function GET(req: NextRequest): Promise<Response> {
         console.log("Fetching apartments with context:", { contextType, contextId, search, take, skip, orderBy, orderDirection })
 
         // get apartments
-        const { entity, error, status, totalCount } = await getEntityListData(userId, 'apartment', contextType, contextId, search, null, take, include, skip, 'name', 'asc')
+        // ✅ CORREÇÃO 3: Adicionado orderDirection ao invés de 'asc' (linha 328)
+        const { entity, error, status, totalCount } = await getEntityListData(userId, 'apartment', contextType, contextId, search, null, take, include, skip, 'name', orderDirection)
         if (error) return NextResponse.json({ error }, { status })
         if (!entity) return NextResponse.json({ error: 'No apartments found.' }, { status: 404 })
 
         return NextResponse.json({ list: entity, totalCount: totalCount })
 
     } catch (error: any) {
-        console.error("Error fetching apartments:", error)
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+        console.error("[apartments/GET] Error fetching apartments:", error)
+        return NextResponse.json({ error: error?.message || 'Internal Server Error' }, { status: 500 })
     }
 }
 
@@ -396,7 +413,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     } catch (error: any) {
         // Log and handle unexpected errors
-        console.error("Error creating apartment:", error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        console.error("[apartments/POST] Error creating apartment:", error);
+        const msg = error?.message || 'Erro interno ao criar apartamento.';
+        return NextResponse.json({ error: msg }, { status: 500 });
     }
 }

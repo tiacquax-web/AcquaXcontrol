@@ -1,9 +1,9 @@
 "use client"
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useMonitoringReadings } from '@/hooks/useMonitoringReadings'
 import MonitoringChart from './MonitoringChart'
 import { DateRange } from 'react-day-picker'
-import { addDays, differenceInCalendarDays, format } from 'date-fns'
+import { addDays, differenceInCalendarDays, differenceInHours, format } from 'date-fns'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -24,7 +24,10 @@ import { Separator } from '@/components/ui/separator'
 import { usePermissionChecker } from '@/hooks/use-permission-checker'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
-import { Calendar as CalendarIcon } from 'lucide-react'
+import { Calendar as CalendarIcon, Printer } from 'lucide-react'
+import { useUserContext } from '@/hooks/useUserContext'
+import { useMeters } from '@/hooks/useMeters'
+import { AlertTriangle } from 'lucide-react'
 
 // Fase 1: Placeholder de seleção de medidores manual até integração com UI real de contexto
 const MOCK_METERS: { id: string, register: string }[] = [] // pode ser preenchido futuramente via API de meters
@@ -33,7 +36,40 @@ const MAX_RANGE_DAYS = 60
 export default function MonitoringPage() {
   const { prefs, update, ready } = useMonitoringLocalPreferences()
   const { hasPermission, loading: permissionsLoading } = usePermissionChecker()
+  const { context: userContext, loading: ctxLoading } = useUserContext()
+
+  // Auto-selecionar contexto baseado no perfil
+  useEffect(() => {
+    if (ctxLoading || !userContext || complexObj) return
+
+    // Morador com 1 apto: seleciona automaticamente
+    if (!userContext.isSystem && userContext.apartments.length === 1 && userContext.complexes.length === 0) {
+      const apt = userContext.apartments[0]
+      setComplexObj(apt.block?.complex ?? undefined)
+      setBlockObj(apt.block ?? undefined)
+      setApartmentObj(apt)
+    }
+
+    // Síndico com 1 condomínio: seleciona automaticamente
+    if (!userContext.isSystem && userContext.complexes.length > 0) {
+      const glComplexes = userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id))
+      if (glComplexes.length === 1) {
+        setComplexObj(glComplexes[0])
+      }
+    }
+  }, [ctxLoading, userContext])
+
+  const hasGLAccess = (() => {
+    if (!userContext) return false
+    if (userContext.isSystem) return true
+    return userContext.glComplexIds && userContext.glComplexIds.length > 0
+  })()
+  // Monitoramento é acessível para qualquer usuário com permissão de leitura
   const canAccessMonitoring = hasPermission('monitoringDashboard', 'read')
+    || hasPermission('reading', 'read')
+    || hasPermission('complex', 'read')
+    || hasPermission('apartmentConsumptionReport', 'read')
+    || hasPermission('dealershipReading', 'read')
   const [companyObj, setCompanyObj] = useState<any | undefined>()
   const [complexObj, setComplexObj] = useState<any | undefined>()
   const [blockObj, setBlockObj] = useState<any | undefined>()
@@ -50,6 +86,52 @@ export default function MonitoringPage() {
   const alertTypes = prefs.alertTypes
   const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: addDays(new Date(), -30), to: new Date() })
   const [rangeError, setRangeError] = useState<string | null>(null)
+
+  // ── Auto-seleção de medidores ──────────────────────────────────────────
+  // Morador com uma única unidade não deve depender de seleção manual nem de
+  // uma seleção antiga salva no navegador. Ao abrir o Monitoramento, usamos
+  // sempre os medidores vinculados à unidade dele.
+  const autoSelectAttemptedRef = useRef(false)
+
+  const { meters: autoSelectMeters, loading: autoSelectLoading } = useMeters({
+    complexId,
+    blockId,
+    apartmentId,
+    enabled: !!(apartmentId || (complexId && !apartmentId)),
+    take: 200,
+  })
+
+  const isSingleApartmentUser = Boolean(
+    userContext && !userContext.isSystem && userContext.apartments.length === 1,
+  )
+  const isSingleGlComplexManager = Boolean(
+    userContext && !userContext.isSystem && userContext.complexes.length > 0
+      && userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id)).length === 1,
+  )
+
+  const shouldAutoSelect = Boolean(
+    userContext
+      && !autoSelectAttemptedRef.current
+      && !autoSelectLoading
+      && autoSelectMeters.length > 0
+      && (isSingleApartmentUser || (isSingleGlComplexManager && autoSelectMeters.length <= 10)),
+  )
+
+  useEffect(() => {
+    if (!shouldAutoSelect) return
+
+    const meterIds = autoSelectMeters.map(meter => meter.id)
+    const selectedSet = new Set(selectedMeters)
+    const contextMetersAlreadySelected = meterIds.length === selectedMeters.length
+      && meterIds.every(id => selectedSet.has(id))
+
+    if (!contextMetersAlreadySelected) {
+      // Para o morador, isso também corrige seleções antigas persistidas de
+      // outro condomínio ou unidade e evita a tela vazia por filtro incorreto.
+      update({ meterIds })
+    }
+    autoSelectAttemptedRef.current = true
+  }, [shouldAutoSelect, autoSelectMeters, selectedMeters, update])
 
   const requestParams = useMemo(() => ({
     meterIds: selectedMeters,
@@ -116,9 +198,45 @@ export default function MonitoringPage() {
   const metersWithData = recomputed?.meters || []
   const distinctAlerts = data?.distinctAlerts || []
 
-  useEffect(()=>{
-    if (!selectedMeters.length) return
-  }, [selectedMeters])
+  const dataHealth = useMemo(() => {
+    const dates = metersWithData.flatMap(m => m.readings || [])
+      .map(reading => new Date(reading.readAt).getTime())
+      .filter(timestamp => Number.isFinite(timestamp));
+    if (dates.length === 0) return { status: 'empty' as const, latest: null, ageHours: null };
+    const latestTimestamp = Math.max(...dates);
+    const ageHours = Math.max(0, differenceInHours(new Date(), new Date(latestTimestamp)));
+    return {
+      status: ageHours > 24 ? 'stale' as const : 'healthy' as const,
+      latest: new Date(latestTimestamp),
+      ageHours,
+    };
+  }, [metersWithData])
+
+  // Ao trocar o contexto (empresa/condomínio/bloco/apartamento), a seleção de
+  // medidores de um contexto anterior deixa de fazer sentido — sem isso, uma
+  // seleção antiga (ex: "Selecionar todos" com 450+ medidores) continuava sendo
+  // enviada à API junto com o novo filtro, deixando a consulta extremamente
+  // lenta e exibindo UUIDs crus nos chips (medidor não encontrado no novo contexto).
+  const contextKey = `${companyId ?? ''}|${complexId ?? ''}|${blockId ?? ''}|${apartmentId ?? ''}`
+  const [prevContextKey, setPrevContextKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!ready) return
+    if (prevContextKey === null) {
+      // Primeira vez que o contexto fica pronto: apenas memoriza, não limpa
+      // (preserva seleção restaurada do localStorage ao abrir a página).
+      setPrevContextKey(contextKey)
+      return
+    }
+    if (prevContextKey !== contextKey) {
+      setPrevContextKey(contextKey)
+      if (selectedMeters.length > 0) {
+        update({ meterIds: [] })
+      }
+      // Reset auto-select flag quando contexto muda manualmente
+      autoSelectAttemptedRef.current = false
+    }
+  }, [contextKey, ready])
 
   if (permissionsLoading) {
     return (
@@ -145,12 +263,44 @@ export default function MonitoringPage() {
   }
 
   return (
-    <div className='p-4 space-y-4'>
-      <h1 className='text-2xl font-semibold'>Dashboard de Monitoramento</h1>
-      <div className='grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 items-start'>
+    <div className='monitoring-page p-4 space-y-4'>
+      <div className='flex items-center justify-between gap-3 monitoring-print-header'>
+        <h1 className='text-2xl font-semibold'>Dashboard de Monitoramento</h1>
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          className='no-print gap-2'
+          onClick={() => window.print()}
+          disabled={loading || metersWithData.length === 0}
+        >
+          <Printer className='h-4 w-4' />
+          Imprimir monitoramento
+        </Button>
+      </div>
+      <p className='print-only text-sm text-muted-foreground'>Período analisado: {rangeLabel}</p>
+      {selectedMeters.length > 0 && (
+        <Card className={dataHealth.status === 'stale' ? 'border-amber-300 bg-amber-50/60' : dataHealth.status === 'empty' ? 'border-slate-200' : 'border-emerald-200 bg-emerald-50/50'}>
+          <CardContent className='p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'>
+            <div className='flex items-start gap-2'>
+              <AlertTriangle className={`h-4 w-4 mt-0.5 ${dataHealth.status === 'stale' ? 'text-amber-600' : dataHealth.status === 'empty' ? 'text-slate-400' : 'text-emerald-600'}`} />
+              <div>
+                <p className='text-sm font-semibold'>Saúde dos dados</p>
+                <p className='text-xs text-muted-foreground'>
+                  {loading ? 'Atualizando leituras…' : dataHealth.latest ? `Última leitura recebida em ${format(dataHealth.latest, "dd/MM/yyyy 'às' HH:mm")}` : 'Nenhuma leitura encontrada no período selecionado.'}
+                </p>
+              </div>
+            </div>
+            <span className={`text-xs font-semibold ${dataHealth.status === 'stale' ? 'text-amber-700' : dataHealth.status === 'empty' ? 'text-slate-500' : 'text-emerald-700'}`}>
+              {dataHealth.status === 'stale' ? `Dados atrasados há ${dataHealth.ageHours}h` : dataHealth.status === 'empty' ? 'Sem dados no período' : 'Dados atualizados'}
+            </span>
+          </CardContent>
+        </Card>
+      )}
+      <div className='monitoring-layout grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 items-start'>
         {/* Área Principal (agora primeiro para que painel fique à direita em telas grandes) */}
-        <div className='flex flex-col gap-4'>
-          <Card className='shadow-sm'>
+        <div className='monitoring-main flex flex-col gap-4'>
+          <Card className='shadow-sm monitoring-range-card no-print'>
             <CardHeader className='pb-2'>
               <CardTitle className='text-sm'>Período analisado</CardTitle>
             </CardHeader>
@@ -221,7 +371,7 @@ export default function MonitoringPage() {
           </div>
         </div>
         {/* Painel Lateral (agora à direita) */}
-        <div className='flex flex-col gap-4 xl:sticky xl:top-4'>
+        <div className='monitoring-sidebar no-print flex flex-col gap-4 xl:sticky xl:top-4'>
           <Card className='shadow-sm'>
             <CardHeader className='pb-2'><CardTitle className='text-sm'>Contexto</CardTitle></CardHeader>
             <CardContent className='space-y-2'>

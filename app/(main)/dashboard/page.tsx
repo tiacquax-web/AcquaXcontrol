@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2,
+  Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2, Eye,
   AlertTriangle, Ban, Receipt, CalendarCheck2, DoorClosed,
   GaugeCircle, Users, BarChart3, Home, Star,
   Activity, ArrowRight, LogIn, TrendingDown, CheckCircle2, Clock,
@@ -34,6 +34,11 @@ import { Separator } from "@/components/ui/separator";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
 } from 'recharts';
+
+import ResidentMonitoringCard from '@/components/dashboard/ResidentMonitoringCard';
+import AreaCommonAnnualDashboard from '@/components/dashboard/AreaCommonAnnualDashboard';
+import OperationsHealthCard from '@/components/dashboard/OperationsHealthCard';
+import { useRolePreview } from '@/contexts/RolePreviewContext';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -146,7 +151,7 @@ function FilipetaMiniSkeleton() {
 }
 
 // ─── ConsumoAnualGraph ────────────────────────────────────────────────────────
-function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
+function ConsumoAnualGraph({ apartmentId, complexId }: { apartmentId: string; complexId?: string }) {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
   const [chartData, setChartData] = useState<{ month: string; consumption: number }[]>([]);
@@ -163,14 +168,14 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
     setChartData([]);
     setTotalAnual(null);
 
-    const base = process.env.NEXT_PUBLIC_API_URL;
+    const base = '/api';
     const now = new Date();
     const maxMonth = Number(selectedYear) === currentYear ? now.getMonth() + 1 : 12;
     const months = Array.from({ length: maxMonth }, (_, i) => String(i + 1).padStart(2, '0'));
 
     Promise.all(
       months.map(month =>
-        fetch(`${base}/meter-report?month=${month}&year=${selectedYear}&apartment_id=${apartmentId}`, {
+        fetch(`${base}/meter-report?month=${month}&year=${selectedYear}&apartment_id=${apartmentId}${complexId ? `&complex_id=${complexId}` : ''}`, {
           credentials: 'include',
         })
           .then(r => r.ok ? r.json() : { list: [] })
@@ -191,7 +196,7 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
       setTotalAnual(data.reduce((s, r) => s + r.consumption, 0));
       setLoading(false);
     });
-  }, [apartmentId, selectedYear, currentYear]);
+  }, [apartmentId, selectedYear, currentYear, complexId]);
 
   const maxVal = useMemo(() => Math.max(...chartData.map(d => d.consumption), 1), [chartData]);
   const peakMonth = useMemo(() =>
@@ -275,7 +280,11 @@ function ConsumoAnualGraph({ apartmentId }: { apartmentId: string }) {
 
 // ─── MoradorDashboard ─────────────────────────────────────────────────────────
 function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) {
-  const { context, loading: ctxLoading } = useUserContext();
+  const { isPreviewing, effectiveContext: previewCtx } = useRolePreview();
+  const { context: realCtx, loading: realLoading } = useUserContext();
+  // Em preview mode, usa contexto simulado; senão usa o real
+  const context = isPreviewing ? previewCtx : realCtx;
+  const ctxLoading = isPreviewing ? false : realLoading;
   const apartments = context?.apartments ?? [];
 
   const singleApartment = useMemo(() => {
@@ -286,37 +295,16 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
   const [selectedAptId, setSelectedAptId] = useState<string | null>(null);
   const activeAptId = singleApartment?.id ?? selectedAptId;
 
-  // Filipeta preview (last 3 months)
-  const [filipetasByMonth, setFilipetasByMonth] = useState<Record<string, MeterReportItem[]>>({});
-  const [loadingFilipetas, setLoadingFilipetas] = useState(false);
+  // Buscar relatórios de consumo do morador para exibir dados mesmo sem GL IoT
+  const currentMonthOpt = allMonthOptions[0];
+  const { data: reportData, loading: reportLoading } = useMeterReport({
+    month: currentMonthOpt.month,
+    year: currentMonthOpt.year,
+    apartmentId: activeAptId ?? undefined,
+    enabled: !!activeAptId,
+  });
 
-  const last3 = useMemo(() => Array.from({ length: 3 }, (_, i) => {
-    const d = subMonths(new Date(), i);
-    return {
-      month: String(d.getMonth() + 1).padStart(2, '0'),
-      year: String(d.getFullYear()),
-      label: format(d, 'MMM/yyyy', { locale: ptBR }),
-    };
-  }), []);
-
-  useEffect(() => {
-    if (ctxLoading || apartments.length === 0 || !activeAptId) return;
-    setLoadingFilipetas(true);
-    const base = process.env.NEXT_PUBLIC_API_URL;
-    Promise.all(
-      last3.map(m =>
-        fetch(`${base}/meter-report?month=${m.month}&year=${m.year}&apartment_id=${activeAptId}`, { credentials: 'include' })
-          .then(r => r.json())
-          .then(d => ({ key: `${m.month}-${m.year}`, list: (d.list ?? []) as MeterReportItem[] }))
-          .catch(() => ({ key: `${m.month}-${m.year}`, list: [] as MeterReportItem[] }))
-      )
-    ).then(results => {
-      const map: Record<string, MeterReportItem[]> = {};
-      results.forEach(r => { map[r.key] = r.list; });
-      setFilipetasByMonth(map);
-      setLoadingFilipetas(false);
-    });
-  }, [ctxLoading, apartments.length, activeAptId]);
+  const userReport = reportData?.list?.[0] ?? null;
 
   if (ctxLoading) {
     return (
@@ -327,88 +315,88 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
   }
 
   return (
-    <div className="space-y-8">
-      {/* ── Consumo Anual ── */}
-      <section className="w-full space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-semibold">Consumo da Unidade</h2>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => router.push('/readings')}>
-            Ver leituras completas <ChevronRight className="w-4 h-4 ml-1" />
-          </Button>
+    <div className="space-y-6">
+      {/* Seletor de apartamento (apenas quando há mais de 1) */}
+      {!singleApartment && apartments.length > 1 && (
+        <div className="flex gap-2 flex-wrap">
+          {apartments.map((apt: any) => {
+            const block = apt.block as any;
+            const cx = block?.complex;
+            return (
+              <Button
+                key={apt.id}
+                variant={selectedAptId === apt.id ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedAptId(apt.id)}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                <DoorClosed className="w-3.5 h-3.5" />
+                {cx?.socialName ? `${cx.socialName} — ` : ''}Bl.{block?.name} Apto {apt.name}
+              </Button>
+            );
+          })}
         </div>
+      )}
 
-        {!singleApartment && apartments.length > 1 && (
-          <div className="flex gap-2 flex-wrap">
-            {apartments.map(apt => {
-              const block = apt.block as any;
-              const cx = block?.complex;
-              return (
-                <Button
-                  key={apt.id}
-                  variant={selectedAptId === apt.id ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedAptId(apt.id)}
-                  className="flex items-center gap-1.5 text-xs"
-                >
-                  <DoorClosed className="w-3.5 h-3.5" />
-                  {cx?.socialName ? `${cx.socialName} — ` : ''}Bl.{block?.name} Apto {apt.name}
-                </Button>
-              );
-            })}
-          </div>
-        )}
-
-        {apartments.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground text-sm">
-            Nenhum apartamento vinculado à sua conta.
-          </div>
-        )}
-
-        {activeAptId ? (
-          <ConsumoAnualGraph apartmentId={activeAptId} />
-        ) : (
-          !singleApartment && apartments.length > 1 && (
-            <p className="text-xs text-muted-foreground text-center">Selecione uma unidade para ver o gráfico de consumo.</p>
-          )
-        )}
-      </section>
-
-      {/* ── Filipeta preview ── */}
-      <section className="w-full space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-semibold">Filipetas — últimos 3 meses</h2>
-          </div>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/meter-report" className="flex items-center gap-1">Ver todas <ChevronRight className="w-4 h-4" /></Link>
-          </Button>
+      {apartments.length === 0 && (
+        <div className="text-center py-8 text-muted-foreground text-sm">
+          Nenhum apartamento vinculado à sua conta.
         </div>
-        {!activeAptId && apartments.length > 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-4">Selecione uma unidade para ver as filipetas.</p>
-        ) : loadingFilipetas ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {[1, 2, 3].map(i => <FilipetaMiniSkeleton key={i} />)}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {last3.map(m => {
-              const items = filipetasByMonth[`${m.month}-${m.year}`] ?? [];
-              if (items.length === 0)
-                return (
-                  <div key={m.label} className="border rounded-xl p-4 flex flex-col items-center justify-center text-muted-foreground text-sm min-h-[120px]">
-                    <span className="font-medium capitalize mb-1">{m.label}</span>
-                    <span className="text-xs">Sem dados</span>
+      )}
+
+      {/* Monitoramento em Tempo Real (GL) */}
+      {activeAptId && (
+        <>
+          <ResidentMonitoringCard apartmentId={activeAptId} />
+
+          {/* Card de Resumo de Consumo do Mês (Fallback / Garantia) */}
+          <Card>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <FileText className="w-5 h-5 text-teal-600" />
+                Meu Consumo — {currentMonthOpt.labelShort}
+              </CardTitle>
+              <MonthSelect value={currentMonthOpt.value} onChange={() => {}} />
+            </CardHeader>
+            <CardContent>
+              {reportLoading ? (
+                <Skeleton className="h-24 w-full" />
+              ) : userReport ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl bg-muted/40 border">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Consumo de Água</p>
+                    <p className="text-xl font-bold text-teal-600 mt-0.5">{userReport.consumption?.toFixed(2) ?? '0.00'} m³</p>
                   </div>
-                );
-              return items.map(r => <FilipetaMiniCard key={r.id} report={r} />);
-            })}
-          </div>
-        )}
-      </section>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Valor da Unidade</p>
+                    <p className="text-xl font-bold text-blue-600 mt-0.5">{formatCurrency(userReport.totalUnit)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Leitura Final</p>
+                    <p className="text-base font-semibold mt-1">{userReport.lastReading?.reading?.toFixed(3) ?? '—'} m³</p>
+                  </div>
+                  <div className="flex items-center justify-end">
+                    <Link href={`/apartment-report/${userReport.id}`}>
+                      <Button size="sm" className="gap-1.5 text-xs">
+                        Ver Filipeta Completa <ChevronRight className="w-3.5 h-3.5" />
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground text-xs">
+                  <Droplets className="w-8 h-8 mx-auto mb-2 opacity-30 text-teal-500" />
+                  <p>Nenhum relatório de consumo fechado para {currentMonthOpt.labelShort}.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {!activeAptId && apartments.length > 1 && (
+        <p className="text-xs text-muted-foreground text-center py-8">Selecione uma unidade acima para ver o monitoramento.</p>
+      )}
     </div>
   );
 }
@@ -416,14 +404,172 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
 // ─── SindicoDashboard ─────────────────────────────────────────────────────────
 // Dashboard para Síndico e Administradora — exibe condomínios vinculados com
 // 3 painéis: Filipetas, Resumo de Consumo, Conta da Concessionária
+
+// ─── GLStatusCard ─────────────────────────────────────────────────────────────
+// Só renderiza se o condomínio tiver medidores com GL (glId) vinculado.
+// Caso contrário retorna null (não aparece nada).
+function GLStatusCard({ complexId }: { complexId: string }) {
+  const [status, setStatus] = useState<{ lastImport: string | null; daysSince: number | null; hasGL: boolean; loading: boolean }>({
+    lastImport: null,
+    daysSince: null,
+    hasGL: false,
+    loading: true,
+  });
+
+  useEffect(() => {
+    if (!complexId) return;
+    setStatus(s => ({ ...s, loading: true }));
+    fetch(`/api/gl-status?complexId=${complexId}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        setStatus({
+          lastImport: data.lastImport ?? null,
+          daysSince: data.daysSince ?? null,
+          hasGL: data.hasGL ?? false,
+          loading: false,
+        });
+      })
+      .catch(() => setStatus({ lastImport: null, daysSince: null, hasGL: false, loading: false }));
+  }, [complexId]);
+
+  // Se carregou e não tem GL, não renderiza nada
+  if (!status.loading && !status.hasGL) return null;
+
+  if (status.loading) {
+    return null; // não mostra skeleton para evitar flash em condomínios sem GL
+  }
+
+  const days = status.daysSince;
+  const isStale = days !== null && days > 3;
+  const isWarning = days !== null && days > 1 && days <= 3;
+  const isOk = days !== null && days <= 1;
+
+  return (
+    <Card className="flex flex-col">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Activity className="w-4 h-4 text-blue-500" />
+          Status das Leituras Automáticas
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {status.lastImport ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              {isOk && <CheckCircle2 className="w-5 h-5 text-green-500" />}
+              {isWarning && <Clock className="w-5 h-5 text-amber-500" />}
+              {isStale && <AlertTriangle className="w-5 h-5 text-red-500" />}
+              <span className={`text-sm font-medium ${isOk ? 'text-green-600' : isWarning ? 'text-amber-600' : 'text-red-600'}`}>
+                {isOk ? 'Atualizado' : isWarning ? `${days} dias sem nova leitura` : `${days} dias sem receber dados`}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Última leitura recebida: {status.lastImport}
+            </p>
+            {isStale && (
+              <p className="text-xs text-amber-600 mt-1">
+                Pode haver demora na importação automática. Se persistir, entre em contato com o suporte.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-gray-400" />
+            <span className="text-sm text-muted-foreground">Sem leituras automáticas registradas</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+
+// ─── BlockComparisonCard ──────────────────────────────────────────────────────
+function BlockComparisonCard({ complexId, month, year }: { complexId: string; month: string; year: string }) {
+  const [data, setData] = useState<{ blocks: any[]; loading: boolean }>({ blocks: [], loading: true });
+
+  useEffect(() => {
+    if (!complexId) return;
+    setData(s => ({ ...s, loading: true }));
+    fetch(`/api/block-comparison?complexId=${complexId}&month=${month}&year=${year}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => setData({ blocks: d.blocks ?? [], loading: false }))
+      .catch(() => setData({ blocks: [], loading: false }));
+  }, [complexId, month, year]);
+
+  if (data.loading) {
+    return (
+      <Card className="flex flex-col">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-blue-500" />
+            Comparativo entre Blocos
+          </CardTitle>
+        </CardHeader>
+        <CardContent><Skeleton className="h-24 w-full" /></CardContent>
+      </Card>
+    );
+  }
+
+  if (data.blocks.length === 0) {
+    return (
+      <Card className="flex flex-col">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-blue-500" />
+            Comparativo entre Blocos
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground py-4 text-center">Sem dados para este período</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const maxConsumption = Math.max(...data.blocks.map(b => b.totalConsumption));
+
+  return (
+    <Card className="flex flex-col">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-blue-500" />
+          Comparativo entre Blocos
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {data.blocks.map((block) => (
+          <div key={block.blockName} className="space-y-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium">{block.blockName}</span>
+              <span className="text-muted-foreground">
+                {block.totalConsumption.toFixed(1)} m³ / {block.unitCount} un.
+              </span>
+            </div>
+            <div className="h-2 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 rounded-full"
+                style={{ width: `${(block.totalConsumption / maxConsumption) * 100}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 function SindicoDashboard() {
-  const { context, loading: ctxLoading } = useUserContext();
+  const { isPreviewing, effectiveContext: previewCtx } = useRolePreview();
+  const { context: realCtx, loading: realLoading } = useUserContext();
+  const context = isPreviewing ? previewCtx : realCtx;
+  const ctxLoading = isPreviewing ? false : realLoading;
 
   const complexes = useMemo(() => {
     if (!context) return [];
     const map = new Map<string, any>();
-    context.complexes.forEach(c => map.set(c.id, c));
-    context.apartments.forEach(a => {
+    context.complexes.forEach((c: any) => map.set(c.id, c));
+    context.apartments.forEach((a: any) => {
       const cx = (a.block as any)?.complex;
       if (cx && !map.has(cx.id)) map.set(cx.id, cx);
     });
@@ -513,6 +659,18 @@ function SindicoDashboard() {
           <p className="text-sm font-medium">Nenhum condomínio encontrado</p>
           <p className="text-xs mt-1">Sem condomínios vinculados à sua conta.</p>
         </section>
+      )}
+
+      {/* ── GL Status + Block Comparison ── */}
+      {selectedComplex && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <GLStatusCard complexId={selectedComplex.id} />
+          <BlockComparisonCard
+            complexId={selectedComplex.id}
+            month={statsMonthOpt.month}
+            year={statsMonthOpt.year}
+          />
+        </div>
       )}
 
       {/* ── Three panels ── */}
@@ -732,7 +890,7 @@ function useAdminStats() {
     setLoading(true);
     setError(null);
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL;
+      const base = '/api';
       const res = await fetch(`${base}/admin-stats`, {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -808,6 +966,11 @@ function ComplexDetailPanel({ complex, onBack }: { complex: any; onBack: () => v
           </CardContent>
         </Card>
       </div>
+
+      <AreaCommonAnnualDashboard
+        complexId={complex.id}
+        complexName={complex.socialName || complex.aliasName}
+      />
 
       {/* Month selector + consumption table */}
       <Card>
@@ -917,6 +1080,8 @@ function AdminKPIDashboard() {
           ))}
         </div>
 
+        <OperationsHealthCard />
+
         {/* Users by type + today logins */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card>
@@ -990,64 +1155,101 @@ function AdminKPIDashboard() {
           </Card>
         )}
 
-        {/* Most/Least updated */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {stats?.mostUpdated && (
-            <Card className="border-green-200 bg-green-50/50">
-              <CardContent className="p-4 flex items-start gap-3">
-                <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Mais atualizado</p>
-                  <p className="font-semibold text-sm">{stats.mostUpdated.socialName || stats.mostUpdated.aliasName}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Última filipeta: <span className="font-medium text-green-600">{stats.mostUpdated.lastReadingLabel ?? '—'}</span>
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {stats?.leastUpdated && (
-            <Card className="border-orange-200 bg-orange-50/50">
-              <CardContent className="p-4 flex items-start gap-3">
-                <Clock className="w-5 h-5 text-orange-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Menos atualizado</p>
-                  <p className="font-semibold text-sm">{stats.leastUpdated.socialName || stats.leastUpdated.aliasName}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Última filipeta: <span className="font-medium text-orange-600">{stats.leastUpdated.lastReadingLabel ?? 'Sem leitura'}</span>
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {stats?.mostAccessed && (
-            <Card className="border-blue-200 bg-blue-50/50">
-              <CardContent className="p-4 flex items-start gap-3">
-                <TrendingUp className="w-5 h-5 text-blue-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Mais acessado (30 dias)</p>
-                  <p className="font-semibold text-sm">{stats.mostAccessed.socialName || stats.mostAccessed.aliasName}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    <span className="font-medium text-blue-600">{stats.mostAccessed.accessCount} usuário{stats.mostAccessed.accessCount !== 1 ? 's' : ''}</span> únicos
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {stats?.leastAccessed && (
-            <Card className="border-gray-200 bg-gray-50/50">
-              <CardContent className="p-4 flex items-start gap-3">
-                <TrendingDown className="w-5 h-5 text-gray-400 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Menos acessado (30 dias)</p>
-                  <p className="font-semibold text-sm">{stats.leastAccessed.socialName || stats.leastAccessed.aliasName}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    <span className="font-medium text-gray-600">{stats.leastAccessed.accessCount} usuário{stats.leastAccessed.accessCount !== 1 ? 's' : ''}</span> únicos
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+        {/* Top 3 mais/menos atualizados + mais acessados + sem acesso */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {/* Mais atualizados */}
+          <Card className="border-green-200 bg-green-50/50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                <p className="text-xs font-semibold text-green-700">Mais atualizados</p>
+              </div>
+              <div className="space-y-2">
+                {(stats?.top3MostUpdated ?? (stats?.mostUpdated ? [stats.mostUpdated] : [])).map((cx: any, i: number) => (
+                  <div key={cx.id} className="flex items-start gap-2">
+                    <span className="text-[10px] text-green-500 font-bold mt-0.5 w-3 shrink-0">{i + 1}.</span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-xs truncate">{cx.socialName || cx.aliasName}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Filipeta: <span className="font-medium text-green-600">{cx.lastReadingLabel ?? '—'}</span>
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {!(stats?.top3MostUpdated?.length) && !stats?.mostUpdated && (
+                  <p className="text-xs text-muted-foreground">Sem dados</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Menos atualizados */}
+          <Card className="border-orange-200 bg-orange-50/50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock className="w-4 h-4 text-orange-500 shrink-0" />
+                <p className="text-xs font-semibold text-orange-700">Menos atualizados</p>
+              </div>
+              <div className="space-y-2">
+                {(stats?.top3LeastUpdated ?? (stats?.leastUpdated ? [stats.leastUpdated] : [])).map((cx: any, i: number) => (
+                  <div key={cx.id} className="flex items-start gap-2">
+                    <span className="text-[10px] text-orange-500 font-bold mt-0.5 w-3 shrink-0">{i + 1}.</span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-xs truncate">{cx.socialName || cx.aliasName}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Filipeta: <span className="font-medium text-orange-600">{cx.lastReadingLabel ?? 'Sem leitura'}</span>
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {!(stats?.top3LeastUpdated?.length) && !stats?.leastUpdated && (
+                  <p className="text-xs text-muted-foreground">Sem dados</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Mais acessados */}
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <TrendingUp className="w-4 h-4 text-blue-500 shrink-0" />
+                <p className="text-xs font-semibold text-blue-700">Mais acessados (30d)</p>
+              </div>
+              <div className="space-y-2">
+                {(stats?.top3MostAccessed ?? (stats?.mostAccessed ? [stats.mostAccessed] : [])).map((cx: any, i: number) => (
+                  <div key={cx.id} className="flex items-start gap-2">
+                    <span className="text-[10px] text-blue-500 font-bold mt-0.5 w-3 shrink-0">{i + 1}.</span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-xs truncate">{cx.socialName || cx.aliasName}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        <span className="font-medium text-blue-600">{cx.accessCount}</span> usuário{cx.accessCount !== 1 ? 's' : ''} únicos
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {!(stats?.top3MostAccessed?.length) && !stats?.mostAccessed && (
+                  <p className="text-xs text-muted-foreground">Nenhum acesso</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Sem acesso no mês */}
+          <Card className="border-gray-200 bg-gray-50/50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <TrendingDown className="w-4 h-4 text-gray-400 shrink-0" />
+                <p className="text-xs font-semibold text-gray-600">Sem acesso (30d)</p>
+              </div>
+              <div className="flex flex-col items-center justify-center py-2">
+                <p className="text-4xl font-bold text-gray-500">{stats?.noAccessCount ?? '—'}</p>
+                <p className="text-xs text-muted-foreground mt-1 text-center">
+                  condomínio{stats?.noAccessCount !== 1 ? 's' : ''} sem nenhum acesso neste mês
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </section>
 
@@ -1195,6 +1397,7 @@ export default function Dashboard() {
   const [selectedMeter, setSelectedMeter] = useState<any>(undefined);
   const { updatePreferences, loading: updatingPref } = useUpdateUserPreferences();
   const [error, setError] = useState<string | null>(null);
+  const { isPreviewing: isPrevMode, previewRole, effectiveContext: prevCtx } = useRolePreview();
   const { context, loading: ctxLoading } = useUserContext();
 
   useEffect(() => { clearCachedPermissions(); }, []);
@@ -1217,35 +1420,51 @@ export default function Dashboard() {
   };
 
   // ── Role detection ──────────────────────────────────────────────────────────
-  // Programador (isSystem + role='Programador') → ProgramadorDashboard (atalhos)
-  // Administrador (isSystem + role='Administrador') → AdminKPIDashboard (panorama KPI)
-  // Síndico / Administradora de empresa          → SindicoDashboard
-  // Morador (só apartments)                       → MoradorDashboard
-  const isSystem      = context?.isSystem ?? false;
-  const isProgramador = isSystem && (context?.systemRoles ?? []).includes('Programador');
-  const isAdministrador = isSystem && (context?.systemRoles ?? []).includes('Administrador');
+  // Em preview mode, usa contexto simulado; senão usa o real
+  const effectiveCtx = isPrevMode ? prevCtx : context;
+  const effectiveLoading = isPrevMode ? false : ctxLoading;
+
+  const isSystem      = effectiveCtx?.isSystem ?? false;
+  const isAdministrador = isSystem && (effectiveCtx?.systemRoles ?? []).includes('Administrador');
+  const isProgramador = isSystem && !isAdministrador;
   const isMorador = useMemo(() => {
-    if (!context) return false;
-    return !context.isSystem
-      && context.companyIds.length === 0
-      && context.complexes.length === 0
-      && context.blocks.length === 0
-      && context.apartments.length > 0;
-  }, [context]);
+    if (!effectiveCtx) return false;
+    // Se for admin do sistema ou tiver acesso a empresas, NÃO é morador
+    if (effectiveCtx.isSystem || effectiveCtx.companyIds.length > 0) {
+      return false;
+    }
+    // Morador é quem tem apartamentos mas NÃO tem acesso administrativo a condomínios ou blocos inteiros
+    return effectiveCtx.apartments.length > 0 && 
+           effectiveCtx.complexes.length === 0 && 
+           effectiveCtx.blocks.length === 0;
+  }, [effectiveCtx]);
 
   const renderDashboard = () => {
-    if (ctxLoading) {
+    if (effectiveLoading) {
       return (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
         </div>
       );
     }
-    if (isProgramador)    return <ProgramadorDashboard />;
-    if (isAdministrador)  return <AdminKPIDashboard />;
-    if (isSystem)         return <AdminKPIDashboard />;  // fallback: outros roles system → panorama
-    if (isMorador)        return <MoradorDashboard router={router} />;
-    return <SindicoDashboard />;   // síndico ou administradora
+
+    // Banner de preview mode
+    const previewBanner = isPrevMode && (
+      <div className="mb-4 rounded-lg border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-4 py-2 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
+        <Eye className="w-3.5 h-3.5 shrink-0" />
+        <span>Modo visualização ativo — você está vendo o sistema como <strong>{previewRole === 'morador' ? 'Morador' : previewRole === 'sindico' ? 'Síndico' : previewRole === 'administradora' ? 'Administradora' : previewRole === 'programador' ? 'Programador' : 'Administrador'}</strong></span>
+      </div>
+    );
+
+    return (
+      <>
+        {previewBanner}
+        {isProgramador    ? <ProgramadorDashboard /> :
+         isAdministrador  ? <AdminKPIDashboard /> :
+         isMorador        ? <MoradorDashboard router={router} /> :
+         <SindicoDashboard />}
+      </>
+    );
   };
 
   return (
@@ -1261,7 +1480,7 @@ export default function Dashboard() {
               <DialogDescription>Selecione o contexto e o medidor que deseja visualizar no dashboard.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <div><Label>Condomínio</Label><SelectComplex getAvailableForEntity="reading" setSelectedComplex={setSelectedComplex} complex={selectedComplex} modal required /></div>
+              <div><Label>Condomínio</Label><SelectComplex getAvailableForEntity="reading" setSelectedComplex={setSelectedComplex} complex={selectedComplex} modal required autoSelectSingle={!isSystem} /></div>
               <div><Label>Bloco</Label><SelectBlock getAvailableForEntity="reading" setSelectedBlock={setSelectedBlock} block={selectedBlock} complexId={selectedComplex?.id} modal required /></div>
               <div><Label>Apartamento</Label><SelectApartment getAvailableForEntity="reading" setSelectedApartment={setSelectedApartment} apartment={selectedApartment} blockId={selectedBlock?.id} complexId={selectedComplex?.id} modal required /></div>
               <div><Label>Medidor</Label><SelectMeter setSelectedMeter={setSelectedMeter} meter={selectedMeter} apartmentId={selectedApartment?.id} modal required /></div>

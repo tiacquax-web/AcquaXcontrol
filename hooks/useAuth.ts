@@ -17,7 +17,19 @@ export const useLogin = () => {
       const data = await loginService(payload);
       return data;
     } catch (err: any) {
-      const message = err.response?.data?.error || err.response?.data?.message || err.message || "Erro ao fazer login";
+      // Distingue entre erro de rede e erro retornado pela API
+      let message: string;
+
+      if (err.message === "Network Error" || err.code === "ERR_NETWORK" || !err.response) {
+        message = "Não foi possível conectar ao servidor. Verifique sua conexão com a internet e tente novamente.";
+      } else {
+        message =
+          err.response?.data?.error ||
+          err.response?.data?.message ||
+          err.message ||
+          "Erro ao fazer login";
+      }
+
       setError(message);
       throw err;
     } finally {

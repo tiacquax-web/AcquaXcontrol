@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Reading } from '@prisma/client';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
+const NEXT_PUBLIC_API_URL = '/api';
 
 // export async function getUserMeterReadings(meterId: string, period: { from: string, to: string }, showLastN = 6) {
 //   try {

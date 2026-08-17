@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building2, Loader2, MapPin, Plus, Search } from "lucide-react"
+import { Building2, Download, Loader2, MapPin, Plus, Search } from "lucide-react"
 import { useApartments, useApartmentMutations } from "@/hooks/useApartments"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,6 +18,7 @@ import { Pagination, PaginationContent, PaginationItem, PaginationLink, Paginati
 import ComboboxCompany from "@/components/ComboboxCompany";
 import ComboboxComplex from "@/components/ComboboxComplex";
 import ComboboxBlock from "@/components/ComboboxBlock";
+import axios from "axios";
 
 export default function ApartmentsPage() {
     const [filters, setFilters] = useState({ nameQuery: "", blockId: "", complexId: "", companyId: "" })
@@ -26,6 +27,7 @@ export default function ApartmentsPage() {
     const [skip, setSkip] = useState(0);
     const { apartments, error, loading, totalCount = 0, refetch } = useApartments({ ...filters, take, skip, withComplex: true, withBlock: true });
     const { createApartment, updateApartment, deleteApartment, error: mutationError } = useApartmentMutations()
+    const [exportLoading, setExportLoading] = useState(false)
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [currentApartment, setCurrentApartment] = useState<Apartment | null>(null)
     const { toast } = useToast()
@@ -39,6 +41,31 @@ export default function ApartmentsPage() {
         setFilters((prev) => ({ ...prev, [name]: value }))
         setCurrentPage(1);
         setSkip(0);
+    }
+
+    const handleExportApartments = async () => {
+        setExportLoading(true)
+        try {
+            const response = await axios.post('/api/user/apartments/export', {
+                search: filters.nameQuery,
+                complexId: filters.complexId || undefined,
+                blockId: filters.blockId || undefined,
+            }, { responseType: 'blob' })
+            const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+            const url = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = `apartamentos_${new Date().toISOString().split('T')[0]}.xlsx`
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            window.URL.revokeObjectURL(url)
+            toast({ title: 'Exportação concluída!', description: 'Planilha baixada.' })
+        } catch (error: any) {
+            toast({ title: 'Erro', description: error.response?.data?.error || error.message, variant: 'destructive' })
+        } finally {
+            setExportLoading(false)
+        }
     }
 
     const handleAddApartment = () => {
@@ -143,9 +170,15 @@ export default function ApartmentsPage() {
                         <CardTitle className="text-2xl font-bold">Apartamentos</CardTitle>
                         <CardDescription>Gerencie os apartamentos e seus detalhes</CardDescription>
                     </div>
-                    <Button onClick={handleAddApartment}>
-                        <Plus className="mr-2 h-4 w-4" /> Adicionar Apartamento
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={handleExportApartments} disabled={exportLoading}>
+                            {exportLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                            Exportar
+                        </Button>
+                        <Button onClick={handleAddApartment}>
+                            <Plus className="mr-2 h-4 w-4" /> Adicionar Apartamento
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col space-y-4">

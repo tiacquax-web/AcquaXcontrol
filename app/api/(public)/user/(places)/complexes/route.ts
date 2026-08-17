@@ -67,13 +67,13 @@ export async function GET(req: NextRequest): Promise<Response> {
             return NextResponse.json({ list, totalCount })
         }
         
-        const { entity, error, status } = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)
+        const { entity, error, status, totalCount } = await getEntityListData(userId, 'complex', contextType, contextId, search, where, take, include, skip)
         if (error) return NextResponse.json({ error }, { status })
         if (!entity) return NextResponse.json({ error: 'Erro interno do servidor - Entidade não encontrada' }, { status: 500 })
 
         console.log("######### Complexos encontrados:", entity.length)
 
-        return NextResponse.json({ list: entity })
+        return NextResponse.json({ list: entity, totalCount: totalCount ?? entity.length })
 
     } catch (error: any) {
         console.error("Erro ao buscar complexos:", error)

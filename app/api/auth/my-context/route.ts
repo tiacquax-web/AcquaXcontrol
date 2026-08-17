@@ -1,22 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { validateUserSession } from '@/lib/users';
+import { checkUserSuspension } from '@/lib/services/suspension-service';
 
-/**
- * GET /api/auth/my-context
- * Retorna os contextos do usuário logado com dados completos:
- * - apartamentos vinculados (com bloco e condomínio)
- * - blocos vinculados
- * - condomínios vinculados
- * - se tem permissão de sistema (admin/programador)
- */
 export async function GET(req: NextRequest): Promise<Response> {
     const { userId, error: sessionError, status: sessionStatus } = await validateUserSession(req);
     if (sessionError) return NextResponse.json({ error: sessionError }, { status: sessionStatus });
     if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
     try {
-        // Busca todos os role assignments do usuário (incluindo nome do papel)
+        const suspension = await checkUserSuspension(userId);
+        if (suspension.suspended) {
+            return NextResponse.json(
+                { error: 'Acesso suspenso. Procure a administração do seu condomínio.', suspended: true, complexNames: suspension.complexNames },
+                { status: 403 }
+            );
+        }
+    } catch (suspErr) {
+        console.error('[my-context] Erro ao verificar suspensão:', suspErr);
+    }
+
+    try {
         const assignments = await prisma.roleAssignment.findMany({
             where: {
                 userId,
@@ -30,56 +34,112 @@ export async function GET(req: NextRequest): Promise<Response> {
         });
 
         const isSystem = assignments.some(a => a.contextType === 'system');
-        // Nomes dos papéis com contextType=system ex: ['Administrador'] ou ['Programador']
         const systemRoles = assignments
             .filter(a => a.contextType === 'system')
             .map(a => a.Role?.name)
             .filter(Boolean) as string[];
+
         const apartmentIds = assignments.filter(a => a.contextType === 'apartment').map(a => a.contextId).filter(Boolean) as string[];
         const blockIds = assignments.filter(a => a.contextType === 'block').map(a => a.contextId).filter(Boolean) as string[];
         const complexIds = assignments.filter(a => a.contextType === 'complex').map(a => a.contextId).filter(Boolean) as string[];
         const companyIds = assignments.filter(a => a.contextType === 'company').map(a => a.contextId).filter(Boolean) as string[];
 
-        // Busca dados completos dos apartamentos vinculados diretamente
-        const apartments = apartmentIds.length > 0
-            ? await prisma.apartment.findMany({
-                where: {
-                    id: { in: apartmentIds },
-                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
-                },
-                include: {
-                    block: {
-                        include: {
-                            complex: {
-                                include: { company: true }
-                            }
-                        }
+        // Se for admin, pega tudo
+        let allComplexIds = complexIds;
+        let allBlockIds = blockIds;
+        let allApartmentIds = apartmentIds;
+
+        if (isSystem) {
+            const allCx = await prisma.complex.findMany({ where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }, select: { id: true } });
+            allComplexIds = allCx.map(c => c.id);
+        } else {
+            // Se tem companyIds, pega blocos e complexos dessas empresas
+            if (companyIds.length > 0) {
+                const cxByComp = await prisma.complex.findMany({
+                    where: { companyId: { in: companyIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                    select: { id: true }
+                });
+                cxByComp.forEach(c => allComplexIds.push(c.id));
+            }
+
+            // Se tem complexIds, pega blocos desses complexos
+            if (allComplexIds.length > 0) {
+                const blocksByCx = await prisma.block.findMany({
+                    where: { complexId: { in: allComplexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                    select: { id: true }
+                });
+                blocksByCx.forEach(b => allBlockIds.push(b.id));
+            }
+
+            // Se tem blockIds, pega complexos e apartamentos desses blocos
+            if (allBlockIds.length > 0) {
+                const blocksData = await prisma.block.findMany({
+                    where: { id: { in: allBlockIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+                    select: { complexId: true }
+                });
+                blocksData.forEach(b => { if (b.complexId) allComplexIds.push(b.complexId); });
+            }
+        }
+
+        allComplexIds = [...new Set(allComplexIds)];
+        allBlockIds = [...new Set(allBlockIds)];
+        allApartmentIds = [...new Set(allApartmentIds)];
+
+        // Buscar dados completos - Usando AND para evitar sobrescrita de chaves OR
+        const complexes = await prisma.complex.findMany({
+            where: {
+                AND: [
+                    isSystem ? {} : { id: { in: allComplexIds } },
+                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
+                ]
+            },
+            include: { company: true }
+        });
+
+        const blocks = await prisma.block.findMany({
+            where: {
+                AND: [
+                    isSystem ? {} : { OR: [{ id: { in: allBlockIds } }, { complexId: { in: allComplexIds } }] },
+                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
+                ]
+            },
+            include: { complex: { include: { company: true } } }
+        });
+
+        const apartments = await prisma.apartment.findMany({
+            where: {
+                AND: [
+                    isSystem ? {} : { OR: [
+                        { id: { in: allApartmentIds } }, 
+                        { blockId: { in: allBlockIds } }, 
+                        { block: { complexId: { in: allComplexIds } } }
+                    ]},
+                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
+                ]
+            },
+            include: {
+                block: {
+                    include: {
+                        complex: { include: { company: true } }
                     }
                 }
-            })
-            : [];
+            }
+        });
 
-        // Busca blocos vinculados diretamente
-        const blocks = blockIds.length > 0
-            ? await prisma.block.findMany({
-                where: {
-                    id: { in: blockIds },
-                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
-                },
-                include: { complex: { include: { company: true } } }
-            })
-            : [];
-
-        // Busca condomínios vinculados diretamente
-        const complexes = complexIds.length > 0
-            ? await prisma.complex.findMany({
-                where: {
-                    id: { in: complexIds },
-                    OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
-                },
-                include: { company: true }
-            })
-            : [];
+        // GL Detection
+        let glComplexIds: string[] = [];
+        const glMeters = await prisma.meter.findMany({
+            where: {
+                AND: [
+                    { glId: { not: null, notIn: [''] } },
+                    isSystem ? {} : { complexId: { in: complexes.map(c => c.id) } },
+                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
+                ]
+            },
+            select: { complexId: true },
+            distinct: ['complexId'],
+        });
+        glComplexIds = glMeters.map(m => m.complexId).filter(Boolean) as string[];
 
         return NextResponse.json({
             isSystem,
@@ -88,17 +148,11 @@ export async function GET(req: NextRequest): Promise<Response> {
             blocks,
             complexes,
             companyIds,
-            // Helper: IDs únicos de condomínios que o usuário acessa (via apartamento, bloco ou direto)
-            accessibleComplexIds: [
-                ...new Set([
-                    ...apartments.map(a => (a.block as any)?.complexId).filter(Boolean),
-                    ...blocks.map(b => b.complexId).filter(Boolean),
-                    ...complexIds,
-                ])
-            ],
+            accessibleComplexIds: complexes.map(c => c.id),
+            glComplexIds,
         });
     } catch (e: any) {
-        console.error('[my-context]', e);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        console.error('[my-context] Error:', e);
+        return NextResponse.json({ error: e?.message || 'Internal Server Error' }, { status: 500 });
     }
 }

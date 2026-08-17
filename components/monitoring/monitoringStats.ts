@@ -29,6 +29,17 @@ export interface ComputedStats {
 
 export function recomputeStats(meter: MonitoringMeterData, view: 'cumulative' | 'simple', sigma: number, filterAlerts?: string[]): ComputedStats {
   const rotation = meter.rotation || 'Crescente'
+  const serverAlarmAnomalies = (meter.stats?.anomalies || [])
+    .filter((anomaly: any) => String(anomaly.readingId || '').startsWith('gl-alarm:'))
+    .map((anomaly: any) => ({
+      readingId: String(anomaly.readingId),
+      readAt: new Date(anomaly.readAt),
+      delta: Number(anomaly.delta || 0),
+      anomalyTypes: Array.isArray(anomaly.anomalyTypes) ? anomaly.anomalyTypes : [],
+    }))
+    .filter((anomaly: any) =>
+      !filterAlerts || filterAlerts.length === 0 || anomaly.anomalyTypes.some((type: string) => filterAlerts.includes(type)),
+    )
   // Filtra por tipos de alerta se necessário
   const filteredReadings = meter.readings.filter(r => {
     if (!filterAlerts || filterAlerts.length === 0) return true
@@ -43,8 +54,8 @@ export function recomputeStats(meter: MonitoringMeterData, view: 'cumulative' | 
       maxDelta: null,
       stdDev: null,
       negativeCount: 0,
-      alertCount: filteredReadings.filter(r => r.alerts?.length).length,
-      anomalies: []
+      alertCount: filteredReadings.filter(r => r.alerts?.length).length + serverAlarmAnomalies.length,
+      anomalies: serverAlarmAnomalies
     }
   }
 
@@ -82,11 +93,25 @@ export function recomputeStats(meter: MonitoringMeterData, view: 'cumulative' | 
   const maxDelta = positive.length ? Math.max(...positive) : null
 
   const anomalies: ComputedStats['anomalies'] = []
+  const positiveBaseline = avgDelta ?? 0
   for (let i=1;i<ordered.length;i++) {
     const delta = deltas[i-1]
     const base = ordered[i]
     const anomalyTypes: string[] = []
-  if (delta < 0) anomalyTypes.push('NEGATIVE_CONSUMPTION')
+    if (delta < 0) anomalyTypes.push('NEGATIVE_CONSUMPTION')
+
+    // Sinal conservador: três intervalos consecutivos com consumo positivo
+    // acima do padrão e em janela curta sugerem fluxo contínuo/vazamento.
+    // É um alerta de investigação, não um diagnóstico automático.
+    const recentDeltas = deltas.slice(Math.max(0, i - 3), i)
+    const recentReadings = ordered.slice(Math.max(0, i - 3), i + 1)
+    const hoursBetween = recentReadings.length >= 2
+      ? (new Date(recentReadings[recentReadings.length - 1].readAt).getTime() - new Date(recentReadings[0].readAt).getTime()) / 3_600_000
+      : Infinity
+    const sustainedHigh = recentDeltas.length >= 3
+      && recentDeltas.every(value => value > 0 && (positiveBaseline === 0 || value >= positiveBaseline * 1.35))
+      && hoursBetween <= 36
+    if (sustainedHigh) anomalyTypes.push('POSSIBLE_LEAK')
     if (stdDev !== null && avgDelta !== null) {
       if (delta > avgDelta + sigma * stdDev) anomalyTypes.push('OUTLIER_HIGH')
       if (delta > 0 && delta < avgDelta - sigma * stdDev) anomalyTypes.push('OUTLIER_LOW')
@@ -99,7 +124,18 @@ export function recomputeStats(meter: MonitoringMeterData, view: 'cumulative' | 
     }
   }
 
-  return { totalConsumed, avgDelta, minDelta, maxDelta, stdDev, negativeCount: negative.length, alertCount: ordered.filter(r=>r.alerts?.length).length, anomalies }
+  const allAnomalies = [...anomalies, ...serverAlarmAnomalies]
+    .sort((a, b) => b.readAt.getTime() - a.readAt.getTime())
+  return {
+    totalConsumed,
+    avgDelta,
+    minDelta,
+    maxDelta,
+    stdDev,
+    negativeCount: negative.length,
+    alertCount: ordered.filter(r => r.alerts?.length).length + serverAlarmAnomalies.length,
+    anomalies: allAnomalies,
+  }
 }
 
 function numericValue(v: number | string): number {

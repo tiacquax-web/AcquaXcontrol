@@ -2,6 +2,8 @@ import { cleanEntityBody } from "@/lib/prisma";
 import { deleteEntity, updateEntityData } from "@/lib/userData";
 import { validateUserSession } from "@/lib/users";
 import { NextRequest, NextResponse } from "next/server";
+import { scheduleEmailQueueProcessing } from '@/lib/services/email-queue-trigger';
+import { createEmailJobForReport } from '@/lib/services/filipeta-email-dispatcher';
 
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ entityId: string }> }): Promise<Response> {
@@ -27,6 +29,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
         const { entity, error: updateError, status: updateStatus } = await updateEntityData(userId, 'apartmentConsumptionReport', entityId, body);
         if (updateError) return NextResponse.json({ error: updateError }, { status: updateStatus });
         if (!entity) return NextResponse.json({ error: 'Internal Server Error - Entity not updated' }, { status: 500 });
+
+        const dealershipReadingId = (entity as any)?.dealershipReadingId || body?.dealershipReadingId;
+        if (dealershipReadingId) {
+            try {
+                const emailJobResult = await createEmailJobForReport((entity as any).id, userId);
+                console.log(`[ReportSave] update-report ${(entity as any).id}:`, emailJobResult);
+            } catch (emailError: any) {
+                console.error('[ReportSave] Erro ao criar job do relatório atualizado:', emailError?.message || emailError);
+            }
+            scheduleEmailQueueProcessing(req, `update-report:${dealershipReadingId}`, [dealershipReadingId]);
+        }
 
         // Return the updated entity data
         return NextResponse.json(entity);

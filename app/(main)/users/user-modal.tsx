@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { User, Company, Complex, Block, Apartment, RoleAssignment } from "@prisma/client"
 import { useRoleAssignmentMutations, useRoleAssignments } from "@/hooks/useRoleAssignments"
-import { ArrowLeft, ChevronLeft, Loader2 } from "lucide-react"
+import { Loader2, X, CheckCircle2, RefreshCw, KeyRound, AlertTriangle, Copy } from "lucide-react"
 import { useRoles } from "@/hooks/useRoles"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ContextType, Role } from "@prisma/client"
@@ -20,10 +20,15 @@ import SelectCompany from "@/components/ComboboxCompany"
 import { mapContextType } from "@/types/types"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
+import { useComplexes } from "@/hooks/useComplexes"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import axios from "axios"
 
 interface UserModalProps {
     isOpen: boolean
@@ -214,6 +219,8 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
                                         onChange={handleChange}
                                     />
                                 </div>
+                                <Separator />
+                                {user?.id && <ResetUserSection userId={user.id} userName={user.name} />}
                             </div>
                         </TabsContent>
 
@@ -230,6 +237,168 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
     )
 }
 
+// ─── ResetUserSection ─────────────────────────────────────────────────────────
+function ResetUserSection({ userId, userName }: { userId: string; userName: string | null }) {
+    const { toast } = useToast()
+    const [open, setOpen] = useState(false)
+    const [loading, setLoading] = useState(false)
+    const [newPassword, setNewPassword] = useState('')
+    const [tempPassword, setTempPassword] = useState<string | null>(null)
+    const [copied, setCopied] = useState(false)
+
+    const handleReset = async () => {
+        setLoading(true)
+        try {
+            const res = await axios.post(`/api/user/users/${userId}/reset`, {
+                newPassword: newPassword.trim() || undefined,
+                mustUpdateCredentials: true,
+            })
+            const { tempPassword: tp } = res.data
+            setTempPassword(tp || newPassword.trim() || null)
+            setNewPassword('')
+            toast({ title: 'Usuário redefinido', description: 'O acesso do usuário foi restaurado com sucesso.' })
+        } catch (err: any) {
+            const msg = err?.response?.data?.error || 'Erro ao redefinir usuário'
+            toast({ title: 'Erro', description: msg, variant: 'destructive' })
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleCopy = () => {
+        if (!tempPassword) return
+        navigator.clipboard.writeText(tempPassword)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+    }
+
+    const handleClose = () => {
+        setOpen(false)
+        setNewPassword('')
+        setTempPassword(null)
+        setCopied(false)
+    }
+
+    return (
+        <>
+            <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                    <RefreshCw className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                        <p className="font-semibold text-amber-900 dark:text-amber-200 text-sm">Redefinir / Restaurar Usuário</p>
+                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                            Redefine a senha e força a troca de credenciais no próximo acesso.
+                            Utilize caso o usuário esteja bloqueado ou tenha perdido o acesso.
+                        </p>
+                    </div>
+                </div>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-amber-400 dark:border-amber-600 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                    onClick={() => setOpen(true)}
+                >
+                    <KeyRound className="h-4 w-4 mr-2" />
+                    Redefinir Usuário
+                </Button>
+            </div>
+
+            <Dialog open={open} onOpenChange={handleClose}>
+                <DialogContent className="sm:max-w-[440px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <RefreshCw className="h-5 w-5 text-amber-500" />
+                            Redefinir Usuário
+                        </DialogTitle>
+                        <DialogDescription>
+                            Restaurar acesso de <strong>{userName || 'usuário'}</strong>.
+                            O usuário será obrigado a trocar a senha no próximo login.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {tempPassword ? (
+                        /* ── Resultado: mostrar senha temporária ── */
+                        <div className="space-y-4 py-2">
+                            <Alert className="border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/40">
+                                <AlertDescription className="text-green-800 dark:text-green-300 text-sm">
+                                    Usuário redefinido com sucesso! Compartilhe a senha temporária abaixo com o usuário.
+                                </AlertDescription>
+                            </Alert>
+                            <div className="space-y-1.5">
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Senha Temporária</p>
+                                <div className="flex items-center gap-2">
+                                    <code className="flex-1 rounded-md border bg-muted px-3 py-2 text-sm font-mono font-semibold tracking-wide">
+                                        {tempPassword}
+                                    </code>
+                                    <Button type="button" size="icon" variant="outline" onClick={handleCopy} title="Copiar senha">
+                                        {copied
+                                            ? <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                            : <Copy className="h-4 w-4" />
+                                        }
+                                    </Button>
+                                </div>
+                            </div>
+                            <Alert className="border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40">
+                                <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />
+                                <AlertDescription className="text-amber-800 dark:text-amber-300 text-xs">
+                                    Esta senha é exibida apenas uma vez. Certifique-se de anotá-la antes de fechar.
+                                </AlertDescription>
+                            </Alert>
+                            <DialogFooter>
+                                <Button type="button" onClick={handleClose}>Fechar</Button>
+                            </DialogFooter>
+                        </div>
+                    ) : (
+                        /* ── Formulário de redefinição ── */
+                        <div className="space-y-4 py-2">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="reset-password" className="text-sm">
+                                    Nova Senha <span className="text-muted-foreground font-normal">(opcional)</span>
+                                </Label>
+                                <Input
+                                    id="reset-password"
+                                    type="password"
+                                    placeholder="Deixe em branco para gerar automaticamente"
+                                    value={newPassword}
+                                    onChange={e => setNewPassword(e.target.value)}
+                                    disabled={loading}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Se não informada, uma senha temporária segura será gerada automaticamente.
+                                </p>
+                            </div>
+                            <Alert className="border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40">
+                                <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />
+                                <AlertDescription className="text-amber-800 dark:text-amber-300 text-xs">
+                                    O usuário deverá alterar a senha no próximo acesso ao sistema.
+                                </AlertDescription>
+                            </Alert>
+                            <DialogFooter className="gap-2">
+                                <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={handleReset}
+                                    disabled={loading}
+                                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                                >
+                                    {loading
+                                        ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Redefinindo...</>
+                                        : <><RefreshCw className="h-4 w-4 mr-2" />Confirmar Redefinição</>
+                                    }
+                                </Button>
+                            </DialogFooter>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+        </>
+    )
+}
+
+// ─── ManageUserRoles ──────────────────────────────────────────────────────────
 function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, handleDeleteRoleAssignment: (roleAssignmentId: string) => Promise<void> }) {
     const { roleAssignments, error, loading, refetch } = useRoleAssignments({ userId: user.id });
     const { roles, error: rolesError, loading: rolesLoading } = useRoles({});
@@ -240,10 +409,6 @@ function ManageUserRoles({ user, handleDeleteRoleAssignment }: { user: User, han
         await handleDeleteRoleAssignment(roleAssignmentId);
         refetch();
     };
-
-    const availableRoles = roles.filter(
-        (role) => !roleAssignments.some((ra) => ra.roleId === role.id)
-    );
 
     const onAddedRole = (roleAssignment: Partial<RoleAssignment> & { name: string }) => {
         setAddingRole(false);
@@ -324,6 +489,13 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     const { createRoleAssignment, loading, error } = useRoleAssignmentMutations();
     const { toast } = useToast();
 
+    // Multi-complex selection
+    const [selectedComplexIds, setSelectedComplexIds] = useState<Set<string>>(new Set());
+    const [complexSearch, setComplexSearch] = useState("");
+    const { complexes: allComplexes, loading: complexesLoading } = useComplexes({ nameQuery: complexSearch, take: 50 });
+    const [bulkAdding, setBulkAdding] = useState(false);
+    const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
+
     const [cascateContextSearching, setCascateContextSearching] = useState<{
         company: Company | null;
         complex: Complex | null;
@@ -337,36 +509,52 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     });
 
     function handleCasacteContextSelect(selectedContextType: ContextType, contextModel: Company | Complex | Block | Apartment | null) {
-        console.table({ contextType, selectedContextType, contextId });
         setCascateContextSearching((prev) => {
+            // Only update valid cascade keys (company, complex, block, apartment)
+            const validKeys: Array<keyof typeof prev> = ['company', 'complex', 'block', 'apartment'];
+            if (!validKeys.includes(selectedContextType as any)) return prev;
+
             const updated = { ...prev, [selectedContextType]: contextModel };
-            Object.assign(updated, {
-                complex: selectedContextType === ContextType.company ? null : updated.complex,
-                block: selectedContextType === ContextType.company || selectedContextType === ContextType.complex ? null : updated.block,
-                apartment: selectedContextType !== ContextType.apartment ? null : updated.apartment,
-            });
+            // Cascade reset: changing a parent context clears all downstream selections
+            if (selectedContextType === ContextType.company) {
+                updated.complex = null;
+                updated.block = null;
+                updated.apartment = null;
+            } else if (selectedContextType === ContextType.complex) {
+                updated.block = null;
+                updated.apartment = null;
+            } else if (selectedContextType === ContextType.block) {
+                updated.apartment = null;
+            }
             return updated;
         });
 
-        if (contextType == selectedContextType) {
-            setContextId(contextModel?.id || null);
+        if (contextType === selectedContextType) {
+            setContextId(contextModel?.id ?? null);
         }
     }
 
+    // Sync contextId whenever selectedComplexIds changes (complex context type only)
     useEffect(() => {
-        if (loading) {
-            toast({ title: "Aguarde", description: "Adicionando papel...", duration: 2000 });
+        if (contextType !== ContextType.complex) return;
+        if (selectedComplexIds.size === 1) {
+            setContextId([...selectedComplexIds][0]);
+        } else {
+            setContextId(null);
         }
-    }, [loading, toast]);
+    }, [selectedComplexIds, contextType]);
 
     useEffect(() => {
         if (error) {
-            toast({ title: "Erro", description: error, variant: "destructive" });
+            toast({ title: "Erro ao adicionar papel", description: error, variant: "destructive" });
         }
     }, [error, toast]);
 
     const handleSelectContextType = (value: ContextType) => {
         setContextType(value);
+        setSelectedComplexIds(new Set());
+        // Reset cascade state when switching context type
+        setCascateContextSearching({ company: null, complex: null, block: null, apartment: null });
         if (value === ContextType.system) {
             setContextId(ContextType.system);
         } else {
@@ -374,37 +562,125 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
         }
     }
 
+    const toggleComplexSelection = (id: string, e?: React.MouseEvent) => {
+        // Prevent double-fire when clicking the row div while Checkbox's onClick already handled it
+        if (e) e.stopPropagation();
+        setSelectedComplexIds(prev => {
+            const updated = new Set(prev);
+            if (updated.has(id)) updated.delete(id);
+            else updated.add(id);
+            return updated;
+        });
+    };
+
+    const selectAllComplexes = (checked: boolean | 'indeterminate') => {
+        if (checked === true) {
+            const ids = new Set((allComplexes ?? []).map(c => c.id));
+            setSelectedComplexIds(ids);
+            // contextId sync handled by useEffect (size > 1 → null)
+        } else {
+            setSelectedComplexIds(new Set());
+            // contextId sync handled by useEffect (size = 0 → null)
+        }
+    };
+
     const renderContextSearchFields = () => {
+        // For complex context: show multi-select
+        if (contextType === ContextType.complex) {
+            return (
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-sm font-semibold">Selecionar Condomínios:</Label>
+                        <span className="text-xs text-muted-foreground">{selectedComplexIds.size} selecionado(s)</span>
+                    </div>
+                    <Input
+                        placeholder="Buscar condomínio..."
+                        value={complexSearch}
+                        onChange={(e) => setComplexSearch(e.target.value)}
+                        className="h-8 text-sm"
+                    />
+                    <div className="border rounded-md max-h-48 overflow-y-auto">
+                        {complexesLoading ? (
+                            <div className="flex justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>
+                        ) : (
+                            <div className="p-1">
+                                <div className="flex items-center gap-2 p-2 border-b">
+                                    <Checkbox
+                                        id="select-all-complexes"
+                                        checked={(allComplexes ?? []).length > 0 && selectedComplexIds.size === (allComplexes ?? []).length}
+                                        onCheckedChange={selectAllComplexes}
+                                    />
+                                    <label htmlFor="select-all-complexes" className="text-xs font-medium cursor-pointer select-none">
+                                        Selecionar todos ({(allComplexes ?? []).length})
+                                    </label>
+                                </div>
+                                {(allComplexes ?? []).map(cx => (
+                                    <div
+                                        key={cx.id}
+                                        className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer"
+                                        onClick={(e) => toggleComplexSelection(cx.id, e)}
+                                    >
+                                        <Checkbox
+                                            id={`cx-${cx.id}`}
+                                            checked={selectedComplexIds.has(cx.id)}
+                                            onCheckedChange={() => toggleComplexSelection(cx.id)}
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                        <label htmlFor={`cx-${cx.id}`} className="text-sm cursor-pointer select-none flex-1">
+                                            {cx.socialName || cx.aliasName || cx.id}
+                                        </label>
+                                    </div>
+                                ))}
+                                {(allComplexes ?? []).length === 0 && (
+                                    <p className="text-center text-sm text-muted-foreground p-4">Nenhum condomínio encontrado</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    {selectedComplexIds.size > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                            {[...selectedComplexIds].slice(0, 5).map(id => {
+                                const cx = (allComplexes ?? []).find(c => c.id === id);
+                                return <Badge key={id} variant="secondary" className="text-xs">{cx?.socialName || cx?.aliasName || id.slice(0, 8)}</Badge>;
+                            })}
+                            {selectedComplexIds.size > 5 && <Badge variant="outline" className="text-xs">+{selectedComplexIds.size - 5} mais</Badge>}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         return (
             <>
                 {/* COMPANY */}
-                {(contextType == ContextType.company || contextType == ContextType.complex || contextType == ContextType.block || contextType == ContextType.apartment) && (
+                {(contextType == ContextType.company || contextType == ContextType.block || contextType == ContextType.apartment) && (
                     <SelectCompany
                         modal
+                        autoSelectSingle={false}
                         company={cascateContextSearching.company as Company}
                         setSelectedCompany={(company) => {
-                            handleCasacteContextSelect(ContextType.company, company as Company);
-                        }}
-                    />
-                )}
-                {/* COMPLEX */}
-                {(contextType == ContextType.complex || contextType == ContextType.block || contextType == ContextType.apartment) && cascateContextSearching.company && (
-                    <ComplexesCombobox
-                        modal
-                        complex={cascateContextSearching.complex as Complex}
-                        setSelectedComplex={(complex) => {
-                            handleCasacteContextSelect(ContextType.complex, complex as Complex);
+                            handleCasacteContextSelect(ContextType.company, company as Company ?? null);
                         }}
                     />
                 )}
                 {/* BLOCK */}
+                {(contextType == ContextType.block || contextType == ContextType.apartment) && cascateContextSearching.company && (
+                    <ComplexesCombobox
+                        modal
+                        autoSelectSingle={false}
+                        complex={cascateContextSearching.complex as Complex}
+                        setSelectedComplex={(complex) => {
+                            handleCasacteContextSelect(ContextType.complex, complex as Complex ?? null);
+                        }}
+                    />
+                )}
                 {(contextType == ContextType.block || contextType == ContextType.apartment) && cascateContextSearching.complex && (
                     <BlocksCombobox
                         modal
                         complexId={cascateContextSearching.complex.id}
                         block={cascateContextSearching.block as Block}
                         setSelectedBlock={(block) => {
-                            handleCasacteContextSelect(ContextType.block, block as Block);
+                            handleCasacteContextSelect(ContextType.block, block as Block ?? null);
                         }}
                     />
                 )}
@@ -415,7 +691,7 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                         apartment={cascateContextSearching.apartment as Apartment}
                         blockId={cascateContextSearching.block.id}
                         setSelectedApartment={(apartment) => {
-                            handleCasacteContextSelect(ContextType.apartment, apartment as Apartment);
+                            handleCasacteContextSelect(ContextType.apartment, apartment as Apartment ?? null);
                         }}
                     />
                 )}
@@ -424,23 +700,60 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
     };
 
     const handleAddRole = async () => {
-        console.table({ user, selectedRole, contextType, contextId });
-        if (!user || !selectedRole || !contextType || !contextId) return;
+        if (!user || !selectedRole || !contextType) return;
+
+        // Multi-complex bulk assignment
+        if (contextType === ContextType.complex && selectedComplexIds.size > 0) {
+            setBulkAdding(true);
+            const complexList = [...selectedComplexIds];
+            setBulkProgress({ done: 0, total: complexList.length, errors: [] });
+            let done = 0;
+            const errors: string[] = [];
+            for (const cxId of complexList) {
+                try {
+                    await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId: cxId });
+                    done++;
+                    setBulkProgress({ done, total: complexList.length, errors });
+                } catch (err: any) {
+                    const msg = err?.message || cxId;
+                    errors.push(msg);
+                    done++;
+                    setBulkProgress({ done, total: complexList.length, errors });
+                }
+            }
+            setBulkAdding(false);
+            if (errors.length === 0) {
+                toast({ title: "Sucesso", description: `${complexList.length} papel(éis) adicionado(s) com sucesso!` });
+            } else {
+                toast({ title: "Concluído com erros", description: `${done - errors.length} adicionados, ${errors.length} erros.`, variant: "destructive" });
+            }
+            onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId: 'bulk' });
+            return;
+        }
+
+        if (!contextId) return;
         try {
-            const createdRoleAssignment = await createRoleAssignment({
-                userId: user.id,
-                roleId: selectedRole.id,
-                contextType,
-                contextId,
-            });
+            const createdRoleAssignment = await createRoleAssignment({ userId: user.id, roleId: selectedRole.id, contextType, contextId });
             if (createdRoleAssignment?.id) {
                 toast({ title: "Sucesso", description: "Papel adicionado com sucesso!", variant: "default" });
                 onAddedRole({ id: selectedRole.id, name: selectedRole.name, contextType, contextId });
+            } else {
+                // Hook captura o erro internamente — expõe via `error`
+                const errMsg = error || "Não foi possível adicionar o papel. Verifique os dados e tente novamente.";
+                toast({ title: "Erro ao adicionar papel", description: errMsg, variant: "destructive" });
             }
-        } catch (error) {
-            console.error("Error adding role:", error);
+        } catch (err: any) {
+            console.error("Error adding role:", err);
+            const errMsg = err?.response?.data?.error || err?.message || "Erro inesperado ao adicionar papel.";
+            toast({ title: "Erro ao adicionar papel", description: errMsg, variant: "destructive" });
         }
     };
+
+    const isAddDisabled = !selectedRole || !contextType || (
+        contextType === ContextType.complex
+            ? selectedComplexIds.size === 0
+            : !contextId
+    ) || bulkAdding;
 
     return (
         <Card>
@@ -493,9 +806,24 @@ function RoleAssignmentCreationForm({ user, availableRoles, setAddingRole, onAdd
                             />
                         </div>
                     )}
+
+                    {/* Bulk progress */}
+                    {bulkProgress && (
+                        <div className="text-sm text-muted-foreground bg-muted/50 rounded p-2">
+                            {bulkAdding
+                                ? `Adicionando... ${bulkProgress.done}/${bulkProgress.total}`
+                                : <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4 text-green-500" /> Concluído: {bulkProgress.done - bulkProgress.errors.length} de {bulkProgress.total} adicionados.</span>
+                            }
+                        </div>
+                    )}
+
                     <div className="flex space-x-2">
-                        <Button type="button" onClick={handleAddRole} disabled={!selectedRole || !contextType || !contextId} size="sm">
-                            Adicionar
+                        <Button type="button" onClick={handleAddRole} disabled={isAddDisabled} size="sm">
+                            {bulkAdding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                            {contextType === ContextType.complex && selectedComplexIds.size > 1
+                                ? `Adicionar em ${selectedComplexIds.size} condomínios`
+                                : "Adicionar"
+                            }
                         </Button>
                         <Button variant="outline" onClick={() => setAddingRole(false)} size="sm">
                             Cancelar

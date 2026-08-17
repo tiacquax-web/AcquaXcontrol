@@ -3,8 +3,9 @@ import { createEntity, deleteEntity, getEntityListData, updateEntityData } from 
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ApartmentConsumptionReport, ContextType, DealershipType } from "@prisma/client"
 import prisma from '@/lib/prisma'
-import { id } from "date-fns/locale"
 import { NextRequest, NextResponse } from "next/server"
+import { scheduleEmailQueueProcessing } from '@/lib/services/email-queue-trigger'
+import { createEmailJobForReport } from '@/lib/services/filipeta-email-dispatcher'
 
 function getQueryParams(req: NextRequest) {
     // query params - custom
@@ -189,6 +190,16 @@ export async function POST(req: NextRequest): Promise<Response> {
         const { entity, error: creationError, status: creationStatus } = await createEntity(userId, 'apartmentConsumptionReport', bodyData);
         if (creationError) return NextResponse.json({ error: creationError }, { status: creationStatus });
         if (!entity) return NextResponse.json({ error: 'Internal Server Error - Entity not created' }, { status: 500 });
+
+        if (body.dealershipReadingId && (entity as any)?.id) {
+            try {
+                const emailJobResult = await createEmailJobForReport((entity as any).id, userId);
+                console.log(`[ReportSave] create-report ${(entity as any).id}:`, emailJobResult);
+            } catch (emailError: any) {
+                console.error('[ReportSave] Erro ao criar job do relatório:', emailError?.message || emailError);
+            }
+            scheduleEmailQueueProcessing(req, `create-report:${body.dealershipReadingId}`, [body.dealershipReadingId]);
+        }
 
         // Return the created entity data
         return NextResponse.json(entity);

@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building2, Loader2, MapPin, Plus, Search } from "lucide-react"
+import { Building2, Download, Loader2, MapPin, Plus, Search } from "lucide-react"
 import { useBlocks, useBlockMutations } from "@/hooks/useBlocks"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,7 @@ import type { Block } from "@prisma/client"
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext, PaginationEllipsis } from "@/components/ui/pagination"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { BlockFull } from "@/types/fullTypes"
+import axios from "axios"
 
 export default function BlocksPage() {
     const [filters, setFilters] = useState({ nameQuery: "", complexId: "", complexSocialName: "" })
@@ -37,6 +38,7 @@ export default function BlocksPage() {
 
     // Estado local para blocos reativos
     const [localBlocks, setLocalBlocks] = useState<BlockFull[]>([]);
+    const [exportLoading, setExportLoading] = useState(false);
 
     // Sincroniza localBlocks com blocks do hook
     useEffect(() => {
@@ -48,6 +50,30 @@ export default function BlocksPage() {
         setFilters((prev) => ({ ...prev, [name]: value }))
         setCurrentPage(1);
         setSkip(0);
+    }
+
+    const handleExportBlocks = async () => {
+        setExportLoading(true)
+        try {
+            const response = await axios.post('/api/user/blocks/export', {
+                search: filters.nameQuery,
+                complexId: filters.complexId || undefined,
+            }, { responseType: 'blob' })
+            const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+            const url = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = `blocos_${new Date().toISOString().split('T')[0]}.xlsx`
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            window.URL.revokeObjectURL(url)
+            toast({ title: 'Exportação concluída!', description: 'Planilha baixada.' })
+        } catch (error: any) {
+            toast({ title: 'Erro', description: error.response?.data?.error || error.message, variant: 'destructive' })
+        } finally {
+            setExportLoading(false)
+        }
     }
 
     const handleAddBlock = () => {
@@ -133,9 +159,15 @@ export default function BlocksPage() {
                         <CardTitle className="text-2xl font-bold">Blocos</CardTitle>
                         <CardDescription>Gerencie os blocos e seus detalhes</CardDescription>
                     </div>
-                    <Button onClick={handleAddBlock}>
-                        <Plus className="mr-2 h-4 w-4" /> Adicionar Bloco
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={handleExportBlocks} disabled={exportLoading}>
+                            {exportLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                            Exportar
+                        </Button>
+                        <Button onClick={handleAddBlock}>
+                            <Plus className="mr-2 h-4 w-4" /> Adicionar Bloco
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col space-y-4">

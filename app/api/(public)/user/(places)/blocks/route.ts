@@ -4,7 +4,6 @@ import { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
 import { createEntity, deleteEntity, getAvailableBlocksForEntity, getEntityListData, updateEntityData, bulkCreateEntity } from "@/lib/userData"
 import { isSessionValid, validateUserSession } from "@/lib/users"
 import { ContextType } from "@prisma/client"
-import { id } from "date-fns/locale"
 import { NextRequest, NextResponse } from "next/server"
 
 function getQueryParams(req: NextRequest) {
@@ -82,8 +81,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         return NextResponse.json({ list: entity, totalCount: totalCount })
 
     } catch (error: any) {
-        console.error("Error fetching blocks:", error)
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+        console.error("[blocks/GET] Error fetching blocks:", error)
+        return NextResponse.json({ error: error?.message || 'Internal Server Error' }, { status: 500 })
     }
 }
 
@@ -120,7 +119,7 @@ export async function POST(req: NextRequest): Promise<Response> {
             // Busca todos os complexIds únicos de uma vez
             const uniqueComplexIds = [...new Set(reqBody.map(block => block.complexId).filter(Boolean))];
             const existingComplexes = await prisma.complex.findMany({
-                where: { id: { in: uniqueComplexIds }, deletedAt: null },
+                where: { id: { in: uniqueComplexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
                 select: { id: true }
             });
             const existingComplexIds = new Set(existingComplexes.map(c => c.id));
@@ -187,7 +186,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     } catch (error: any) {
         // Log and handle unexpected errors
-        console.error("Error creating block:", error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        console.error("[blocks/POST] Error creating block:", error);
+        const msg = error?.message || 'Erro interno ao criar bloco.';
+        return NextResponse.json({ error: msg }, { status: 500 });
     }
 }

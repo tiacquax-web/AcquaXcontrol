@@ -11,7 +11,7 @@ const cspDirectives = [
   // Estilos: 'self' + inline (Tailwind / CSS-in-JS)
   "style-src 'self' 'unsafe-inline'",
   // Imagens: próprio domínio + CDN + data URIs + blobs (previews de foto)
-  `img-src 'self' data: blob: https://${PRODUCTION_DOMAIN} https://www.${PRODUCTION_DOMAIN} https://cdn.${PRODUCTION_DOMAIN}`,
+  `img-src 'self' data: blob: https://${PRODUCTION_DOMAIN} https://www.${PRODUCTION_DOMAIN} https://cdn.${PRODUCTION_DOMAIN} https://i.postimg.cc`,
   // Fontes
   `font-src 'self' data:`,
   // Conexões API e WebSockets
@@ -33,6 +33,10 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+
+  // ─── Dev origins permitidos (sandbox Novita / qualquer *.sandbox.novita.ai) ─
+  // Necessário no Next.js 15 para que o hot-reload e cookies funcionem via proxy
+  allowedDevOrigins: ['*.sandbox.novita.ai'],
 
   // ─── Security & CORS headers ───────────────────────────────────────────────
   async headers() {
@@ -102,6 +106,11 @@ const nextConfig: NextConfig = {
     ];
   },
 
+  // ─── Experimental features ───────────────────────────────────────────────────
+  experimental: {
+    after: true,
+  },
+
   // ─── Image domains ────────────────────────────────────────────────────────
   images: {
     remotePatterns: [
@@ -120,6 +129,12 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'acquaxcontrol.com.br',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'i.postimg.cc',
         port: '',
         pathname: '/**',
       },

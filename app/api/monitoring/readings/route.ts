@@ -58,32 +58,63 @@ export async function POST(req: NextRequest) {
     const includeStats = body.includeStats !== false // default true
     const sigma = body.outlierSigma || 2
 
-    // Busca leituras brutas
-    const rawReadings = await prisma.reading.findMany({
-      where: {
-        meterId: { in: body.meterIds },
-        readAt: { gte: from, lte: to },
-        deletedAt: null,
-        ...(alertsOnly ? { alerts: { not: null } } : {})
-      },
-      select: {
-        id: true,
-        meterId: true,
-        reading: true,
-        readAt: true,
-        isManualReading: true,
-        alerts: true,
-        meter: { select: { register: true, rotation: true } }
-      },
-      orderBy: { readAt: 'asc' }
-    })
+    // Buscar leituras e alarmes GL em paralelo. Alarmes são persistidos em uma
+    // coleção própria e não aparecem necessariamente no campo alerts da leitura.
+    const [rawReadings, rawGlAlarms, meterMetadata] = await Promise.all([
+      prisma.reading.findMany({
+        where: {
+          meterId: { in: body.meterIds },
+          readAt: { gte: from, lte: to },
+          deletedAt: null,
+          ...(alertsOnly ? { alerts: { not: null } } : {})
+        },
+        select: {
+          id: true,
+          meterId: true,
+          reading: true,
+          readAt: true,
+          isManualReading: true,
+          alerts: true,
+          meter: { select: { register: true, rotation: true } }
+        },
+        orderBy: { readAt: 'asc' }
+      }),
+      prisma.glAlarm.findMany({
+        where: {
+          meterId: { in: body.meterIds },
+          alarmAt: { gte: from, lte: to },
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          meterId: true,
+          alarmCode: true,
+          criticality: true,
+          alarmAt: true,
+          acknowledged: true,
+        },
+        orderBy: { alarmAt: 'asc' },
+      }),
+      prisma.meter.findMany({
+        where: { id: { in: body.meterIds }, deletedAt: null },
+        select: { id: true, register: true, rotation: true },
+      }),
+    ])
 
     // Agrupar por meter
     const byMeter: Record<string, any[]> = {}
+    const alarmsByMeter = new Map<string, typeof rawGlAlarms>();
+    const metadataByMeter = new Map(meterMetadata.map((meter) => [meter.id, meter]));
     rawReadings.forEach(r => {
       if (!r.meterId) return // segurança: ignorar leituras sem meterId
       if (!byMeter[r.meterId]) byMeter[r.meterId] = []
       byMeter[r.meterId].push(r)
+    })
+    rawGlAlarms.forEach((alarm) => {
+      if (!alarm.meterId) return;
+      const list = alarmsByMeter.get(alarm.meterId) || [];
+      list.push(alarm);
+      alarmsByMeter.set(alarm.meterId, list);
     })
 
     function isoDay(d: Date) { return d.toISOString().split('T')[0] }
@@ -91,8 +122,11 @@ export async function POST(req: NextRequest) {
     const metersResult: any[] = []
     const distinctAlertsSet = new Set<string>()
 
-    for (const meterId of Object.keys(byMeter)) {
-      let readings = byMeter[meterId]
+    const meterIdsToProcess = [...new Set([...Object.keys(byMeter), ...alarmsByMeter.keys()])];
+    for (const meterId of meterIdsToProcess) {
+      let readings = byMeter[meterId] || []
+      const meterAlarms = alarmsByMeter.get(meterId) || [];
+      const metadata = metadataByMeter.get(meterId);
 
       if (mode === 'dailyLast') {
         // Pegar última leitura do dia
@@ -107,7 +141,7 @@ export async function POST(req: NextRequest) {
         readings = Array.from(map.values()).sort((a, b) => a.readAt.getTime() - b.readAt.getTime())
       }
 
-      if (readings.length === 0) continue
+      if (readings.length === 0 && meterAlarms.length === 0) continue
 
       // Parse alerts para array
       readings = readings.map(r => {
@@ -121,7 +155,7 @@ export async function POST(req: NextRequest) {
 
       // Calcular deltas (consumo entre leituras)
       let deltas: number[] = []
-      const rotation = readings[0].meter.rotation || 'Crescente'
+      const rotation = readings[0]?.meter?.rotation || metadata?.rotation || 'Crescente'
       for (let i = 1; i < readings.length; i++) {
         const prev = readings[i - 1]
         const curr = readings[i]
@@ -136,9 +170,11 @@ export async function POST(req: NextRequest) {
       if (includeStats) {
         const positive = deltas.filter(d => d > 0)
         const negative = deltas.filter(d => d < 0)
-        const totalConsumed = rotation === 'Decrescente'
-          ? (Number(readings[0].reading ?? 0) - Number(readings[readings.length - 1].reading ?? 0))
-          : (Number(readings[readings.length - 1].reading ?? 0) - Number(readings[0].reading ?? 0))
+        const totalConsumed = readings.length >= 2
+          ? (rotation === 'Decrescente'
+            ? (Number(readings[0].reading ?? 0) - Number(readings[readings.length - 1].reading ?? 0))
+            : (Number(readings[readings.length - 1].reading ?? 0) - Number(readings[0].reading ?? 0)))
+          : 0
         const avgDelta = positive.length ? positive.reduce((a, b) => a + b, 0) / positive.length : null
         let stdDev: number | null = null
         if (positive.length >= 3 && avgDelta !== null) {
@@ -167,6 +203,19 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        for (const alarm of meterAlarms) {
+          anomalies.push({
+            readingId: `gl-alarm:${alarm.id}`,
+            readAt: alarm.alarmAt,
+            delta: 0,
+            anomalyTypes: ['GL_ALARM', alarm.alarmCode],
+            criticality: alarm.criticality,
+            acknowledged: alarm.acknowledged,
+          });
+          distinctAlertsSet.add('GL_ALARM');
+          distinctAlertsSet.add(alarm.alarmCode);
+        }
+
         stats = {
           totalConsumed,
           avgDelta,
@@ -174,7 +223,7 @@ export async function POST(req: NextRequest) {
           maxDelta,
           stdDev,
           negativeCount: negative.length,
-          alertCount: readings.filter(r => r.alertsArr.length).length,
+          alertCount: readings.filter(r => r.alertsArr.length).length + meterAlarms.length,
           anomalies
         }
       }
@@ -192,7 +241,7 @@ export async function POST(req: NextRequest) {
         return {
           readingId: r.id,
           meterId,
-          register: readings[0].meter.register,
+          register: readings[0]?.meter?.register || metadata?.register || meterId,
           date: dateKey,
           readAt: r.readAt.toISOString(),
           value,

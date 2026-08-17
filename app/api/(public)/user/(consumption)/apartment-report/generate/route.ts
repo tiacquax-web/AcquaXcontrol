@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { isSessionValid } from "@/lib/users"
 import { PrismaClient } from "@prisma/client"
+import { createEmailJobsForDealershipReading } from "@/lib/services/filipeta-email-dispatcher"
+import { scheduleEmailQueueProcessing } from '@/lib/services/email-queue-trigger'
 
 const prisma = new PrismaClient()
 
@@ -114,6 +116,18 @@ export async function POST(req: NextRequest): Promise<Response> {
                 reports.push(newReport)
             }
         }
+
+        // ── Trigger: criar EmailJobs para envio automático de filipetas ────────────
+        if (dealershipReadingId) {
+            try {
+                await createEmailJobsForDealershipReading(dealershipReadingId, userId);
+                console.log(`[Generate Reports] EmailJobs criados para dealershipReading: ${dealershipReadingId}`);
+            } catch (emailErr: any) {
+                console.error('[Generate Reports] Erro ao criar EmailJobs:', emailErr?.message);
+            }
+        }
+
+        scheduleEmailQueueProcessing(req, `generate:${dealershipReadingId}`, [dealershipReadingId])
 
         return NextResponse.json({ 
             success: true, 
