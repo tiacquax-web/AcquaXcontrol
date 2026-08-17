@@ -14,6 +14,7 @@ const DEFAULT_CONFIG: Record<string, Record<RoleType, boolean>> = {
   '/monitoring':          { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
   '/alerts':              { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
   '/reservoir-monitoring':{ morador: true, sindico: true, administradora: true, programador: true, administrador: true },
+  '/energy-monitoring':   { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
   '/apuracao':            { morador: false, sindico: false, administradora: true, programador: true, administrador: true },
   '/guia':                { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
   '/suporte':             { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
