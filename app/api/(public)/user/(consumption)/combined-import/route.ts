@@ -35,6 +35,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ message: "Não autorizado" }, { status: 401 });
     }
 
+    // MongoDB-safe "not deleted" filter
+    const notDeleted = {
+      OR: [
+        { deletedAt: null },
+        { deletedAt: { isSet: false } },
+      ],
+    };
+
     const body = await req.json();
     const { 
       rows, 
@@ -78,7 +86,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const dealershipReading = await prisma.dealershipReading.findFirst({
       where: {
         id: dealershipReadingId,
-        deletedAt: null
+        ...notDeleted
       },
       include: {
         complex: true
@@ -96,10 +104,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Buscar apartamentos + meters do complexo (já era feito – mantém include para evitar nova query por meter)
     console.time("⏱️ Fetch apartments and meters");
     const apartments = await prisma.apartment.findMany({
-      where: { complexId: dealershipReading.complexId, deletedAt: null },
+      where: { complexId: dealershipReading.complexId, ...notDeleted },
       include: {
         block: { include: { complex: true } },
-        meters: { where: { deletedAt: null }, include: { typeMeter: true } as any }
+        meters: { where: { ...notDeleted }, include: { typeMeter: true } as any }
       }
     });
     console.timeEnd("⏱️ Fetch apartments and meters");
@@ -439,7 +447,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             apartmentId: { in: apartmentsTouched },
             monthRef: { in: monthFilters },
             yearRef: { in: yearFilters },
-            deletedAt: null
+            ...notDeleted
           } as any),
           select: { id: true, apartmentId: true, monthRef: true, yearRef: true, utilityType: true }
         })

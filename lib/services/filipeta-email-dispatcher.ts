@@ -50,7 +50,13 @@ export async function createEmailJobsForDealershipReading(
   if (!dealershipReading) return { created: 0, skipped: 0, total: 0 };
 
   const reports = await prisma.apartmentConsumptionReport.findMany({
-    where: { dealershipReadingId, deletedAt: null },
+    where: { 
+      dealershipReadingId, 
+      OR: [
+        { deletedAt: null },
+        { deletedAt: { isSet: false } },
+      ],
+    },
     include: {
       apartment: {
         select: { id: true, name: true, block: { select: { name: true } } },
