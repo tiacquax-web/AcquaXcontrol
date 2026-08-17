@@ -309,22 +309,18 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
             // Places (Contexts)
             case PermissionableEntity.company:
                 const companies = await prisma.company.findMany({
-                    where: {
+                    where: cleanWhere({
                         AND: [
+                            notDeleted,
                             {
                                 name: search ? { contains: search, mode: "insensitive" } : undefined,
-
                                 // Filtro do contexto BUSCADO
                                 id: contextType === ContextType.company ? contextId : undefined,
-
-                                // Filtro do contexto do USUÁRIO
-                                OR: hasSystemPermission ? undefined : [
-                                    { id: { in: contexts.companyIds } }, // Empresas do usuário
-                                ]
                             },
+                            !hasSystemPermission ? { OR: [{ id: { in: contexts.companyIds } }] } : {},
                             extraWhere,
                         ]
-                    },
+                    }),
                     take: take < 200 ? take : 200,
                 });
                 return { entity: companies, error: null, status: 200 };
@@ -340,8 +336,8 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                             {
                                 socialName: search ? { contains: search, mode: "insensitive" } : undefined,
                                 companyId: contextType === ContextType.company ? contextId : undefined,
-                                OR: complexWhereOr && complexWhereOr.length > 0 ? complexWhereOr : undefined,
                             },
+                            complexWhereOr && complexWhereOr.length > 0 ? { OR: complexWhereOr } : {},
                             extraWhere,
                         ]
                     }),

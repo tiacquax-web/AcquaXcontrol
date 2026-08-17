@@ -148,6 +148,10 @@ export async function GET(req: NextRequest): Promise<Response> {
             blocks,
             complexes,
             companyIds,
+            // Adicionamos as IDs diretas para ajudar o frontend a distinguir Morador de Síndico
+            directApartmentIds: apartmentIds,
+            directBlockIds: blockIds,
+            directComplexIds: complexIds,
             accessibleComplexIds: complexes.map(c => c.id),
             glComplexIds,
         });
