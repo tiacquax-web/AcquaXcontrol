@@ -34,6 +34,10 @@
     {
       "path": "/api/cron/cleanup-soft-deleted",
       "schedule": "0 3 1 * *"
+    },
+    {
+      "path": "/api/cron/check-consumption-goals",
+      "schedule": "0 8 * * *"
     }
   ]
 }

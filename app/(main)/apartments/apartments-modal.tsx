@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Switch } from "@/components/ui/switch"
+import { Separator } from "@/components/ui/separator"
 import type { Apartment } from "@prisma/client"
 import BlocksCombobox from "@/components/ComboboxBlock"
 import ComplexesCombobox from "@/components/ComboboxComplex"
@@ -30,6 +32,11 @@ export default function ApartmentModal({ isOpen, onClose, onSave, apartment }: A
         blockId: "",
         fraction: 0,
         counter: 0,
+        consumptionGoalWater: 0,
+        consumptionGoalGas: 0,
+        consumptionGoalEnergy: 0,
+        alertsEnabled: true,
+        goalAlertsEnabled: true,
     })
     const [complexId, setComplexId] = useState<string>("")
     const [selectedComplex, setSelectedComplex] = useState<any | undefined>(undefined)
@@ -45,6 +52,11 @@ export default function ApartmentModal({ isOpen, onClose, onSave, apartment }: A
         if (apartment) {
             setFormData({
                 ...apartment,
+                consumptionGoalWater: (apartment as any).consumptionGoalWater || 0,
+                consumptionGoalGas: (apartment as any).consumptionGoalGas || 0,
+                consumptionGoalEnergy: (apartment as any).consumptionGoalEnergy || 0,
+                alertsEnabled: (apartment as any).alertsEnabled ?? true,
+                goalAlertsEnabled: (apartment as any).goalAlertsEnabled ?? true,
             })
             // Se vier o bloco e o complexo, preenche os estados para os comboboxes
             const aptAny = apartment as any;
@@ -63,6 +75,11 @@ export default function ApartmentModal({ isOpen, onClose, onSave, apartment }: A
                 blockId: "",
                 fraction: 0,
                 counter: 0,
+                consumptionGoalWater: 0,
+                consumptionGoalGas: 0,
+                consumptionGoalEnergy: 0,
+                alertsEnabled: true,
+                goalAlertsEnabled: true,
             })
             setSelectedComplex(undefined)
             setSelectedBlock(undefined)
@@ -77,6 +94,10 @@ export default function ApartmentModal({ isOpen, onClose, onSave, apartment }: A
 
     const handleSelectChange = (name: string, value: string) => {
         setFormData((prev) => ({ ...prev, [name]: value }))
+    }
+
+    const handleSwitchChange = (name: string, checked: boolean) => {
+        setFormData((prev) => ({ ...prev, [name]: checked }))
     }
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -187,9 +208,10 @@ export default function ApartmentModal({ isOpen, onClose, onSave, apartment }: A
                     <DialogTitle>{apartment ? "Editar Apartamento" : "Novo Apartamento ou Importação"}</DialogTitle>
                 </DialogHeader>
                 <Tabs defaultValue="basic" className="mb-4">
-                    <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="basic">Cadastro Manual</TabsTrigger>
-                        <TabsTrigger value="import">Importar Planilha</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-3">
+                        <TabsTrigger value="basic">Geral</TabsTrigger>
+                        <TabsTrigger value="goals">Metas e Alertas</TabsTrigger>
+                        <TabsTrigger value="import">Importar</TabsTrigger>
                     </TabsList>
                     <TabsContent value="basic" className="space-y-4 mt-4">
                         <form onSubmit={handleSubmit}>
@@ -255,6 +277,86 @@ export default function ApartmentModal({ isOpen, onClose, onSave, apartment }: A
                                     Cancelar
                                 </Button>
                                 <Button type="submit">Salvar</Button>
+                            </DialogFooter>
+                        </form>
+                    </TabsContent>
+
+                    <TabsContent value="goals" className="space-y-6 mt-4">
+                        <form onSubmit={handleSubmit}>
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-medium text-muted-foreground">Metas Mensais de Consumo</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="consumptionGoalWater">Água (m³)</Label>
+                                        <Input
+                                            id="consumptionGoalWater"
+                                            name="consumptionGoalWater"
+                                            type="number"
+                                            step="0.1"
+                                            value={formData.consumptionGoalWater || 0}
+                                            onChange={handleChange}
+                                            placeholder="Ex: 12.0"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="consumptionGoalGas">Gás (m³)</Label>
+                                        <Input
+                                            id="consumptionGoalGas"
+                                            name="consumptionGoalGas"
+                                            type="number"
+                                            step="0.1"
+                                            value={formData.consumptionGoalGas || 0}
+                                            onChange={handleChange}
+                                            placeholder="Ex: 5.0"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="consumptionGoalEnergy">Energia (kWh)</Label>
+                                        <Input
+                                            id="consumptionGoalEnergy"
+                                            name="consumptionGoalEnergy"
+                                            type="number"
+                                            step="1"
+                                            value={formData.consumptionGoalEnergy || 0}
+                                            onChange={handleChange}
+                                            placeholder="Ex: 200"
+                                        />
+                                    </div>
+                                </div>
+
+                                <Separator className="my-4" />
+
+                                <h3 className="text-sm font-medium text-muted-foreground">Configurações de Alertas IoT</h3>
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between space-x-2">
+                                        <div className="space-y-0.5">
+                                            <Label htmlFor="alertsEnabled">Alertas de Anomalias</Label>
+                                            <p className="text-xs text-muted-foreground">Receber avisos imediatos de vazamentos ou fluxos atípicos.</p>
+                                        </div>
+                                        <Switch
+                                            id="alertsEnabled"
+                                            checked={formData.alertsEnabled ?? true}
+                                            onCheckedChange={(checked) => handleSwitchChange("alertsEnabled", checked)}
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between space-x-2">
+                                        <div className="space-y-0.5">
+                                            <Label htmlFor="goalAlertsEnabled">Avisos de Franquia (Meta)</Label>
+                                            <p className="text-xs text-muted-foreground">Receber avisos ao atingir 50%, 80% e 100% da meta definida.</p>
+                                        </div>
+                                        <Switch
+                                            id="goalAlertsEnabled"
+                                            checked={formData.goalAlertsEnabled ?? true}
+                                            onCheckedChange={(checked) => handleSwitchChange("goalAlertsEnabled", checked)}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <DialogFooter className="mt-8">
+                                <Button type="button" variant="outline" onClick={onClose}>
+                                    Cancelar
+                                </Button>
+                                <Button type="submit">Salvar Configurações</Button>
                             </DialogFooter>
                         </form>
                     </TabsContent>

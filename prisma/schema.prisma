@@ -532,6 +532,17 @@ model Apartment {
   updatedAt                 DateTime?   @updatedAt @db.Timestamp
   fraction                  Float       @default(0.00000000)
 
+  // Configurações de Metas e Alertas
+  consumptionGoalWater      Float?      // Meta mensal de água em m3
+  consumptionGoalGas        Float?      // Meta mensal de gás em m3
+  consumptionGoalEnergy     Float?      // Meta mensal de energia em kWh
+  
+  alertsEnabled             Boolean     @default(true) // Habilita alertas IoT para este apartamento
+  goalAlertsEnabled         Boolean     @default(true) // Habilita avisos de meta (50%, 80%, 100%)
+  
+  // Rastreamento de alertas de meta enviados no mês atual (formato: "YYYY-MM:50,80,100")
+  sentGoalAlerts            String?     
+
   // Relacionamento com Meter
   meters Meter[]
 
