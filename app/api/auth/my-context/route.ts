@@ -85,27 +85,37 @@ export async function GET(req: NextRequest): Promise<Response> {
         allBlockIds = [...new Set(allBlockIds)];
         allApartmentIds = [...new Set(allApartmentIds)];
 
-        // Buscar dados completos
+        // Buscar dados completos - Usando AND para evitar sobrescrita de chaves OR
         const complexes = await prisma.complex.findMany({
             where: {
-                ...(isSystem ? {} : { id: { in: allComplexIds } }),
-                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                AND: [
+                    isSystem ? {} : { id: { in: allComplexIds } },
+                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
+                ]
             },
             include: { company: true }
         });
 
         const blocks = await prisma.block.findMany({
             where: {
-                ...(isSystem ? {} : { OR: [{ id: { in: allBlockIds } }, { complexId: { in: allComplexIds } }] }),
-                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                AND: [
+                    isSystem ? {} : { OR: [{ id: { in: allBlockIds } }, { complexId: { in: allComplexIds } }] },
+                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
+                ]
             },
             include: { complex: { include: { company: true } } }
         });
 
         const apartments = await prisma.apartment.findMany({
             where: {
-                ...(isSystem ? {} : { OR: [{ id: { in: allApartmentIds } }, { blockId: { in: allBlockIds } }, { block: { complexId: { in: allComplexIds } } }] }),
-                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                AND: [
+                    isSystem ? {} : { OR: [
+                        { id: { in: allApartmentIds } }, 
+                        { blockId: { in: allBlockIds } }, 
+                        { block: { complexId: { in: allComplexIds } } }
+                    ]},
+                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
+                ]
             },
             include: {
                 block: {
@@ -120,9 +130,11 @@ export async function GET(req: NextRequest): Promise<Response> {
         let glComplexIds: string[] = [];
         const glMeters = await prisma.meter.findMany({
             where: {
-                glId: { not: null, notIn: [''] },
-                ...(isSystem ? {} : { complexId: { in: complexes.map(c => c.id) } }),
-                OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+                AND: [
+                    { glId: { not: null, notIn: [''] } },
+                    isSystem ? {} : { complexId: { in: complexes.map(c => c.id) } },
+                    { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
+                ]
             },
             select: { complexId: true },
             distinct: ['complexId'],

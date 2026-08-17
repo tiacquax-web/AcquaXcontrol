@@ -1429,11 +1429,15 @@ export default function Dashboard() {
   const isProgramador = isSystem && !isAdministrador;
   const isMorador = useMemo(() => {
     if (!effectiveCtx) return false;
-    return !effectiveCtx.isSystem
-      && effectiveCtx.companyIds.length === 0
-      && effectiveCtx.complexes.length === 0
-      && effectiveCtx.blocks.length === 0
-      && effectiveCtx.apartments.length > 0;
+    // Se for admin do sistema ou tiver acesso a empresas/condomínios/blocos, NÃO é apenas morador
+    if (effectiveCtx.isSystem || 
+        effectiveCtx.companyIds.length > 0 || 
+        effectiveCtx.complexes.length > 0 || 
+        effectiveCtx.blocks.length > 0) {
+      return false;
+    }
+    // Se não tem nada acima, mas tem apartamentos, é morador
+    return effectiveCtx.apartments.length > 0;
   }, [effectiveCtx]);
 
   const renderDashboard = () => {
