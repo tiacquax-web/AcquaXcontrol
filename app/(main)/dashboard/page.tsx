@@ -287,6 +287,9 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
   const ctxLoading = isPreviewing ? false : realLoading;
   const apartments = context?.apartments ?? [];
 
+  const [selectedMonthVal, setSelectedMonthVal] = useState(allMonthOptions[0].value);
+  const selectedMonthOpt = allMonthOptions.find(o => o.value === selectedMonthVal) || allMonthOptions[0];
+
   const singleApartment = useMemo(() => {
     if (!context || apartments.length !== 1) return null;
     return apartments[0];
@@ -296,10 +299,9 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
   const activeAptId = singleApartment?.id ?? selectedAptId;
 
   // Buscar relatórios de consumo do morador para exibir dados mesmo sem GL IoT
-  const currentMonthOpt = allMonthOptions[0];
   const { data: reportData, loading: reportLoading } = useMeterReport({
-    month: currentMonthOpt.month,
-    year: currentMonthOpt.year,
+    month: selectedMonthOpt.month,
+    year: selectedMonthOpt.year,
     apartmentId: activeAptId ?? undefined,
     enabled: !!activeAptId,
   });
@@ -354,9 +356,9 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <FileText className="w-5 h-5 text-teal-600" />
-                Meu Consumo — {currentMonthOpt.labelShort}
+                Meu Consumo — {selectedMonthOpt.labelShort}
               </CardTitle>
-              <MonthSelect value={currentMonthOpt.value} onChange={() => {}} />
+              <MonthSelect value={selectedMonthVal} onChange={setSelectedMonthVal} />
             </CardHeader>
             <CardContent>
               {reportLoading ? (
@@ -386,11 +388,17 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
               ) : (
                 <div className="text-center py-8 text-muted-foreground text-xs">
                   <Droplets className="w-8 h-8 mx-auto mb-2 opacity-30 text-teal-500" />
-                  <p>Nenhum relatório de consumo fechado para {currentMonthOpt.labelShort}.</p>
+                  <p>Nenhum relatório de consumo fechado para {selectedMonthOpt.labelShort}.</p>
                 </div>
               )}
             </CardContent>
           </Card>
+
+          {/* Gráfico de Consumo Anual para o Morador */}
+          <ConsumoAnualGraph apartmentId={activeAptId} complexId={apartments.find(a => a.id === activeAptId)?.block?.complexId} />
+          
+          {/* Dashboard de Área Comum (se disponível para o morador ver) */}
+          <AreaCommonAnnualDashboard complexId={apartments.find(a => a.id === activeAptId)?.block?.complexId} />
         </>
       )}
 
@@ -1425,18 +1433,22 @@ export default function Dashboard() {
   const effectiveLoading = isPrevMode ? false : ctxLoading;
 
   const isSystem      = effectiveCtx?.isSystem ?? false;
-  const isAdministrador = isSystem && (effectiveCtx?.systemRoles ?? []).includes('Administrador');
+  const isAdministrador = isSystem && (effectiveCtx?.systemRoles ?? []).some(r => 
+    r.toLowerCase().includes('admin') || r.toLowerCase().includes('master')
+  );
   const isProgramador = isSystem && !isAdministrador;
   const isMorador = useMemo(() => {
     if (!effectiveCtx) return false;
     // Se for admin do sistema ou tiver acesso a empresas, NÃO é morador
-    if (effectiveCtx.isSystem || effectiveCtx.companyIds.length > 0) {
+    if (effectiveCtx.isSystem || (effectiveCtx.companyIds && effectiveCtx.companyIds.length > 0)) {
       return false;
     }
     // Morador é quem tem apartamentos mas NÃO tem acesso administrativo a condomínios ou blocos inteiros
-    return effectiveCtx.apartments.length > 0 && 
-           effectiveCtx.complexes.length === 0 && 
-           effectiveCtx.blocks.length === 0;
+    // Usamos as IDs diretas para saber se o usuário é Administrador/Síndico de algo
+    const hasDirectAdminAccess = (effectiveCtx.directComplexIds && effectiveCtx.directComplexIds.length > 0) || 
+                                (effectiveCtx.directBlockIds && effectiveCtx.directBlockIds.length > 0);
+    
+    return (effectiveCtx.apartments && effectiveCtx.apartments.length > 0) && !hasDirectAdminAccess;
   }, [effectiveCtx]);
 
   const renderDashboard = () => {
