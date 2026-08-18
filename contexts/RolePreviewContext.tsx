@@ -187,25 +187,34 @@ export function RolePreviewProvider({ children }: { children: React.ReactNode })
       setPreviewRoleState(saved as PreviewRole)
     }
 
-    // Verificar se o usuário é admin/programador
+    // Verificar se o usuário é admin/programador de forma otimizada
     async function checkAccess() {
       try {
-        const [ctxRes, userRes] = await Promise.all([
-          fetch('/api/auth/my-context', { credentials: 'include' }),
-          fetch('/api/auth/me', { credentials: 'include' })
-        ]);
-
-        const data = ctxRes.ok ? await ctxRes.json() : null;
-        const userData = userRes.ok ? await userRes.json() : null;
+        // Tenta primeiro apenas o my-context, que é mais leve e já tem quase tudo
+        const ctxRes = await fetch('/api/auth/my-context', { credentials: 'include' });
+        if (!ctxRes.ok) return;
         
+        const data = await ctxRes.json();
         const roles = (data?.systemRoles || []).map((r: string) => r.toLowerCase());
-        const userEmail = userData?.user?.email?.toLowerCase() || '';
         
-        const isMasterEmail = userEmail.includes('acquaxcontrol') || userEmail.includes('@acquax.com') || userEmail === 'tiacquax@gmail.com';
-        const isAdmin = roles.some((r: string) => r.includes('admin') || r.includes('master')) || isMasterEmail;
+        // Se já detectou isSystem ou papel admin pelos papéis do sistema, libera
+        const hasAdminRole = data?.isSystem || roles.some((r: string) => r.includes('admin') || r.includes('master'));
+        
+        if (hasAdminRole) {
+          setCanPreview(true);
+          return;
+        }
 
-        if (data?.isSystem || isAdmin) {
-          setCanPreview(true)
+        // Se não, faz a checagem por e-mail (que exige o me)
+        const userRes = await fetch('/api/auth/me', { credentials: 'include' });
+        if (userRes.ok) {
+          const userData = await userRes.json();
+          const userEmail = userData?.user?.email?.toLowerCase() || '';
+          const isMasterEmail = userEmail.includes('acquaxcontrol') || userEmail.includes('@acquax.com') || userEmail === 'tiacquax@gmail.com';
+          
+          if (isMasterEmail) {
+            setCanPreview(true);
+          }
         }
       } catch (err) {
         console.error('[RolePreviewContext] Error checking access:', err);
