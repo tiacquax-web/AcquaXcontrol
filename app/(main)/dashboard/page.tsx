@@ -1474,8 +1474,8 @@ export default function Dashboard() {
     const roles = (effectiveCtx?.systemRoles || []).map((r: string) => r.toLowerCase());
     const userEmail = currentUser?.email?.toLowerCase() || '';
     
-    // SUPER FALLBACK: Se o e-mail for o master, força como administrador
-    const isMasterEmail = userEmail.includes('acquaxcontrol') || userEmail.includes('@acquax.com') || userEmail === 'tiacquax@gmail.com';
+    // SUPER FALLBACK: Se o e-mail for o master, força como administrador (apenas se não estiver em preview)
+    const isMasterEmail = !isPrevMode && (userEmail.includes('acquaxcontrol') || userEmail.includes('@acquax.com') || userEmail === 'tiacquax@gmail.com');
     
     // PRIORIDADE MÁXIMA: Se o usuário tem QUALQUER papel de Admin/Master em QUALQUER lugar, ele é Admin Master.
     const isAdmin = roles.some(r => r.includes('admin') || r.includes('master')) || isMasterEmail;
