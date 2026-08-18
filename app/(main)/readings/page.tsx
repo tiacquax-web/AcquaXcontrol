@@ -13,6 +13,7 @@ import SelectApartment from '@/components/ComboboxApartment';
 import SelectMeter from '@/components/ComboboxMeter';
 import { Apartment, Block, Company, Complex, Meter } from '@prisma/client';
 import { useUserContext } from '@/hooks/useUserContext';
+import { useRolePreview } from '@/contexts/RolePreviewContext';
 import { motion } from "framer-motion"
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext, PaginationEllipsis } from '@/components/ui/pagination';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -41,6 +42,11 @@ interface UserPermission {
 }
 
 export default function ReadingsPage() {
+  const { context: realCtx, loading: realLoading } = useUserContext();
+  const { isPreviewing, effectiveContext } = useRolePreview();
+  const context = isPreviewing ? effectiveContext : realCtx;
+  const loadingContext = isPreviewing ? false : realLoading;
+
   // Espera-se que permissions já seja um array
   const { permissions, loading: loadingPermissions } = usePermissionsContext();
   // Helper to check permission
@@ -49,13 +55,41 @@ export default function ReadingsPage() {
     return (permissions as UserPermission[]).some((p) => p.action === 'create' && p.entity === 'reading');
   }
 
-  // Contexto do usuário (moradores têm contexto de apartamentos específicos)
-  const { context: userContext, loading: loadingContext } = useUserContext();
+  const isSystem = context?.isSystem ?? false;
 
   // Determina se o usuário é morador (não tem permissão de sistema e tem apartamentos vinculados)
-  const isMorador = !loadingContext && userContext !== null && !userContext.isSystem && userContext.apartments.length > 0;
+  const isMorador = !loadingContext && context !== null && !isSystem && context.apartments?.length > 0;
   // Único apartamento vinculado (morador com 1 unidade)
-  const singleApartment = isMorador && userContext.apartments.length === 1 ? userContext.apartments[0] : null;
+  const singleApartment = isMorador && context.apartments?.length === 1 ? context.apartments[0] : null;
+
+  // AUTO-SELEÇÃO E TRAVA DE CONTEXTO
+  useEffect(() => {
+    if (!loadingContext && context) {
+      // 1. Auto-selecionar AcquaX do Brasil se disponível
+      if (!filters.company) {
+        const acquax = context.complexes?.find((c: any) => c.company?.name?.includes('Acqua X'))?.company;
+        if (acquax) setFilters(prev => ({ ...prev, company: acquax }));
+      }
+
+      // 2. Se for morador com 1 unidade, trava nela
+      if (singleApartment && (!filters.apartment || filters.apartment.id !== singleApartment.id)) {
+        const block = singleApartment.block as any;
+        const complex = block?.complex as any;
+        setFilters((prev) => ({
+          ...prev,
+          complex: complex || undefined,
+          block: block || undefined,
+          apartment: singleApartment as any,
+        }));
+      }
+
+      // 3. Se for síndico com 1 condomínio, trava nele
+      if (context.accessibleComplexIds?.length === 1 && !filters.complex) {
+        const cx = context.complexes?.find((c: any) => c.id === context.accessibleComplexIds[0]);
+        if (cx) setFilters(prev => ({ ...prev, complex: cx }));
+      }
+    }
+  }, [loadingContext, context, singleApartment]);
 
   const [viewType, setViewType] = useState<'Cards' | 'List'>("Cards")
   const [complexSearchText, setComplexSearchText] = useState("")
@@ -340,6 +374,7 @@ export default function ReadingsPage() {
                     company={filters.company}
                     getAvailableForEntity='reading'
                     autoSelectSingle={false}
+                    disabled={!isSystem && context?.companyIds?.length === 1}
                     setSelectedCompany={(company) => {
                       setFilters((prev) => ({
                         ...prev,
@@ -357,6 +392,7 @@ export default function ReadingsPage() {
                     complex={filters.complex}
                     getAvailableForEntity='reading'
                     autoSelectSingle={false}
+                    disabled={!isSystem && context?.accessibleComplexIds?.length === 1}
                     setSelectedComplex={(complex) => {
                       setFilters((prev) => ({
                         ...prev,

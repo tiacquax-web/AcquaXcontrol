@@ -31,6 +31,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import BulkImportTab from "./bulk-import-tab"
 
 export default function UsersPage() {
+    const { context: realCtx, loading: realLoading } = useUserContext()
+    const { isPreviewing, effectiveContext } = useRolePreview()
+    const userContext = isPreviewing ? effectiveContext : realCtx
+    const ctxLoading = isPreviewing ? false : realLoading
+
     const [searchQuery, setSearchQuery] = useState("")
     const [currentPage, setCurrentPage] = useState(1)
     const [itemsPerPage] = useState(20)
@@ -48,6 +53,36 @@ export default function UsersPage() {
 
     const skip = (currentPage - 1) * itemsPerPage
     const take = itemsPerPage
+
+    const isSystem = userContext?.isSystem ?? false
+
+    // AUTO-SELEÇÃO E TRAVA
+    useEffect(() => {
+        if (!ctxLoading && userContext) {
+            // 1. Se for morador com 1 unidade, trava nela
+            if (userContext.apartments?.length === 1 && (userContext.complexes?.length === 0 || isPreviewing)) {
+                const apt = userContext.apartments[0]
+                if (filterApartmentId !== apt.id) {
+                    setFilterComplex(apt.block?.complex ?? undefined)
+                    setFilterComplexId(apt.block?.complexId ?? "")
+                    setFilterBlock(apt.block ?? undefined)
+                    setFilterBlockId(apt.block?.id ?? "")
+                    setFilterApartment(apt as any)
+                    setFilterApartmentId(apt.id)
+                }
+            }
+
+            // 2. Se for síndico com 1 condomínio, trava nele
+            if (userContext.accessibleComplexIds?.length === 1 && !filterComplexId) {
+                const cxId = userContext.accessibleComplexIds[0]
+                const cx = userContext.complexes?.find((c: any) => c.id === cxId)
+                if (cx) {
+                    setFilterComplex(cx)
+                    setFilterComplexId(cxId)
+                }
+            }
+        }
+    }, [ctxLoading, userContext, filterApartmentId, filterComplexId])
 
     const {
         users,
@@ -71,7 +106,6 @@ export default function UsersPage() {
     const { deleteRoleAssignment, error: errorDeleteRoleAssignment, loading: loadingDeleteRoleAssignment } = useRoleAssignmentMutations()
     const { roles } = useRoles({})
     const [currentUser, setCurrentUser] = useState<Partial<User> | undefined>(undefined)
-    const { context: userContext } = useUserContext()
 
     // Só admins/programadores podem ver importação em massa
     const canBulkImport = userContext?.isSystem ?? false

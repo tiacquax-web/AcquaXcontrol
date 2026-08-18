@@ -26,6 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar'
 import { Calendar as CalendarIcon, Printer } from 'lucide-react'
 import { useUserContext } from '@/hooks/useUserContext'
+import { useRolePreview } from '@/contexts/RolePreviewContext'
 import { useMeters } from '@/hooks/useMeters'
 import { AlertTriangle } from 'lucide-react'
 
@@ -36,28 +37,42 @@ const MAX_RANGE_DAYS = 60
 export default function MonitoringPage() {
   const { prefs, update, ready } = useMonitoringLocalPreferences()
   const { hasPermission, loading: permissionsLoading } = usePermissionChecker()
-  const { context: userContext, loading: ctxLoading } = useUserContext()
+  const { context: realUserContext, loading: realCtxLoading } = useUserContext()
+  const { isPreviewing, effectiveContext } = useRolePreview()
+  
+  const userContext = isPreviewing ? effectiveContext : realUserContext
+  const ctxLoading = isPreviewing ? false : realCtxLoading
+
+  const isSystem = userContext?.isSystem ?? false;
 
   // Auto-selecionar contexto baseado no perfil
   useEffect(() => {
-    if (ctxLoading || !userContext || complexObj) return
+    if (ctxLoading || !userContext) return
 
-    // Morador com 1 apto: seleciona automaticamente
-    if (!userContext.isSystem && userContext.apartments.length === 1 && userContext.complexes.length === 0) {
-      const apt = userContext.apartments[0]
-      setComplexObj(apt.block?.complex ?? undefined)
-      setBlockObj(apt.block ?? undefined)
-      setApartmentObj(apt)
+    // 1. Auto-selecionar AcquaX do Brasil se disponível (apenas se nada estiver selecionado)
+    if (!companyObj) {
+      const acquax = userContext.complexes?.find((c: any) => c.company?.name?.includes('Acqua X'))?.company;
+      if (acquax) setCompanyObj(acquax);
     }
 
-    // Síndico com 1 condomínio: seleciona automaticamente
-    if (!userContext.isSystem && userContext.complexes.length > 0) {
-      const glComplexes = userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id))
-      if (glComplexes.length === 1) {
+    // 2. Morador com 1 apto: seleciona automaticamente e TRAVA
+    if (userContext.apartments?.length === 1 && (userContext.complexes?.length === 0 || isPreviewing)) {
+      const apt = userContext.apartments[0]
+      if (apartmentObj?.id !== apt.id) {
+        setComplexObj(apt.block?.complex ?? undefined)
+        setBlockObj(apt.block ?? undefined)
+        setApartmentObj(apt)
+      }
+    }
+
+    // 3. Síndico/Administradora com 1 condomínio: seleciona automaticamente
+    if (userContext.complexes?.length > 0) {
+      const glComplexes = userContext.complexes.filter((c: any) => userContext.glComplexIds?.includes(c.id))
+      if (glComplexes.length === 1 && !complexObj) {
         setComplexObj(glComplexes[0])
       }
     }
-  }, [ctxLoading, userContext])
+  }, [ctxLoading, userContext, companyObj, complexObj, apartmentObj])
 
   const hasGLAccess = (() => {
     if (!userContext) return false
@@ -371,16 +386,35 @@ export default function MonitoringPage() {
           </div>
         </div>
         {/* Painel Lateral (agora à direita) */}
-        <div className='monitoring-sidebar no-print flex flex-col gap-4 xl:sticky xl:top-4'>
-          <Card className='shadow-sm'>
-            <CardHeader className='pb-2'><CardTitle className='text-sm'>Contexto</CardTitle></CardHeader>
-            <CardContent className='space-y-2'>
-              <ComboboxCompany company={companyObj} setSelectedCompany={(c:any)=>{ setCompanyObj(c); setComplexObj(undefined); setBlockObj(undefined); setApartmentObj(undefined) }} />
-              <ComboboxComplex companyId={companyId} complex={complexObj} setSelectedComplex={(c:any)=>{ setComplexObj(c); setBlockObj(undefined); setApartmentObj(undefined) }} />
-              <ComboboxBlock complexId={complexId} block={blockObj} setSelectedBlock={(b:any)=>{ setBlockObj(b); setApartmentObj(undefined) }} />
-              <ComboboxApartment blockId={blockId} apartment={apartmentObj} setSelectedApartment={(a:any)=>{ setApartmentObj(a) }} />
-            </CardContent>
-          </Card>
+	        <div className='monitoring-sidebar no-print flex flex-col gap-4 xl:sticky xl:top-4'>
+	          <Card className='shadow-sm'>
+	            <CardHeader className='pb-2'><CardTitle className='text-sm'>Contexto</CardTitle></CardHeader>
+	            <CardContent className='space-y-2'>
+	              <ComboboxCompany 
+                  company={companyObj} 
+                  setSelectedCompany={(c:any)=>{ setCompanyObj(c); setComplexObj(undefined); setBlockObj(undefined); setApartmentObj(undefined) }} 
+                  disabled={!isSystem && userContext?.companyIds?.length === 1}
+                />
+	              <ComboboxComplex 
+                  companyId={companyId} 
+                  complex={complexObj} 
+                  setSelectedComplex={(c:any)=>{ setComplexObj(c); setBlockObj(undefined); setApartmentObj(undefined) }} 
+                  disabled={!isSystem && userContext?.accessibleComplexIds?.length === 1}
+                />
+	              <ComboboxBlock 
+                  complexId={complexId} 
+                  block={blockObj} 
+                  setSelectedBlock={(b:any)=>{ setBlockObj(b); setApartmentObj(undefined) }} 
+                  disabled={!isSystem && userContext?.apartments?.length === 1}
+                />
+	              <ComboboxApartment 
+                  blockId={blockId} 
+                  apartment={apartmentObj} 
+                  setSelectedApartment={(a:any)=>{ setApartmentObj(a) }} 
+                  disabled={!isSystem && userContext?.apartments?.length === 1}
+                />
+	            </CardContent>
+	          </Card>
           <Card className='shadow-sm h-[580px] flex flex-col overflow-hidden'>
             <CardHeader className='pb-2'><CardTitle className='text-sm'>Medidores</CardTitle></CardHeader>
             <CardContent className='flex-1 flex flex-col gap-3 p-3 min-h-0 overflow-hidden'>
