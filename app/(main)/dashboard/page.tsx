@@ -1472,20 +1472,21 @@ export default function Dashboard() {
     const sys = effectiveCtx?.isSystem ?? false;
     const roles = effectiveCtx?.systemRoles ?? [];
     
-    const isAdmin = sys && roles.some(r => r.toLowerCase().includes('admin') || r.toLowerCase().includes('master'));
+    // Se o usuário tem QUALQUER papel de Admin/Master, ele é Administrador Master, independente de isSystem
+    const isAdmin = roles.some(r => r.toLowerCase().includes('admin') || r.toLowerCase().includes('master'));
     const isProg = sys && !isAdmin;
     
     // Se tem vínculo direto com empresa (Administradora)
-    const isAdm = !sys && (effectiveCtx?.directCompanyIds?.length > 0 || effectiveCtx?.companyIds?.length > 0);
+    const isAdm = !isAdmin && !isProg && (effectiveCtx?.directCompanyIds?.length > 0 || (effectiveCtx?.companyIds?.length > 0 && !sys));
     
     // Se tem vínculo direto com condomínio/bloco (Síndico)
-    const isSin = !sys && !isAdm && (
+    const isSin = !isAdmin && !isProg && !isAdm && (
       (effectiveCtx?.directComplexIds?.length > 0) || 
       (effectiveCtx?.directBlockIds?.length > 0)
     );
     
     // Se tem apartamentos mas não é nenhum dos acima (Morador)
-    const isMor = !sys && !isAdm && !isSin && (effectiveCtx?.apartments?.length > 0);
+    const isMor = !isAdmin && !isProg && !isAdm && !isSin && (effectiveCtx?.apartments?.length > 0);
 
     return { 
       isSystem: sys, 
