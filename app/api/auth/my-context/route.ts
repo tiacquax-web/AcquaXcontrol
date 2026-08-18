@@ -33,9 +33,12 @@ export async function GET(req: NextRequest): Promise<Response> {
             },
         });
 
-        const isSystem = assignments.some(a => a.contextType === 'system');
+        const isSystem = assignments.some(a => 
+            a.contextType === 'system' || 
+            ['administrador', 'programador', 'master', 'admin'].includes(a.Role?.name?.toLowerCase() || '')
+        );
         const systemRoles = assignments
-            .filter(a => a.contextType === 'system')
+            .filter(a => a.contextType === 'system' || ['administrador', 'programador', 'master', 'admin'].includes(a.Role?.name?.toLowerCase() || ''))
             .map(a => a.Role?.name)
             .filter(Boolean) as string[];
 
