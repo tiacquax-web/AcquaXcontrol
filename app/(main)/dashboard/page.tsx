@@ -1526,7 +1526,7 @@ export default function Dashboard() {
             <CardHeader className="py-3 px-4 flex flex-row items-center justify-between space-y-0">
               <div className="flex items-center gap-2">
                 <Star className="w-4 h-4 text-blue-600 fill-blue-600" />
-                <CardTitle className="text-sm font-bold text-blue-900">Central de Visualização Master</CardTitle>
+                <CardTitle className="text-sm font-bold text-blue-900">CENTRAL MASTER - DEPLOY TESTE OK</CardTitle>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-medium text-blue-700 uppercase tracking-wider">Visualizar como:</span>
