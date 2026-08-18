@@ -23,6 +23,7 @@ import BlocksCombobox from "@/components/ComboboxBlock"
 import SelectApartment from "@/components/ComboboxApartment"
 import { useRoles } from "@/hooks/useRoles"
 import { useUserContext } from "@/hooks/useUserContext"
+import { useRolePreview } from "@/contexts/RolePreviewContext"
 import { exportUsers } from "@/services/usersService"
 import axios from "axios"
 import type { Complex, Block, Apartment } from "@prisma/client"
@@ -598,9 +599,9 @@ export default function UsersPage() {
                                             <TableRow>
                                                 <TableHead className="w-12">
                                                     <Checkbox
-                                                        checked={users.length > 0 && selectedUsers.size === users.length}
+                                                        checked={(users || []).length > 0 && selectedUsers.size === (users || []).length}
                                                         onCheckedChange={handleSelectAll}
-                                                        disabled={users.length === 0}
+                                                        disabled={(users || []).length === 0}
                                                     />
                                                 </TableHead>
                                                 <TableHead>Nome</TableHead>
@@ -624,7 +625,7 @@ export default function UsersPage() {
                                                     </TableCell>
                                                 </TableRow>
                                             ) : (
-                                                users.map((user) => (
+                                                (users || []).map((user) => (
                                                     <TableRow key={user.id}>
                                                         <TableCell>
                                                             <Checkbox

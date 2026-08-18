@@ -67,9 +67,9 @@ export const useUsers = ({
 
                 // FILTRAGEM DE SEGURANÇA NO PREVIEW MODE
                 if (isPreviewing && effectiveContext) {
-                    if (effectiveContext.accessibleComplexIds?.length > 0) {
+                    if (effectiveContext.accessibleComplexIds && effectiveContext.accessibleComplexIds.length > 0) {
                         targetComplexId = targetComplexId || effectiveContext.accessibleComplexIds[0];
-                    } else if (effectiveContext.companyIds?.length > 0) {
+                    } else if (effectiveContext.companyIds && effectiveContext.companyIds.length > 0) {
                         targetContextType = 'company';
                         targetContextId = targetContextId || effectiveContext.companyIds[0];
                     }
@@ -90,8 +90,8 @@ export const useUsers = ({
                     skip
                 });
                 
-                let list = data.list || data || [];
-                let count = data.totalCount || data.length || 0;
+                let list = data?.list || (Array.isArray(data) ? data : []);
+                let count = data?.totalCount || (Array.isArray(data) ? data.length : 0);
 
                 // Refinar filtro local se necessário
                 if (isPreviewing && effectiveContext && effectiveContext.accessibleComplexIds?.length > 0) {

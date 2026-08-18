@@ -206,11 +206,11 @@ export default function ReadingsPage() {
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {dealershipReadings.map((reading) =>
+                                            {(dealershipReadings || []).map((reading) =>
                                                 <TableRow key={reading.id}>
                                                     <TableCell>{reading.yearRef}</TableCell>
                                                     <TableCell>{reading.monthRef}</TableCell>
-                                                    <TableCell>{reading.complex?.socialName}</TableCell>
+                                                    <TableCell>{reading.complex?.socialName || reading.complex?.aliasName || '-'}</TableCell>
                                                     <TableCell>
                                                         {reading.type === 'water' ? (
                                                             <Badge variant="secondary" className="gap-1"><Droplets className="h-3 w-3" /> Água</Badge>
@@ -222,8 +222,8 @@ export default function ReadingsPage() {
                                                             <Badge variant="outline">-</Badge>
                                                         )}
                                                     </TableCell>
-                                                    <TableCell>{reading.readingDate}</TableCell>
-                                                    <TableCell>{reading.readingDateNext}</TableCell>
+                                                    <TableCell>{reading.readingDate ? new Date(reading.readingDate).toLocaleDateString('pt-BR') : '-'}</TableCell>
+                                                    <TableCell>{reading.readingDateNext ? new Date(reading.readingDateNext).toLocaleDateString('pt-BR') : '-'}</TableCell>
                                                     <TableCell className="text-right">
                                                         <div className="flex justify-end gap-2">
                                                             {/* <Button variant="outline" size="sm">
