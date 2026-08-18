@@ -200,7 +200,7 @@ export function RolePreviewProvider({ children }: { children: React.ReactNode })
         const userData = userRes.ok ? await userRes.json() : null;
         
         const roles = (data?.systemRoles || []).map((r: string) => r.toLowerCase());
-        const userEmail = userData?.email?.toLowerCase() || '';
+        const userEmail = userData?.user?.email?.toLowerCase() || '';
         
         const isMasterEmail = userEmail.includes('acquaxcontrol') || userEmail.includes('@acquax.com') || userEmail === 'tiacquax@gmail.com';
         const isAdmin = roles.some((r: string) => r.includes('admin') || r.includes('master')) || isMasterEmail;
