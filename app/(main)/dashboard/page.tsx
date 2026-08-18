@@ -4,7 +4,7 @@ import {
   Building2, FileText, TrendingUp, Droplets, ChevronRight, Loader2, Eye,
   AlertTriangle, Ban, Receipt, CalendarCheck2, DoorClosed,
   GaugeCircle, Users, BarChart3, Home, Star,
-  Activity, ArrowRight, LogIn, TrendingDown, CheckCircle2, Clock,
+  Activity, ArrowRight, LogIn, TrendingDown, CheckCircle2, Clock, X,
 } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -1440,7 +1440,7 @@ export default function Dashboard() {
   const [selectedMeter, setSelectedMeter] = useState<any>(undefined);
   const { updatePreferences, loading: updatingPref } = useUpdateUserPreferences();
   const [error, setError] = useState<string | null>(null);
-  const { isPreviewing: isPrevMode, previewRole, effectiveContext: prevCtx } = useRolePreview();
+  const { isPreviewing: isPrevMode, previewRole, effectiveContext: prevCtx, canPreview, setPreviewRole } = useRolePreview();
   const { context, loading: ctxLoading } = useUserContext();
 
   useEffect(() => { clearCachedPermissions(); }, []);
@@ -1542,7 +1542,7 @@ export default function Dashboard() {
                     <SelectItem value="programador">Programador</SelectItem>
                   </SelectContent>
                 </Select>
-                {isPreviewing && (
+                {isPrevMode && (
                   <Button variant="ghost" size="sm" onClick={() => setPreviewRole('real')} className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-100">
                     <X className="w-3.5 h-3.5 mr-1" /> Sair
                   </Button>
