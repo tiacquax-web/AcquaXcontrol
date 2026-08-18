@@ -23,6 +23,7 @@ import SelectComplex from '@/components/ComboboxComplex';
 import BlocksCombobox from '@/components/ComboboxBlock';
 import SelectApartment from '@/components/ComboboxApartment';
 import { useUserContext } from '@/hooks/useUserContext';
+import { useRolePreview } from '@/contexts/RolePreviewContext';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl } from '@/lib/utils';
 
@@ -360,7 +361,10 @@ function TrendIcon({ current, previous }: { current: number | null; previous: nu
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function LevantamentoPage() {
-  const { context, loading: ctxLoading } = useUserContext();
+  const { context: realCtx, loading: realLoading } = useUserContext();
+  const { isPreviewing, effectiveContext } = useRolePreview();
+  const context = isPreviewing ? effectiveContext : realCtx;
+  const ctxLoading = isPreviewing ? false : realLoading;
 
   // Período: mês início e mês fim
   const [fromMonth, setFromMonth] = useState(ALL_MONTHS[CURRENT_MONTH_INDEX + 5]); // 5 meses atrás
@@ -374,13 +378,13 @@ export default function LevantamentoPage() {
   const [searchText, setSearchText] = useState('');
   const [expandedApt, setExpandedApt] = useState<string | null>(null);
 
+  const isSystem = context?.isSystem ?? false;
+
   // ── Helpers de contexto ──────────────────────────────────────────────────────
   const isMorador = useMemo(() => {
     if (!context) return false;
-    return !context.isSystem && context.companyIds.length === 0 &&
-      context.complexes.length === 0 && context.blocks.length === 0 &&
-      context.apartments.length > 0;
-  }, [context]);
+    return !context.isSystem && context.apartments?.length > 0 && (context.complexes?.length === 0 || isPreviewing);
+  }, [context, isPreviewing]);
 
   const userComplexes = useMemo(() => {
     if (!context) return [];
@@ -398,13 +402,25 @@ export default function LevantamentoPage() {
     return context.apartments.filter((a: any) => a.block?.complex?.id === selectedComplexId);
   }, [context, selectedComplexId]);
 
-  // Auto-select condomínio único para moradores
+  // Auto-select condomínio único
   useEffect(() => {
-    if (!ctxLoading && isMorador && userComplexes.length === 1 && !selectedComplexId) {
-      setSelectedComplexId(userComplexes[0].id);
-      setSelectedComplexObj(userComplexes[0]);
+    if (!ctxLoading && context) {
+      // 1. Morador com 1 unidade: seleciona automaticamente e trava
+      if (isMorador && userComplexes.length === 1 && selectedComplexId !== userComplexes[0].id) {
+        setSelectedComplexId(userComplexes[0].id);
+        setSelectedComplexObj(userComplexes[0]);
+      }
+      
+      // 2. Síndico com 1 condomínio: seleciona automaticamente
+      if (!isMorador && context.accessibleComplexIds?.length === 1 && !selectedComplexId) {
+        const cx = context.complexes?.find((c: any) => c.id === context.accessibleComplexIds[0]);
+        if (cx) {
+          setSelectedComplexId(cx.id);
+          setSelectedComplexObj(cx);
+        }
+      }
     }
-  }, [ctxLoading, isMorador, userComplexes, selectedComplexId]);
+  }, [ctxLoading, isMorador, userComplexes, selectedComplexId, context]);
 
   // Reset block/apt filter when complex changes
   useEffect(() => {

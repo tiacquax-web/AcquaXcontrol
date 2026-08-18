@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import MeterReportCard from '@/components/MeterReportCard';
 import { useMeterReport, MeterReportItem } from '@/hooks/useMeterReport';
 import { useUserContext } from '@/hooks/useUserContext';
+import { useRolePreview } from '@/contexts/RolePreviewContext';
 import SelectComplex from '@/components/ComboboxComplex';
 
 // Build list of months: current month backwards 24 months
@@ -32,7 +33,10 @@ function buildMonthOptions() {
 const monthOptions = buildMonthOptions();
 
 export default function MeterReportPage() {
-  const { context, loading: contextLoading } = useUserContext();
+  const { context: realCtx, loading: realLoading } = useUserContext();
+  const { isPreviewing, effectiveContext } = useRolePreview();
+  const context = isPreviewing ? effectiveContext : realCtx;
+  const contextLoading = isPreviewing ? false : realLoading;
 
   // Selected month/year (default = current month)
   const [selectedMonthOption, setSelectedMonthOption] = useState(monthOptions[0]);
@@ -47,8 +51,8 @@ export default function MeterReportPage() {
   // Resident helpers
   const isMorador = useMemo(() => {
     if (!context) return false;
-    return !context.isSystem && context.companyIds.length === 0 && context.complexes.length === 0 && context.blocks.length === 0 && context.apartments.length > 0;
-  }, [context]);
+    return !context.isSystem && context.apartments?.length > 0 && (context.complexes?.length === 0 || isPreviewing);
+  }, [context, isPreviewing]);
 
   // Unique complexes accessible by this user (via their apartments)
   const userComplexes = useMemo(() => {
@@ -74,11 +78,23 @@ export default function MeterReportPage() {
 
   // Auto-select complex when morador has only one
   useEffect(() => {
-    if (!contextLoading && isMorador && userComplexes.length === 1 && !selectedComplexId) {
-      setSelectedComplexId(userComplexes[0].id);
-      setSelectedComplexObj(userComplexes[0]);
+    if (!contextLoading && context) {
+      // 1. Morador com 1 unidade: seleciona automaticamente e trava
+      if (isMorador && userComplexes.length === 1 && selectedComplexId !== userComplexes[0].id) {
+        setSelectedComplexId(userComplexes[0].id);
+        setSelectedComplexObj(userComplexes[0]);
+      }
+      
+      // 2. Síndico com 1 condomínio: seleciona automaticamente
+      if (!isMorador && context.accessibleComplexIds?.length === 1 && !selectedComplexId) {
+        const cx = context.complexes?.find((c: any) => c.id === context.accessibleComplexIds[0]);
+        if (cx) {
+          setSelectedComplexId(cx.id);
+          setSelectedComplexObj(cx);
+        }
+      }
     }
-  }, [contextLoading, isMorador, userComplexes, selectedComplexId]);
+  }, [contextLoading, isMorador, userComplexes, selectedComplexId, context]);
 
   // For moradores with single apt in complex, pass apartment_id directly
   const apartmentIdFilter = useMemo(() => {

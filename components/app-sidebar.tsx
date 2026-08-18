@@ -66,18 +66,21 @@ const items = [
     url: "/monitoring",
     icon: Gauge,
     group: 'Geral',
+    requiresGL: true,
   },
   {
     title: "Central de Alertas",
     url: "/alerts",
     icon: BellDot,
     group: 'Geral',
+    requiresGL: true,
   },
   {
     title: "Medidores de Nível",
     url: "/reservoir-monitoring",
     icon: Droplets,
     group: 'Geral',
+    requiresGL: true,
   },
   {
     title: "Apuração",
@@ -228,7 +231,9 @@ export function AppSidebar() {
   // Verifica se o usuário tem condomínios com medidores GL vinculados
   const hasGLAccess = (() => {
     if (!userContext) return false;
-    if (userContext.isSystem) return true;
+    // No modo real, se for sistema, tem acesso a tudo
+    if (!isPreviewing && userContext.isSystem) return true;
+    // No modo preview ou real comum, checa se tem condomínios GL
     return userContext.glComplexIds && userContext.glComplexIds.length > 0;
   })();
 
@@ -242,8 +247,8 @@ export function AppSidebar() {
       const tabVisible = getRoleTabVisibility(url, previewRole as any);
       if (tabVisible === false) return false;
 
-      if (requiresGL) {
-        return true;
+      if (requiresGL && !hasGLAccess) {
+        return false;
       }
       const entity = sidebarPermissionMap[url];
       if (!entity) return previewPerms.length > 0;

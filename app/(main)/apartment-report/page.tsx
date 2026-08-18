@@ -25,6 +25,7 @@ import ApartmentsAndReportsList from "@/components/apartments-and-reports-list"
 import { DateRangeSelector } from "@/components/date-range-selector"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useUserContext } from "@/hooks/useUserContext"
+import { useRolePreview } from "@/contexts/RolePreviewContext"
 
 const viewTypeNames = {
   Cards: "Cards",
@@ -36,9 +37,13 @@ export default function ReadingsPage() {
   const [searchType, setSearchType] = useState<"cards" | "table">("cards")
 
   // Contexto do usuário logado
-  const { context: userContext, loading: loadingContext } = useUserContext()
-  const isMorador = !loadingContext && userContext !== null && !userContext.isSystem && userContext.apartments.length > 0
-  const singleApartment = isMorador && userContext.apartments.length === 1 ? userContext.apartments[0] : null
+  const { context: realCtx, loading: realLoading } = useUserContext()
+  const { isPreviewing, effectiveContext } = useRolePreview()
+  const userContext = isPreviewing ? effectiveContext : realCtx
+  const loadingContext = isPreviewing ? false : realLoading
+
+  const isMorador = !loadingContext && userContext !== null && !userContext.isSystem && userContext.apartments?.length > 0 && (userContext.complexes?.length === 0 || isPreviewing)
+  const singleApartment = isMorador && userContext.apartments?.length === 1 ? userContext.apartments[0] : null
 
   const [selection, setSelection] = useState<{ complex: Complex | undefined; block: Block | undefined; apartmentId: string | undefined }>({
     complex: undefined,
@@ -59,17 +64,27 @@ export default function ReadingsPage() {
 
   // Auto-aplica filtros para morador com 1 apartamento
   useEffect(() => {
-    if (singleApartment && !selection.complex) {
-      const block = singleApartment.block as any
-      const complex = block?.complex as any
-      setSelection({
-        complex: complex || undefined,
-        block: block || undefined,
-        apartmentId: singleApartment.id,
-      })
+    if (!loadingContext && userContext) {
+      // 1. Morador com 1 unidade: seleciona automaticamente e trava
+      if (singleApartment && selection.apartmentId !== singleApartment.id) {
+        const block = singleApartment.block as any
+        const complex = block?.complex as any
+        setSelection({
+          complex: complex || undefined,
+          block: block || undefined,
+          apartmentId: singleApartment.id,
+        })
+      }
+
+      // 2. Síndico com 1 condomínio: seleciona automaticamente
+      if (!isMorador && userContext.accessibleComplexIds?.length === 1 && !selection.complex) {
+        const cx = userContext.complexes?.find((c: any) => c.id === userContext.accessibleComplexIds[0]);
+        if (cx) {
+          setSelection(prev => ({ ...prev, complex: cx }));
+        }
+      }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [singleApartment])
+  }, [loadingContext, userContext, singleApartment, selection.apartmentId, selection.complex, isMorador])
 
   const setSelectedComplex = (complex: Complex | undefined) => {
     setSelection({ complex, block: undefined, apartmentId: undefined })

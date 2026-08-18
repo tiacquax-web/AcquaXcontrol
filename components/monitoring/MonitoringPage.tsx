@@ -389,38 +389,44 @@ export default function MonitoringPage() {
 	        <div className='monitoring-sidebar no-print flex flex-col gap-4 xl:sticky xl:top-4'>
 	          <Card className='shadow-sm'>
 	            <CardHeader className='pb-2'><CardTitle className='text-sm'>Contexto</CardTitle></CardHeader>
-	            <CardContent className='space-y-2'>
-	              <ComboboxCompany 
-                  company={companyObj} 
-                  setSelectedCompany={(c:any)=>{ setCompanyObj(c); setComplexObj(undefined); setBlockObj(undefined); setApartmentObj(undefined) }} 
-                  disabled={!isSystem && userContext?.companyIds?.length === 1}
-                />
-	              <ComboboxComplex 
-                  companyId={companyId} 
-                  complex={complexObj} 
-                  setSelectedComplex={(c:any)=>{ setComplexObj(c); setBlockObj(undefined); setApartmentObj(undefined) }} 
-                  disabled={!isSystem && userContext?.accessibleComplexIds?.length === 1}
-                />
-	              <ComboboxBlock 
-                  complexId={complexId} 
-                  block={blockObj} 
-                  setSelectedBlock={(b:any)=>{ setBlockObj(b); setApartmentObj(undefined) }} 
-                  disabled={!isSystem && userContext?.apartments?.length === 1}
-                />
-	              <ComboboxApartment 
-                  blockId={blockId} 
-                  apartment={apartmentObj} 
-                  setSelectedApartment={(a:any)=>{ setApartmentObj(a) }} 
-                  disabled={!isSystem && userContext?.apartments?.length === 1}
-                />
-	            </CardContent>
-	          </Card>
-          <Card className='shadow-sm h-[580px] flex flex-col overflow-hidden'>
-            <CardHeader className='pb-2'><CardTitle className='text-sm'>Medidores</CardTitle></CardHeader>
-            <CardContent className='flex-1 flex flex-col gap-3 p-3 min-h-0 overflow-hidden'>
-              <div className='flex-1 min-h-0'>
-                <MeterSelectionPanel companyId={companyId} complexId={complexId} blockId={blockId} apartmentId={apartmentId} selected={selectedMeters} onChange={(ids)=>update({ meterIds: ids })} />
-              </div>
+		            <CardContent className='space-y-2'>
+		              <ComboboxCompany 
+	                  company={companyObj} 
+	                  setSelectedCompany={(c:any)=>{ setCompanyObj(c); setComplexObj(undefined); setBlockObj(undefined); setApartmentObj(undefined) }} 
+	                  disabled={!isSystem && userContext?.companyIds?.length === 1}
+	                />
+		              <ComboboxComplex 
+	                  companyId={companyId} 
+	                  complex={complexObj} 
+	                  setSelectedComplex={(c:any)=>{ setComplexObj(c); setBlockObj(undefined); setApartmentObj(undefined) }} 
+	                  disabled={!isSystem && (isMorador && userContext?.apartments?.length === 1 || userContext?.accessibleComplexIds?.length === 1)}
+	                />
+		              <ComboboxBlock 
+	                  complexId={complexId} 
+	                  block={blockObj} 
+	                  setSelectedBlock={(b:any)=>{ setBlockObj(b); setApartmentObj(undefined) }} 
+	                  disabled={!isSystem && isMorador && userContext?.apartments?.length === 1}
+	                />
+		              <ComboboxApartment 
+	                  blockId={blockId} 
+	                  apartment={apartmentObj} 
+	                  setSelectedApartment={(a:any)=>{ setApartmentObj(a) }} 
+	                  disabled={!isSystem && isMorador && userContext?.apartments?.length === 1}
+	                />
+		            </CardContent>
+		          </Card>
+	          <Card className='shadow-sm h-[580px] flex flex-col overflow-hidden'>
+	            <CardHeader className='pb-2'><CardTitle className='text-sm'>Medidores</CardTitle></CardHeader>
+	            <CardContent className='flex-1 flex flex-col gap-3 p-3 min-h-0 overflow-hidden'>
+	              <div className='flex-1 min-h-0'>
+	                {(!isMorador || userContext?.apartments?.length > 1) ? (
+	                  <MeterSelectionPanel companyId={companyId} complexId={complexId} blockId={blockId} apartmentId={apartmentId} selected={selectedMeters} onChange={(ids)=>update({ meterIds: ids })} />
+	                ) : (
+	                  <div className="p-4 text-center text-sm text-muted-foreground bg-muted/30 rounded-md border border-dashed">
+	                    Seus medidores estão sendo monitorados automaticamente.
+	                  </div>
+	                )}
+	              </div>
               <div className='grid grid-cols-2 gap-1.5'>
                 <Button size='sm' className='h-7 text-[11px] px-2' variant={view==='cumulative'?'default':'outline'} onClick={()=>update({ view: 'cumulative' })}>Cumulativo</Button>
                 <Button size='sm' className='h-7 text-[11px] px-2' variant={view==='simple'?'default':'outline'} onClick={()=>update({ view: 'simple' })}>Consumo</Button>
