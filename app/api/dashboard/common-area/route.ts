@@ -23,10 +23,21 @@ export async function GET(req: NextRequest): Promise<Response> {
       return NextResponse.json({ error: 'year inválido' }, { status: 400 });
     }
 
+    // Tenta primeiro permissão de dealershipReading (Admin/Síndico)
     const contexts = await getUserContextsForActionOnEntity(userId, 'dealershipReading', 'read');
-    const allowed = contexts.system
+    let allowed = contexts.system
       || contexts.complexIds.includes(complexId)
       || contexts.companyIds.length > 0;
+
+    // Se não tiver, tenta permissão de morador (apartmentConsumptionReport)
+    if (!allowed) {
+      const aptContexts = await getUserContextsForActionOnEntity(userId, 'apartmentConsumptionReport', 'read');
+      // Verifica se o morador tem acesso a algum condomínio que coincida com o complexId
+      // ou se ele tem apartamentos vinculados a blocos deste condomínio.
+      // O getUserContextsForActionOnEntity já retorna complexIds permitidos para o morador.
+      allowed = aptContexts.complexIds.includes(complexId);
+    }
+
     if (!allowed) {
       return NextResponse.json({ error: 'Sem permissão para este condomínio' }, { status: 403 });
     }

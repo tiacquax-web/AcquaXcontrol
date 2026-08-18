@@ -401,7 +401,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
               {reportLoading ? (
                 <Skeleton className="h-24 w-full" />
               ) : userReport ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl bg-muted/40 border">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-4 rounded-xl bg-muted/40 border">
                   <div>
                     <p className="text-xs text-muted-foreground">Consumo</p>
                     <p className="text-xl font-bold text-teal-600 mt-0.5">
@@ -409,10 +409,20 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Valor da Unidade</p>
-                    <p className="text-xl font-bold text-blue-600 mt-0.5">{formatCurrency(userReport.totalUnit)}</p>
+                    <p className="text-xs text-muted-foreground">Valor Individual</p>
+                    <p className="text-xl font-bold text-blue-600 mt-0.5">{formatCurrency(userReport.partial)}</p>
                   </div>
                   <div>
+                    <p className="text-xs text-muted-foreground">Área Comum</p>
+                    <p className="text-xl font-bold text-orange-600 mt-0.5">
+                      {formatCurrency((userReport.totalUnit ?? 0) - (userReport.partial ?? 0))}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Unidade</p>
+                    <p className="text-xl font-bold text-blue-800 mt-0.5">{formatCurrency(userReport.totalUnit)}</p>
+                  </div>
+                  <div className="hidden md:block">
                     <p className="text-xs text-muted-foreground">Leitura Final</p>
                     <p className="text-base font-semibold mt-1">
                       {userReport.lastReading?.reading?.toFixed(3) ?? '—'} {selectedUtility === 'energy' ? 'kWh' : 'm³'}

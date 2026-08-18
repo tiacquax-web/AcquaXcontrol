@@ -13,6 +13,7 @@ import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import axios from "axios"
+import { useUserContext } from "@/hooks/useUserContext"
 
 interface ComplexesListProps {
   nameQuery?: string
@@ -161,8 +162,14 @@ export default function ComplexesList({ nameQuery, viewType, setSelectedComplex,
 
 function ComplexCard({ complex, onCardClick }: { complex: ComplexFull; onCardClick: (complex: Complex) => void }) {
   const { toast } = useToast()
+  const { context } = useUserContext()
   const [isToggling, setIsToggling] = useState(false)
   const isSuspended = complex.status === 'Suspenso'
+
+  // Apenas Administradores ou Programadores podem suspender acesso
+  const canSuspend = context?.isSystem || (context?.systemRoles || []).some((r: string) => 
+    r.toLowerCase().includes('admin') || r.toLowerCase().includes('master') || r.toLowerCase().includes('programador')
+  )
 
   const handleToggleSuspension = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -239,27 +246,29 @@ function ComplexCard({ complex, onCardClick }: { complex: ComplexFull; onCardCli
             </p>
           </div>
         </div>
-        <Button
-          variant={isSuspended ? 'outline' : 'destructive'}
-          size="sm"
-          className="w-full mt-2"
-          onClick={handleToggleSuspension}
-          disabled={isToggling}
-        >
-          {isToggling ? (
-            'Processando...'
-          ) : isSuspended ? (
-            <>
-              <CheckCircle2 className="w-4 h-4 mr-2" />
-              Reativar Acesso
-            </>
-          ) : (
-            <>
-              <Ban className="w-4 h-4 mr-2" />
-              Suspender Acesso
-            </>
-          )}
-        </Button>
+        {canSuspend && (
+          <Button
+            variant={isSuspended ? 'outline' : 'destructive'}
+            size="sm"
+            className="w-full mt-2"
+            onClick={handleToggleSuspension}
+            disabled={isToggling}
+          >
+            {isToggling ? (
+              'Processando...'
+            ) : isSuspended ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+                Reativar Acesso
+              </>
+            ) : (
+              <>
+                <Ban className="w-4 h-4 mr-2" />
+                Suspender Acesso
+              </>
+            )}
+          </Button>
+        )}
       </CardContent>
     </Card>
   )
