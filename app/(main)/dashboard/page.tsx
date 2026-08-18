@@ -1470,14 +1470,16 @@ export default function Dashboard() {
   // Detecção unificada de papéis
   const { isSystem, isAdministrador, isProgramador, isMorador, isAdministradora, isSindico } = useMemo(() => {
     const sys = effectiveCtx?.isSystem ?? false;
-    const roles = effectiveCtx?.systemRoles ?? [];
+    const roles = (effectiveCtx?.systemRoles || []).map((r: string) => r.toLowerCase());
     
-    // Se o usuário tem QUALQUER papel de Admin/Master, ele é Administrador Master, independente de isSystem
-    const isAdmin = roles.some(r => r.toLowerCase().includes('admin') || r.toLowerCase().includes('master'));
-    const isProg = sys && !isAdmin;
+    // PRIORIDADE MÁXIMA: Se o usuário tem QUALQUER papel de Admin/Master em QUALQUER lugar, ele é Admin Master.
+    const isAdmin = roles.some(r => r.includes('admin') || r.includes('master'));
+    
+    // Se for um programador (acesso técnico) mas não admin master
+    const isProg = !isAdmin && (sys || roles.includes('programador'));
     
     // Se tem vínculo direto com empresa (Administradora)
-    const isAdm = !isAdmin && !isProg && (effectiveCtx?.directCompanyIds?.length > 0 || (effectiveCtx?.companyIds?.length > 0 && !sys));
+    const isAdm = !isAdmin && !isProg && (effectiveCtx?.companyIds?.length > 0);
     
     // Se tem vínculo direto com condomínio/bloco (Síndico)
     const isSin = !isAdmin && !isProg && !isAdm && (
@@ -1485,11 +1487,11 @@ export default function Dashboard() {
       (effectiveCtx?.directBlockIds?.length > 0)
     );
     
-    // Se tem apartamentos mas não é nenhum dos acima (Morador)
+    // Se tem apartamentos (Morador)
     const isMor = !isAdmin && !isProg && !isAdm && !isSin && (effectiveCtx?.apartments?.length > 0);
 
     return { 
-      isSystem: sys, 
+      isSystem: sys || isAdmin || isProg, 
       isAdministrador: isAdmin, 
       isProgramador: isProg, 
       isMorador: isMor, 
