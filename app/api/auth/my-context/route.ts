@@ -47,15 +47,13 @@ export async function GET(req: NextRequest): Promise<Response> {
         const complexIds = assignments.filter(a => a.contextType === 'complex').map(a => a.contextId).filter(Boolean) as string[];
         const companyIds = assignments.filter(a => a.contextType === 'company').map(a => a.contextId).filter(Boolean) as string[];
 
-        // Se for admin, pega tudo
+        // Usuários globais não precisam carregar todos os blocos/apartamentos no contexto inicial.
+        // Essas listas são obtidas sob demanda pelos seletores, evitando um payload gigante no primeiro carregamento.
         let allComplexIds = complexIds;
         let allBlockIds = blockIds;
         let allApartmentIds = apartmentIds;
 
-        if (isSystem) {
-            const allCx = await prisma.complex.findMany({ where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }, select: { id: true } });
-            allComplexIds = allCx.map(c => c.id);
-        } else {
+        if (!isSystem) {
             // Se tem companyIds, pega blocos e complexos dessas empresas
             if (companyIds.length > 0) {
                 const cxByComp = await prisma.complex.findMany({
@@ -88,7 +86,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         allBlockIds = [...new Set(allBlockIds)];
         allApartmentIds = [...new Set(allApartmentIds)];
 
-        // Buscar dados completos - Usando AND para evitar sobrescrita de chaves OR
+        // Contexto mínimo para o primeiro carregamento. Administradores globais recebem apenas condomínios;
+        // blocos e apartamentos são carregados sob demanda pelos componentes correspondentes.
         const complexes = await prisma.complex.findMany({
             where: {
                 AND: [
@@ -96,37 +95,66 @@ export async function GET(req: NextRequest): Promise<Response> {
                     { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
                 ]
             },
-            include: { company: true }
+            select: {
+                id: true,
+                socialName: true,
+                aliasName: true,
+                company: { select: { id: true, name: true } },
+            },
         });
 
-        const blocks = await prisma.block.findMany({
+        const blocks = isSystem ? [] : await prisma.block.findMany({
             where: {
                 AND: [
-                    isSystem ? {} : { OR: [{ id: { in: allBlockIds } }, { complexId: { in: allComplexIds } }] },
+                    { OR: [{ id: { in: allBlockIds } }, { complexId: { in: allComplexIds } }] },
                     { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
                 ]
             },
-            include: { complex: { include: { company: true } } }
+            select: {
+                id: true,
+                name: true,
+                complexId: true,
+                complex: {
+                    select: {
+                        id: true,
+                        socialName: true,
+                        aliasName: true,
+                        company: { select: { id: true, name: true } },
+                    },
+                },
+            },
         });
 
-        const apartments = await prisma.apartment.findMany({
+        const apartments = isSystem ? [] : await prisma.apartment.findMany({
             where: {
                 AND: [
-                    isSystem ? {} : { OR: [
-                        { id: { in: allApartmentIds } }, 
-                        { blockId: { in: allBlockIds } }, 
+                    { OR: [
+                        { id: { in: allApartmentIds } },
+                        { blockId: { in: allBlockIds } },
                         { block: { complexId: { in: allComplexIds } } }
                     ]},
                     { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }
                 ]
             },
-            include: {
+            select: {
+                id: true,
+                name: true,
                 block: {
-                    include: {
-                        complex: { include: { company: true } }
-                    }
-                }
-            }
+                    select: {
+                        id: true,
+                        name: true,
+                        complexId: true,
+                        complex: {
+                            select: {
+                                id: true,
+                                socialName: true,
+                                aliasName: true,
+                                company: { select: { id: true, name: true } },
+                            },
+                        },
+                    },
+                },
+            },
         });
 
         // GL Detection
@@ -148,8 +176,8 @@ export async function GET(req: NextRequest): Promise<Response> {
             isSystem,
             systemRoles,
             // Otimização: Admins não precisam de todos os apartamentos/blocos no contexto global
-            apartments: isSystem ? apartments.slice(0, 100) : apartments,
-            blocks: isSystem ? blocks.slice(0, 100) : blocks,
+            apartments,
+            blocks,
             complexes: isSystem ? complexes.slice(0, 100) : complexes,
             companyIds,
             // Adicionamos as IDs diretas para ajudar o frontend a distinguir Morador de Síndico

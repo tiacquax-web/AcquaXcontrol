@@ -81,6 +81,7 @@ export default function SugestoesPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
   const [loading, setLoading] = useState(true);
   const [skip, setSkip] = useState(0);
   const TAKE = 15;
@@ -134,7 +135,8 @@ export default function SugestoesPage() {
         if (cancelled) return;
         setSuggestions(res.data.list);
         setTotalCount(res.data.totalCount);
-        setIsAdmin(res.data.isAdmin);
+        setIsAdmin(res.data.isAdmin === true);
+        setCanDelete(res.data.canDelete === true);
       })
       .catch(() => {
         if (cancelled) return;
@@ -386,28 +388,29 @@ export default function SugestoesPage() {
                     <StatusBadge status={s.status} />
                   </div>
                   <div className="flex items-center gap-2">
+                        {/* Síndicos e Administradoras podem MODERAR (status/nota), mas apenas Administradores Globais podem EXCLUIR */}
                         {(isAdmin || previewRole === 'sindico' || previewRole === 'administradora') && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
-                              onClick={() => openModerate(s)}
-                              title="Moderar sugestão"
-                            >
-                              <ShieldCheck className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"
-                              onClick={() => handleDelete(s.id)}
-                              disabled={isDeleting}
-                              title="Remover sugestão"
-                            >
-                              {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                            </Button>
-                          </>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                            onClick={() => openModerate(s)}
+                            title="Moderar sugestão"
+                          >
+                            <ShieldCheck className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"
+                            onClick={() => handleDelete(s.id)}
+                            disabled={isDeleting}
+                            title="Remover sugestão"
+                          >
+                            {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                          </Button>
                         )}
                     <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                       {format(new Date(s.createdAt), "dd/MM/yyyy", { locale: ptBR })}

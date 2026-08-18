@@ -71,12 +71,13 @@ interface UseMeterReportProps {
   month: string; // "01".."12"
   year: string;  // "2026"
   complexId?: string;
+  blockId?: string;
   apartmentId?: string;
   utilityType?: string;
   enabled?: boolean;
 }
 
-export function useMeterReport({ month, year, complexId, apartmentId, utilityType, enabled = true }: UseMeterReportProps) {
+export function useMeterReport({ month, year, complexId, blockId, apartmentId, utilityType, enabled = true }: UseMeterReportProps) {
   const { isPreviewing, effectiveContext } = useRolePreview();
   const [data, setData] = useState<MeterReportData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -91,6 +92,7 @@ export function useMeterReport({ month, year, complexId, apartmentId, utilityTyp
 
     const params: Record<string, string> = { month, year };
     if (complexId) params.complex_id = complexId;
+    if (blockId) params.block_id = blockId;
     if (apartmentId) params.apartment_id = apartmentId;
     if (utilityType) params.utility_type = utilityType;
 
@@ -132,7 +134,7 @@ export function useMeterReport({ month, year, complexId, apartmentId, utilityTyp
       });
 
     return () => { cancelled = true; };
-  }, [month, year, complexId, apartmentId, utilityType, enabled]);
+  }, [month, year, complexId, blockId, apartmentId, utilityType, enabled]);
 
   return { data, loading, error };
 }

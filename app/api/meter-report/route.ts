@@ -28,6 +28,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     const monthRef = req.nextUrl.searchParams.get('month') || '';
     const yearRef = req.nextUrl.searchParams.get('year') || '';
     const complexId = req.nextUrl.searchParams.get('complex_id') || undefined;
+    const blockId = req.nextUrl.searchParams.get('block_id') || undefined;
     const apartmentId = req.nextUrl.searchParams.get('apartment_id') || undefined;
     const utilityType = req.nextUrl.searchParams.get('utility_type') || undefined;
 
@@ -94,6 +95,10 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     if (complexId) {
       where.complexId = complexId;
+    }
+
+    if (blockId) {
+      where.blockId = blockId;
     }
 
     if (apartmentId) {

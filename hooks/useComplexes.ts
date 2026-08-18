@@ -21,6 +21,15 @@ interface useComplexesProps {
     skip?: number;
 }
 
+type ComplexCacheEntry = {
+    data: any;
+    cachedAt: number;
+};
+
+const COMPLEX_CACHE_TTL = 60_000;
+const complexesCache = new Map<string, ComplexCacheEntry>();
+const complexesRequests = new Map<string, Promise<any>>();
+
 export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCompany, getAvailableForEntity, withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, take = 12, skip = 0, enabled = true}: useComplexesProps) => {
     const { isPreviewing, effectiveContext } = useRolePreview();
     const [complexes, setComplexes] = useState<ComplexFull[]>([]);
@@ -30,8 +39,8 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
     const [hasNextPage, setHasNextPage] = useState(false);
     const [hasPreviousPage, setHasPreviousPage] = useState(false);
 
-    const debouncedNameQuery = useDebounce(nameQuery, 350);
-    const debouncedDocumentCompany = useDebounce(documentCompany, 350);
+    const debouncedNameQuery = useDebounce(nameQuery, nameQuery?.trim() ? 350 : 0);
+    const debouncedDocumentCompany = useDebounce(documentCompany, documentCompany?.trim() ? 350 : 0);
 
     useEffect(() => {
         if (!enabled) {
@@ -40,44 +49,77 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
         }
 
         const fetchComplexes = async () => {
+            const requestKey = JSON.stringify({
+                id,
+                getAvailableForEntity,
+                nameQuery: debouncedNameQuery || '',
+                documentCompany: debouncedDocumentCompany || '',
+                companyId,
+                withCompany: !!withCompany,
+                withBlocksCount: !!withBlocksCount,
+                withApartmentsCount: !!withApartmentsCount,
+                withMetersCount: !!withMetersCount,
+                onlyWithReservoirs: !!onlyWithReservoirs,
+                take,
+                skip,
+                preview: isPreviewing ? effectiveContext?.accessibleComplexIds || [] : 'real',
+            });
             try {
                 setLoading(true);
-                const data = await getComplexes({ 
-                    id, 
-                    getAvailableForEntity, 
-                    nameQuery: debouncedNameQuery, 
-                    documentCompany: debouncedDocumentCompany, 
-                    companyId,
-                    withCompany, 
-                    withBlocksCount, 
-                    withApartmentsCount, 
-                    withMetersCount,
-                    onlyWithReservoirs,
-                    take,
-                    skip
-                })
-                
-                let list = data.list || [];
-                let count = data.totalCount || 0;
-
-                // FILTRAGEM DE SEGURANÇA NO PREVIEW MODE
-                if (isPreviewing && effectiveContext) {
-                    const allowedIds = effectiveContext.accessibleComplexIds || [];
-                    list = list.filter((c: any) => allowedIds.includes(c.id));
-                    count = list.length;
+                const cached = complexesCache.get(requestKey);
+                const now = Date.now();
+                if (cached && now - cached.cachedAt < COMPLEX_CACHE_TTL) {
+                    applyComplexData(cached.data);
+                    return;
                 }
 
-                setComplexes(list)
-                setTotalCount(count)
-                setHasNextPage(skip + take < count)
-                setHasPreviousPage(skip > 0)
+                let request = complexesRequests.get(requestKey);
+                if (!request) {
+                    request = getComplexes({
+                        id,
+                        getAvailableForEntity,
+                        nameQuery: debouncedNameQuery,
+                        documentCompany: debouncedDocumentCompany,
+                        companyId,
+                        withCompany,
+                        withBlocksCount,
+                        withApartmentsCount,
+                        withMetersCount,
+                        onlyWithReservoirs,
+                        take,
+                        skip
+                    });
+                    complexesRequests.set(requestKey, request);
+                }
+                const data = await request;
+                complexesCache.set(requestKey, { data, cachedAt: Date.now() });
+                
+                applyComplexData(data);
                 setError(null)
             } catch (error: any) {
                 const message = error.response?.data?.error || error.message || "Unknown error"
                 setError(message)
             } finally {
+                if (requestKey) complexesRequests.delete(requestKey);
                 setLoading(false)
             }
+        };
+
+        const applyComplexData = (data: any) => {
+            let list = data?.list || [];
+            let count = data?.totalCount || 0;
+
+            if (isPreviewing && effectiveContext) {
+                const allowedIds = effectiveContext.accessibleComplexIds || [];
+                list = list.filter((c: any) => allowedIds.includes(c.id));
+                count = list.length;
+            }
+
+            setComplexes(list);
+            setTotalCount(count);
+            setHasNextPage(skip + take < count);
+            setHasPreviousPage(skip > 0);
+            setError(null);
         };
 
         fetchComplexes();

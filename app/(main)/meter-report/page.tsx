@@ -14,6 +14,8 @@ import { useMeterReport, MeterReportItem } from '@/hooks/useMeterReport';
 import { useUserContext } from '@/hooks/useUserContext';
 import { useRolePreview } from '@/contexts/RolePreviewContext';
 import SelectComplex from '@/components/ComboboxComplex';
+import SelectBlock from '@/components/ComboboxBlock';
+import SelectApartment from '@/components/ComboboxApartment';
 
 // Build list of months: current month backwards 24 months
 function buildMonthOptions() {
@@ -44,6 +46,10 @@ export default function MeterReportPage() {
   // Selected complex (for non-residents or residents with multiple complexes)
   const [selectedComplexId, setSelectedComplexId] = useState<string | undefined>(undefined);
   const [selectedComplexObj, setSelectedComplexObj] = useState<any>(null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | undefined>(undefined);
+  const [selectedBlockObj, setSelectedBlockObj] = useState<any>(null);
+  const [selectedApartmentId, setSelectedApartmentId] = useState<string | undefined>(undefined);
+  const [selectedApartmentObj, setSelectedApartmentObj] = useState<any>(null);
 
   // Selected utility type
   const [selectedUtility, setSelectedUtility] = useState<'water' | 'gas' | 'energy'>('water');
@@ -101,15 +107,17 @@ export default function MeterReportPage() {
 
   // For moradores with single apt in complex, pass apartment_id directly
   const apartmentIdFilter = useMemo(() => {
+    if (selectedApartmentId) return selectedApartmentId;
     if (!isMorador) return undefined;
     if (userApartmentsInComplex.length === 1) return userApartmentsInComplex[0].id;
     return undefined;
-  }, [isMorador, userApartmentsInComplex]);
+  }, [isMorador, userApartmentsInComplex, selectedApartmentId]);
 
   const { data, loading, error } = useMeterReport({
     month: selectedMonthOption.month,
     year: selectedMonthOption.year,
     complexId: selectedComplexId,
+    blockId: selectedBlockId,
     apartmentId: apartmentIdFilter,
     utilityType: selectedUtility,
     enabled: !!selectedComplexId && !!selectedMonthOption?.month && !!selectedMonthOption?.year && !contextLoading,
@@ -131,6 +139,10 @@ export default function MeterReportPage() {
     if (complex?.id !== selectedComplexId) {
       setSelectedComplexId(complex?.id);
       setSelectedComplexObj(complex ?? null);
+      setSelectedBlockId(undefined);
+      setSelectedBlockObj(null);
+      setSelectedApartmentId(undefined);
+      setSelectedApartmentObj(null);
       setSearchText('');
     }
   };
@@ -213,7 +225,15 @@ export default function MeterReportPage() {
                     key={cx.id}
                     variant={selectedComplexId === cx.id ? 'default' : 'outline'}
                     size="sm"
-                    onClick={() => { setSelectedComplexId(cx.id); setSelectedComplexObj(cx); setSearchText(''); }}
+                    onClick={() => {
+                      setSelectedComplexId(cx.id);
+                      setSelectedComplexObj(cx);
+                      setSelectedBlockId(undefined);
+                      setSelectedBlockObj(null);
+                      setSelectedApartmentId(undefined);
+                      setSelectedApartmentObj(null);
+                      setSearchText('');
+                    }}
                   >
                     <Building2 className="w-3.5 h-3.5 mr-1.5" />
                     {cx.socialName || cx.aliasName}
@@ -229,6 +249,38 @@ export default function MeterReportPage() {
               />
             )}
           </div>
+        )}
+
+        {/* Bloco e apartamento: filtros encadeados para Síndicos e Administradoras */}
+        {!isMorador && selectedComplexId && (
+          <>
+            <div className="flex flex-col gap-1 min-w-[180px]">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Bloco</label>
+              <SelectBlock
+                complexId={selectedComplexId}
+                block={selectedBlockObj}
+                setSelectedBlock={(block: any) => {
+                  setSelectedBlockId(block?.id);
+                  setSelectedBlockObj(block ?? null);
+                  setSelectedApartmentId(undefined);
+                  setSelectedApartmentObj(null);
+                }}
+              />
+            </div>
+            {selectedBlockId && (
+              <div className="flex flex-col gap-1 min-w-[190px]">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Apartamento</label>
+                <SelectApartment
+                  blockId={selectedBlockId}
+                  apartment={selectedApartmentObj}
+                  setSelectedApartment={(apartment: any) => {
+                    setSelectedApartmentId(apartment?.id);
+                    setSelectedApartmentObj(apartment ?? null);
+                  }}
+                />
+              </div>
+            )}
+          </>
         )}
 
         {/* Search box — only shown for non-moradores when a complex is selected and data is loaded */}

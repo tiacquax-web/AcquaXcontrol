@@ -25,11 +25,12 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     // ── Determine admin status ──────────────────────────────────────────────────
     const contexts = await getUserContextsForActionOnEntity(userId, 'user', 'update');
-    const isAdmin = !!(
+    const canModerate = !!(
       contexts.system ||
       contexts.companyIds.length > 0 ||
       contexts.complexIds.length > 0
     );
+    const canDelete = !!contexts.system;
 
     // ── Build WHERE clause ──────────────────────────────────────────────────────
     // NOTE: the soft-delete filter (deletedAt) is injected automatically by the
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     // Status filter
     if (statusParam) {
-      if (isAdmin) {
+      if (canModerate) {
         // Admin can filter by any status, including 'rejected'
         conditions.push({ status: statusParam });
       } else {
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         // Non-admin requesting a hidden status → silently constrain to allowed set
         conditions.push({ status: allowed.includes(statusParam) ? statusParam : { in: allowed } });
       }
-    } else if (!isAdmin) {
+    } else if (!canModerate) {
       // No status filter + non-admin → hide rejected
       conditions.push({ status: { in: ['open', 'analyzing', 'approved', 'implemented'] } });
     }
@@ -94,12 +95,12 @@ export async function GET(req: NextRequest): Promise<Response> {
       dislikes: s.dislikes,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
-      moderatorNote: isAdmin ? s.moderatorNote : undefined,
-      authorId: isAdmin ? s.authorId : undefined,
+      moderatorNote: canModerate ? s.moderatorNote : undefined,
+      authorId: canModerate ? s.authorId : undefined,
       myVote: s.votes.length > 0 ? (s.votes[0].isLike ? 'like' : 'dislike') : null,
     }));
 
-    return NextResponse.json({ list: mapped, totalCount, isAdmin });
+    return NextResponse.json({ list: mapped, totalCount, isAdmin: canModerate, canDelete });
 
   } catch (error: any) {
     console.error('[SUGGESTIONS] GET error:', error);

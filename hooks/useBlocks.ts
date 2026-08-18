@@ -27,7 +27,7 @@ export const useBlocks = ({ complexId, nameQuery, getAvailableForEntity, complex
   const [error, setError] = useState<string | null>(null)
   const [totalCount, setTotalCount] = useState(0)
 
-  const debouncedNameQuery = useDebounce(nameQuery, 350)
+  const debouncedNameQuery = useDebounce(nameQuery, nameQuery?.trim() ? 350 : 0)
 
   useEffect(() => {
     if (!enabled) {

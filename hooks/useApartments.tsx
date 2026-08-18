@@ -31,7 +31,7 @@ export const useApartments = ({ withComplex, withBlock, withCompany, companyId, 
   const [totalCount, setTotalCount] = useState(0)
   const [sequence, setSequence] = useState(0)
 
-  const debouncedNameQuery = useDebounce(nameQuery, 350);
+  const debouncedNameQuery = useDebounce(nameQuery, nameQuery?.trim() ? 350 : 0);
 
   const refetch = () => setSequence(s => s + 1);
 

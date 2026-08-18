@@ -50,6 +50,9 @@ export interface UserContext {
   glComplexIds: string[];  // IDs de condomínios com medidores GL ativos
 }
 
+let contextCache: UserContext | null = null;
+let contextPromise: Promise<UserContext> | null = null;
+
 export function useUserContext() {
   const router = useRouter();
   const [context, setContext] = useState<UserContext | null>(null);
@@ -58,14 +61,26 @@ export function useUserContext() {
 
   useEffect(() => {
     async function fetchContext() {
+      if (contextCache) {
+        setContext(contextCache);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError(null);
       try {
-        const res = await axios.get(`${NEXT_PUBLIC_API_URL}/auth/my-context`, {
-          withCredentials: true,
-        });
-        setContext(res.data);
+        if (!contextPromise) {
+          contextPromise = axios.get(`${NEXT_PUBLIC_API_URL}/auth/my-context`, {
+            withCredentials: true,
+          }).then(res => res.data as UserContext);
+        }
+        const data = await contextPromise;
+        contextCache = data;
+        setContext(data);
       } catch (err: any) {
+        contextPromise = null;
+        contextCache = null;
         // Detectar suspensão de condomínio e redirecionar
         if (err.response?.status === 403 && err.response?.data?.suspended) {
           if (typeof window !== 'undefined') {

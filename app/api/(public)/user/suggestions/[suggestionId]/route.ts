@@ -59,11 +59,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
     const { suggestionId } = await params;
 
     const contexts = await getUserContextsForActionOnEntity(userId, 'user', 'update');
-    const isAdmin = contexts.system || contexts.companyIds.length > 0 || contexts.complexIds.length > 0;
-    
-    if (!isAdmin) {
-      const hasManagementRole = contexts.companyIds.length > 0 || contexts.complexIds.length > 0;
-      if (!hasManagementRole) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    // Apenas Administradores Globais / Programadores podem EXCLUIR sugestões. Síndicos e Administradoras podem apenas moderar (status/nota).
+    const isGlobalAdmin = contexts.system;
+    if (!isGlobalAdmin) {
+      return NextResponse.json({ error: 'Apenas administradores globais podem excluir sugestões' }, { status: 403 });
     }
 
     await prisma.suggestion.update({
