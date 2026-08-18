@@ -47,7 +47,7 @@ async function getUserContextsForEntity(userId: string, entityType: Permissionab
                 { deletedAt: { isSet: false } },
             ],
         },
-        select: { contextId: true, contextType: true },
+        select: { contextId: true, contextType: true, Role: { select: { name: true } } },
     });
 
     return {
@@ -55,7 +55,7 @@ async function getUserContextsForEntity(userId: string, entityType: Permissionab
         blockIds: assignments.filter((a) => a.contextType === ContextType.block).map((a) => a.contextId),
         complexIds: assignments.filter((a) => a.contextType === ContextType.complex).map((a) => a.contextId),
         companyIds: assignments.filter((a) => a.contextType === ContextType.company).map((a) => a.contextId),
-        system: assignments.some((a) => a.contextType === ContextType.system),
+        system: assignments.some((a) => a.contextType === ContextType.system || ['administrador', 'programador', 'master', 'admin'].includes(a.Role?.name?.toLowerCase() || '')),
     };
 }
 
@@ -72,7 +72,7 @@ async function getUserContextsForActionOnEntity(userId: string, entityType: Perm
                 { deletedAt: { isSet: false } },
             ],
         },
-        select: { contextId: true, contextType: true },
+        select: { contextId: true, contextType: true, Role: { select: { name: true } } },
     });
 
     return {
@@ -80,7 +80,7 @@ async function getUserContextsForActionOnEntity(userId: string, entityType: Perm
         blockIds: assignments.filter((a) => a.contextType === ContextType.block).map((a) => a.contextId),
         complexIds: assignments.filter((a) => a.contextType === ContextType.complex).map((a) => a.contextId),
         companyIds: assignments.filter((a) => a.contextType === ContextType.company).map((a) => a.contextId),
-        system: assignments.some((a) => a.contextType === ContextType.system),
+        system: assignments.some((a) => a.contextType === ContextType.system || ['administrador', 'programador', 'master', 'admin'].includes(a.Role?.name?.toLowerCase() || '')),
     };
 }
 
