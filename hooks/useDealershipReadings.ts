@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useDebounce } from "@/hooks/use-debounce";
 import { getDealershipReadings, createDealershipReading as createDealershipReadingService, updateDealershipReading as updateDealershipReadingService, deleteDealershipReading as deleteDealershipReadingService } from "@/services/dealershipReadingsService";
 import { DealershipReading } from "@prisma/client";
+import { useRolePreview } from "@/contexts/RolePreviewContext";
 import { set } from "date-fns";
 import { DealershipReadingFull } from "@/types/fullTypes";
 
@@ -24,6 +25,7 @@ interface useDealershipReadingsProps {
 }
 
 export const useDealershipReadings = ({ id, withDealership, companyId, complexId, dealershipId, search, fromDate, toDate, take = 10, skip = 0, withComplex, withCompany, type }: useDealershipReadingsProps) => {
+    const { isPreviewing, effectiveContext } = useRolePreview();
     const [dealershipReadings, setDealershipReadings] = useState<DealershipReadingFull[]>([]);
     const [totalCount, setTotalCount] = useState<number>(0);
     const [loading, setLoading] = useState(true);
@@ -37,10 +39,31 @@ export const useDealershipReadings = ({ id, withDealership, companyId, complexId
             setLoading(true);
             setError(null);
             try {
-                // Fetch dealership readings from the API
-                const data = await getDealershipReadings({ id, fromDate, toDate, withDealership, companyId, complexId, dealershipId, search: debouncedSearch, take, skip, withComplex, withCompany, type });
-                setDealershipReadings(data.list);
-                setTotalCount(data.totalCount);
+                let targetCompanyId = companyId;
+                let targetComplexId = complexId;
+
+                // FILTRAGEM DE SEGURANÇA NO PREVIEW MODE
+                if (isPreviewing && effectiveContext) {
+                    if (effectiveContext.accessibleComplexIds?.length > 0) {
+                        targetComplexId = targetComplexId || effectiveContext.accessibleComplexIds[0];
+                    } else if (effectiveContext.companyIds?.length > 0) {
+                        targetCompanyId = targetCompanyId || effectiveContext.companyIds[0];
+                    }
+                }
+
+                const data = await getDealershipReadings({ id, fromDate, toDate, withDealership, companyId: targetCompanyId, complexId: targetComplexId, dealershipId, search: debouncedSearch, take, skip, withComplex, withCompany, type });
+                
+                let list = data.list || [];
+                let count = data.totalCount || 0;
+
+                if (isPreviewing && effectiveContext) {
+                    const allowedComplexIds = effectiveContext.accessibleComplexIds || [];
+                    list = list.filter((r: any) => allowedComplexIds.length === 0 || allowedComplexIds.includes(r.complexId));
+                    count = list.length;
+                }
+
+                setDealershipReadings(list);
+                setTotalCount(count);
                 setError(null);
 
             } catch (error: any) {

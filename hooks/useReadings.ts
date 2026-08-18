@@ -23,7 +23,10 @@ interface useReadingsProps {
   skip?: number;
 }
 
+import { useRolePreview } from '@/contexts/RolePreviewContext';
+
 export const useReadings = ({ enabled=true, withApartment, withBlock, withComplex, readingId, fromDate, toDate, meterId, companyId, complexId, blockId, apartmentId, isPreReading, withDevice, withMeter, take, skip, }: useReadingsProps) => {
+  const { isPreviewing, effectiveContext } = useRolePreview();
   const [readings, setReadings] = useState<ReadingFull[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
@@ -47,9 +50,41 @@ export const useReadings = ({ enabled=true, withApartment, withBlock, withComple
     const fetchReadings = async () => {
       try {
         setLoading(true);
-        const data = await getReadings({ withApartment, withBlock, withComplex, readingId, fromDate, toDate, meterId, companyId, complexId, blockId, apartmentId, isPreReading, withDevice, withMeter, take: debouncedTake, skip: debouncedSkip, });
-        setReadings(data.list);
-        setTotalCount(data.totalCount);
+        
+        let targetCompanyId = companyId;
+        let targetComplexId = complexId;
+        let targetBlockId = blockId;
+        let targetApartmentId = apartmentId;
+
+        // FILTRAGEM DE SEGURANÇA NO PREVIEW MODE
+        if (isPreviewing && effectiveContext) {
+            if (effectiveContext.apartments?.length > 0) {
+                targetApartmentId = targetApartmentId || effectiveContext.apartments[0].id;
+            } else if (effectiveContext.accessibleComplexIds?.length > 0) {
+                targetComplexId = targetComplexId || effectiveContext.accessibleComplexIds[0];
+            } else if (effectiveContext.companyIds?.length > 0) {
+                targetCompanyId = targetCompanyId || effectiveContext.companyIds[0];
+            }
+        }
+
+        const data = await getReadings({ withApartment, withBlock, withComplex, readingId, fromDate, toDate, meterId, companyId: targetCompanyId, complexId: targetComplexId, blockId: targetBlockId, apartmentId: targetApartmentId, isPreReading, withDevice, withMeter, take: debouncedTake, skip: debouncedSkip, });
+        
+        let list = data.list || [];
+        let count = data.totalCount || 0;
+
+        if (isPreviewing && effectiveContext) {
+            const allowedComplexIds = effectiveContext.accessibleComplexIds || [];
+            const allowedAptIds = effectiveContext.apartments?.map((a: any) => a.id) || [];
+            list = list.filter((r: any) => {
+                const complexIdMatch = allowedComplexIds.length === 0 || allowedComplexIds.includes(r.meter?.apartment?.block?.complexId || r.complexId);
+                const aptIdMatch = allowedAptIds.length === 0 || allowedAptIds.includes(r.apartmentId || r.meter?.apartmentId);
+                return complexIdMatch && aptIdMatch;
+            });
+            count = list.length;
+        }
+
+        setReadings(list);
+        setTotalCount(count);
         setError(null);
       } catch (error: any) {
         const message = error.response?.data?.error || error.message || 'Unknown error';

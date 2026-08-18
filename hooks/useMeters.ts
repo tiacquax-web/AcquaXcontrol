@@ -4,6 +4,7 @@ import { getMeters, createMeter as createMeterService, updateMeter as updateMete
 import { selectMeterProps } from '@/types/meter';
 import { useDebounce } from './use-debounce';
 import { MeterFull } from '@/types/fullTypes';
+import { useRolePreview } from '@/contexts/RolePreviewContext';
 
 interface useMeterProps {
   apartmentId?: string
@@ -65,6 +66,7 @@ export interface useMetersProps {
 }
 
 export const useMeters = ({ companyId, complexId, blockId, nameQuery, apartmentId, search, take, skip, orderBy, enabled = true, withApartment, withBlock, withComplex, withTypeMeter }: useMetersProps) => {
+  const { isPreviewing, effectiveContext } = useRolePreview();
   const [meters, setMeters] = useState<MeterFull[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
@@ -90,9 +92,39 @@ export const useMeters = ({ companyId, complexId, blockId, nameQuery, apartmentI
     const fetchMeters = async () => {
       setLoading(true);
       try {
-        const data = await getMeters({ companyId, complexId, blockId, search: debouncedSearch, apartmentId, take, skip, orderBy, withApartment, withBlock, withComplex, withTypeMeter });
-        setMeters(data.list);
-        setTotalCount(data.totalCount);
+        let targetCompanyId = companyId;
+        let targetComplexId = complexId;
+        let targetApartmentId = apartmentId;
+
+        // FILTRAGEM DE SEGURANÇA NO PREVIEW MODE
+        if (isPreviewing && effectiveContext) {
+            if (effectiveContext.apartments?.length > 0) {
+                targetApartmentId = targetApartmentId || effectiveContext.apartments[0].id;
+            } else if (effectiveContext.accessibleComplexIds?.length > 0) {
+                targetComplexId = targetComplexId || effectiveContext.accessibleComplexIds[0];
+            } else if (effectiveContext.companyIds?.length > 0) {
+                targetCompanyId = targetCompanyId || effectiveContext.companyIds[0];
+            }
+        }
+
+        const data = await getMeters({ companyId: targetCompanyId, complexId: targetComplexId, blockId, search: debouncedSearch, apartmentId: targetApartmentId, take, skip, orderBy, withApartment, withBlock, withComplex, withTypeMeter });
+        
+        let list = data.list || [];
+        let count = data.totalCount || 0;
+
+        if (isPreviewing && effectiveContext) {
+            const allowedComplexIds = effectiveContext.accessibleComplexIds || [];
+            const allowedAptIds = effectiveContext.apartments?.map((a: any) => a.id) || [];
+            list = list.filter((m: any) => {
+                const complexIdMatch = allowedComplexIds.length === 0 || allowedComplexIds.includes(m.apartment?.block?.complexId || m.complexId);
+                const aptIdMatch = allowedAptIds.length === 0 || allowedAptIds.includes(m.apartmentId);
+                return complexIdMatch && aptIdMatch;
+            });
+            count = list.length;
+        }
+
+        setMeters(list);
+        setTotalCount(count);
         setError(null);
       } catch (error: any) {
         const message = error.response?.data?.error || error.message || "Unknown error";

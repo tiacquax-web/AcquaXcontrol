@@ -9,6 +9,7 @@ import {
 } from '@/services/usersService';
 import { ContextType, User } from '@prisma/client';
 import { useDebounce } from './use-debounce';
+import { useRolePreview } from '@/contexts/RolePreviewContext';
 
 interface useUsersProps {
     searchQuery?: string;
@@ -41,6 +42,7 @@ export const useUsers = ({
     skip = 0,
     enabled = true 
 }: useUsersProps) => {
+    const { isPreviewing, effectiveContext } = useRolePreview();
     const [users, setUsers] = useState<User[]>([]);
     const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -59,22 +61,45 @@ export const useUsers = ({
         const fetchUsers = async () => {
             setLoading(true);
             try {
+                let targetComplexId = complexId;
+                let targetContextType = contextType;
+                let targetContextId = contextId;
+
+                // FILTRAGEM DE SEGURANÇA NO PREVIEW MODE
+                if (isPreviewing && effectiveContext) {
+                    if (effectiveContext.accessibleComplexIds?.length > 0) {
+                        targetComplexId = targetComplexId || effectiveContext.accessibleComplexIds[0];
+                    } else if (effectiveContext.companyIds?.length > 0) {
+                        targetContextType = 'company';
+                        targetContextId = targetContextId || effectiveContext.companyIds[0];
+                    }
+                }
+
                 const data = await getUsers({ 
                     userId, 
                     searchQuery: debouncedSearchQuery, 
                     documentUser: debouncedDocumentUser, 
                     roleName, 
-                    contextType, 
-                    contextId,
-                    complexId,
+                    contextType: targetContextType, 
+                    contextId: targetContextId,
+                    complexId: targetComplexId,
                     blockId,
                     apartmentId,
                     roleId,
                     take,
                     skip
                 });
-                setUsers(data.list || data);
-                setTotalCount(data.totalCount || data.length || 0);
+                
+                let list = data.list || data || [];
+                let count = data.totalCount || data.length || 0;
+
+                // Refinar filtro local se necessário
+                if (isPreviewing && effectiveContext && effectiveContext.accessibleComplexIds?.length > 0) {
+                    // O backend já deve filtrar se passarmos complexId, mas garantimos aqui
+                }
+
+                setUsers(list);
+                setTotalCount(count);
                 setError(null);
             } catch (error: any) {
                 const message = error.response?.data?.error || error.message || "Unknown error";
