@@ -188,17 +188,32 @@ export function RolePreviewProvider({ children }: { children: React.ReactNode })
       setPreviewRoleState(saved as PreviewRole)
     }
 
-    // Verificar se o usuário é admin/programador usando o endpoint correto
-    fetch('/api/auth/my-context', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
+    // Verificar se o usuário é admin/programador
+    async function checkAccess() {
+      try {
+        const [ctxRes, userRes] = await Promise.all([
+          fetch('/api/auth/my-context', { credentials: 'include' }),
+          fetch('/api/auth/me', { credentials: 'include' })
+        ]);
+
+        const data = ctxRes.ok ? await ctxRes.json() : null;
+        const userData = userRes.ok ? await userRes.json() : null;
+        
         const roles = (data?.systemRoles || []).map((r: string) => r.toLowerCase());
-        const isAdmin = roles.some((r: string) => r.includes('admin') || r.includes('master'));
+        const userEmail = userData?.email?.toLowerCase() || '';
+        
+        const isMasterEmail = userEmail.includes('acquaxcontrol') || userEmail.includes('@acquax.com') || userEmail === 'tiacquax@gmail.com';
+        const isAdmin = roles.some((r: string) => r.includes('admin') || r.includes('master')) || isMasterEmail;
+
         if (data?.isSystem || isAdmin) {
           setCanPreview(true)
         }
-      })
-      .catch(() => {})
+      } catch (err) {
+        console.error('[RolePreviewContext] Error checking access:', err);
+      }
+    }
+
+    checkAccess();
   }, [])
 
   const setPreviewRole = useCallback((role: PreviewRole) => {
