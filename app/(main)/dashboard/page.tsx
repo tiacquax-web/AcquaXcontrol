@@ -1508,6 +1508,13 @@ export default function Dashboard() {
       );
     }
 
+    // DEBUG BANNER - REMOVER DEPOIS
+    const debugBanner = (
+      <div className="bg-red-600 text-white p-2 text-[10px] text-center font-bold uppercase tracking-widest">
+        Versão do Sistema: {new Date().toISOString()} | Papéis: {effectiveCtx?.systemRoles?.join(', ') || 'Nenhum'} | IsSystem: {String(effectiveCtx?.isSystem)}
+      </div>
+    );
+
     // Banner de preview mode
     const previewBanner = isPrevMode && (
       <div className="mb-4 rounded-lg border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-4 py-2 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
@@ -1518,6 +1525,7 @@ export default function Dashboard() {
 
     return (
       <>
+        {debugBanner}
         {previewBanner}
         
         {/* Barra de Ferramentas de Administrador (Preview + Atalhos) */}

@@ -192,7 +192,9 @@ export function RolePreviewProvider({ children }: { children: React.ReactNode })
     fetch('/api/auth/my-context', { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data?.isSystem) {
+        const roles = (data?.systemRoles || []).map((r: string) => r.toLowerCase());
+        const isAdmin = roles.some((r: string) => r.includes('admin') || r.includes('master'));
+        if (data?.isSystem || isAdmin) {
           setCanPreview(true)
         }
       })
