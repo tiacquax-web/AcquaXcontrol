@@ -224,8 +224,18 @@ export const useCombinedImport = (): UseCombinedImportResult => {
 
     setIsImporting(true);
     setImportResult(null);
+    let progressInterval: any = null;
     
     try {
+      progressInterval = setInterval(() => {
+        setImportProgress(prev => {
+          if (prev.processed < prev.total * 0.9) {
+            return { ...prev, processed: prev.processed + Math.ceil(prev.total * 0.05) };
+          }
+          return prev;
+        });
+      }, 2000);
+
       setImportProgress({ 
         total: validationResult.validRows.length, 
         processed: 0, 
@@ -268,7 +278,7 @@ export const useCombinedImport = (): UseCombinedImportResult => {
 
       const result: CombinedImportResult = await response.json();
       
-      clearInterval(progressInterval);
+      if (progressInterval) clearInterval(progressInterval);
       setImportResult(result);
       setImportProgress(prev => ({ 
         ...prev, 
@@ -282,6 +292,7 @@ export const useCombinedImport = (): UseCombinedImportResult => {
       console.error("Error importing data:", error);
       throw error;
     } finally {
+      if (progressInterval) clearInterval(progressInterval);
       setIsImporting(false);
     }
   };

@@ -512,8 +512,8 @@ export default function ReadingsPage() {
               setSelectedComplex={(complex) => {
                 if (isMorador && complex) {
                   // Verifica se o morador tem apenas 1 apartamento neste condomínio
-                  const aptsInComplex = userContext!.apartments.filter(
-                    (a) => (a.block as any)?.complex?.id === complex.id
+                  const aptsInComplex = context!.apartments.filter(
+                    (a: any) => (a.block as any)?.complex?.id === complex.id
                   );
                   if (aptsInComplex.length === 1) {
                     const apt = aptsInComplex[0];
@@ -536,13 +536,13 @@ export default function ReadingsPage() {
         {/* Morador com múltiplos apts no condomínio: mostrar lista dos seus apts */}
         {viewType == "Cards" && filters.complex?.id && !filters.apartment?.id && isMorador && (
           (() => {
-            const aptsInComplex = userContext!.apartments.filter(
-              (a) => (a.block as any)?.complex?.id === filters.complex?.id
+            const aptsInComplex = context!.apartments.filter(
+              (a: any) => (a.block as any)?.complex?.id === filters.complex?.id
             );
             if (aptsInComplex.length > 1) {
               return (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {aptsInComplex.map((apt) => (
+                  {aptsInComplex.map((apt: any) => (
                     <Card
                       key={apt.id}
                       className="cursor-pointer hover:shadow-md transition-shadow"
