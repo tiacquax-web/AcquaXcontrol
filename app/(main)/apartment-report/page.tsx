@@ -69,11 +69,12 @@ export default function ReadingsPage() {
       if (singleApartment && selection.apartmentId !== singleApartment.id) {
         const block = singleApartment.block as any
         const complex = block?.complex as any
-        setSelection({
+        setSelection(prev => ({
+          ...prev,
           complex: complex || undefined,
           block: block || undefined,
           apartmentId: singleApartment.id,
-        })
+        }));
       }
 
       // 2. Síndico com 1 condomínio: seleciona automaticamente
@@ -84,7 +85,8 @@ export default function ReadingsPage() {
         }
       }
     }
-  }, [loadingContext, userContext, singleApartment, selection.apartmentId, selection.complex, isMorador])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingContext, !!userContext, !!singleApartment]);
 
   const setSelectedComplex = (complex: Complex | undefined) => {
     setSelection({ complex, block: undefined, apartmentId: undefined })

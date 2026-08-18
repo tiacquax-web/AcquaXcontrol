@@ -299,17 +299,23 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
   }, [context, apartments]);
 
   const [selectedAptId, setSelectedAptId] = useState<string | null>(null);
-  const activeAptId = singleApartment?.id ?? selectedAptId;
+  const activeAptId = singleApartment?.id ?? selectedAptId ?? (apartments.length > 0 ? apartments[0].id : null);
 
   // Buscar relatórios de consumo do morador para exibir dados mesmo sem GL IoT
+  // Se tiver múltiplas unidades, buscamos os relatórios de todas elas para listar
   const { data: reportData, loading: reportLoading } = useMeterReport({
     month: selectedMonthOpt.month,
     year: selectedMonthOpt.year,
-    apartmentId: activeAptId ?? undefined,
-    enabled: !!activeAptId,
+    apartmentId: apartments.length > 1 ? undefined : (activeAptId ?? undefined),
+    enabled: !!(activeAptId || apartments.length > 0),
   });
 
-  const userReport = reportData?.list?.[0] ?? null;
+  // Se tiver apenas uma unidade, pega o primeiro. Se tiver várias, filtra a ativa.
+  const userReport = useMemo(() => {
+    if (!reportData?.list) return null;
+    if (apartments.length <= 1) return reportData.list[0] ?? null;
+    return reportData.list.find(r => r.apartmentId === activeAptId) ?? reportData.list[0] ?? null;
+  }, [reportData, apartments.length, activeAptId]);
 
   if (ctxLoading) {
     return (
