@@ -5,6 +5,7 @@ import { PermissionableEntity } from '@prisma/client';
 import { useDebounce } from './use-debounce';
 import type { Apartment } from '@prisma/client';
 import { ApartmentFull } from '@/types/fullTypes';
+import { useRolePreview } from '@/contexts/RolePreviewContext';
 
 interface useApartmentsProps {
   withComplex?: boolean;
@@ -23,6 +24,7 @@ interface useApartmentsProps {
 }
 
 export const useApartments = ({ withComplex, withBlock, withCompany, companyId, complexId, blockId, nameQuery, getAvailableForEntity, take = 10, skip = 0, orderBy, orderDirection, enabled = true }: useApartmentsProps) => {
+  const { isPreviewing, effectiveContext } = useRolePreview();
   const [apartments, setApartments] = useState<ApartmentFull[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -34,7 +36,6 @@ export const useApartments = ({ withComplex, withBlock, withCompany, companyId, 
   const refetch = () => setSequence(s => s + 1);
 
   useEffect(() => {
-    // Só busca apartamentos se enabled for true
     if (!enabled) {
       setLoading(false)
       return
@@ -44,8 +45,24 @@ export const useApartments = ({ withComplex, withBlock, withCompany, companyId, 
       setLoading(true)
       try {
         const data = await getApartments({ withComplex, withBlock, withCompany, companyId, complexId, blockId, nameQuery: debouncedNameQuery, getAvailableForEntity, take, skip, orderBy, orderDirection })
-        setApartments(data.list)
-        setTotalCount(data.totalCount || 0)
+        
+        let list = data.list || [];
+        let count = data.totalCount || 0;
+
+        // FILTRAGEM DE SEGURANÇA NO PREVIEW MODE
+        if (isPreviewing && effectiveContext) {
+            // Se for morador, só vê os apartamentos dele
+            if (effectiveContext.apartments?.length > 0) {
+                const allowedAptIds = effectiveContext.apartments.map((a: any) => a.id);
+                list = list.filter((a: any) => allowedAptIds.includes(a.id));
+            } else if (effectiveContext.accessibleComplexIds?.length > 0) {
+                list = list.filter((a: any) => effectiveContext.accessibleComplexIds.includes(a.complexId));
+            }
+            count = list.length;
+        }
+
+        setApartments(list)
+        setTotalCount(count)
         setError(null)
       } catch (error: any) {
         const message = error.response?.data?.error || error.message || "Unknown error"
@@ -56,7 +73,7 @@ export const useApartments = ({ withComplex, withBlock, withCompany, companyId, 
     };
 
     fetchApartments()
-  }, [companyId, complexId, blockId, debouncedNameQuery, getAvailableForEntity, take, skip, enabled, withComplex, withBlock, withCompany, sequence])
+  }, [companyId, complexId, blockId, debouncedNameQuery, getAvailableForEntity, take, skip, enabled, withComplex, withBlock, withCompany, sequence, isPreviewing, effectiveContext])
 
   return { apartments, loading, error, totalCount, refetch }
 };

@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useUserContext } from '@/hooks/useUserContext';
+import { useRolePreview } from '@/contexts/RolePreviewContext';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -74,7 +75,11 @@ function timeAgo(dateStr: string) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SuportePage() {
   const { toast } = useToast();
-  const { context: userContext } = useUserContext();
+  const { context: realUserContext } = useUserContext();
+  const { isPreviewing, previewRole, effectiveContext } = useRolePreview();
+
+  // No preview mode, usamos o contexto simulado
+  const userContext = isPreviewing ? effectiveContext : realUserContext;
 
   // ── State: list ─────────────────────────────────────────────────────────────
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -82,9 +87,16 @@ export default function SuportePage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  
   // Admin/programador entram automaticamente na visão de todos os chamados
-  const isSystemUser = userContext?.isSystem ?? false;
-  const [adminView, setAdminView] = useState(isSystemUser);
+  // No modo preview, NUNCA permite visão de admin para morador/sindico/adm
+  const canSeeAdminView = !isPreviewing && (realUserContext?.isSystem || (realUserContext?.systemRoles || []).some((r: string) => r.toLowerCase().includes('admin')));
+  const [adminView, setAdminView] = useState(canSeeAdminView);
+
+  // Forçar reset de adminView se entrar em preview mode
+  useEffect(() => {
+    if (isPreviewing) setAdminView(false);
+  }, [isPreviewing]);
 
   // ── State: selected ticket ───────────────────────────────────────────────────
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
@@ -119,11 +131,31 @@ export default function SuportePage() {
       if (filterStatus !== 'all') params.status = filterStatus;
       if (adminView) params.admin = 'true';
       const res = await axios.get('/api/user/support', { params, withCredentials: true });
-      setTickets(res.data.list);
-      setTotalCount(res.data.totalCount);
-      setIsAdmin(res.data.isAdmin);
-      // Se descobriu que é admin mas o adminView ainda não foi ligado, liga automaticamente
-      if (res.data.isAdmin && !adminView) {
+      let list = res.data.list || [];
+      let count = res.data.totalCount || 0;
+
+      // FILTRAGEM DE SEGURANÇA NO PREVIEW MODE
+      if (isPreviewing && effectiveContext) {
+        // Se for morador, só vê os dele (o backend já deve retornar os do usuário real, 
+        // mas no preview o usuário real é Admin, então o backend retorna TUDO. 
+        // Precisamos filtrar localmente para simular o comportamento real de um morador)
+        if (previewRole === 'morador') {
+          // No preview de morador, mostramos uma lista vazia ou apenas um mock
+          // Já que não temos como saber quais tickets seriam "dele" no mock
+          list = list.filter((t: any) => t.userId === 'mock-user-id'); 
+        } else if (previewRole === 'sindico' || previewRole === 'administradora') {
+          // Só vê tickets dos condomínios que ele tem acesso
+          const allowedComplexIds = effectiveContext.accessibleComplexIds || [];
+          list = list.filter((t: any) => t.complexId && allowedComplexIds.includes(t.complexId));
+        }
+        count = list.length;
+      }
+
+      setTickets(list);
+      setTotalCount(count);
+      setIsAdmin(isPreviewing ? false : res.data.isAdmin);
+      
+      if (!isPreviewing && res.data.isAdmin && !adminView) {
         setAdminView(true);
       }
     } catch {

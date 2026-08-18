@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { getComplexes, createComplex as createComplexService, updateComplex as updateComplexService, deleteComplex as deleteComplexService } from '@/services/complexesService';
 import { Complex, PermissionableEntity } from '@prisma/client';
 import { useDebounce } from './use-debounce';
 import { ComplexFull } from '@/types/fullTypes';
+import { useRolePreview } from '@/contexts/RolePreviewContext';
 
 interface useComplexesProps {
     nameQuery?: string;
@@ -21,6 +22,7 @@ interface useComplexesProps {
 }
 
 export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCompany, getAvailableForEntity, withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, take = 12, skip = 0, enabled = true}: useComplexesProps) => {
+    const { isPreviewing, effectiveContext } = useRolePreview();
     const [complexes, setComplexes] = useState<ComplexFull[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -32,7 +34,6 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
     const debouncedDocumentCompany = useDebounce(documentCompany, 350);
 
     useEffect(() => {
-    // Só busca apartamentos se enabled for true
         if (!enabled) {
             setLoading(false)
             return
@@ -46,7 +47,7 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
                     getAvailableForEntity, 
                     nameQuery: debouncedNameQuery, 
                     documentCompany: debouncedDocumentCompany, 
-                    companyId, // Passar companyId para o serviço
+                    companyId,
                     withCompany, 
                     withBlocksCount, 
                     withApartmentsCount, 
@@ -55,9 +56,20 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
                     take,
                     skip
                 })
-                setComplexes(data.list)
-                setTotalCount(data.totalCount || 0)
-                setHasNextPage(skip + take < (data.totalCount || 0))
+                
+                let list = data.list || [];
+                let count = data.totalCount || 0;
+
+                // FILTRAGEM DE SEGURANÇA NO PREVIEW MODE
+                if (isPreviewing && effectiveContext) {
+                    const allowedIds = effectiveContext.accessibleComplexIds || [];
+                    list = list.filter((c: any) => allowedIds.includes(c.id));
+                    count = list.length;
+                }
+
+                setComplexes(list)
+                setTotalCount(count)
+                setHasNextPage(skip + take < count)
                 setHasPreviousPage(skip > 0)
                 setError(null)
             } catch (error: any) {
@@ -69,7 +81,7 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
         };
 
         fetchComplexes();
-    }, [debouncedNameQuery, debouncedDocumentCompany, companyId, withCompany, take, skip, enabled])
+    }, [debouncedNameQuery, debouncedDocumentCompany, companyId, withCompany, take, skip, enabled, isPreviewing, effectiveContext])
 
     return { 
         complexes, 
