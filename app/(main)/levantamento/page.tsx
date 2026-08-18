@@ -389,11 +389,11 @@ export default function LevantamentoPage() {
   const userComplexes = useMemo(() => {
     if (!context) return [];
     const map = new Map<string, any>();
-    context.apartments.forEach(a => {
+    context.apartments.forEach((a: any) => {
       const cx = (a as any).block?.complex;
       if (cx?.id && !map.has(cx.id)) map.set(cx.id, cx);
     });
-    context.complexes.forEach(cx => { if (!map.has(cx.id)) map.set(cx.id, cx); });
+    context.complexes.forEach((cx: any) => { if (!map.has(cx.id)) map.set(cx.id, cx); });
     return Array.from(map.values());
   }, [context]);
 

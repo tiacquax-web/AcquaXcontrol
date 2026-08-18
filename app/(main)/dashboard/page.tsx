@@ -1603,7 +1603,7 @@ export default function Dashboard() {
     const isMasterEmail = !isPrevMode && (userEmail.includes('acquaxcontrol') || userEmail.includes('@acquax.com') || userEmail === 'tiacquax@gmail.com');
     
     // PRIORIDADE MÁXIMA: Se o usuário tem QUALQUER papel de Admin/Master em QUALQUER lugar, ele é Admin Master.
-    const isAdmin = roles.some(r => r.includes('admin') || r.includes('master')) || isMasterEmail;
+    const isAdmin = roles.some((r: string) => r.includes('admin') || r.includes('master')) || isMasterEmail;
     
     // Se for um programador (acesso técnico) mas não admin master
     const isProg = !isAdmin && (sys || roles.includes('programador'));

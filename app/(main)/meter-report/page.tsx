@@ -61,13 +61,13 @@ export default function MeterReportPage() {
   const userComplexes = useMemo(() => {
     if (!context) return [];
     const map = new Map<string, { id: string; socialName: string; aliasName?: string | null }>();
-    context.apartments.forEach(apt => {
+    context.apartments.forEach((apt: any) => {
       const cx = apt.block?.complex;
       if (cx?.id && !map.has(cx.id)) {
         map.set(cx.id, { id: cx.id, socialName: cx.socialName, aliasName: cx.aliasName });
       }
     });
-    context.complexes.forEach(cx => {
+    context.complexes.forEach((cx: any) => {
       if (!map.has(cx.id)) map.set(cx.id, cx);
     });
     return Array.from(map.values());
@@ -76,7 +76,7 @@ export default function MeterReportPage() {
   // Apartments for the selected complex (for moradores)
   const userApartmentsInComplex = useMemo(() => {
     if (!context || !selectedComplexId) return [];
-    return context.apartments.filter(a => a.block?.complex?.id === selectedComplexId);
+    return context.apartments.filter((a: any) => a.block?.complex?.id === selectedComplexId);
   }, [context, selectedComplexId]);
 
   // Auto-select complex when morador has only one
@@ -120,7 +120,7 @@ export default function MeterReportPage() {
     if (!data?.list) return [];
     if (!searchText.trim()) return data.list;
     const q = searchText.trim().toLowerCase();
-    return data.list.filter(r => {
+    return data.list.filter((r: MeterReportItem) => {
       const aptName = (r.apartment?.name ?? '').toLowerCase();
       const blockName = (r.apartment?.block?.name ?? '').toLowerCase();
       return aptName.includes(q) || blockName.includes(q) || `bloco ${blockName}`.includes(q) || `apto ${aptName}`.includes(q);

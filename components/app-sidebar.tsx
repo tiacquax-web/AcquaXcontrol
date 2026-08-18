@@ -338,8 +338,7 @@ export function AppSidebar() {
                         </SidebarMenuItem>
                       ))}
                   </div>
-                ))
-              )}
+                ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

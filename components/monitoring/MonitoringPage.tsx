@@ -44,6 +44,28 @@ export default function MonitoringPage() {
   const ctxLoading = isPreviewing ? false : realCtxLoading
 
   const isSystem = userContext?.isSystem ?? false;
+  const isMorador = useMemo(() => {
+    if (!userContext) return false;
+    return !userContext.isSystem && userContext.apartments?.length > 0 && (userContext.complexes?.length === 0 || isPreviewing);
+  }, [userContext, isPreviewing]);
+
+
+
+  const hasGLAccess = (() => {
+    if (!userContext) return false
+    if (userContext.isSystem) return true
+    return userContext.glComplexIds && userContext.glComplexIds.length > 0
+  })()
+  // Monitoramento é acessível para qualquer usuário com permissão de leitura
+  const canAccessMonitoring = hasPermission('monitoringDashboard', 'read')
+    || hasPermission('reading', 'read')
+    || hasPermission('complex', 'read')
+    || hasPermission('apartmentConsumptionReport', 'read')
+    || hasPermission('dealershipReading', 'read')
+  const [companyObj, setCompanyObj] = useState<any | undefined>()
+  const [complexObj, setComplexObj] = useState<any | undefined>()
+  const [blockObj, setBlockObj] = useState<any | undefined>()
+  const [apartmentObj, setApartmentObj] = useState<any | undefined>()
 
   // Auto-selecionar contexto baseado no perfil
   useEffect(() => {
@@ -72,23 +94,8 @@ export default function MonitoringPage() {
         setComplexObj(glComplexes[0])
       }
     }
-  }, [ctxLoading, userContext, companyObj, complexObj, apartmentObj])
+  }, [ctxLoading, userContext, companyObj, complexObj, apartmentObj, isPreviewing])
 
-  const hasGLAccess = (() => {
-    if (!userContext) return false
-    if (userContext.isSystem) return true
-    return userContext.glComplexIds && userContext.glComplexIds.length > 0
-  })()
-  // Monitoramento é acessível para qualquer usuário com permissão de leitura
-  const canAccessMonitoring = hasPermission('monitoringDashboard', 'read')
-    || hasPermission('reading', 'read')
-    || hasPermission('complex', 'read')
-    || hasPermission('apartmentConsumptionReport', 'read')
-    || hasPermission('dealershipReading', 'read')
-  const [companyObj, setCompanyObj] = useState<any | undefined>()
-  const [complexObj, setComplexObj] = useState<any | undefined>()
-  const [blockObj, setBlockObj] = useState<any | undefined>()
-  const [apartmentObj, setApartmentObj] = useState<any | undefined>()
   const companyId = companyObj?.id
   const complexId = complexObj?.id
   const blockId = blockObj?.id
@@ -121,7 +128,7 @@ export default function MonitoringPage() {
   )
   const isSingleGlComplexManager = Boolean(
     userContext && !userContext.isSystem && userContext.complexes.length > 0
-      && userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id)).length === 1,
+      && userContext.complexes.filter((c: any) => userContext.glComplexIds?.includes(c.id)).length === 1,
   )
 
   const shouldAutoSelect = Boolean(

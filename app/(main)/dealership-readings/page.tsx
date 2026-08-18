@@ -1,7 +1,7 @@
 "use client"
 
 import { Building, Building2, BuildingIcon, BuildingIcon as Buildings, ChevronDown, ChevronRight, Download, Eye, Filter, House, HousePlus, Plus, Flame, Droplets, GaugeCircle } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Company, PermissionableEntity, type Block, type Complex } from "@prisma/client"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
@@ -89,7 +89,7 @@ export default function ReadingsPage() {
         fromDate: dateRange.from,
         toDate: dateRange.to,
         take: 10,
-        type: utilityType === 'all' ? undefined : utilityType,
+        type: (utilityType === 'all' ? undefined : utilityType) as 'water' | 'gas' | undefined,
     })
 
     const setSelectedCompany = (company: Company | undefined) => {

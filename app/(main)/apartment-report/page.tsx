@@ -256,7 +256,7 @@ export default function ReadingsPage() {
                 if (isMorador && complex) {
                   // Verifica se o morador tem apenas 1 apartamento neste condomínio
                   const aptsInComplex = userContext!.apartments.filter(
-                    (a) => (a.block as any)?.complex?.id === complex.id
+                    (a: any) => (a.block as any)?.complex?.id === complex.id
                   );
                   if (aptsInComplex.length === 1) {
                     const apt = aptsInComplex[0];
@@ -279,12 +279,12 @@ export default function ReadingsPage() {
         {searchType == "cards" && selectedComplex?.id && !selectedApartmentId && isMorador && (
           (() => {
             const aptsInComplex = userContext!.apartments.filter(
-              (a) => (a.block as any)?.complex?.id === selectedComplex.id
+              (a: any) => (a.block as any)?.complex?.id === selectedComplex.id
             );
             if (aptsInComplex.length > 1) {
               return (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {aptsInComplex.map((apt) => (
+                  {aptsInComplex.map((apt: any) => (
                     <Card
                       key={apt.id}
                       className="cursor-pointer hover:shadow-md transition-shadow"
