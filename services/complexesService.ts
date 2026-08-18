@@ -18,9 +18,10 @@ interface getComplexesProps {
     socialNames?: string[];
     take?: number;
     skip?: number;
+    lite?: boolean;
 }
 
-export const getComplexes = async ({ id, getAvailableForEntity, complexId, companyId, nameQuery, documentCompany, withCompany = false, withBlocksCount = false, withApartmentsCount = false, withMetersCount = false, onlyWithReservoirs = false, socialNames, take = 12, skip = 0 }: getComplexesProps & { socialNames?: string[] }) => {
+export const getComplexes = async ({ id, getAvailableForEntity, complexId, companyId, nameQuery, documentCompany, withCompany = false, withBlocksCount = false, withApartmentsCount = false, withMetersCount = false, onlyWithReservoirs = false, socialNames, take = 12, skip = 0, lite = false }: getComplexesProps & { socialNames?: string[] }) => {
   try {
     const params: any = {};
     if (id) params.id = id;
@@ -37,6 +38,7 @@ export const getComplexes = async ({ id, getAvailableForEntity, complexId, compa
     if (onlyWithReservoirs) params.onlyWithReservoirs = onlyWithReservoirs;
     if (take) params.take = take;
     if (skip) params.skip = skip;
+    if (lite) params.lite = 'true';
 
     const response = await axios.get(`${NEXT_PUBLIC_API_URL}/user/complexes`, { params });
     return response.data;

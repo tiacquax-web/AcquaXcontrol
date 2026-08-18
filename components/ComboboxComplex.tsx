@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useComplexes } from "@/hooks/useComplexes"
+import { useUserContext } from "@/hooks/useUserContext"
+import { useRolePreview } from "@/contexts/RolePreviewContext"
 import type { Complex, PermissionableEntity } from "@prisma/client"
 import { cn } from "@/lib/utils"
 
@@ -29,15 +31,24 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
   ({ getAvailableForEntity, setSelectedComplex, complex, required, name, disabled, modal = false, withCompany = false, companyId, autoSelectSingle = true }, ref) => {
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState("")
+    const { context: userContext } = useUserContext()
+    const { effectiveContext } = useRolePreview()
     const { complexes, loading, error } = useComplexes({ 
       nameQuery: search, 
       companyId,
       getAvailableForEntity,
       enabled: !disabled,
-      withCompany
+      withCompany,
+      lite: true,
     })
     const [selectedId, setSelectedId] = useState<string | undefined>(complex?.id)
     const [autoSelected, setAutoSelected] = useState(false)
+
+    // O contexto já contém os condomínios autorizados; ele serve como primeira pintura
+    // do dropdown, sem esperar uma segunda chamada de rede.
+    const contextComplexes = (effectiveContext?.complexes || userContext?.complexes || []) as any[]
+    const visibleComplexes: any[] = !search.trim() && complexes.length === 0 ? contextComplexes : complexes
+    const optionsLoading = loading && visibleComplexes.length === 0
 
     useEffect(() => {
       if (complex) {
@@ -49,12 +60,12 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
 
     // Auto-seleciona quando só há 1 condomínio disponível
     useEffect(() => {
-      if (autoSelectSingle && !loading && complexes.length === 1 && !selectedId && !autoSelected) {
-        setSelectedId(complexes[0].id)
-        setSelectedComplex(complexes[0])
+      if (autoSelectSingle && !optionsLoading && visibleComplexes.length === 1 && !selectedId && !autoSelected) {
+        setSelectedId(visibleComplexes[0].id)
+        setSelectedComplex(visibleComplexes[0])
         setAutoSelected(true)
       }
-    }, [complexes, loading, autoSelectSingle, selectedId, autoSelected, setSelectedComplex])
+    }, [visibleComplexes, optionsLoading, autoSelectSingle, selectedId, autoSelected, setSelectedComplex])
 
     const handleSelect = (value: string) => {
       if (value === selectedId) {
@@ -62,7 +73,7 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
         setSelectedId(undefined)
         setSelectedComplex(undefined)
       } else {
-        const selectedComplex = complexes.find((c) => c.id === value)
+        const selectedComplex = visibleComplexes.find((c) => c.id === value)
         if (selectedComplex) {
           setSelectedId(value)
           setSelectedComplex(selectedComplex)
@@ -79,15 +90,15 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
 
     // Find the selected complex name for display
     const selectedComplexName = selectedId
-      ? complexes.find((c) => c.id === selectedId)?.socialName || complex?.socialName || "Empresa selecionada"
+      ? visibleComplexes.find((c) => c.id === selectedId)?.socialName || complex?.socialName || "Empresa selecionada"
       : ""
 
-    if (error) {
-      return <div className="text-red-500">Erro para carregar condomínios: {error.toString()}</div>
+    if (error && visibleComplexes.length === 0) {
+      return <div className="flex items-center min-h-10 rounded-md border border-red-200 px-3 text-sm text-red-500">Erro para carregar condomínios: {error.toString()}</div>
     }
 
     // Oculta o seletor se só há 1 condomínio (já auto-selecionado)
-    if (autoSelectSingle && !loading && complexes.length === 1) {
+    if (autoSelectSingle && !optionsLoading && visibleComplexes.length === 1) {
       return null
     }
 
@@ -104,7 +115,7 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
             disabled={disabled}
           >
             <Building2 className="w-4 h-4" />
-            {selectedId ? selectedComplexName : <span className="text-start w-full">Condomínio...</span>}
+            {selectedId ? selectedComplexName : optionsLoading ? <span className="text-start w-full">Carregando condomínios...</span> : <span className="text-start w-full">Condomínio...</span>}
             <div className="flex items-center ml-2">
               {selectedId && (
                 <div className="cursor-pointer h-4 w-4 p-0 mr-1" onClick={handleClear}>
@@ -141,7 +152,7 @@ const SelectComplex = forwardRef<HTMLButtonElement, SelectComplexProps>(
                 <CommandEmpty>Nenhum condomínio encontrada.</CommandEmpty>
                 <CommandGroup>
                   <CommandList>
-                    {complexes.map((complex) => (
+                    {visibleComplexes.map((complex) => (
                       <CommandItem key={complex.id} value={complex.id} onSelect={handleSelect} className="cursor-pointer">
                         <Check
                           className={cn("mr-2 h-4 w-4", selectedId === complex.id ? "opacity-100" : "opacity-0")}

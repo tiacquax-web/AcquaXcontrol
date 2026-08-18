@@ -19,6 +19,7 @@ interface useComplexesProps {
     enabled?: boolean;
     take?: number;
     skip?: number;
+    lite?: boolean;
 }
 
 type ComplexCacheEntry = {
@@ -30,7 +31,7 @@ const COMPLEX_CACHE_TTL = 60_000;
 const complexesCache = new Map<string, ComplexCacheEntry>();
 const complexesRequests = new Map<string, Promise<any>>();
 
-export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCompany, getAvailableForEntity, withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, take = 12, skip = 0, enabled = true}: useComplexesProps) => {
+export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCompany, getAvailableForEntity, withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, take = 12, skip = 0, lite = false, enabled = true}: useComplexesProps) => {
     const { isPreviewing, effectiveContext } = useRolePreview();
     const [complexes, setComplexes] = useState<ComplexFull[]>([]);
     const [loading, setLoading] = useState(true);
@@ -62,6 +63,7 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
                 onlyWithReservoirs: !!onlyWithReservoirs,
                 take,
                 skip,
+                lite,
                 preview: isPreviewing ? effectiveContext?.accessibleComplexIds || [] : 'real',
             });
             try {
@@ -87,7 +89,8 @@ export const useComplexes = ({ id, nameQuery, documentCompany, companyId, withCo
                         withMetersCount,
                         onlyWithReservoirs,
                         take,
-                        skip
+                        skip,
+                        lite,
                     });
                     complexesRequests.set(requestKey, request);
                 }

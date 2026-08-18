@@ -3338,13 +3338,19 @@ async function getAvailableComplexesForEntity(
     onlyWithReservoirs: boolean = false,
     take?: number,
     skip?: number,
+    lite: boolean = false,
 ) {
     // 1. Entity > Permission > Role > RoleAssignment = Contexts (system, company, complex, block, apartment)
     const { system, companyIds, complexIds, blockIds, apartmentIds } = await getUserContextsForEntity(userId, entityType);
     const extraWhere = where ? where : {};
 
     // Estrutura básica sem includes pesados
-    const baseSelect = {
+    const baseSelect = lite ? {
+        id: true,
+        socialName: true,
+        aliasName: true,
+        companyId: true,
+    } : {
         id: true,
         socialName: true,
         companyId: true,
@@ -3423,17 +3429,18 @@ async function getAvailableComplexesForEntity(
             ...(finalWhere.AND || [finalWhere]),
         ]
     });
-    const [availableComplexes, availableComplexCount] = await Promise.all([
+    const [availableComplexes, availableComplexCountRaw] = await Promise.all([
         prisma.complex.findMany({
             where: finalWhereWithNotDeleted,
             select: baseSelect,
             take: take,
             skip: skip
         }),
-        prisma.complex.count({
+        lite ? Promise.resolve(0) : prisma.complex.count({
             where: finalWhereWithNotDeleted,
         })
     ]);
+    const availableComplexCount = lite ? availableComplexes.length : availableComplexCountRaw;
     console.timeEnd("getAvailableComplexesForEntity - prisma.complex.findMany");
 
     // Se não precisar dos counts, retorna direto

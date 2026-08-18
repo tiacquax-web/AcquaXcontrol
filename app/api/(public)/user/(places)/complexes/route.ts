@@ -25,10 +25,11 @@ function getQueryParams(req: NextRequest) {
     const search = req.nextUrl.searchParams.get('search') || ''
     const take = parseInt(req.nextUrl.searchParams.get('take') || '12')
     const skip = parseInt(req.nextUrl.searchParams.get('skip') || '0')
+    const lite = req.nextUrl.searchParams.get('lite') === 'true'
     const orderBy = req.nextUrl.searchParams.get('orderBy') || 'createdAt'
     const orderDirection = req.nextUrl.searchParams.get('orderDirection') || 'desc'
 
-    return { socialNames, withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection }
+    return { socialNames, withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, lite, orderBy, orderDirection }
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
         // obtém parâmetros de consulta
-        const { withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, orderBy, orderDirection, socialNames } = getQueryParams(req)
+        const { withBlocksCount, withApartmentsCount, withMetersCount, onlyWithReservoirs, getAvailableForEntity, withCompany, companyId, complexId, blockId, apartmentId, search, take, skip, lite, orderBy, orderDirection, socialNames } = getQueryParams(req)
 
         // Novo: busca por múltiplos socialNames
         const socialNamesParam: string[] | undefined = socialNames ? JSON.parse(socialNames) : undefined;
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         // retorna complexos disponíveis para entidade se solicitado
         if (getAvailableForEntity) {
             console.log("######### Buscando complexos disponíveis para entidade:", getAvailableForEntity)
-            const { list, totalCount } = await getAvailableComplexesForEntity(userId, getAvailableForEntity, search, companyId, where, !!withBlocksCount, !!withApartmentsCount, !!withMetersCount, false, onlyWithReservoirs, take, skip)
+            const { list, totalCount } = await getAvailableComplexesForEntity(userId, getAvailableForEntity, search, companyId, where, !!withBlocksCount, !!withApartmentsCount, !!withMetersCount, false, onlyWithReservoirs, take, skip, lite)
             return NextResponse.json({ list, totalCount })
         }
         
