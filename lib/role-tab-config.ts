@@ -10,7 +10,7 @@ const DEFAULT_CONFIG: Record<string, Record<RoleType, boolean>> = {
   '/dealership-readings': { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
   '/readings':            { morador: false, sindico: true, administradora: true, programador: true, administrador: true },
   '/meter-report':        { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
-  '/levantamento':       { morador: false, sindico: true, administradora: true, programador: true, administrador: true },
+  '/levantamento':       { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
   '/monitoring':          { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
   '/alerts':              { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
   '/reservoir-monitoring':{ morador: true, sindico: true, administradora: true, programador: true, administrador: true },

@@ -21,6 +21,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
+import { useUserContext } from "@/hooks/useUserContext"
+import { useRolePreview } from "@/contexts/RolePreviewContext"
 
 const viewTypeNames = {
     Cards: "Cards",
@@ -31,6 +33,11 @@ const sixtyDaysAgo = new Date(new Date().setDate(new Date().getDate() - 60))
 
 export default function ReadingsPage() {
     const router = useRouter()
+    const { context: realCtx, loading: realLoading } = useUserContext()
+    const { isPreviewing, effectiveContext } = useRolePreview()
+    const context = isPreviewing ? effectiveContext : realCtx
+    const contextLoading = isPreviewing ? false : realLoading
+
     const [searchType, setSearchType] = useState<'Cards' | 'Table'>('Table')
     const [dateRange, setDateRange] = useState({ from: sixtyDaysAgo, to: new Date() })
     const [utilityType, setUtilityType] = useState<'all' | 'water' | 'gas' | 'energy'>('all')
@@ -43,6 +50,34 @@ export default function ReadingsPage() {
     const [searchText, setSearchText] = useState("")
     const [viewType, setViewType] = useState<'Cards' | 'Table'>('Table')
     const viewTypeName = viewTypeNames[viewType]
+
+    const isSystem = context?.isSystem ?? false
+
+    // AUTO-SELEÇÃO E TRAVA
+    useEffect(() => {
+        if (!contextLoading && context) {
+            // 1. Auto-selecionar AcquaX do Brasil
+            if (!selectedCompany) {
+                const acquax = context.complexes?.find((c: any) => c.company?.name?.includes('Acqua X'))?.company;
+                if (acquax) setFilters(prev => ({ ...prev, company: acquax }));
+            }
+
+            // 2. Se for morador com 1 unidade, trava no condomínio dela
+            if (context.apartments?.length === 1 && (context.complexes?.length === 0 || isPreviewing)) {
+                const apt = context.apartments[0];
+                const cx = apt.block?.complex as any;
+                if (selectedComplex?.id !== cx?.id) {
+                    setFilters(prev => ({ ...prev, complex: cx }));
+                }
+            }
+
+            // 3. Se for síndico com 1 condomínio
+            if (context.accessibleComplexIds?.length === 1 && !selectedComplex) {
+                const cx = context.complexes?.find((c: any) => c.id === context.accessibleComplexIds[0]);
+                if (cx) setFilters(prev => ({ ...prev, complex: cx }));
+            }
+        }
+    }, [contextLoading, context, selectedCompany, selectedComplex, isPreviewing]);
 
     const { dealershipReadings, totalCount, error, loading } = useDealershipReadings({
         companyId: selectedCompany?.id,
@@ -132,12 +167,12 @@ export default function ReadingsPage() {
                             {TypeFilter}
                             <div className="flex items-center space-x-2">
                                 <HousePlus className="h-5 w-5 text-muted-foreground" />
-                                <SelectCompany setSelectedCompany={setSelectedCompany} company={selectedCompany} getAvailableForEntity={PermissionableEntity.dealershipReading} autoSelectSingle={false} />
+                                <SelectCompany setSelectedCompany={setSelectedCompany} company={selectedCompany} getAvailableForEntity={PermissionableEntity.dealershipReading} autoSelectSingle={false} disabled={!isSystem && context?.companyIds?.length === 1} />
                             </div>
 
                             <div className="flex items-center space-x-2">
                                 <Building2 className="h-5 w-5 text-muted-foreground" />
-                                <ComplexesCombobox setSelectedComplex={setSelectedComplex} complex={selectedComplex} companyId={selectedCompany?.id} getAvailableForEntity={PermissionableEntity.dealershipReading} autoSelectSingle={false} />
+                                <ComplexesCombobox setSelectedComplex={setSelectedComplex} complex={selectedComplex} companyId={selectedCompany?.id} getAvailableForEntity={PermissionableEntity.dealershipReading} autoSelectSingle={false} disabled={!isSystem && context?.accessibleComplexIds?.length === 1} />
                             </div>
 
                             <div className="flex items-center justify-between space-x-2 w-full">
