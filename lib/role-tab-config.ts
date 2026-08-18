@@ -7,7 +7,7 @@ export type RoleType = 'morador' | 'sindico' | 'administradora' | 'programador' 
 const DEFAULT_CONFIG: Record<string, Record<RoleType, boolean>> = {
   '/dashboard':           { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
   '/apartment-report':    { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
-  '/dealership-readings': { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
+  '/dealership-readings': { morador: false, sindico: true, administradora: true, programador: true, administrador: true },
   '/readings':            { morador: false, sindico: true, administradora: true, programador: true, administrador: true },
   '/meter-report':        { morador: true, sindico: true, administradora: true, programador: true, administrador: true },
   '/levantamento':       { morador: true, sindico: true, administradora: true, programador: true, administrador: true },

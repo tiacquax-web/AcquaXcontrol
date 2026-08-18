@@ -224,7 +224,8 @@ export function RolePreviewProvider({ children }: { children: React.ReactNode })
     }
   }, [])
 
-  const isPreviewing = previewRole !== 'real'
+  // Garantir que o preview só é ativado se o usuário puder usar
+  const isPreviewing = canPreview && previewRole !== 'real'
 
   const effectivePermissions = isPreviewing
     ? ROLE_PERMISSIONS[previewRole as Exclude<PreviewRole, 'real'>]
