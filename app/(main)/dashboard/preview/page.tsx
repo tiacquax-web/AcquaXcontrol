@@ -175,7 +175,7 @@ function ConsumoAnualGraph({ apartmentId, complexId }: { apartmentId: string; co
 
     Promise.all(
       months.map(month =>
-        fetch(`${base}/meter-report?month=${month}&year=${selectedYear}&apartment_id=${apartmentId}${complexId ? \`&complex_id=\${complexId}\` : ''}`, {
+        fetch(`${base}/meter-report?month=${month}&year=${selectedYear}&apartment_id=${apartmentId}${complexId ? `&complex_id=${complexId}` : ''}`, {
           credentials: 'include',
         })
           .then(r => r.ok ? r.json() : { list: [] })
@@ -239,14 +239,14 @@ function ConsumoAnualGraph({ apartmentId, complexId }: { apartmentId: string; co
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} unit=" m³" width={55} />
                 <Tooltip
-                  formatter={(value: number) => [\`\${value.toFixed(3)} m³\`, 'Consumo']}
+                  formatter={(value: number) => [`${value.toFixed(3)} m³`, 'Consumo']}
                   labelStyle={{ fontSize: 12 }}
                   contentStyle={{ fontSize: 12 }}
                 />
                 <Bar dataKey="consumption" radius={[4, 4, 0, 0]}>
                   {chartData.map((entry, index) => (
                     <Cell
-                      key={\`cell-\${index}\`}
+                      key={`cell-${index}`}
                       fill={peakMonth && entry.month === peakMonth.month
                         ? '#f97316'
                         : entry.consumption < maxVal * 0.4
@@ -302,7 +302,6 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
     month: selectedMonthOpt.month,
     year: selectedMonthOpt.year,
     apartmentId: activeAptId ?? undefined,
-    utilityType: selectedUtility,
     enabled: !!activeAptId,
   });
 
@@ -375,7 +374,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
                     </p>
                   </div>
                   <div className="flex items-center justify-end">
-                    <Link href={`/apartment-report/\${userReport.id}`}>
+                    <Link href={`/apartment-report/${userReport.id}`}>
                       <Button size="sm" className="gap-1.5 text-xs">Ver Filipeta Completa <ChevronRight className="w-3.5 h-3.5" /></Button>
                     </Link>
                   </div>
@@ -408,7 +407,7 @@ function GLStatusCard({ complexId }: { complexId: string }) {
   useEffect(() => {
     if (!complexId) return;
     setStatus(s => ({ ...s, loading: true }));
-    fetch(\`/api/gl-status?complexId=\${complexId}\`, { credentials: 'include' })
+    fetch(`/api/gl-status?complexId=${complexId}`, { credentials: 'include' })
       .then(r => r.json())
       .then(data => {
         setStatus({
@@ -443,8 +442,8 @@ function GLStatusCard({ complexId }: { complexId: string }) {
               {isOk && <CheckCircle2 className="w-5 h-5 text-green-500" />}
               {isWarning && <Clock className="w-5 h-5 text-amber-500" />}
               {isStale && <AlertTriangle className="w-5 h-5 text-red-500" />}
-              <span className={\`text-sm font-medium \${isOk ? 'text-green-600' : isWarning ? 'text-amber-600' : 'text-red-600'}\`}>
-                {isOk ? 'Atualizado' : isWarning ? \`\${days} dias sem nova leitura\` : \`\${days} dias sem receber dados\`}
+              <span className={`text-sm font-medium ${isOk ? 'text-green-600' : isWarning ? 'text-amber-600' : 'text-red-600'}`}>
+                {isOk ? 'Atualizado' : isWarning ? `${days} dias sem nova leitura` : `${days} dias sem receber dados`}
               </span>
             </div>
             <p className="text-xs text-muted-foreground">Última leitura recebida: {status.lastImport}</p>
@@ -464,7 +463,7 @@ function BlockComparisonCard({ complexId, month, year }: { complexId: string; mo
   useEffect(() => {
     if (!complexId) return;
     setData(s => ({ ...s, loading: true }));
-    fetch(\`/api/block-comparison?complexId=\${complexId}&month=\${month}&year=\${year}\`, { credentials: 'include' })
+    fetch(`/api/block-comparison?complexId=${complexId}&month=${month}&year=${year}`, { credentials: 'include' })
       .then(r => r.json())
       .then(d => setData({ blocks: d.blocks ?? [], loading: false }))
       .catch(() => setData({ blocks: [], loading: false }));
@@ -482,7 +481,7 @@ function BlockComparisonCard({ complexId, month, year }: { complexId: string; mo
           data.blocks.map((block) => (
             <div key={block.blockName} className="space-y-1">
               <div className="flex items-center justify-between text-xs"><span className="font-medium">{block.blockName}</span><span className="text-muted-foreground">{block.totalConsumption.toFixed(1)} m³ / {block.unitCount} un.</span></div>
-              <div className="h-2 bg-muted rounded-full overflow-hidden"><div className="h-full bg-blue-500 rounded-full" style={{ width: \`\${(block.totalConsumption / maxConsumption) * 100}%\` }} /></div>
+              <div className="h-2 bg-muted rounded-full overflow-hidden"><div className="h-full bg-blue-500 rounded-full" style={{ width: `${(block.totalConsumption / maxConsumption) * 100}%` }} /></div>
             </div>
           ))
         }
@@ -598,7 +597,7 @@ function SindicoDashboard() {
                       <div className="rounded-xl border p-3 text-center"><p className="text-[10px] text-muted-foreground mb-1">Consumo Total</p><p className="text-xl font-bold text-teal-600">{totalConsumption?.toFixed(2)} <span className="text-xs font-normal">m³</span></p></div>
                       <div className="rounded-xl border p-3 text-center"><p className="text-[10px] text-muted-foreground mb-1">Total Arrecadado</p><p className="text-lg font-bold text-blue-600">{formatCurrency(totalValue)}</p></div>
                     </div>
-                    <div className="rounded-xl border border-orange-200 bg-orange-50 p-3"><p className="text-xs font-semibold text-orange-700">Consumo > 15 m³ — {highConsumptionUnits.length} un.</p></div>
+                    <div className="rounded-xl border border-orange-200 bg-orange-50 p-3"><p className="text-xs font-semibold text-orange-700">Consumo {'>'} 15 m³ — {highConsumptionUnits.length} un.</p></div>
                     <div className="rounded-xl border border-red-200 bg-red-50 p-3"><p className="text-xs font-semibold text-red-700">Sem consumo — {zeroConsumptionUnits.length} un.</p></div>
                   </> : <p className="text-sm text-muted-foreground py-4 text-center">Sem dados</p>}
               </CardContent>
@@ -629,7 +628,7 @@ function useAdminStats() {
     setError(null);
     try {
       const res = await fetch('/api/admin-stats', { credentials: 'include' });
-      if (!res.ok) setError(\`Erro \${res.status}\`);
+      if (!res.ok) setError(`Erro ${res.status}`);
       else setData(await res.json());
     } catch (e: any) { setError(e.message || 'Erro de conexão'); }
     finally { setLoading(false); }
@@ -676,7 +675,7 @@ function AdminKPIDashboard() {
           { icon: <Users className="w-6 h-6 text-purple-500 mb-1" />, value: stats?.totals?.users, label: 'Usuários', color: 'text-purple-600' },
           { icon: <GaugeCircle className="w-6 h-6 text-orange-500 mb-1" />, value: stats?.totals?.meters, label: 'Medidores', color: 'text-orange-600' },
         ].map(item => (
-          <Card key={item.label}><CardContent className="p-4 flex flex-col items-center justify-center text-center gap-1">{item.icon}<p className={\`text-3xl font-extrabold \${item.color}\`}>{item.value ?? '—'}</p><p className="text-xs text-muted-foreground font-medium">{item.label}</p></CardContent></Card>
+          <Card key={item.label}><CardContent className="p-4 flex flex-col items-center justify-center text-center gap-1">{item.icon}<p className={`text-3xl font-extrabold ${item.color}`}>{item.value ?? '—'}</p><p className="text-xs text-muted-foreground font-medium">{item.label}</p></CardContent></Card>
         ))}
       </div>
       <OperationsHealthCard />
