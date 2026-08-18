@@ -147,9 +147,10 @@ export async function GET(req: NextRequest): Promise<Response> {
         return NextResponse.json({
             isSystem,
             systemRoles,
-            apartments,
-            blocks,
-            complexes,
+            // Otimização: Admins não precisam de todos os apartamentos/blocos no contexto global
+            apartments: isSystem ? apartments.slice(0, 100) : apartments,
+            blocks: isSystem ? blocks.slice(0, 100) : blocks,
+            complexes: isSystem ? complexes.slice(0, 100) : complexes,
             companyIds,
             // Adicionamos as IDs diretas para ajudar o frontend a distinguir Morador de Síndico
             directApartmentIds: apartmentIds,

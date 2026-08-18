@@ -315,7 +315,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {loading || ctxLoading ? (
+              {(loading || ctxLoading) && !isPreviewing ? (
                 Array.from({ length: 2 }).map((_, idx) => (
                   <div key={idx} className="mb-6">
                     <div className="flex items-center gap-2 mb-2 pl-2">

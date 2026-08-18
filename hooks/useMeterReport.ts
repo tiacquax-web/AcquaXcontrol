@@ -72,10 +72,11 @@ interface UseMeterReportProps {
   year: string;  // "2026"
   complexId?: string;
   apartmentId?: string;
+  utilityType?: string;
   enabled?: boolean;
 }
 
-export function useMeterReport({ month, year, complexId, apartmentId, enabled = true }: UseMeterReportProps) {
+export function useMeterReport({ month, year, complexId, apartmentId, utilityType, enabled = true }: UseMeterReportProps) {
   const { isPreviewing, effectiveContext } = useRolePreview();
   const [data, setData] = useState<MeterReportData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -91,6 +92,7 @@ export function useMeterReport({ month, year, complexId, apartmentId, enabled = 
     const params: Record<string, string> = { month, year };
     if (complexId) params.complex_id = complexId;
     if (apartmentId) params.apartment_id = apartmentId;
+    if (utilityType) params.utility_type = utilityType;
 
     axios
       .get<MeterReportData>(`${NEXT_PUBLIC_API_URL}/meter-report`, {
@@ -130,7 +132,7 @@ export function useMeterReport({ month, year, complexId, apartmentId, enabled = 
       });
 
     return () => { cancelled = true; };
-  }, [month, year, complexId, apartmentId, enabled]);
+  }, [month, year, complexId, apartmentId, utilityType, enabled]);
 
   return { data, loading, error };
 }

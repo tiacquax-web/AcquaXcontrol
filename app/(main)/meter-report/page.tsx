@@ -45,6 +45,9 @@ export default function MeterReportPage() {
   const [selectedComplexId, setSelectedComplexId] = useState<string | undefined>(undefined);
   const [selectedComplexObj, setSelectedComplexObj] = useState<any>(null);
 
+  // Selected utility type
+  const [selectedUtility, setSelectedUtility] = useState<'water' | 'gas' | 'energy'>('water');
+
   // Search text for filtering by apartment/block (admin/sindico only)
   const [searchText, setSearchText] = useState('');
 
@@ -108,6 +111,7 @@ export default function MeterReportPage() {
     year: selectedMonthOption.year,
     complexId: selectedComplexId,
     apartmentId: apartmentIdFilter,
+    utilityType: selectedUtility,
     enabled: !!selectedComplexId && !!selectedMonthOption?.month && !!selectedMonthOption?.year,
   });
 
@@ -169,6 +173,24 @@ export default function MeterReportPage() {
                   {opt.label}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Utility selector */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tipo de Medição</label>
+          <Select
+            value={selectedUtility}
+            onValueChange={(val: any) => setSelectedUtility(val)}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="water">Água</SelectItem>
+              <SelectItem value="gas">Gás</SelectItem>
+              <SelectItem value="energy">Energia</SelectItem>
             </SelectContent>
           </Select>
         </div>

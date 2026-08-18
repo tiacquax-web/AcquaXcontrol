@@ -151,8 +151,83 @@ function FilipetaMiniSkeleton() {
   );
 }
 
+// ─── AreaCommonIndividualGraph ────────────────────────────────────────────────
+function AreaCommonIndividualGraph({ apartmentId, utilityType = 'water' }: { apartmentId: string; utilityType?: string }) {
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(String(currentYear));
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const yearOptions = useMemo(() =>
+    Array.from({ length: 4 }, (_, i) => String(currentYear - i)),
+  [currentYear]);
+
+  useEffect(() => {
+    if (!apartmentId) return;
+    setLoading(true);
+    fetch(`/api/dashboard/annual-consumption?apartment_id=${apartmentId}&year=${selectedYear}&utility_type=${utilityType}`, {
+      credentials: 'include',
+    })
+      .then(r => r.ok ? r.json() : { months: [] })
+      .then(data => {
+        setChartData(data.months || []);
+      })
+      .catch(() => setChartData([]))
+      .finally(() => setLoading(false));
+  }, [apartmentId, selectedYear, utilityType]);
+
+  const hasData = chartData.some(m => m.commonArea > 0);
+
+  return (
+    <Card className="w-full border-orange-200">
+      <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-orange-600" />
+          <CardTitle className="text-base font-semibold">Minha Área Comum — valor pago (R$)</CardTitle>
+        </div>
+        <Select value={selectedYear} onValueChange={setSelectedYear}>
+          <SelectTrigger className="w-24 h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {yearOptions.map(y => (
+              <SelectItem key={y} value={y} className="text-xs">{y}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex items-center justify-center h-40">
+            <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
+          </div>
+        ) : !hasData ? (
+          <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+            <TrendingUp className="w-10 h-10 mb-2 opacity-30" />
+            <p className="text-sm">Sem dados de área comum em {selectedYear}</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `R$${v}`} width={55} />
+              <Tooltip
+                formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Área Comum']}
+                labelStyle={{ fontSize: 12 }}
+                contentStyle={{ fontSize: 12 }}
+              />
+              <Bar dataKey="commonArea" fill="#f97316" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── ConsumoAnualGraph ────────────────────────────────────────────────────────
-function ConsumoAnualGraph({ apartmentId, complexId }: { apartmentId: string; complexId?: string }) {
+function ConsumoAnualGraph({ apartmentId, utilityType = 'water' }: { apartmentId: string; utilityType?: string }) {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
   const [chartData, setChartData] = useState<{ month: string; consumption: number }[]>([]);
@@ -166,38 +241,22 @@ function ConsumoAnualGraph({ apartmentId, complexId }: { apartmentId: string; co
   useEffect(() => {
     if (!apartmentId) return;
     setLoading(true);
-    setChartData([]);
-    setTotalAnual(null);
 
-    const base = '/api';
-    const now = new Date();
-    const maxMonth = Number(selectedYear) === currentYear ? now.getMonth() + 1 : 12;
-    const months = Array.from({ length: maxMonth }, (_, i) => String(i + 1).padStart(2, '0'));
-
-    Promise.all(
-      months.map(month =>
-        fetch(`${base}/meter-report?month=${month}&year=${selectedYear}&apartment_id=${apartmentId}${complexId ? `&complex_id=${complexId}` : ''}`, {
-          credentials: 'include',
-        })
-          .then(r => r.ok ? r.json() : { list: [] })
-          .then(d => {
-            const list: MeterReportItem[] = d.list ?? [];
-            const total = list.reduce((s, r) => s + (r.consumption ?? 0), 0);
-            return { month, consumption: total };
-          })
-          .catch(() => ({ month, consumption: 0 }))
-      )
-    ).then(results => {
-      const withData = results.filter(r => r.consumption > 0);
-      const data = withData.map(r => ({
-        month: MONTH_NAMES_SHORT[Number(r.month) - 1],
-        consumption: r.consumption,
-      }));
-      setChartData(data);
-      setTotalAnual(data.reduce((s, r) => s + r.consumption, 0));
-      setLoading(false);
-    });
-  }, [apartmentId, selectedYear, currentYear, complexId]);
+    fetch(`/api/dashboard/annual-consumption?apartment_id=${apartmentId}&year=${selectedYear}&utility_type=${utilityType}`, {
+      credentials: 'include',
+    })
+      .then(r => r.ok ? r.json() : { months: [], totalAnual: 0 })
+      .then(data => {
+        const monthsWithData = data.months.filter((m: any) => m.consumption > 0);
+        setChartData(monthsWithData);
+        setTotalAnual(data.totalAnual);
+      })
+      .catch(() => {
+        setChartData([]);
+        setTotalAnual(0);
+      })
+      .finally(() => setLoading(false));
+  }, [apartmentId, selectedYear, utilityType]);
 
   const maxVal = useMemo(() => Math.max(...chartData.map(d => d.consumption), 1), [chartData]);
   const peakMonth = useMemo(() =>
@@ -307,6 +366,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
     month: selectedMonthOpt.month,
     year: selectedMonthOpt.year,
     apartmentId: apartments.length > 1 ? undefined : (activeAptId ?? undefined),
+    utilityType: selectedUtility,
     enabled: !!(activeAptId || apartments.length > 0),
   });
 
@@ -446,10 +506,10 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
           </Card>
 
           {/* Gráfico de Consumo Anual para o Morador */}
-          <ConsumoAnualGraph apartmentId={activeAptId} complexId={apartments.find(a => a.id === activeAptId)?.block?.complexId} />
+          <ConsumoAnualGraph apartmentId={activeAptId} utilityType={selectedUtility} />
           
-          {/* Dashboard de Área Comum (se disponível para o morador ver) */}
-          <AreaCommonAnnualDashboard complexId={apartments.find(a => a.id === activeAptId)?.block?.complexId} />
+          {/* Dashboard de Área Comum Individual (Valor que a unidade pagou) */}
+          <AreaCommonIndividualGraph apartmentId={activeAptId} utilityType={selectedUtility} />
         </>
       )}
 
@@ -650,6 +710,7 @@ function SindicoDashboard() {
     month: filipetaMonthOpt.month,
     year:  filipetaMonthOpt.year,
     complexId: selectedComplex?.id,
+    utilityType: 'water', // Síndico vê água por padrão no resumo
     enabled: !!selectedComplex?.id,
   });
 
@@ -657,6 +718,7 @@ function SindicoDashboard() {
     month: statsMonthOpt.month,
     year:  statsMonthOpt.year,
     complexId: selectedComplex?.id,
+    utilityType: 'water',
     enabled: !!selectedComplex?.id,
   });
 

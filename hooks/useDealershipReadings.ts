@@ -44,21 +44,21 @@ export const useDealershipReadings = ({ id, withDealership, companyId, complexId
 
                 // FILTRAGEM DE SEGURANÇA NO PREVIEW MODE
                 if (isPreviewing && effectiveContext) {
-                    if (effectiveContext.accessibleComplexIds?.length > 0) {
+                    if (effectiveContext.accessibleComplexIds && effectiveContext.accessibleComplexIds.length > 0) {
                         targetComplexId = targetComplexId || effectiveContext.accessibleComplexIds[0];
-                    } else if (effectiveContext.companyIds?.length > 0) {
+                    } else if (effectiveContext.companyIds && effectiveContext.companyIds.length > 0) {
                         targetCompanyId = targetCompanyId || effectiveContext.companyIds[0];
                     }
                 }
 
                 const data = await getDealershipReadings({ id, fromDate, toDate, withDealership, companyId: targetCompanyId, complexId: targetComplexId, dealershipId, search: debouncedSearch, take, skip, withComplex, withCompany, type });
                 
-                let list = data.list || [];
-                let count = data.totalCount || 0;
+                let list = data?.list || (Array.isArray(data) ? data : []);
+                let count = data?.totalCount || (Array.isArray(data) ? data.length : 0);
 
                 if (isPreviewing && effectiveContext) {
                     const allowedComplexIds = effectiveContext.accessibleComplexIds || [];
-                    list = list.filter((r: any) => allowedComplexIds.length === 0 || allowedComplexIds.includes(r.complexId));
+                    list = list.filter((r: any) => allowedComplexIds.length === 0 || (r.complexId && allowedComplexIds.includes(r.complexId)));
                     count = list.length;
                 }
 
