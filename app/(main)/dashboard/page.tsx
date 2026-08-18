@@ -23,6 +23,7 @@ import SelectMeter from "@/components/ComboboxMeter";
 import { useUpdateUserPreferences } from '@/hooks/useUserPreferences';
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserContext } from "@/hooks/useUserContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useMeterReport, MeterReportItem } from "@/hooks/useMeterReport";
 import { useDealershipReadings } from '@/hooks/useDealershipReadings';
 import { useComplexes } from '@/hooks/useComplexes';
@@ -1441,6 +1442,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const { isPreviewing: isPrevMode, previewRole, effectiveContext: prevCtx, canPreview, setPreviewRole } = useRolePreview();
   const { context, loading: ctxLoading } = useUserContext();
+  const { user: currentUser } = useCurrentUser();
 
   useEffect(() => { clearCachedPermissions(); }, []);
 
@@ -1470,9 +1472,13 @@ export default function Dashboard() {
   const { isSystem, isAdministrador, isProgramador, isMorador, isAdministradora, isSindico } = useMemo(() => {
     const sys = effectiveCtx?.isSystem ?? false;
     const roles = (effectiveCtx?.systemRoles || []).map((r: string) => r.toLowerCase());
+    const userEmail = currentUser?.email?.toLowerCase() || '';
+    
+    // SUPER FALLBACK: Se o e-mail for o master, força como administrador
+    const isMasterEmail = userEmail.includes('acquaxcontrol') || userEmail === 'tiacquax@gmail.com';
     
     // PRIORIDADE MÁXIMA: Se o usuário tem QUALQUER papel de Admin/Master em QUALQUER lugar, ele é Admin Master.
-    const isAdmin = roles.some(r => r.includes('admin') || r.includes('master'));
+    const isAdmin = roles.some(r => r.includes('admin') || r.includes('master')) || isMasterEmail;
     
     // Se for um programador (acesso técnico) mas não admin master
     const isProg = !isAdmin && (sys || roles.includes('programador'));
@@ -1497,7 +1503,7 @@ export default function Dashboard() {
       isAdministradora: isAdm, 
       isSindico: isSin 
     };
-  }, [effectiveCtx]);
+  }, [effectiveCtx, currentUser]);
 
   const renderDashboard = () => {
     if (effectiveLoading) {
@@ -1510,8 +1516,8 @@ export default function Dashboard() {
 
     // DEBUG BANNER - REMOVER DEPOIS
     const debugBanner = (
-      <div className="bg-red-600 text-white p-2 text-[10px] text-center font-bold uppercase tracking-widest">
-        Versão do Sistema: {new Date().toISOString()} | Papéis: {effectiveCtx?.systemRoles?.join(', ') || 'Nenhum'} | IsSystem: {String(effectiveCtx?.isSystem)}
+      <div className="bg-blue-600 text-white p-2 text-[10px] text-center font-bold uppercase tracking-widest">
+        VERIFICAÇÃO DE ACESSO: {currentUser?.email || 'Buscando e-mail...'} | Papéis Detectados: {effectiveCtx?.systemRoles?.join(', ') || 'Nenhum'} | Modo Master: {isAdministrador ? 'ATIVO ✅' : 'INATIVO ❌'}
       </div>
     );
 
