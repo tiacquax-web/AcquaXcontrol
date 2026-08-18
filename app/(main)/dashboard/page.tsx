@@ -1484,12 +1484,13 @@ export default function Dashboard() {
     const isProg = !isAdmin && (sys || roles.includes('programador'));
     
     // Se tem vínculo direto com empresa (Administradora)
-    const isAdm = !isAdmin && !isProg && (effectiveCtx?.companyIds?.length > 0);
+    const isAdm = !isAdmin && !isProg && (effectiveCtx?.companyIds?.length > 0 || effectiveCtx?.directCompanyIds?.length > 0);
     
     // Se tem vínculo direto com condomínio/bloco (Síndico)
     const isSin = !isAdmin && !isProg && !isAdm && (
       (effectiveCtx?.directComplexIds?.length > 0) || 
-      (effectiveCtx?.directBlockIds?.length > 0)
+      (effectiveCtx?.directBlockIds?.length > 0) ||
+      (effectiveCtx?.complexes?.length > 0 && !effectiveCtx?.apartments?.length)
     );
     
     // Se tem apartamentos (Morador)
@@ -1516,8 +1517,12 @@ export default function Dashboard() {
 
     // DEBUG BANNER - REMOVER DEPOIS
     const debugBanner = (
-      <div className="bg-blue-600 text-white p-2 text-[10px] text-center font-bold uppercase tracking-widest">
-        VERIFICAÇÃO DE ACESSO: {currentUser?.email || 'Buscando e-mail...'} | Papéis Detectados: {effectiveCtx?.systemRoles?.join(', ') || 'Nenhum'} | Modo Master: {isAdministrador ? 'ATIVO ✅' : 'INATIVO ❌'}
+      <div className="bg-blue-600 text-white p-2 text-[10px] text-center font-bold uppercase tracking-widest flex flex-col gap-1">
+        <div>VERIFICAÇÃO DE ACESSO: {currentUser?.email || 'Buscando e-mail...'} | Perfil Atual: {isAdministrador ? 'ADMIN' : isMorador ? 'MORADOR' : isSindico ? 'SINDICO' : 'OUTRO'} | Modo Preview: {isPrevMode ? 'ATIVO (' + previewRole + ')' : 'DESATIVADO'}</div>
+        <div className="flex items-center justify-center gap-4">
+          <span>Papéis no Contexto: {effectiveCtx?.systemRoles?.join(', ') || 'Nenhum'}</span>
+          <button onClick={() => { window.location.reload(); }} className="underline bg-white/20 px-2 rounded">FORÇAR ATUALIZAÇÃO DA PÁGINA</button>
+        </div>
       </div>
     );
 
