@@ -108,7 +108,7 @@ const nextConfig: NextConfig = {
 
   // ─── Experimental features ───────────────────────────────────────────────────
   experimental: {
-    after: true,
+    // after: true,
   },
 
   // ─── Image domains ────────────────────────────────────────────────────────
