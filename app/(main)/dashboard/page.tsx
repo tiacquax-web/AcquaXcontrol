@@ -1467,23 +1467,34 @@ export default function Dashboard() {
   const effectiveCtx = isPrevMode ? prevCtx : context;
   const effectiveLoading = isPrevMode ? false : ctxLoading;
 
-  const isSystem      = effectiveCtx?.isSystem ?? false;
-  const isAdministrador = isSystem && (effectiveCtx?.systemRoles ?? []).some(r => 
-    r.toLowerCase().includes('admin') || r.toLowerCase().includes('master')
-  );
-  const isProgramador = isSystem && !isAdministrador;
-  const isMorador = useMemo(() => {
-    if (!effectiveCtx) return false;
-    // Se for admin do sistema ou tiver acesso a empresas, NÃO é morador
-    if (effectiveCtx.isSystem || (effectiveCtx.companyIds && effectiveCtx.companyIds.length > 0)) {
-      return false;
-    }
-    // Morador é quem tem apartamentos mas NÃO tem acesso administrativo a condomínios ou blocos inteiros
-    // Usamos as IDs diretas para saber se o usuário é Administrador/Síndico de algo
-    const hasDirectAdminAccess = (effectiveCtx.directComplexIds && effectiveCtx.directComplexIds.length > 0) || 
-                                (effectiveCtx.directBlockIds && effectiveCtx.directBlockIds.length > 0);
+  // Detecção unificada de papéis
+  const { isSystem, isAdministrador, isProgramador, isMorador, isAdministradora, isSindico } = useMemo(() => {
+    const sys = effectiveCtx?.isSystem ?? false;
+    const roles = effectiveCtx?.systemRoles ?? [];
     
-    return (effectiveCtx.apartments && effectiveCtx.apartments.length > 0) && !hasDirectAdminAccess;
+    const isAdmin = sys && roles.some(r => r.toLowerCase().includes('admin') || r.toLowerCase().includes('master'));
+    const isProg = sys && !isAdmin;
+    
+    // Se tem vínculo direto com empresa (Administradora)
+    const isAdm = !sys && (effectiveCtx?.directCompanyIds?.length > 0 || effectiveCtx?.companyIds?.length > 0);
+    
+    // Se tem vínculo direto com condomínio/bloco (Síndico)
+    const isSin = !sys && !isAdm && (
+      (effectiveCtx?.directComplexIds?.length > 0) || 
+      (effectiveCtx?.directBlockIds?.length > 0)
+    );
+    
+    // Se tem apartamentos mas não é nenhum dos acima (Morador)
+    const isMor = !sys && !isAdm && !isSin && (effectiveCtx?.apartments?.length > 0);
+
+    return { 
+      isSystem: sys, 
+      isAdministrador: isAdmin, 
+      isProgramador: isProg, 
+      isMorador: isMor, 
+      isAdministradora: isAdm, 
+      isSindico: isSin 
+    };
   }, [effectiveCtx]);
 
   const renderDashboard = () => {
@@ -1506,6 +1517,41 @@ export default function Dashboard() {
     return (
       <>
         {previewBanner}
+        
+        {/* Barra de Ferramentas de Administrador (Preview + Atalhos) */}
+        {canPreview && (
+          <Card className="mb-8 border-blue-200 bg-blue-50/30">
+            <CardHeader className="py-3 px-4 flex flex-row items-center justify-between space-y-0">
+              <div className="flex items-center gap-2">
+                <Star className="w-4 h-4 text-blue-600 fill-blue-600" />
+                <CardTitle className="text-sm font-bold text-blue-900">Central de Visualização Master</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-medium text-blue-700 uppercase tracking-wider">Visualizar como:</span>
+                <Select value={previewRole} onValueChange={(v) => setPreviewRole(v as any)}>
+                  <SelectTrigger className="h-8 w-[160px] text-xs bg-white border-blue-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="real">Meu Perfil Real</SelectItem>
+                    <Separator className="my-1" />
+                    <SelectItem value="administrador">Administrador Master</SelectItem>
+                    <SelectItem value="administradora">Administradora (Empresa)</SelectItem>
+                    <SelectItem value="sindico">Síndico (Condomínio)</SelectItem>
+                    <SelectItem value="morador">Morador (Unidade)</SelectItem>
+                    <SelectItem value="programador">Programador</SelectItem>
+                  </SelectContent>
+                </Select>
+                {isPreviewing && (
+                  <Button variant="ghost" size="sm" onClick={() => setPreviewRole('real')} className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-100">
+                    <X className="w-3.5 h-3.5 mr-1" /> Sair
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+          </Card>
+        )}
+
         {isProgramador    ? <ProgramadorDashboard /> :
          isAdministrador  ? <AdminKPIDashboard /> :
          isMorador        ? <MoradorDashboard router={router} /> :

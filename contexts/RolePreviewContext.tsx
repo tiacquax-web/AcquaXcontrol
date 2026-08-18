@@ -110,8 +110,9 @@ export const ROLE_CONTEXT: Record<Exclude<PreviewRole, 'real'>, any> = {
     systemRoles: [],
     apartments: [],
     blocks: [{ id: 'preview-block', name: 'Bloco A', complexId: 'preview-complex', complex: { id: 'preview-complex', socialName: 'Condomínio Preview', aliasName: 'Preview' } }],
-    complexes: [{ id: 'preview-complex', socialName: 'Condomínio Preview', aliasName: 'Preview', company: { id: 'preview-co', name: 'AcquaX' } }],
+    complexes: [{ id: 'preview-complex', socialName: 'Condomínio Preview (Síndico)', aliasName: 'Preview', company: { id: 'preview-co', name: 'AcquaX' } }],
     companyIds: [],
+    directComplexIds: ['preview-complex'],
     accessibleComplexIds: ['preview-complex'],
     glComplexIds: ['preview-complex'],
   },
@@ -120,9 +121,13 @@ export const ROLE_CONTEXT: Record<Exclude<PreviewRole, 'real'>, any> = {
     systemRoles: [],
     apartments: [],
     blocks: [],
-    complexes: [{ id: 'preview-complex', socialName: 'Condomínio Preview', aliasName: 'Preview', company: { id: 'preview-co', name: 'AcquaX' } }],
+    complexes: [
+      { id: 'preview-complex', socialName: 'Condomínio Preview (Adm)', aliasName: 'Preview 1', company: { id: 'preview-co', name: 'AcquaX' } },
+      { id: 'preview-complex-2', socialName: 'Residencial Teste (Adm)', aliasName: 'Preview 2', company: { id: 'preview-co', name: 'AcquaX' } }
+    ],
     companyIds: ['preview-co'],
-    accessibleComplexIds: ['preview-complex'],
+    directCompanyIds: ['preview-co'],
+    accessibleComplexIds: ['preview-complex', 'preview-complex-2'],
     glComplexIds: ['preview-complex'],
   },
   programador: {

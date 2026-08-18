@@ -3358,6 +3358,7 @@ async function getAvailableComplexesForEntity(
     if (system) {
         finalWhere = {
             AND: [
+                notDeleted,
                 {
                     socialName: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined,
                     companyId: companyId ? companyId : undefined,
