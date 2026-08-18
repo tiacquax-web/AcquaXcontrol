@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useRolePreview } from '@/contexts/RolePreviewContext';
 
 const NEXT_PUBLIC_API_URL = '/api';
 
@@ -75,6 +76,7 @@ interface UseMeterReportProps {
 }
 
 export function useMeterReport({ month, year, complexId, apartmentId, enabled = true }: UseMeterReportProps) {
+  const { isPreviewing, effectiveContext } = useRolePreview();
   const [data, setData] = useState<MeterReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +99,24 @@ export function useMeterReport({ month, year, complexId, apartmentId, enabled = 
       })
       .then(res => {
         if (!cancelled) {
-          setData(res.data);
+          let reportData = res.data;
+
+          // FILTRAGEM DE SEGURANÇA NO PREVIEW MODE
+          if (isPreviewing && effectiveContext) {
+            const allowedComplexIds = effectiveContext.accessibleComplexIds || [];
+            const allowedAptIds = effectiveContext.apartments?.map((a: any) => a.id) || [];
+
+            if (reportData.list) {
+              reportData.list = reportData.list.filter((item: any) => {
+                const complexIdMatch = allowedComplexIds.includes(item.apartment?.block?.complexId);
+                const aptIdMatch = allowedAptIds.length === 0 || allowedAptIds.includes(item.apartmentId);
+                return complexIdMatch && aptIdMatch;
+              });
+              reportData.totalCount = reportData.list.length;
+            }
+          }
+
+          setData(reportData);
         }
       })
       .catch(err => {
