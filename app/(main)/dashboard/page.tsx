@@ -289,17 +289,17 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
   const apartments = context?.apartments ?? [];
 
   const [selectedMonthVal, setSelectedMonthVal] = useState(allMonthOptions[0].value);
-  const selectedMonthOpt = allMonthOptions.find(o => o.value === selectedMonthVal) || allMonthOptions[0];
+  const selectedMonthOpt = useMemo(() => allMonthOptions.find(o => o.value === selectedMonthVal) || allMonthOptions[0], [selectedMonthVal]);
 
   const [selectedUtility, setSelectedUtility] = useState<'water' | 'gas' | 'energy'>('water');
 
   const singleApartment = useMemo(() => {
     if (!context || apartments.length !== 1) return null;
     return apartments[0];
-  }, [context, apartments]);
+  }, [context, apartments.length]);
 
   const [selectedAptId, setSelectedAptId] = useState<string | null>(null);
-  const activeAptId = singleApartment?.id ?? selectedAptId ?? (apartments.length > 0 ? apartments[0].id : null);
+  const activeAptId = useMemo(() => singleApartment?.id ?? selectedAptId ?? (apartments.length > 0 ? apartments[0].id : null), [singleApartment, selectedAptId, apartments]);
 
   // Buscar relatórios de consumo do morador para exibir dados mesmo sem GL IoT
   // Se tiver múltiplas unidades, buscamos os relatórios de todas elas para listar
@@ -415,7 +415,7 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
                   <div>
                     <p className="text-xs text-muted-foreground">Área Comum</p>
                     <p className="text-xl font-bold text-orange-600 mt-0.5">
-                      {formatCurrency((userReport.totalUnit ?? 0) - (userReport.partial ?? 0))}
+                      {formatCurrency(Math.max(0, (userReport.totalUnit ?? 0) - (userReport.partial ?? 0)))}
                     </p>
                   </div>
                   <div>

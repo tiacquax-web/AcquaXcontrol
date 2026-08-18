@@ -23,19 +23,45 @@ export async function GET(req: NextRequest): Promise<Response> {
       return NextResponse.json({ error: 'year inválido' }, { status: 400 });
     }
 
-    // Tenta primeiro permissão de dealershipReading (Admin/Síndico)
-    const contexts = await getUserContextsForActionOnEntity(userId, 'dealershipReading', 'read');
-    let allowed = contexts.system
-      || contexts.complexIds.includes(complexId)
-      || contexts.companyIds.length > 0;
+    // Verificação de permissão simplificada para evitar bloqueios indevidos
+    // Se o usuário tem qualquer vínculo com o complexId, ele pode ver a área comum
+    const assignments = await prisma.roleAssignment.findMany({
+      where: {
+        userId,
+        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+      },
+      include: { Role: true },
+    });
 
-    // Se não tiver, tenta permissão de morador (apartmentConsumptionReport)
+    const isSystem = assignments.some(a => 
+      a.contextType === 'system' || 
+      ['administrador', 'programador', 'master', 'admin'].includes(a.Role?.name?.toLowerCase() || '')
+    );
+
+    let allowed = isSystem;
+
     if (!allowed) {
-      const aptContexts = await getUserContextsForActionOnEntity(userId, 'apartmentConsumptionReport', 'read');
-      // Verifica se o morador tem acesso a algum condomínio que coincida com o complexId
-      // ou se ele tem apartamentos vinculados a blocos deste condomínio.
-      // O getUserContextsForActionOnEntity já retorna complexIds permitidos para o morador.
-      allowed = aptContexts.complexIds.includes(complexId);
+      // Verifica se o usuário tem vínculo direto com o complexo
+      const hasComplexLink = assignments.some(a => a.contextType === 'complex' && a.contextId === complexId);
+      if (hasComplexLink) {
+        allowed = true;
+      } else {
+        // Verifica se o usuário tem vínculo com algum bloco ou apartamento deste complexo
+        const apartmentIds = assignments.filter(a => a.contextType === 'apartment').map(a => a.contextId);
+        const blockIds = assignments.filter(a => a.contextType === 'block').map(a => a.contextId);
+        
+        const linkedComplex = await prisma.complex.findFirst({
+          where: {
+            id: complexId,
+            OR: [
+              { blocks: { some: { id: { in: blockIds } } } },
+              { blocks: { some: { apartments: { some: { id: { in: apartmentIds } } } } } }
+            ]
+          }
+        });
+        
+        if (linkedComplex) allowed = true;
+      }
     }
 
     if (!allowed) {
