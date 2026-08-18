@@ -721,10 +721,16 @@ export default function LevantamentoPage() {
           </Badge>
         )}
 
-        {/* Condomínio */}
-        {!ctxLoading && (
+        {/* Condomínio — card visível desde a abertura da tela */}
+        <div className="flex flex-col gap-1 min-w-[220px]">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Condomínio</label>
+          {ctxLoading ? (
+            <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted/60 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Carregando condomínios...</span>
+            </div>
+          ) : (
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Condomínio</label>
             {isMorador && userComplexes.length <= 1 ? (
               <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted text-sm min-w-[200px]">
                 <Building2 className="w-4 h-4 text-muted-foreground" />
@@ -744,7 +750,8 @@ export default function LevantamentoPage() {
               <SelectComplex setSelectedComplex={(cx: any) => { setSelectedComplexId(cx?.id); setSelectedComplexObj(cx ?? null); }} complex={selectedComplexObj} autoSelectSingle={false} />
             )}
           </div>
-        )}
+          )}
+        </div>
 
         {/* Filtro por Bloco — só para não moradores com condomínio selecionado */}
         {!isMorador && selectedComplexId && (

@@ -207,10 +207,16 @@ export default function MeterReportPage() {
           </Select>
         </div>
 
-        {/* Complex selector */}
-        {!contextLoading && (
+        {/* Complex selector — container visible immediately, even while the user context loads */}
+        <div className="flex flex-col gap-1 min-w-[220px]">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Condomínio</label>
+          {contextLoading ? (
+            <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted/60 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Carregando condomínios...</span>
+            </div>
+          ) : (
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Condomínio</label>
             {isMorador && userComplexes.length <= 1 ? (
               /* Morador with single complex: just show the name */
               <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted text-sm min-w-[200px]">
@@ -249,7 +255,8 @@ export default function MeterReportPage() {
               />
             )}
           </div>
-        )}
+          )}
+        </div>
 
         {/* Bloco e apartamento: filtros encadeados para Síndicos e Administradoras */}
         {!isMorador && selectedComplexId && (
