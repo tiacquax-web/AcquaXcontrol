@@ -13,10 +13,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ su
     const userId = validSession.userId;
     const { suggestionId } = await params;
 
-    // Apenas admins podem moderar
+    // Apenas admins, síndicos ou administradoras podem moderar
     const contexts = await getUserContextsForActionOnEntity(userId, 'user', 'update');
     const isAdmin = contexts.system || contexts.companyIds.length > 0 || contexts.complexIds.length > 0;
-    if (!isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    
+    // Se não for admin global, verifica se é síndico ou administradora
+    if (!isAdmin) {
+      const suggestion = await prisma.suggestion.findUnique({ where: { id: suggestionId } });
+      if (!suggestion) return NextResponse.json({ error: 'Sugestão não encontrada' }, { status: 404 });
+      
+      // Síndicos e Administradoras podem moderar sugestões públicas (authorId = null no retorno público, mas authorId existe no DB)
+      // Por padrão, permitimos se o usuário tiver QUALQUER contexto de gestão (complexIds ou companyIds)
+      const hasManagementRole = contexts.companyIds.length > 0 || contexts.complexIds.length > 0;
+      if (!hasManagementRole) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    }
 
     const body = await req.json();
     const { status, moderatorNote } = body;
@@ -50,7 +60,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
 
     const contexts = await getUserContextsForActionOnEntity(userId, 'user', 'update');
     const isAdmin = contexts.system || contexts.companyIds.length > 0 || contexts.complexIds.length > 0;
-    if (!isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    
+    if (!isAdmin) {
+      const hasManagementRole = contexts.companyIds.length > 0 || contexts.complexIds.length > 0;
+      if (!hasManagementRole) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    }
 
     await prisma.suggestion.update({
       where: { id: suggestionId },

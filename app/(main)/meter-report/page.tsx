@@ -112,7 +112,7 @@ export default function MeterReportPage() {
     complexId: selectedComplexId,
     apartmentId: apartmentIdFilter,
     utilityType: selectedUtility,
-    enabled: !!selectedComplexId && !!selectedMonthOption?.month && !!selectedMonthOption?.year,
+    enabled: !!selectedComplexId && !!selectedMonthOption?.month && !!selectedMonthOption?.year && !contextLoading,
   });
 
   // Client-side filter by search text (block name or apartment name)
