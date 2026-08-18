@@ -247,7 +247,7 @@ export default function ReadingsPage() {
                                     <Skeleton className="h-8 w-64" />
                                 </div>
                             ) : (
-                                dealershipReadings.length > 0 && (
+                                (dealershipReadings || []).length > 0 && (
                                     <div className="flex items-center justify-between mt-4 flex-wrap w-full">
                                         <div className="flex items-center gap-2">
                                             <span className="text-sm text-muted-foreground">Linhas:</span>

@@ -315,23 +315,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {(loading || ctxLoading) && !isPreviewing ? (
-                Array.from({ length: 2 }).map((_, idx) => (
-                  <div key={idx} className="mb-6">
-                    <div className="flex items-center gap-2 mb-2 pl-2">
-                      <Skeleton className="h-4 w-16 mb-2" />
-                      <Skeleton className="h-2 w-full mb-2" />
-                    </div>
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <div key={i} className="flex items-center gap-2 mb-2 pl-2">
-                        <Skeleton className="h-5 w-5 rounded-full" />
-                        <Skeleton className="h-4 w-20" />
-                      </div>
-                    ))}
-                  </div>
-                ))
-              ) : (
-                visibleGroups.map((group) => (
+              {visibleGroups.map((group) => (
                   <div key={group}>
                     <SidebarGroupLabel>
                       {group}
