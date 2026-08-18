@@ -305,7 +305,6 @@ function MoradorDashboard({ router }: { router: ReturnType<typeof useRouter> }) 
     month: selectedMonthOpt.month,
     year: selectedMonthOpt.year,
     apartmentId: activeAptId ?? undefined,
-    utilityType: selectedUtility,
     enabled: !!activeAptId,
   });
 
