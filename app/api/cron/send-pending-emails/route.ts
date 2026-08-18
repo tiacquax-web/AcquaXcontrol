@@ -61,6 +61,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     console.warn('[EmailCron] CRON_SECRET não configurado — executando sem autenticação.');
   }
 
+  console.log(`[EmailCron] Heartbeat: ${new Date().toISOString()} - Iniciando processamento de fila.`);
+
   // ── Verificar configuração de email ────────────────────────────────────────
   if (!isEmailConfigured()) {
     console.warn('[EmailCron] Zoho SMTP não configurado — pulando execução.');

@@ -1062,9 +1062,19 @@ function ComplexDetailPanel({ complex, onBack }: { complex: any; onBack: () => v
 // ─── AdminKPIDashboard ────────────────────────────────────────────────────────
 // Exclusivo para o papel "Administrador" (isSystem=true, role=Administrador)
 // Exibe panorama geral com KPIs, logins, condomínios mais/menos atualizados
-function AdminKPIDashboard() {
+function AdminKPIDashboard({ showEmailHealth = false }: { showEmailHealth?: boolean }) {
   const { data: stats, loading: loadingStats, error: statsError, refetch } = useAdminStats();
   const [selectedComplex, setSelectedComplex] = useState<any>(null);
+  const [emailStats, setEmailStats] = useState<any>(null);
+
+  useEffect(() => {
+    if (showEmailHealth) {
+      fetch('/api/debug/emails', { credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => setEmailStats(data))
+        .catch(() => {});
+    }
+  }, [showEmailHealth]);
 
   if (loadingStats) {
     return (
@@ -1124,6 +1134,43 @@ function AdminKPIDashboard() {
         </div>
 
         <OperationsHealthCard />
+
+        {showEmailHealth && emailStats && (
+          <Card className="border-blue-200 bg-blue-50/30">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <FileText className="w-4 h-4 text-blue-500" /> Saúde do Envio de E-mails
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                {emailStats.stats?.map((s: any) => (
+                  <div key={s.status} className="text-center p-2 bg-white rounded-lg border">
+                    <p className="text-[10px] text-muted-foreground uppercase">{s.status}</p>
+                    <p className={`text-xl font-bold ${s.status === 'sent' ? 'text-green-600' : s.status === 'failed' ? 'text-red-600' : 'text-blue-600'}`}>{s._count.id}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase">Últimos disparos:</p>
+                {emailStats.lastJobs?.slice(0, 5).map((j: any) => (
+                  <div key={j.id} className="flex items-center justify-between text-[11px] py-1 border-b last:border-0">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{j.toEmail}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{j.subject}</p>
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      <Badge variant={j.status === 'sent' ? 'default' : j.status === 'failed' ? 'destructive' : 'secondary'} className="text-[9px] px-1 h-4">
+                        {j.status}
+                      </Badge>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">{new Date(j.createdAt).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Users by type + today logins */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1515,16 +1562,8 @@ export default function Dashboard() {
       );
     }
 
-    // DEBUG BANNER - REMOVER DEPOIS
-    const debugBanner = (
-      <div className="bg-blue-600 text-white p-2 text-[10px] text-center font-bold uppercase tracking-widest flex flex-col gap-1">
-        <div>VERIFICAÇÃO DE ACESSO: {currentUser?.email || 'Buscando e-mail...'} | Perfil Atual: {isAdministrador ? 'ADMIN' : isMorador ? 'MORADOR' : isSindico ? 'SINDICO' : 'OUTRO'} | Modo Preview: {isPrevMode ? 'ATIVO (' + previewRole + ')' : 'DESATIVADO'}</div>
-        <div className="flex items-center justify-center gap-4">
-          <span>Papéis no Contexto: {effectiveCtx?.systemRoles?.join(', ') || 'Nenhum'}</span>
-          <button onClick={() => { window.location.reload(); }} className="underline bg-white/20 px-2 rounded">FORÇAR ATUALIZAÇÃO DA PÁGINA</button>
-        </div>
-      </div>
-    );
+    // Banner de depuração removido, mas mantemos o canPreview check
+    const debugBanner = null;
 
     // Banner de preview mode
     const previewBanner = isPrevMode && (
@@ -1574,7 +1613,7 @@ export default function Dashboard() {
         )}
 
         {isProgramador    ? <ProgramadorDashboard /> :
-         isAdministrador  ? <AdminKPIDashboard /> :
+         isAdministrador  ? <AdminKPIDashboard showEmailHealth={true} /> :
          isMorador        ? <MoradorDashboard router={router} /> :
          <SindicoDashboard />}
       </>

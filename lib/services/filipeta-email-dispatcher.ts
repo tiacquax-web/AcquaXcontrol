@@ -22,16 +22,19 @@ const BLOCKED_DOMAINS = [
 export function isBlockedEmailDomain(email: string): boolean {
   if (!email) return true;
   const lower = email.toLowerCase().trim();
-  
-  // Bloqueio rigoroso de qualquer e-mail que contenha "acquax" (ex: ruivagiulia@acquax...)
-  if (lower.includes('acquax')) return true;
-  
   const domain = lower.split('@')[1];
   if (!domain) return true;
   
-  return BLOCKED_DOMAINS.some(blocked =>
+  // Bloqueia se o domínio for um dos internos da AcquaX
+  const isInternalDomain = BLOCKED_DOMAINS.some(blocked =>
     domain === blocked || domain.endsWith('.' + blocked)
   );
+
+  // Se o e-mail contiver "acquax" no domínio, bloqueia (ex: @acquax.com.br)
+  // Mas permite se for apenas no nome do usuário em um domínio público (ex: acquax_teste@gmail.com)
+  if (isInternalDomain || domain.includes('acquax')) return true;
+  
+  return false;
 }
 
 export async function createEmailJobsForDealershipReading(
