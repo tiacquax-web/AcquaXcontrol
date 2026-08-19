@@ -1082,6 +1082,9 @@ export default function LevantamentoPage() {
                       totalUnit={m.totalUnit}
                       partial={m.partial}
                       waterSewage={m.waterSewage}
+                      periodStart={m.periodStart}
+                      periodEnd={m.periodEnd}
+                      nextReadingDate={m.nextReadingDate}
                     />
                   ))}
                 </div>
