@@ -10,7 +10,7 @@
  * Versionamento: bump CACHE_VERSION para invalidar cache de todos os clientes
  */
 
-const CACHE_VERSION = 'v4-2026-07-15';
+const CACHE_VERSION = 'v5-2026-08-19-dates';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const OFFLINE_CACHE = `offline-${CACHE_VERSION}`;
 const OFFLINE_URLS = ['/', '/offline'];
@@ -37,6 +37,9 @@ self.addEventListener('activate', (event) => {
           .map((key) => caches.delete(key))
       );
       await self.clients.claim();
+      // Recarrega clientes que ainda estavam usando chunks da versão anterior.
+      const clients = await self.clients.matchAll({ type: 'window' });
+      await Promise.all(clients.map((client) => client.navigate(client.url)));
     })()
   );
 });
