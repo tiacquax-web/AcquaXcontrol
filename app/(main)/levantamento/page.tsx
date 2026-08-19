@@ -71,9 +71,23 @@ function parseAppDate(value?: string | number | Date | null): Date | null {
   }
   const raw = String(value).trim();
   if (!raw) return null;
+
+  // Datas brasileiras legadas: DD/MM/YYYY ou DD/MM/YYYY HH:mm:ss.
+  const br = raw.match(/^(\d{1,2})[\\/-](\d{1,2})[\\/-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (br) {
+    const [, day, month, year, hour = '0', minute = '0', second = '0'] = br;
+    const brazilianDate = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+    return Number.isNaN(brazilianDate.getTime()) ? null : brazilianDate;
+  }
+
   const normalized = raw.includes('T') ? raw : raw.includes(' ') ? raw.replace(' ', 'T') : `${raw}T00:00:00`;
   const parsed = new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function toIsoDate(value?: string | number | Date | null): string | null {
+  const parsed = parseAppDate(value);
+  return parsed ? parsed.toISOString() : null;
 }
 
 function formatAppDate(value?: string | number | Date | null): string {
@@ -84,44 +98,45 @@ function formatAppDate(value?: string | number | Date | null): string {
 function deriveReadingSchedule(item: MeterReportItem, fallbackDealershipReading?: MeterReportItem['dealershipReading'] | null, monthRef?: string, yearRef?: string) {
   const dealershipReading = item.dealershipReading ?? fallbackDealershipReading ?? null;
   const lastReading: any = item.lastReading;
-  let currentReadingDate = lastReading?.readAtDate
-    || lastReading?.readingDate
-    || (lastReading?.readAt ? new Date(lastReading.readAt).toISOString() : null)
-    || dealershipReading?.readingDate
-    || null;
-  
-  if (!currentReadingDate && monthRef && yearRef) {
-    const mNum = parseInt(monthRef, 10);
-    const yNum = parseInt(yearRef, 10);
-    if (!isNaN(mNum) && !isNaN(yNum)) {
-      const lastDay = new Date(yNum, mNum, 0);
-      currentReadingDate = lastDay.toISOString();
+  const previousReading: any = item.history?.[0]?.lastReading;
+  const valid = (...values: any[]) => values.map(toIsoDate).find(Boolean) as string | null | undefined;
+
+  // O mês do relatório é sempre uma fonte segura para montar a data exibida,
+  // mesmo quando o registro legado não possui lastReadingId.
+  let monthEnd: string | null = null;
+  if (monthRef && yearRef) {
+    const monthNumber = Number(monthRef);
+    const yearNumber = Number(yearRef);
+    if (Number.isInteger(monthNumber) && Number.isInteger(yearNumber) && monthNumber >= 1 && monthNumber <= 12) {
+      monthEnd = new Date(yearNumber, monthNumber, 0, 12, 0, 0).toISOString();
     }
   }
 
-  const previousReading: any = item.history?.[0]?.lastReading;
-  const previousReadingDate = previousReading?.readAtDate
-    || previousReading?.readingDate
-    || (previousReading?.readAt ? new Date(previousReading.readAt).toISOString() : null)
-    || null;
+  const currentReadingDate = valid(
+    lastReading?.readAtDate,
+    lastReading?.readingDate,
+    lastReading?.readAt,
+    dealershipReading?.readingDate,
+  ) || monthEnd;
+
+  const previousReadingDate = valid(
+    previousReading?.readAtDate,
+    previousReading?.readingDate,
+    previousReading?.readAt,
+  );
+
   const totalDays = Number(dealershipReading?.totalDays) || 30;
-  const derivedStart = parseAppDate(currentReadingDate) && Number.isFinite(totalDays)
-    ? new Date(parseAppDate(currentReadingDate)!.getTime() - totalDays * 24 * 60 * 60 * 1000).toISOString()
+  const currentParsed = parseAppDate(currentReadingDate);
+  const derivedStart = currentParsed
+    ? new Date(currentParsed.getTime() - totalDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
 
-  let nextReadingDate = lastReading?.nextReadingDate
-    || lastReading?.readingDateNext
-    || dealershipReading?.readingDateNext
-    || dealershipReading?.nextReadingDate
-    || null;
-
-  if (!nextReadingDate && currentReadingDate) {
-    const parsedCurrent = parseAppDate(currentReadingDate);
-    if (parsedCurrent) {
-      const nextDate = new Date(parsedCurrent.getTime() + 30 * 24 * 60 * 60 * 1000);
-      nextReadingDate = nextDate.toISOString();
-    }
-  }
+  const nextReadingDate = valid(
+    lastReading?.nextReadingDate,
+    lastReading?.readingDateNext,
+    dealershipReading?.readingDateNext,
+    dealershipReading?.nextReadingDate,
+  ) || (currentParsed ? new Date(currentParsed.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString() : null);
 
   return {
     periodStart: previousReadingDate || derivedStart,
