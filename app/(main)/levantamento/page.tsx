@@ -85,63 +85,52 @@ function parseAppDate(value?: string | number | Date | null): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function toIsoDate(value?: string | number | Date | null): string | null {
-  const parsed = parseAppDate(value);
-  return parsed ? parsed.toISOString() : null;
-}
-
 function formatAppDate(value?: string | number | Date | null): string {
   const parsed = parseAppDate(value);
   return parsed ? format(parsed, 'dd/MM/yyyy') : 'ref. pend.';
 }
 
 function deriveReadingSchedule(item: MeterReportItem, fallbackDealershipReading?: MeterReportItem['dealershipReading'] | null, monthRef?: string, yearRef?: string) {
+  // Esta é a mesma sequência usada pelo MeterReportCard da Filipeta.
   const dealershipReading = item.dealershipReading ?? fallbackDealershipReading ?? null;
   const lastReading: any = item.lastReading;
   const previousReading: any = item.history?.[0]?.lastReading;
-  const valid = (...values: any[]) => values.map(toIsoDate).find(Boolean) as string | null | undefined;
+  const valid = (...values: any[]) => values.map(parseAppDate).find(v => v && !isNaN(v.getTime())) || null;
 
-  // O mês do relatório é sempre uma fonte segura para montar a data exibida,
-  // mesmo quando o registro legado não possui lastReadingId.
-  let monthEnd: string | null = null;
+  let monthEndFallback: Date | null = null;
   if (monthRef && yearRef) {
-    const monthNumber = Number(monthRef);
-    const yearNumber = Number(yearRef);
-    if (Number.isInteger(monthNumber) && Number.isInteger(yearNumber) && monthNumber >= 1 && monthNumber <= 12) {
-      monthEnd = new Date(yearNumber, monthNumber, 0, 12, 0, 0).toISOString();
-    }
+    const m = Number(monthRef);
+    const y = Number(yearRef);
+    if (m >= 1 && m <= 12) monthEndFallback = new Date(y, m, 0, 12, 0, 0);
   }
 
-  const currentReadingDate = valid(
+  const curDate = valid(
     lastReading?.readAtDate,
     lastReading?.readingDate,
     lastReading?.readAt,
     dealershipReading?.readingDate,
-  ) || monthEnd;
+  ) || monthEndFallback;
 
-  const previousReadingDate = valid(
+  const prevDate = valid(
     previousReading?.readAtDate,
     previousReading?.readingDate,
     previousReading?.readAt,
   );
 
   const totalDays = Number(dealershipReading?.totalDays) || 30;
-  const currentParsed = parseAppDate(currentReadingDate);
-  const derivedStart = currentParsed
-    ? new Date(currentParsed.getTime() - totalDays * 24 * 60 * 60 * 1000).toISOString()
-    : null;
+  const derivedStart = curDate ? new Date(curDate.getTime() - totalDays * 24 * 60 * 60 * 1000) : null;
 
-  const nextReadingDate = valid(
+  const nextDate = valid(
     lastReading?.nextReadingDate,
     lastReading?.readingDateNext,
     dealershipReading?.readingDateNext,
     dealershipReading?.nextReadingDate,
-  ) || (currentParsed ? new Date(currentParsed.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString() : null);
+  ) || (curDate ? new Date(curDate.getTime() + 30 * 24 * 60 * 60 * 1000) : null);
 
   return {
-    periodStart: previousReadingDate || derivedStart,
-    periodEnd: currentReadingDate,
-    nextReadingDate,
+    periodStart: prevDate || derivedStart,
+    periodEnd: curDate,
+    nextReadingDate: nextDate,
   };
 }
 
