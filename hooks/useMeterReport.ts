@@ -39,8 +39,11 @@ export interface MeterReportItem {
   lastReading: {
     id: string;
     reading: number | null;
-    readAtDate: string | null;
-    nextReadingDate: string | null;
+    readAt?: string | null;
+    readAtDate?: string | null;
+    nextReadingDate?: string | null;
+    readingDate?: string | null;
+    readingDateNext?: string | null;
     urlCover: string | null;
     registerName?: string | null;
   } | null;
@@ -48,7 +51,12 @@ export interface MeterReportItem {
     monthRef: string;
     yearRef: string;
     consumption: number | null;
-    lastReading?: { reading: number | null; readAtDate: string | null } | null;
+    lastReading?: { 
+      reading: number | null; 
+      readAt?: string | null;
+      readAtDate?: string | null;
+      readingDate?: string | null;
+    } | null;
   }>;
   dealershipReading: {
     id: string;

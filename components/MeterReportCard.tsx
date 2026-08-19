@@ -17,17 +17,32 @@ interface MeterReportCardProps {
 const formatCurrency = (value: number | null | undefined) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value ?? 0);
 
-const parseReadAtDate = (value?: string | null): Date | null => {
+const parseAppDate = (value?: string | number | Date | null): Date | null => {
   if (!value) return null;
-  const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'number') {
+    const numericDate = new Date(value);
+    return Number.isNaN(numericDate.getTime()) ? null : numericDate;
+  }
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  // Suporte a datas brasileiras legadas: DD/MM/YYYY ou DD/MM/YYYY HH:mm:ss.
+  const br = raw.match(/^(\d{1,2})[\\/-](\d{1,2})[\\/-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (br) {
+    const [, day, month, year, hour = '0', minute = '0', second = '0'] = br;
+    const brazilianDate = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+    return Number.isNaN(brazilianDate.getTime()) ? null : brazilianDate;
+  }
+
+  const normalized = raw.includes('T') ? raw : raw.includes(' ') ? raw.replace(' ', 'T') : `${raw}T00:00:00`;
   const parsed = new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-const parseDateYmd = (value?: string | null): Date | null => {
-  if (!value) return null;
-  const parsed = new Date(`${value}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+const toIsoDate = (value?: string | number | Date | null): string | null => {
+  const parsed = parseAppDate(value);
+  return parsed ? parsed.toISOString() : null;
 };
 
 // ─── Modal de Foto Expandida ───────────────────────────────────────────────────
@@ -115,22 +130,42 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
     ? `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} / ${report.yearRef}`
     : `${report.monthRef}/${report.yearRef}`;
 
-  const currentReadingDate = parseReadAtDate(lastReading?.readAtDate);
-  const previousReadingDate = parseReadAtDate(prevReport1?.lastReading?.readAtDate);
-  const totalDays = Number.isFinite(Number(dealershipReading?.totalDays)) ? Number(dealershipReading!.totalDays) : null;
-  const derivedStartDate = currentReadingDate && totalDays != null
-    ? new Date(currentReadingDate.getTime() - totalDays * 24 * 60 * 60 * 1000)
-    : null;
+  const valid = (...values: any[]) => values.map(parseAppDate).find(v => v && !isNaN(v.getTime())) || null;
 
-  const periodStartDate = previousReadingDate || derivedStartDate || null;
-  const periodEndDate = currentReadingDate || null;
+  // Fallback determinístico baseado no mês do relatório
+  let monthEndFallback: Date | null = null;
+  if (report.monthRef && report.yearRef) {
+    const m = Number(report.monthRef);
+    const y = Number(report.yearRef);
+    if (m >= 1 && m <= 12) monthEndFallback = new Date(y, m, 0, 12, 0, 0);
+  }
 
-  const periodStartFormatted = periodStartDate ? format(periodStartDate, 'dd/MM/yyyy') : '—';
-  const periodEndFormatted = periodEndDate ? format(periodEndDate, 'dd/MM/yyyy') : '—';
+  const curDate = valid(
+    lastReading?.readAtDate,
+    lastReading?.readingDate,
+    lastReading?.readAt,
+    dealershipReading?.readingDate
+  ) || monthEndFallback;
 
-  const nextReadingDateFormatted = lastReading?.nextReadingDate
-    ? format(parseDateYmd(lastReading.nextReadingDate) ?? new Date(lastReading.nextReadingDate), 'dd/MM/yyyy')
-    : '—';
+  const prevDate = valid(
+    prevReport1?.lastReading?.readAtDate,
+    prevReport1?.lastReading?.readingDate,
+    prevReport1?.lastReading?.readAt
+  );
+
+  const totalDays = Number(dealershipReading?.totalDays) || 30;
+  const derivedStart = curDate ? new Date(curDate.getTime() - totalDays * 24 * 60 * 60 * 1000) : null;
+
+  const nextDate = valid(
+    lastReading?.nextReadingDate,
+    lastReading?.readingDateNext,
+    dealershipReading?.readingDateNext,
+    dealershipReading?.nextReadingDate
+  ) || (curDate ? new Date(curDate.getTime() + 30 * 24 * 60 * 60 * 1000) : null);
+
+  const periodStartFormatted = (prevDate || derivedStart) ? format(prevDate || derivedStart!, 'dd/MM/yyyy') : 'ref. pend.';
+  const periodEndFormatted = curDate ? format(curDate, 'dd/MM/yyyy') : 'ref. pend.';
+  const nextReadingDateFormatted = nextDate ? format(nextDate, 'dd/MM/yyyy') : 'ref. pend.';
 
   const emissionDate = format(new Date(), "dd/MM/yyyy 'às' HH:mm");
 

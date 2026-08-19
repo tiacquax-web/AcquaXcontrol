@@ -111,42 +111,61 @@ const FilipetaGridReport = React.memo<FilipetaGridReportProps>(({ report, dealer
     : 'ref. pendente';
   const monthYear = report.yearRef ? `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} - ${report.yearRef}` : 'ref. pendente';
 
-  const parseReadAtDate = (value?: string | null) => {
+  const parseAppDate = (value?: string | number | Date | null): Date | null => {
     if (!value) return null;
-    const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    if (typeof value === 'number') {
+      const numericDate = new Date(value);
+      return Number.isNaN(numericDate.getTime()) ? null : numericDate;
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const br = raw.match(/^(\d{1,2})[\\/-](\d{1,2})[\\/-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (br) {
+      const [, d, m, y, h = '0', min = '0', s = '0'] = br;
+      const date = new Date(Number(y), Number(m) - 1, Number(d), Number(h), Number(min), Number(s));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    const normalized = raw.includes('T') ? raw : raw.includes(' ') ? raw.replace(' ', 'T') : `${raw}T00:00:00`;
     const parsed = new Date(normalized);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   };
 
-  const parseDateYmd = (value?: string | null) => {
-    if (!value) return null;
-    const parsed = new Date(`${value}T00:00:00`);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  };
+  const valid = (...values: any[]) => values.map(parseAppDate).find(v => v && !isNaN(v.getTime())) || null;
 
-  const currentReadingDate = parseReadAtDate(lastReading?.readAtDate);
-  const previousReadingDate = parseReadAtDate(prevReport1?.lastReading?.readAtDate);
-  const totalDays = Number.isFinite(Number(dealershipReading?.totalDays))
-    ? Number(dealershipReading.totalDays)
-    : null;
-  const derivedStartDate = currentReadingDate && totalDays != null
-    ? new Date(currentReadingDate.getTime() - totalDays * 24 * 60 * 60 * 1000)
-    : null;
+  let monthEndFallback: Date | null = null;
+  if (report.monthRef && report.yearRef) {
+    const m = Number(report.monthRef);
+    const y = Number(report.yearRef);
+    if (m >= 1 && m <= 12) monthEndFallback = new Date(y, m, 0, 12, 0, 0);
+  }
 
-  const periodStartDate = previousReadingDate || derivedStartDate || null;
-  const periodEndDate = currentReadingDate || null;
+  const curDate = valid(
+    lastReading?.readAtDate,
+    lastReading?.readingDate,
+    lastReading?.readAt,
+    dealershipReading?.readingDate
+  ) || monthEndFallback;
 
-  const nextReadingDateFormatted = lastReading?.nextReadingDate
-    ? format(parseDateYmd(lastReading.nextReadingDate) || new Date(lastReading.nextReadingDate), 'dd/MM/yyyy')
-    : 'refer?ncia pendente';
+  const prevDate = valid(
+    prevReport1?.lastReading?.readAtDate,
+    prevReport1?.lastReading?.readingDate,
+    prevReport1?.lastReading?.readAt
+  );
 
-  const periodStartFormatted = periodStartDate
-    ? format(periodStartDate, 'dd/MM/yyyy')
-    : 'refer?ncia pendente';
+  const totalDays = Number(dealershipReading?.totalDays) || 30;
+  const derivedStart = curDate ? new Date(curDate.getTime() - totalDays * 24 * 60 * 60 * 1000) : null;
 
-  const periodEndFormatted = periodEndDate
-    ? format(periodEndDate, 'dd/MM/yyyy')
-    : 'refer?ncia pendente';
+  const nextDate = valid(
+    lastReading?.nextReadingDate,
+    lastReading?.readingDateNext,
+    dealershipReading?.readingDateNext,
+    dealershipReading?.nextReadingDate
+  ) || (curDate ? new Date(curDate.getTime() + 30 * 24 * 60 * 60 * 1000) : null);
+
+  const periodStartFormatted = (prevDate || derivedStart) ? format(prevDate || derivedStart!, 'dd/MM/yyyy') : 'ref. pend.';
+  const periodEndFormatted = curDate ? format(curDate, 'dd/MM/yyyy') : 'ref. pend.';
+  const nextReadingDateFormatted = nextDate ? format(nextDate, 'dd/MM/yyyy') : 'ref. pend.';
 
   const monthRefStr = String(report.monthRef).padStart(2, '0');
 
