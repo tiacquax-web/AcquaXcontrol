@@ -153,6 +153,7 @@ export async function GET(req: NextRequest): Promise<Response> {
           select: {
             id: true,
             reading: true,
+            readAt: true,
             readAtDate: true,
             nextReadingDate: true,
             readingDate: true,
@@ -275,7 +276,10 @@ export async function GET(req: NextRequest): Promise<Response> {
     // Alguns relatórios importados não possuem lastReadingId, embora a leitura
     // do apartamento exista na coleção Readings. A Filipeta já usa este fallback;
     // o endpoint agregado precisa fazer o mesmo para não devolver datas pendentes.
-    const reportsWithoutLastReading = currentReports.filter(r => !r.lastReading);
+    const reportsWithoutLastReading = currentReports.filter(r => {
+      const reading: any = r.lastReading;
+      return !reading || !(reading.readAtDate || reading.readingDate || reading.readAt);
+    });
     const fallbackReadingsByApartment: Record<string, any> = {};
 
     if (reportsWithoutLastReading.length > 0) {
@@ -312,12 +316,51 @@ export async function GET(req: NextRequest): Promise<Response> {
           fallbackReadingsByApartment[reading.apartmentId!] = reading;
         }
       }
+
+      // Alguns legados não guardam o mês/ano na leitura vinculada. Se o
+      // fallback do período não encontrou data, usa a leitura mais recente da
+      // unidade para não deixar o Levantamento preso em "ref. pend.".
+      const missingApartmentIds = reportsWithoutLastReading
+        .map(r => r.apartmentId)
+        .filter(apartmentId => !fallbackReadingsByApartment[apartmentId]);
+
+      if (missingApartmentIds.length > 0) {
+        const latestReadings = await prisma.reading.findMany({
+          where: {
+            apartmentId: { in: missingApartmentIds },
+            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+          },
+          orderBy: { readAt: 'desc' },
+          select: {
+            id: true,
+            apartmentId: true,
+            reading: true,
+            readAt: true,
+            readAtDate: true,
+            nextReadingDate: true,
+            readingDate: true,
+            readingDateNext: true,
+            urlCover: true,
+            registerName: true,
+          },
+        });
+
+        for (const reading of latestReadings) {
+          if (reading.apartmentId && !fallbackReadingsByApartment[reading.apartmentId]) {
+            fallbackReadingsByApartment[reading.apartmentId] = reading;
+          }
+        }
+      }
     }
 
     const enrichedReports = currentReports.map(r => {
       // Usa a leitura vinculada ao relatório; quando o vínculo não existe,
       // usa a leitura mais recente do mesmo apartamento e período.
-      let lastReading: any = r.lastReading ?? fallbackReadingsByApartment[r.apartmentId] ?? null;
+      const linkedReading: any = r.lastReading;
+      const linkedHasDate = !!(linkedReading?.readAtDate || linkedReading?.readingDate || linkedReading?.readAt);
+      let lastReading: any = linkedHasDate
+        ? linkedReading
+        : fallbackReadingsByApartment[r.apartmentId] ?? linkedReading ?? null;
 
       // Normaliza campos legados para que o frontend possa usar a mesma fonte
       // independentemente de a leitura ter vindo do vínculo ou do fallback.
@@ -325,6 +368,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         lastReading = {
           ...lastReading,
           readAtDate: lastReading.readAtDate || lastReading.readingDate || (lastReading.readAt ? new Date(lastReading.readAt).toISOString() : null),
+          readingDate: lastReading.readingDate || lastReading.readAtDate || null,
+          readingDateNext: lastReading.readingDateNext || lastReading.nextReadingDate || null,
           nextReadingDate: lastReading.nextReadingDate || lastReading.readingDateNext || null,
         };
       }

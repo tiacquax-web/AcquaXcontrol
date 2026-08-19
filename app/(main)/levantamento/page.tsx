@@ -62,21 +62,33 @@ function monthLabel(m: string, y: string) {
   return mo ? mo.label : `${m}/${y}`;
 }
 
-function parseAppDate(value?: string | null): Date | null {
+function parseAppDate(value?: string | number | Date | null): Date | null {
   if (!value) return null;
-  const normalized = value.includes('T') ? value : value.includes(' ') ? value.replace(' ', 'T') : `${value}T00:00:00`;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'number') {
+    const numericDate = new Date(value);
+    return Number.isNaN(numericDate.getTime()) ? null : numericDate;
+  }
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const normalized = raw.includes('T') ? raw : raw.includes(' ') ? raw.replace(' ', 'T') : `${raw}T00:00:00`;
   const parsed = new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function formatAppDate(value?: string | null): string {
+function formatAppDate(value?: string | number | Date | null): string {
   const parsed = parseAppDate(value);
   return parsed ? format(parsed, 'dd/MM/yyyy') : 'ref. pend.';
 }
 
 function deriveReadingSchedule(item: MeterReportItem, fallbackDealershipReading?: MeterReportItem['dealershipReading'] | null, monthRef?: string, yearRef?: string) {
   const dealershipReading = item.dealershipReading ?? fallbackDealershipReading ?? null;
-  let currentReadingDate = item.lastReading?.readAtDate || dealershipReading?.readingDate || null;
+  const lastReading: any = item.lastReading;
+  let currentReadingDate = lastReading?.readAtDate
+    || lastReading?.readingDate
+    || (lastReading?.readAt ? new Date(lastReading.readAt).toISOString() : null)
+    || dealershipReading?.readingDate
+    || null;
   
   if (!currentReadingDate && monthRef && yearRef) {
     const mNum = parseInt(monthRef, 10);
@@ -87,13 +99,18 @@ function deriveReadingSchedule(item: MeterReportItem, fallbackDealershipReading?
     }
   }
 
-  const previousReadingDate = item.history?.[0]?.lastReading?.readAtDate || null;
+  const previousReading: any = item.history?.[0]?.lastReading;
+  const previousReadingDate = previousReading?.readAtDate
+    || previousReading?.readingDate
+    || (previousReading?.readAt ? new Date(previousReading.readAt).toISOString() : null)
+    || null;
   const totalDays = Number(dealershipReading?.totalDays) || 30;
   const derivedStart = parseAppDate(currentReadingDate) && Number.isFinite(totalDays)
     ? new Date(parseAppDate(currentReadingDate)!.getTime() - totalDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
 
-  let nextReadingDate = item.lastReading?.nextReadingDate
+  let nextReadingDate = lastReading?.nextReadingDate
+    || lastReading?.readingDateNext
     || dealershipReading?.readingDateNext
     || dealershipReading?.nextReadingDate
     || null;
