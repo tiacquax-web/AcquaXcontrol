@@ -197,8 +197,9 @@ export default function ConsumptionDashboardPage() {
     }
     setLoading(true);
     try {
+      const requestApartmentId = apartment?.id || (isResident && residentHasSingleApartment ? residentApartmentsInComplex[0]?.id : undefined);
       const params = new URLSearchParams({ complex_id: complex.id, start, end, utility_type: utilityType });
-      if (apartment?.id) params.set('apartment_id', apartment.id);
+      if (requestApartmentId) params.set('apartment_id', requestApartmentId);
       const response = await fetch(`/api/dashboard/consumption-analysis?${params.toString()}`, { credentials: 'include', cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Não foi possível carregar a análise');
@@ -217,14 +218,22 @@ export default function ConsumptionDashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [complex?.id, apartment?.id, start, end, utilityType]);
 
-  const chartData = useMemo(() => (data?.series || []).map((row) => ({
-    ...row,
-    comparisonAverage: row.selectedConsumption == null ? null : row.averageConsumption,
-    comparisonUnit: row.selectedConsumption,
-    periodLabel: row.periodStart && row.periodEnd
+  const chartData = useMemo(() => (data?.series || []).map((row) => {
+    const selectedConsumption = row.selectedConsumption ?? (isResident && residentHasSingleApartment ? row.totalConsumption : null);
+    const periodLabel = row.periodStart && row.periodEnd
       ? `${new Intl.DateTimeFormat('pt-BR').format(new Date(row.periodStart))} a ${new Intl.DateTimeFormat('pt-BR').format(new Date(row.periodEnd))}`
-      : row.label,
-  })), [data]);
+      : row.label;
+    return {
+      ...row,
+      selectedConsumption,
+      selectedUnitCost: row.selectedUnitCost ?? (isResident && residentHasSingleApartment ? row.unitCost : null),
+      selectedCommonAreaCost: row.selectedCommonAreaCost ?? (isResident && residentHasSingleApartment ? row.commonAreaCost : null),
+      comparisonAverage: selectedConsumption == null ? null : row.averageConsumption,
+      comparisonUnit: selectedConsumption,
+      periodLabel,
+      axisLabel: row.periodEnd ? new Intl.DateTimeFormat('pt-BR').format(new Date(row.periodEnd)) : row.label,
+    };
+  }), [data, isResident, residentHasSingleApartment]);
 
   const toggleMetric = (key: MetricKey) => {
     setSelectedMetrics((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
@@ -318,11 +327,11 @@ export default function ConsumptionDashboardPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2"><ChevronDown className="h-4 w-4 text-blue-600" /> Componentes do gráfico</CardTitle>
-          <CardDescription>{isResident ? (apartment ? `Valores pagos e consumidos pela unidade ${apartment.name}. A comparação usa a média das unidades do condomínio apenas como referência.` : 'Valores consolidados das suas unidades vinculadas; nenhum dado de outras unidades é incluído.') : apartment ? `Comparação da unidade ${apartment.name} com a média das unidades de ${selectedComplexName}.` : 'Sem unidade selecionada, os indicadores representam o condomínio.'}</CardDescription>
+          <CardDescription className="leading-6">{isResident ? (apartment ? `Valores pagos e consumidos pela unidade ${apartment.name}. A comparação usa a média das unidades do condomínio apenas como referência.` : 'Valores consolidados das suas unidades vinculadas; nenhum dado de outras unidades é incluído.') : apartment ? `Comparação da unidade ${apartment.name} com a média das unidades de ${selectedComplexName}.` : 'Sem unidade selecionada, os indicadores representam o condomínio.'}</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-x-6 gap-y-3">
+          <CardContent className="flex flex-wrap items-center gap-x-8 gap-y-4">
           {visibleMetrics.map((metric) => (
-            <label key={metric.key} className="flex items-center gap-2 text-sm cursor-pointer">
+            <label key={metric.key} className="flex min-h-7 items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
               <Checkbox checked={selectedMetrics.includes(metric.key)} onCheckedChange={() => toggleMetric(metric.key)} />
               <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: metric.color }} />
               {metric.label}
@@ -360,15 +369,15 @@ export default function ConsumptionDashboardPage() {
               ) : (
                 <div className="h-[380px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={chartData} margin={{ top: 12, right: 12, left: 4, bottom: 8 }}>
+                    <ComposedChart data={chartData} margin={{ top: 12, right: 20, left: 8, bottom: 16 }}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                      <XAxis dataKey="periodLabel" interval="preserveStartEnd" angle={-28} textAnchor="end" height={58} tick={{ fontSize: 10 }} />
+                      <XAxis dataKey="axisLabel" interval="preserveStartEnd" angle={-25} textAnchor="end" height={58} tick={{ fontSize: 10 }} />
                       {consumptionMetricsSelected && <YAxis yAxisId="consumption" tick={{ fontSize: 11 }} width={52} />}
                       {costMetricsSelected && <YAxis yAxisId="cost" orientation="right" tick={{ fontSize: 11 }} width={64} tickFormatter={(value) => `R$${Number(value).toFixed(0)}`} />}
                       <Tooltip labelFormatter={(_, payload: any[]) => payload?.[0]?.payload?.periodLabel || ''} formatter={(value: any, name: any) => [name.toLowerCase().includes('custo') || name.toLowerCase().includes('água') || name.toLowerCase().includes('total a pagar') || name.toLowerCase().includes('área') ? money(value) : number(value), name]} />
-                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Legend verticalAlign="top" align="left" height={42} wrapperStyle={{ fontSize: 12, paddingBottom: 12, lineHeight: '22px' }} />
                       {!isResident && selectedMetrics.includes('averageConsumption') && <Line yAxisId="consumption" type="monotone" dataKey="averageConsumption" name="Consumo médio" stroke="#2563eb" strokeWidth={2} dot={false} />}
-                      {selectedMetrics.includes('comparison') && hasComparisonData && <><Line yAxisId="consumption" type="monotone" dataKey="comparisonAverage" name="Média das unidades" stroke="#7c3aed" strokeDasharray="5 5" dot={false} /><Line yAxisId="consumption" type="monotone" dataKey="comparisonUnit" name={`Unidade ${apartment?.name || 'selecionada'}`} stroke="#db2777" strokeWidth={2} dot={false} /></>}
+                      {selectedMetrics.includes('comparison') && hasComparisonData && <><Line yAxisId="consumption" type="monotone" dataKey="comparisonAverage" name="Média do condomínio" stroke="#7c3aed" strokeDasharray="5 5" dot={false} /><Line yAxisId="consumption" type="monotone" dataKey="comparisonUnit" name={`Sua unidade${apartment?.name ? ` (${apartment.name})` : ''}`} stroke="#db2777" strokeWidth={2} dot={false} /></>}
                       {selectedMetrics.includes('totalConsumption') && <Bar yAxisId="consumption" dataKey="totalConsumption" name={isResident ? 'Seu consumo' : 'Consumo total'} fill="#0891b2" opacity={0.65} radius={[3, 3, 0, 0]} />}
                       {selectedMetrics.includes('commonAreaConsumption') && <Line yAxisId="consumption" type="monotone" dataKey="commonAreaConsumption" name="Consumo da área comum" stroke="#f97316" strokeWidth={2} dot={false} />}
                       {selectedMetrics.includes('unitCost') && <Line yAxisId="cost" type="monotone" dataKey={apartment ? 'selectedUnitCost' : 'unitCost'} name={apartment ? 'Água/Esgoto da unidade' : 'Água/Esgoto das unidades'} stroke="#0ea5e9" strokeWidth={2} dot={false} />}
