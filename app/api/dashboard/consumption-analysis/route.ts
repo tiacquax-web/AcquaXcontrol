@@ -69,34 +69,41 @@ export async function GET(req: NextRequest): Promise<Response> {
       contexts.blockIds.length === 0 &&
       contexts.complexIds.length === 0 &&
       contexts.companyIds.length === 0;
+    const effectiveApartmentId = apartmentId || (residentOnly && contexts.apartmentIds.length === 1 ? contexts.apartmentIds[0] : null);
     const complex = await prisma.complex.findFirst({
       where: { id: complexId, ...allowedComplexWhere(contexts) },
       select: { id: true, socialName: true, aliasName: true },
     });
     if (!complex) return NextResponse.json({ error: 'Sem permissão para este condomínio' }, { status: 403 });
 
-    if (apartmentId) {
+    if (effectiveApartmentId) {
       const apartment = await prisma.apartment.findFirst({
         where: {
-          id: apartmentId,
+          id: effectiveApartmentId,
           block: { complexId },
           ...notDeleted(),
         },
         select: { id: true },
       });
       if (!apartment) return NextResponse.json({ error: 'Unidade não pertence ao condomínio selecionado' }, { status: 400 });
-      if (!contexts.system && contexts.apartmentIds.length && !contexts.apartmentIds.includes(apartmentId) && !contexts.blockIds.length && !contexts.complexIds.length && !contexts.companyIds.length) {
+      if (!contexts.system && contexts.apartmentIds.length && !contexts.apartmentIds.includes(effectiveApartmentId) && !contexts.blockIds.length && !contexts.complexIds.length && !contexts.companyIds.length) {
         return NextResponse.json({ error: 'Sem permissão para esta unidade' }, { status: 403 });
       }
     }
 
-    const apartmentScope = apartmentId
-      ? { apartmentId }
+    const apartmentScope = effectiveApartmentId
+      ? { apartmentId: effectiveApartmentId }
       : residentOnly
         ? { apartmentId: { in: contexts.apartmentIds } }
         : {};
 
-    const [reports, dealershipReadings] = await Promise.all([
+    const previousKeys = keys.map((key) => {
+      const [year, month] = key.split('-').map(Number);
+      const date = new Date(Date.UTC(year, month - 2, 1));
+      return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    });
+
+    const [reports, dealershipReadings, previousReports] = await Promise.all([
       prisma.apartmentConsumptionReport.findMany({
       where: {
         complexId,
@@ -114,6 +121,15 @@ export async function GET(req: NextRequest): Promise<Response> {
         totalConsumption: true,
         totalUnit: true,
         partial: true,
+        lastReading: {
+          select: {
+            readAt: true,
+            readAtDate: true,
+            readingDate: true,
+            nextReadingDate: true,
+            readingDateNext: true,
+          },
+        },
         },
       }),
       prisma.dealershipReading.findMany({
@@ -124,7 +140,37 @@ export async function GET(req: NextRequest): Promise<Response> {
           monthRef: { in: [...new Set(keys.map((key) => key.slice(5)))] },
           ...notDeleted(),
         },
-        select: { monthRef: true, yearRef: true, dealershipConsumption: true, monthlyConsumption: true },
+        select: {
+          monthRef: true,
+          yearRef: true,
+          dealershipConsumption: true,
+          monthlyConsumption: true,
+          readingDate: true,
+          readingDateNext: true,
+          totalDays: true,
+        },
+      }),
+      prisma.apartmentConsumptionReport.findMany({
+        where: {
+          complexId,
+          utilityType: utilityType as any,
+          yearRef: { in: [...new Set(previousKeys.map((key) => key.slice(0, 4)))] },
+          monthRef: { in: [...new Set(previousKeys.map((key) => key.slice(5)))] },
+          ...apartmentScope,
+          ...notDeleted(),
+        },
+        select: {
+          apartmentId: true,
+          monthRef: true,
+          yearRef: true,
+          lastReading: {
+            select: {
+              readAt: true,
+              readAtDate: true,
+              readingDate: true,
+            },
+          },
+        },
       }),
     ]);
 
@@ -138,6 +184,10 @@ export async function GET(req: NextRequest): Promise<Response> {
     }
 
     const dealershipByMonth = new Map<string, (typeof dealershipReadings)[number]>();
+    const previousByApartmentMonth = new Map<string, (typeof previousReports)[number]>();
+    for (const previous of previousReports) {
+      previousByApartmentMonth.set(`${previous.apartmentId}|${previous.yearRef}-${String(previous.monthRef).padStart(2, '0')}`, previous);
+    }
     for (const reading of dealershipReadings) {
       const key = `${reading.yearRef || ''}-${String(reading.monthRef).padStart(2, '0')}`;
       if (keys.includes(key)) dealershipByMonth.set(key, reading);
@@ -151,12 +201,28 @@ export async function GET(req: NextRequest): Promise<Response> {
       const uniqueRows = [...byApartment.values()];
       const consumptionValues = uniqueRows.map((row) => Number(row.totalConsumption ?? row.consumption ?? 0));
       const costValues = uniqueRows.map((row) => Number(row.totalUnit ?? 0));
-      const commonAreaValues = uniqueRows.map((row) => Math.max(0, Number(row.totalUnit ?? 0) - Number(row.partial ?? 0)));
+      // Mesma semântica do Levantamento: Água/Esgoto = totalUnit - partial; Área Comum = partial.
+      const unitCostValues = uniqueRows.map((row) => Math.max(0, Number(row.totalUnit ?? 0) - Number(row.partial ?? 0)));
+      const commonAreaValues = uniqueRows.map((row) => Math.max(0, Number(row.partial ?? 0)));
       const total = (values: number[]) => values.reduce((sum, value) => sum + value, 0);
-      const selected = apartmentId ? byApartment.get(apartmentId) : undefined;
+      const selected = effectiveApartmentId ? byApartment.get(effectiveApartmentId) : undefined;
       const dealership = dealershipByMonth.get(key);
       const condominiumConsumption = Number(dealership?.dealershipConsumption || dealership?.monthlyConsumption || 0);
-      const commonAreaConsumption = Math.max(0, condominiumConsumption - total(consumptionValues));
+      const commonAreaConsumption = residentOnly ? null : Math.max(0, condominiumConsumption - total(consumptionValues));
+      const reference = selected || uniqueRows[0];
+      const previousKey = previousKeys[keys.indexOf(key)];
+      const previous = reference ? previousByApartmentMonth.get(`${reference.apartmentId}|${previousKey}`) : undefined;
+      const reportReading = reference?.lastReading as any;
+      const previousReading = previous?.lastReading as any;
+      const periodEndValue = reportReading?.readAtDate || reportReading?.readingDate || reportReading?.readAt || dealership?.readingDate || null;
+      const periodEndDate = periodEndValue ? new Date(periodEndValue) : new Date(Date.UTC(Number(year), Number(month), 0, 12, 0, 0));
+      const totalDays = Number(dealership?.totalDays) || 30;
+      const derivedStartDate = new Date(periodEndDate.getTime() - totalDays * 24 * 60 * 60 * 1000);
+      const previousDateValue = previousReading?.readAtDate || previousReading?.readingDate || previousReading?.readAt || null;
+      const periodStartDate = previousDateValue ? new Date(previousDateValue) : derivedStartDate;
+      const nextReadingValue = reportReading?.nextReadingDate || reportReading?.readingDateNext || dealership?.readingDateNext || null;
+      const nextReadingDate = nextReadingValue ? new Date(nextReadingValue) : new Date(periodEndDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const isoOrNull = (value: Date) => Number.isNaN(value.getTime()) ? null : value.toISOString();
 
       return {
         key,
@@ -169,10 +235,16 @@ export async function GET(req: NextRequest): Promise<Response> {
         selectedConsumption: selected ? Number(selected.totalConsumption ?? selected.consumption ?? 0) : null,
         totalCost: total(costValues),
         averageCost: uniqueRows.length ? total(costValues) / uniqueRows.length : 0,
+        unitCost: total(unitCostValues),
+        averageUnitCost: uniqueRows.length ? total(unitCostValues) / uniqueRows.length : 0,
+        selectedUnitCost: selected ? Math.max(0, Number(selected.totalUnit ?? 0) - Number(selected.partial ?? 0)) : null,
         commonAreaConsumption,
         commonAreaCost: total(commonAreaValues),
         averageCommonAreaCost: uniqueRows.length ? total(commonAreaValues) / uniqueRows.length : 0,
-        selectedCommonAreaCost: selected ? Math.max(0, Number(selected.totalUnit ?? 0) - Number(selected.partial ?? 0)) : null,
+        selectedCommonAreaCost: selected ? Math.max(0, Number(selected.partial ?? 0)) : null,
+        periodStart: isoOrNull(periodStartDate),
+        periodEnd: isoOrNull(periodEndDate),
+        nextReadingDate: isoOrNull(nextReadingDate),
       };
     });
 
@@ -181,7 +253,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     return NextResponse.json({
       complex,
-      apartmentId,
+      apartmentId: effectiveApartmentId,
       utilityType,
       start,
       end,
@@ -190,6 +262,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         monthsWithData,
         totalConsumption: sum('totalConsumption'),
         totalCost: sum('totalCost'),
+        totalUnitCost: sum('unitCost'),
         totalCommonAreaConsumption: sum('commonAreaConsumption'),
         totalCommonAreaCost: sum('commonAreaCost'),
         averageMonthlyConsumption: monthsWithData ? sum('totalConsumption') / monthsWithData : 0,
