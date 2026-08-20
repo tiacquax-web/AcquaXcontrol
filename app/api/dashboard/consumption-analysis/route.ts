@@ -64,6 +64,11 @@ export async function GET(req: NextRequest): Promise<Response> {
     if (start > end) return NextResponse.json({ error: 'O período inicial não pode ser maior que o final' }, { status: 400 });
 
     const contexts = await getUserContextsForActionOnEntity(userId, PermissionableEntity.apartment, 'read');
+    const residentOnly = !contexts.system &&
+      contexts.apartmentIds.length > 0 &&
+      contexts.blockIds.length === 0 &&
+      contexts.complexIds.length === 0 &&
+      contexts.companyIds.length === 0;
     const complex = await prisma.complex.findFirst({
       where: { id: complexId, ...allowedComplexWhere(contexts) },
       select: { id: true, socialName: true, aliasName: true },
@@ -85,6 +90,12 @@ export async function GET(req: NextRequest): Promise<Response> {
       }
     }
 
+    const apartmentScope = apartmentId
+      ? { apartmentId }
+      : residentOnly
+        ? { apartmentId: { in: contexts.apartmentIds } }
+        : {};
+
     const [reports, dealershipReadings] = await Promise.all([
       prisma.apartmentConsumptionReport.findMany({
       where: {
@@ -92,7 +103,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         utilityType: utilityType as any,
         yearRef: { in: [...new Set(keys.map((key) => key.slice(0, 4)))] },
         monthRef: { in: [...new Set(keys.map((key) => key.slice(5)))] },
-        ...(apartmentId ? { apartmentId } : {}),
+        ...apartmentScope,
         ...notDeleted(),
       },
       select: {

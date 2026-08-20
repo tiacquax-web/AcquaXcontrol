@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, CalendarRange, Check, ChevronDown, DollarSign, Droplets, Loader2, RefreshCw, TrendingUp } from 'lucide-react';
+import { BarChart3, CalendarRange, ChevronDown, DollarSign, DoorClosed, Droplets, Loader2, RefreshCw, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -96,7 +96,7 @@ function metricValue(row: AnalysisRow, key: MetricKey) {
 
 export default function ConsumptionDashboardPage() {
   const { context } = useUserContext();
-  const { effectiveContext } = useRolePreview();
+  const { isPreviewing, previewRole, effectiveContext } = useRolePreview();
   const { toast } = useToast();
   const [complex, setComplex] = useState<any>();
   const [apartment, setApartment] = useState<any>();
@@ -108,12 +108,55 @@ export default function ConsumptionDashboardPage() {
   const [data, setData] = useState<AnalysisResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const isSystem = Boolean(effectiveContext?.isSystem || context?.isSystem);
-  const accessibleComplexes = effectiveContext?.complexes || context?.complexes || [];
+  const activeContext: any = isPreviewing && effectiveContext ? effectiveContext : context;
+  const isSystem = Boolean(activeContext?.isSystem);
+  const isResident = useMemo(() => {
+    if (!activeContext || isSystem) return false;
+    if (isPreviewing) return previewRole === 'morador';
+    return activeContext.apartments?.length > 0 &&
+      (activeContext.complexes?.length === 0 || activeContext.directApartmentIds?.length > 0) &&
+      (activeContext.companyIds?.length || 0) === 0 &&
+      (activeContext.directBlockIds?.length || 0) === 0 &&
+      (activeContext.directComplexIds?.length || 0) === 0;
+  }, [activeContext, isPreviewing, isSystem, previewRole]);
+  const residentApartments = useMemo(() => activeContext?.apartments || [], [activeContext]);
+  const userComplexes = useMemo(() => {
+    if (!activeContext) return [];
+    const map = new Map<string, any>();
+    residentApartments.forEach((apt: any) => {
+      const cx = apt.block?.complex;
+      if (cx?.id && !map.has(cx.id)) map.set(cx.id, cx);
+    });
+    (activeContext.complexes || []).forEach((cx: any) => {
+      if (!map.has(cx.id)) map.set(cx.id, cx);
+    });
+    return Array.from(map.values());
+  }, [activeContext, residentApartments]);
+  const accessibleComplexes = isResident ? userComplexes : (activeContext?.complexes || []);
+  const residentApartmentsInComplex = useMemo(() => residentApartments.filter((apt: any) => apt.block?.complex?.id === complex?.id), [residentApartments, complex?.id]);
+  const residentHasSingleComplex = isResident && userComplexes.length === 1;
+  const residentHasSingleApartment = isResident && residentApartmentsInComplex.length === 1;
 
   useEffect(() => {
-    if (!complex && accessibleComplexes.length === 1) setComplex(accessibleComplexes[0]);
-  }, [accessibleComplexes, complex]);
+    if (!activeContext) return;
+    if (isResident && userComplexes.length === 1 && complex?.id !== userComplexes[0].id) {
+      setComplex(userComplexes[0]);
+      return;
+    }
+    if (!isResident && accessibleComplexes.length === 1 && !complex) {
+      setComplex(accessibleComplexes[0]);
+    }
+  }, [activeContext, accessibleComplexes, complex, isResident, userComplexes]);
+
+  useEffect(() => {
+    if (!isResident || !residentApartmentsInComplex.length) return;
+    if (residentApartmentsInComplex.length === 1 && apartment?.id !== residentApartmentsInComplex[0].id) {
+      setApartment(residentApartmentsInComplex[0]);
+    }
+    if (apartment && !residentApartmentsInComplex.some((item: any) => item.id === apartment.id)) {
+      setApartment(undefined);
+    }
+  }, [apartment, isResident, residentApartmentsInComplex]);
 
   useEffect(() => {
     const month = currentMonth();
@@ -167,6 +210,7 @@ export default function ConsumptionDashboardPage() {
   };
 
   const selectedComplexName = data?.complex?.socialName || data?.complex?.aliasName || complex?.socialName || 'Condomínio';
+  const visibleMetrics = isResident ? METRICS.filter((metric) => metric.key !== 'commonAreaConsumption') : METRICS;
   const consumptionMetricsSelected = selectedMetrics.some((key) => METRICS.find((metric) => metric.key === key)?.axis === 'consumption');
   const costMetricsSelected = selectedMetrics.some((key) => METRICS.find((metric) => metric.key === key)?.axis === 'cost');
   const selectedComparison = data?.series.filter((item) => item.selectedConsumption != null) || [];
@@ -196,11 +240,18 @@ export default function ConsumptionDashboardPage() {
         <CardContent className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
           <div className="space-y-2 xl:col-span-2">
             <Label>Condomínio</Label>
-            <SelectComplex getAvailableForEntity="apartment" setSelectedComplex={(value) => { setComplex(value); setApartment(undefined); }} complex={complex} required modal autoSelectSingle={!isSystem} />
+            <SelectComplex getAvailableForEntity="apartment" setSelectedComplex={(value) => { setComplex(value); setApartment(undefined); }} complex={complex} required modal disabled={isResident && residentHasSingleComplex} autoSelectSingle={!isSystem && !isResident} />
           </div>
           <div className="space-y-2">
-            <Label>Unidade (opcional)</Label>
-            <SelectApartment getAvailableForEntity="apartment" setSelectedApartment={setApartment} apartment={apartment} complexId={complex?.id} required={false} disabled={!complex?.id} modal />
+            <Label>{isResident ? 'Sua unidade' : 'Unidade (opcional)'}</Label>
+            {isResident ? (
+              <div className="flex h-10 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
+                <DoorClosed className="h-4 w-4 text-muted-foreground" />
+                <span className="truncate">{residentHasSingleApartment ? residentApartmentsInComplex[0].name : residentApartmentsInComplex.length ? `${residentApartmentsInComplex.length} unidades vinculadas` : 'Selecione seu condomínio'}</span>
+              </div>
+            ) : (
+              <SelectApartment getAvailableForEntity="apartment" setSelectedApartment={setApartment} apartment={apartment} complexId={complex?.id} required={false} disabled={!complex?.id} modal />
+            )}
           </div>
           <div className="space-y-2">
             <Label>Visão</Label>
@@ -243,10 +294,10 @@ export default function ConsumptionDashboardPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2"><ChevronDown className="h-4 w-4 text-blue-600" /> Componentes do gráfico</CardTitle>
-          <CardDescription>{apartment ? `Comparação da unidade ${apartment.name} com a média das unidades de ${selectedComplexName}.` : 'Sem unidade selecionada, os indicadores representam o condomínio.'}</CardDescription>
+          <CardDescription>{isResident ? (apartment ? `Valores pagos e consumidos pela unidade ${apartment.name}. A comparação usa a média das unidades do condomínio apenas como referência.` : 'Valores consolidados das suas unidades vinculadas; nenhum dado de outras unidades é incluído.') : apartment ? `Comparação da unidade ${apartment.name} com a média das unidades de ${selectedComplexName}.` : 'Sem unidade selecionada, os indicadores representam o condomínio.'}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-x-6 gap-y-3">
-          {METRICS.map((metric) => (
+          {visibleMetrics.map((metric) => (
             <label key={metric.key} className="flex items-center gap-2 text-sm cursor-pointer">
               <Checkbox checked={selectedMetrics.includes(metric.key)} onCheckedChange={() => toggleMetric(metric.key)} />
               <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: metric.color }} />
@@ -269,7 +320,7 @@ export default function ConsumptionDashboardPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><Droplets className="h-3.5 w-3.5 text-blue-600" /> Consumo no período</p><p className="text-2xl font-bold mt-1">{number(data.summary.totalConsumption)}</p><p className="text-xs text-muted-foreground">{data.summary.monthsWithData} meses com dados</p></CardContent></Card>
             <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><DollarSign className="h-3.5 w-3.5 text-green-600" /> Custo no período</p><p className="text-2xl font-bold mt-1">{money(data.summary.totalCost)}</p><p className="text-xs text-muted-foreground">média mensal {money(data.summary.averageMonthlyCost)}</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><TrendingUp className="h-3.5 w-3.5 text-orange-600" /> Área comum</p><p className="text-2xl font-bold mt-1">{money(data.summary.totalCommonAreaCost)}</p><p className="text-xs text-muted-foreground">{number(data.summary.totalCommonAreaConsumption)} m³ no período</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><TrendingUp className="h-3.5 w-3.5 text-orange-600" /> Área comum</p><p className="text-2xl font-bold mt-1">{money(data.summary.totalCommonAreaCost)}</p><p className="text-xs text-muted-foreground">{isResident ? 'rateio pago pela sua unidade' : `${number(data.summary.totalCommonAreaConsumption)} m³ no período`}</p></CardContent></Card>
             <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><BarChart3 className="h-3.5 w-3.5 text-purple-600" /> Comparação</p><p className="text-2xl font-bold mt-1">{apartment ? `${number(comparisonUnit)} / ${number(comparisonAverage)}` : 'Condomínio'}</p><p className="text-xs text-muted-foreground">unidade / média</p></CardContent></Card>
           </div>
 
