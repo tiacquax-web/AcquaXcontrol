@@ -62,6 +62,12 @@ const items = [
     group: 'Geral',
   },
   {
+    title: "Análise de Consumo",
+    url: "/consumption-dashboard",
+    icon: ChartBarIncreasing,
+    group: 'Geral',
+  },
+  {
     title: "Monitoramento",
     url: "/monitoring",
     icon: Gauge,
@@ -108,7 +114,7 @@ const items = [
     group: 'Geral',
   },
   {
-    title: "API",
+    title: "Integrações",
     url: "/api-manager",
     icon: Key,
     group: 'Integrações',

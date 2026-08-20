@@ -260,10 +260,10 @@ export default function ApiManagerPage() {
                     <div className="p-2 bg-primary/10 rounded-lg">
                         <Key className="h-5 w-5 text-primary" />
                     </div>
-                    <h1 className="text-2xl font-bold">Gerenciador de API</h1>
+                    <h1 className="text-2xl font-bold">Portal de Integrações</h1>
                 </div>
                 <p className="text-muted-foreground text-sm ml-12">
-                    Gerencie chaves de API, webhooks, permissões e monitore integrações externas.
+                    Crie e revogue API Keys, configure Webhooks, consulte logs e use a documentação da API v1.
                 </p>
             </div>
 
