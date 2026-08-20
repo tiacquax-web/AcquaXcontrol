@@ -1235,7 +1235,8 @@ function AdminKPIDashboard({ showEmailHealth = false }: { showEmailHealth?: bool
                   <div key={j.id} className="flex items-center justify-between text-[11px] py-1 border-b last:border-0">
                     <div className="min-w-0 flex-1">
                       <p className="font-medium truncate">{j.toEmail}</p>
-                      <p className="text-[10px] text-muted-foreground truncate">{j.subject}</p>
+                      <p className="text-xs font-semibold text-foreground truncate">{j.contextLabel || 'Contexto não identificado'}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{j.subject}{j.monthRef && j.yearRef ? ` · Ref. ${j.monthRef}/${j.yearRef}` : ''}</p>
                     </div>
                     <div className="text-right shrink-0 ml-2">
                       <Badge variant={j.status === 'sent' ? 'default' : j.status === 'failed' ? 'destructive' : 'secondary'} className="text-[9px] px-1 h-4">
@@ -1326,11 +1327,11 @@ function AdminKPIDashboard({ showEmailHealth = false }: { showEmailHealth?: bool
         {/* Top 3 mais/menos atualizados + mais acessados + sem acesso */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {/* Mais atualizados */}
-          <Card className="border-green-200 bg-green-50/50">
+          <Card className="border-green-300 bg-green-50 dark:border-green-800 dark:bg-green-950/30">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
                 <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
-                <p className="text-xs font-semibold text-green-700">Mais atualizados</p>
+                <p className="text-sm font-bold text-green-800 dark:text-green-200">Mais atualizados</p>
               </div>
               <div className="space-y-2">
                 {(stats?.top3MostUpdated ?? (stats?.mostUpdated ? [stats.mostUpdated] : [])).map((cx: any, i: number) => (
@@ -1352,11 +1353,11 @@ function AdminKPIDashboard({ showEmailHealth = false }: { showEmailHealth?: bool
           </Card>
 
           {/* Menos atualizados */}
-          <Card className="border-orange-200 bg-orange-50/50">
+          <Card className="border-orange-300 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Clock className="w-4 h-4 text-orange-500 shrink-0" />
-                <p className="text-xs font-semibold text-orange-700">Menos atualizados</p>
+                <p className="text-sm font-bold text-orange-800 dark:text-orange-200">Menos atualizados</p>
               </div>
               <div className="space-y-2">
                 {(stats?.top3LeastUpdated ?? (stats?.leastUpdated ? [stats.leastUpdated] : [])).map((cx: any, i: number) => (
@@ -1378,11 +1379,11 @@ function AdminKPIDashboard({ showEmailHealth = false }: { showEmailHealth?: bool
           </Card>
 
           {/* Mais acessados */}
-          <Card className="border-blue-200 bg-blue-50/50">
+          <Card className="border-blue-300 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="w-4 h-4 text-blue-500 shrink-0" />
-                <p className="text-xs font-semibold text-blue-700">Mais acessados (30d)</p>
+                <p className="text-sm font-bold text-blue-800 dark:text-blue-200">Mais acessados (30d)</p>
               </div>
               <div className="space-y-2">
                 {(stats?.top3MostAccessed ?? (stats?.mostAccessed ? [stats.mostAccessed] : [])).map((cx: any, i: number) => (
@@ -1404,11 +1405,11 @@ function AdminKPIDashboard({ showEmailHealth = false }: { showEmailHealth?: bool
           </Card>
 
           {/* Sem acesso no mês */}
-          <Card className="border-gray-200 bg-gray-50/50">
+          <Card className="border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingDown className="w-4 h-4 text-gray-400 shrink-0" />
-                <p className="text-xs font-semibold text-gray-600">Sem acesso (30d)</p>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Sem acesso (30d)</p>
               </div>
               <div className="flex flex-col items-center justify-center py-2">
                 <p className="text-4xl font-bold text-gray-500">{stats?.noAccessCount ?? '—'}</p>
@@ -1658,16 +1659,16 @@ export default function Dashboard() {
         
         {/* Barra de Ferramentas de Administrador (Preview + Atalhos) */}
         {canPreview && (
-          <Card className="mb-8 border-blue-200 bg-blue-50/30">
-            <CardHeader className="py-3 px-4 flex flex-row items-center justify-between space-y-0">
-              <div className="flex items-center gap-2">
-                <Star className="w-4 h-4 text-blue-600 fill-blue-600" />
-                <CardTitle className="text-sm font-bold text-blue-900">CENTRAL MASTER - DEPLOY TESTE OK</CardTitle>
+          <Card className="mb-8 border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-slate-900 shadow-sm">
+            <CardHeader className="py-3 px-4 flex flex-row items-center justify-between space-y-0 gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Star className="w-4 h-4 text-blue-600 dark:text-blue-300 fill-blue-600 dark:fill-blue-300 shrink-0" />
+                <CardTitle className="text-sm font-bold text-blue-900 dark:text-blue-100 tracking-wide">CENTRAL MASTER · DEPLOY TESTE OK</CardTitle>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-medium text-blue-700 uppercase tracking-wider">Visualizar como:</span>
+                <span className="text-[10px] font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wider">Visualizar como:</span>
                 <Select value={previewRole} onValueChange={(v) => setPreviewRole(v as any)}>
-                  <SelectTrigger className="h-8 w-[160px] text-xs bg-white border-blue-200">
+                  <SelectTrigger className="h-9 w-[180px] text-xs bg-white dark:bg-slate-800 text-foreground border-blue-300 dark:border-blue-600">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1681,7 +1682,7 @@ export default function Dashboard() {
                   </SelectContent>
                 </Select>
                 {isPrevMode && (
-                  <Button variant="ghost" size="sm" onClick={() => setPreviewRole('real')} className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-100">
+                  <Button variant="ghost" size="sm" onClick={() => setPreviewRole('real')} className="h-8 px-2 text-blue-800 dark:text-blue-200 hover:text-blue-900 dark:hover:text-blue-100 hover:bg-blue-100 dark:hover:bg-blue-900/40">
                     <X className="w-3.5 h-3.5 mr-1" /> Sair
                   </Button>
                 )}
