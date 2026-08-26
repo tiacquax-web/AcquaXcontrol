@@ -192,6 +192,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const historicalReports = await prisma.apartmentConsumptionReport.findMany({
       where: {
         apartmentId: { in: apartmentIds },
+        // Importante: o histórico precisa respeitar o mesmo tipo de utilidade
+        // (água/gás/energia) desta leitura de concessionária, senão a
+        // "Leitura Anterior" e o Histórico de Consumo podem vir de um tipo
+        // diferente (ex.: filipeta de gás mostrando histórico de água).
+        utilityType: dealershipReading.type || undefined,
         OR: previousMonthRefs.map(ref => ({
           monthRef: ref.monthRef,
           yearRef: ref.yearRef,
