@@ -119,6 +119,13 @@ export async function GET(req: NextRequest): Promise<Response> {
         consumption: true,
         totalUnit: true,
         partial: true,
+        // Campos específicos de gás/energia — sem eles, o Levantamento e a
+        // Filipeta mostram consumo/valor zerados para unidades de gás/energia,
+        // pois esses relatórios não usam consumption/totalUnit (ficam 0 no banco).
+        consumptionGasValue: true,
+        totalGasValue: true,
+        consumptionEnergyValue: true,
+        totalEnergyValue: true,
         apartmentId: true,
         complexId: true,
         dealershipReadingId: true,
@@ -262,6 +269,12 @@ export async function GET(req: NextRequest): Promise<Response> {
         monthRef: true,
         yearRef: true,
         consumption: true,
+        // Mesmo motivo do select acima: histórico de gás/energia também precisa
+        // desses campos para exibir consumo correto nos meses anteriores.
+        consumptionGasValue: true,
+        totalGasValue: true,
+        consumptionEnergyValue: true,
+        totalEnergyValue: true,
         lastReading: { select: { reading: true, readAtDate: true } },
       },
       orderBy: { yearRef: 'desc' },

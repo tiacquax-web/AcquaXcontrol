@@ -6,7 +6,7 @@ import { Info } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ApartmentWithConsumptionReport, EnrichedApartmentReport } from '@/types/apartment';
-import { sanitizeImageUrl } from '@/lib/utils';
+import { sanitizeImageUrl, getUtilityConsumption, getUtilityTotalValue } from '@/lib/utils';
 
 
 // ─── MeterPhoto ──────────────────────────────────────────────────────────────
@@ -103,6 +103,17 @@ const FilipetaGridReport = React.memo<FilipetaGridReportProps>(({ report, dealer
   const prevReport2 = history?.[1];
   const hasHistory = Array.isArray(history) && history.length > 0;
   const historyMissingLabel = hasHistory ? 'ref. pend.' : '';
+
+  // Consumo e valor não são intercambiáveis entre água/gás/energia — ver
+  // lib/utils.ts getUtilityConsumption/getUtilityTotalValue (mesmo mapeamento
+  // já validado na aba "Contas"). Sem isso, filipetas de gás/energia mostravam
+  // consumo e valores zerados.
+  const utilityType = (dealershipReading?.type ?? (report as any).utilityType) as string | null | undefined;
+  const displayConsumption = getUtilityConsumption(report as any, utilityType);
+  const displayTotalValue = getUtilityTotalValue(report as any, utilityType);
+  const displayConsumptionUnit = utilityType === 'energy' ? 'kWh' : 'm³';
+  const prevReport1Consumption = getUtilityConsumption(prevReport1 as any, utilityType);
+  const prevReport2Consumption = getUtilityConsumption(prevReport2 as any, utilityType);
 
   const emissionDate = format(new Date(), 'dd/MM/yyyy HH:mm');
   
@@ -243,21 +254,21 @@ const FilipetaGridReport = React.memo<FilipetaGridReportProps>(({ report, dealer
                 <thead>
                   <tr className="border-b border-black">
                     <th className="border-r border-black py-0.5 px-1 text-left font-bold">Mês</th>
-                    <th className="border-r border-black py-0.5 px-1 text-center font-bold">cons. m³</th>
+                    <th className="border-r border-black py-0.5 px-1 text-center font-bold">cons. {displayConsumptionUnit}</th>
                     <th className="border-r border-black py-0.5 px-1 text-left font-bold">Mês</th>
-                    <th className="border-r border-black py-0.5 px-1 text-center font-bold">cons. m³</th>
+                    <th className="border-r border-black py-0.5 px-1 text-center font-bold">cons. {displayConsumptionUnit}</th>
                     <th className="border-r border-black py-0.5 px-1 text-left font-bold">Mês</th>
-                    <th className="py-0.5 px-1 text-center font-bold">cons. m³</th>
+                    <th className="py-0.5 px-1 text-center font-bold">cons. {displayConsumptionUnit}</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{prevReport2 ? `${String(prevReport2.monthRef).padStart(2, '0')}/${prevReport2.yearRef}`: historyMissingLabel}</td>
-                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{prevReport2 ? prevReport2.consumption?.toFixed(6) : historyMissingLabel}</td>
+                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{prevReport2 ? prevReport2Consumption?.toFixed(6) : historyMissingLabel}</td>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{prevReport1 ? `${String(prevReport1.monthRef).padStart(2, '0')}/${prevReport1.yearRef}`: historyMissingLabel}</td>
-                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{prevReport1 ? prevReport1.consumption?.toFixed(6) : historyMissingLabel}</td>
+                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{prevReport1 ? prevReport1Consumption?.toFixed(6) : historyMissingLabel}</td>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{monthRefStr}/{report.yearRef}</td>
-                    <td className="py-0.5 px-1 text-center text-xs">{report.consumption?.toFixed(6) || '0.000000'}</td>
+                    <td className="py-0.5 px-1 text-center text-xs">{displayConsumption?.toFixed(6) || '0.000000'}</td>
                   </tr>
                 </tbody>
               </table>
@@ -292,9 +303,9 @@ const FilipetaGridReport = React.memo<FilipetaGridReportProps>(({ report, dealer
               <table className="filipeta-data-table w-full max-w-full text-xs border-collapse">
                 <thead>
                   <tr className="border-b-2 border-black">
-                    <th className="border-r border-black py-0.5 px-1 font-bold text-left leading-tight">LEITURA ANT.<br/>m³</th>
-                    <th className="border-r border-black py-0.5 px-1 font-bold text-left leading-tight">LEITURA ATUAL<br/>m³</th>
-                    <th className="border-r border-black py-0.5 px-1 font-bold text-center leading-tight">CONSUMO m³</th>
+                    <th className="border-r border-black py-0.5 px-1 font-bold text-left leading-tight">LEITURA ANT.<br/>{displayConsumptionUnit}</th>
+                    <th className="border-r border-black py-0.5 px-1 font-bold text-left leading-tight">LEITURA ATUAL<br/>{displayConsumptionUnit}</th>
+                    <th className="border-r border-black py-0.5 px-1 font-bold text-center leading-tight">CONSUMO {displayConsumptionUnit}</th>
                     <th className="border-r border-black py-0.5 px-1 font-bold text-center leading-tight">PERÍODO DE<br/>CONSUMO</th>
                     <th className="border-r border-black py-0.5 px-1 font-bold text-center leading-tight">PRÓXIMA LEIT.<br/>PREVISTA</th>
                     <th className="py-0.5 px-1 font-bold text-center leading-tight">TOTAL A PAGAR</th>
@@ -304,10 +315,10 @@ const FilipetaGridReport = React.memo<FilipetaGridReportProps>(({ report, dealer
                   <tr>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{prevReport1?.lastReading?.reading?.toFixed(3) ?? 'ref. pend.'}</td>
                     <td className="border-r border-black py-0.5 px-1 text-xs">{lastReading?.reading?.toFixed(3) ?? 'ref. pend.'}</td>
-                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{report.consumption?.toFixed(6) ?? 'ref. pend.'}</td>
+                    <td className="border-r border-black py-0.5 px-1 text-center text-xs">{displayConsumption?.toFixed(6) ?? 'ref. pend.'}</td>
                     <td className="border-r border-black py-0.5 px-1 text-center text-xs leading-tight">{periodStartFormatted}<br/>a<br/>{periodEndFormatted}</td>
                     <td className="border-r border-black py-0.5 px-1 text-center text-xs">{nextReadingDateFormatted}</td>
-                    <td className="py-0.5 px-1 text-center text-xs font-bold">{report.totalUnit?.toFixed(2) ?? 'ref. pend.'}</td>
+                    <td className="py-0.5 px-1 text-center text-xs font-bold">{displayTotalValue?.toFixed(2) ?? 'ref. pend.'}</td>
                   </tr>
                 </tbody>
               </table>

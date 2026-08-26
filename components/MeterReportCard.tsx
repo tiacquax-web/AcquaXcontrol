@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { MeterReportItem } from '@/hooks/useMeterReport';
-import { sanitizeImageUrl } from '@/lib/utils';
+import { sanitizeImageUrl, getUtilityConsumption, getUtilityTotalValue } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Droplets, Calendar, Building2, DoorClosed, ZoomIn, X, Printer, Info } from 'lucide-react';
 
@@ -122,6 +122,17 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
 
   const prevReport1 = history?.[0];
   const prevReport2 = history?.[1];
+
+  // Consumo e valor não são intercambiáveis entre água/gás/energia — ver
+  // lib/utils.ts getUtilityConsumption/getUtilityTotalValue (mesmo mapeamento
+  // já validado na aba "Contas"). Sem isso, unidades de gás/energia mostravam
+  // consumo e valores zerados aqui.
+  const utilityType = (report as any).utilityType as string | null | undefined;
+  const displayConsumption = getUtilityConsumption(report, utilityType);
+  const displayTotalValue = getUtilityTotalValue(report, utilityType);
+  const displayConsumptionUnit = utilityType === 'energy' ? 'kWh' : 'm³';
+  const prevReport1Consumption = getUtilityConsumption(prevReport1, utilityType);
+  const prevReport2Consumption = getUtilityConsumption(prevReport2, utilityType);
 
   const monthName = report.monthRef
     ? format(new Date(Number(report.yearRef), Number(report.monthRef) - 1), 'MMMM', { locale: ptBR })
@@ -315,9 +326,9 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
             <div className="px-2 py-3">
               <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">Consumo</p>
               <p className="font-bold text-teal-700 text-sm leading-tight">
-                {report.consumption?.toFixed(3) ?? '—'}
+                {displayConsumption?.toFixed(3) ?? '—'}
               </p>
-              <p className="text-teal-400 text-[10px]">m³</p>
+              <p className="text-teal-400 text-[10px]">{displayConsumptionUnit}</p>
             </div>
           </div>
 
@@ -348,16 +359,18 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
               <p className="font-semibold text-gray-700 text-xs">{formatCurrency(report.partial)}</p>
             </div>
             <div className="px-2 py-2.5">
-              <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">Água/Esgoto</p>
+              <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">
+                {utilityType === 'gas' ? 'Gás' : utilityType === 'energy' ? 'Energia' : 'Água/Esgoto'}
+              </p>
               <p className="font-semibold text-gray-700 text-xs">
-                {report.totalUnit != null && report.partial != null
-                  ? formatCurrency(report.totalUnit - report.partial)
+                {displayTotalValue != null && report.partial != null
+                  ? formatCurrency(displayTotalValue - report.partial)
                   : '—'}
               </p>
             </div>
             <div className="px-2 py-2.5 bg-blue-50">
               <p className="text-blue-500 text-[11px] font-medium mb-1 leading-tight">Total a Pagar</p>
-              <p className="font-bold text-blue-700 text-xs">{formatCurrency(report.totalUnit)}</p>
+              <p className="font-bold text-blue-700 text-xs">{formatCurrency(displayTotalValue)}</p>
             </div>
           </div>
 
@@ -367,11 +380,14 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
         <div className="border-t bg-gray-50 px-4 py-3">
           <p className="text-xs font-semibold text-gray-500 mb-2">Histórico de Consumo</p>
           <div className="grid grid-cols-3 gap-2 text-center">
-            {[prevReport2, prevReport1, report].map((r, i) => {
+            {[
+              { r: prevReport2, cons: prevReport2Consumption },
+              { r: prevReport1, cons: prevReport1Consumption },
+              { r: report, cons: displayConsumption },
+            ].map(({ r, cons }, i) => {
               const isCurrentMonth = i === 2;
               const mRef = r ? String(r.monthRef).padStart(2, '0') : null;
               const yRef = r?.yearRef;
-              const cons = r?.consumption;
               return (
                 <div
                   key={i}
@@ -381,7 +397,7 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
                     {mRef && yRef ? `${mRef}/${yRef}` : '—'}
                   </p>
                   <p className={`font-bold text-sm ${isCurrentMonth ? 'text-blue-700' : 'text-gray-700'}`}>
-                    {cons != null ? `${cons.toFixed(3)} m³` : '—'}
+                    {cons != null ? `${cons.toFixed(3)} ${displayConsumptionUnit}` : '—'}
                   </p>
                 </div>
               );
