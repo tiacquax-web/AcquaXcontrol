@@ -231,7 +231,12 @@ export async function GET(req: NextRequest): Promise<Response> {
       }
       const key = `${report.complexId || complexId || ''}|${report.monthRef}|${report.yearRef}`;
       const candidates = dealershipReadingsByKey[key] || [];
-      return candidates.find(dr => !report.utilityType || dr.type === report.utilityType) || candidates[0] || null;
+      if (report.utilityType) {
+        // Quando o relatório já sabe seu tipo de utilidade, nunca devolva uma
+        // DealershipReading de outro tipo — melhor null do que dado errado.
+        return candidates.find(dr => dr.type === report.utilityType) || null;
+      }
+      return candidates[0] || null;
     };
 
     // Historical data
@@ -242,6 +247,10 @@ export async function GET(req: NextRequest): Promise<Response> {
     const historicalReports = await prisma.apartmentConsumptionReport.findMany({
       where: {
         apartmentId: { in: apartmentIds },
+        // Importante: o histórico precisa respeitar o mesmo tipo de utilidade
+        // (água/gás/energia) do relatório atual, senão a "Leitura Anterior" e
+        // o Histórico de Consumo podem vir de um tipo diferente.
+        utilityType: (utilityType || undefined) as any,
         OR: [
           ...previousMonthRefs.map(ref => ({ monthRef: ref.monthRef, yearRef: ref.yearRef })),
         ],

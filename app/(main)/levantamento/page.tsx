@@ -12,7 +12,7 @@ import {
   TrendingUp, TrendingDown, Minus, Building2, Calendar,
   Droplets, Loader2, AlertCircle, Search, X,
   Printer, ChevronDown, ChevronUp, Camera, ZoomIn,
-  Info } from 'lucide-react';
+  Info, Flame, GaugeCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -49,6 +49,52 @@ function buildMonthOptions(pastCount = 24, futureCount = 12) {
 const FUTURE_MONTHS_COUNT = 12; // permite selecionar até 12 meses à frente do mês atual
 const ALL_MONTHS = buildMonthOptions(24, FUTURE_MONTHS_COUNT);
 const CURRENT_MONTH_INDEX = FUTURE_MONTHS_COUNT; // índice do mês atual dentro de ALL_MONTHS
+
+// ─── Tipos de utilidade (água/gás/energia) ────────────────────────────────────
+// Cores dedicadas por tipo, conforme solicitado: água = azul, gás = laranja, energia = amarelo.
+type UtilityType = 'water' | 'gas' | 'energy';
+
+const UTILITY_OPTIONS: Record<UtilityType, {
+  label: string;
+  unit: string;
+  icon: typeof Droplets;
+  color: string; // texto
+  bg: string; // fundo suave
+  border: string;
+  solid: string; // fundo sólido (botão ativo)
+  inactive: string; // classes completas do botão inativo (inclui hover)
+}> = {
+  water: {
+    label: 'Água',
+    unit: 'm³',
+    icon: Droplets,
+    color: 'text-blue-600',
+    bg: 'bg-blue-50',
+    border: 'border-blue-200',
+    solid: 'bg-blue-600 text-white border-blue-600',
+    inactive: 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50',
+  },
+  gas: {
+    label: 'Gás',
+    unit: 'm³',
+    icon: Flame,
+    color: 'text-orange-600',
+    bg: 'bg-orange-50',
+    border: 'border-orange-200',
+    solid: 'bg-orange-500 text-white border-orange-500',
+    inactive: 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50',
+  },
+  energy: {
+    label: 'Energia',
+    unit: 'kWh',
+    icon: GaugeCircle,
+    color: 'text-yellow-600',
+    bg: 'bg-yellow-50',
+    border: 'border-yellow-200',
+    solid: 'bg-yellow-500 text-white border-yellow-500',
+    inactive: 'bg-white text-yellow-600 border-yellow-200 hover:bg-yellow-50',
+  },
+};
 
 function fmt(v: number | null | undefined) {
   return v != null ? v.toFixed(3) : '—';
@@ -221,7 +267,7 @@ function MeterPhoto({ url, alt, monthLabel }: { url: string; alt?: string; month
 // Exibe foto em tamanho grande com todos os dados abaixo
 function MeterPhotoCard({
   photoUrl, label, currReading, prevReading, consumption, totalUnit, partial, waterSewage,
-  periodStart, periodEnd, nextReadingDate,
+  periodStart, periodEnd, nextReadingDate, unit = 'm³',
 }: {
   photoUrl: string | null;
   label: string;
@@ -234,6 +280,7 @@ function MeterPhotoCard({
   periodStart?: string | null;
   periodEnd?: string | null;
   nextReadingDate?: string | null;
+  unit?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -278,19 +325,19 @@ function MeterPhotoCard({
           <div className="bg-gray-50 rounded-lg p-2 text-center">
             <div className="text-gray-400 text-[10px] uppercase tracking-wide mb-0.5">Leit. Anterior</div>
             <div className="font-semibold text-gray-700">{fmt(prevReading)}</div>
-            <div className="text-[10px] text-gray-400">m³</div>
+            <div className="text-[10px] text-gray-400">{unit}</div>
           </div>
           <div className="bg-blue-50 rounded-lg p-2 text-center">
             <div className="text-blue-400 text-[10px] uppercase tracking-wide mb-0.5">Leit. Atual</div>
             <div className="font-bold text-blue-700 text-base">{fmt(currReading)}</div>
-            <div className="text-[10px] text-blue-400">m³</div>
+            <div className="text-[10px] text-blue-400">{unit}</div>
           </div>
         </div>
 
         {/* Consumo */}
         <div className="bg-teal-50 rounded-lg p-2 text-center">
           <div className="text-teal-500 text-[10px] uppercase tracking-wide mb-0.5">Consumo do Período</div>
-          <div className="font-bold text-teal-700 text-lg">{fmt(consumption)} <span className="text-sm font-normal">m³</span></div>
+          <div className="font-bold text-teal-700 text-lg">{fmt(consumption)} <span className="text-sm font-normal">{unit}</span></div>
         </div>
 
         {/* Período e próxima leitura */}
@@ -398,6 +445,10 @@ export default function LevantamentoPage() {
   const [selectedAptObj, setSelectedAptObj] = useState<any>(null);
   const [searchText, setSearchText] = useState('');
   const [expandedApt, setExpandedApt] = useState<string | null>(null);
+  // Tipo de utilidade selecionado — água/gás/energia. Sem isso, a API retornava
+  // os relatórios de todos os tipos misturados para o mesmo apartamento/mês.
+  const [selectedUtility, setSelectedUtility] = useState<UtilityType>('water');
+  const utilityConfig = UTILITY_OPTIONS[selectedUtility];
 
   const isSystem = context?.isSystem ?? false;
 
@@ -475,10 +526,11 @@ export default function LevantamentoPage() {
     return undefined;
   }, [isMorador, userApartments]);
 
-  const fetchMonth = useCallback(async (month: string, year: string, complexId: string, aptId?: string) => {
+  const fetchMonth = useCallback(async (month: string, year: string, complexId: string, aptId?: string, utilityType?: UtilityType) => {
     const params: Record<string, string> = { month, year };
     if (complexId) params.complex_id = complexId;
     if (aptId) params.apartment_id = aptId;
+    if (utilityType) params.utility_type = utilityType;
     const res = await axios.get<{
     list: MeterReportItem[];
     dealershipReadings?: MeterReportItem['dealershipReading'][];
@@ -509,7 +561,7 @@ export default function LevantamentoPage() {
     // Busca paralela
     selectedMonths.forEach(async (m, idx) => {
       try {
-        const result = await fetchMonth(m.month, m.year, selectedComplexId!, apartmentIdFilter);
+        const result = await fetchMonth(m.month, m.year, selectedComplexId!, apartmentIdFilter, selectedUtility);
         setMonthsData(prev => {
           const next = [...prev];
           if (next[idx]) next[idx] = {
@@ -528,7 +580,7 @@ export default function LevantamentoPage() {
         });
       }
     });
-  }, [selectedComplexId, selectedMonths, apartmentIdFilter, fetchMonth]);
+  }, [selectedComplexId, selectedMonths, apartmentIdFilter, fetchMonth, selectedUtility]);
 
   const isAnyLoading = monthsData.some(m => m.loading);
   const allLoaded = monthsData.length > 0 && !isAnyLoading;
@@ -742,6 +794,32 @@ export default function LevantamentoPage() {
           </Badge>
         )}
 
+        {/* Tipo de utilidade — água/gás/energia, com cores distintas */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tipo</label>
+          <div className="flex gap-1.5">
+            {(Object.keys(UTILITY_OPTIONS) as UtilityType[]).map(key => {
+              const opt = UTILITY_OPTIONS[key];
+              const Icon = opt.icon;
+              const active = selectedUtility === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSelectedUtility(key)}
+                  className={`flex items-center gap-1.5 h-9 px-3 rounded-md border text-sm font-medium transition-colors ${
+                    active ? opt.solid : opt.inactive
+                  }`}
+                  title={opt.label}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span className="hidden sm:inline">{opt.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Condomínio — card visível desde a abertura da tela */}
         <div className="flex flex-col gap-1 min-w-[220px]">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Condomínio</label>
@@ -864,9 +942,9 @@ export default function LevantamentoPage() {
       {/* Resultado vazio */}
       {allLoaded && aptRows.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground print:hidden">
-          <Droplets className="w-12 h-12 mb-3 opacity-30" />
-          <p className="font-medium">Nenhum dado encontrado</p>
-          <p className="text-sm mt-1">Não há leituras no período selecionado para este condomínio.</p>
+          <utilityConfig.icon className="w-12 h-12 mb-3 opacity-30" />
+          <p className="font-medium">Nenhum dado de {utilityConfig.label.toLowerCase()} encontrado</p>
+          <p className="text-sm mt-1">Não há leituras de {utilityConfig.label.toLowerCase()} no período selecionado para este condomínio.</p>
         </div>
       )}
 
@@ -894,7 +972,7 @@ export default function LevantamentoPage() {
                 {complexDisplayName} — Bl. {moradorRow.blockName} / Ap. {moradorRow.aptName}
               </p>
               <p className="text-xs text-teal-600">
-                {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'} · Média {moradorRow.avgConsumption.toFixed(2)} m³/mês
+                {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'} · Média {moradorRow.avgConsumption.toFixed(2)} {utilityConfig.unit}/mês
               </p>
             </div>
           </div>
@@ -930,6 +1008,7 @@ export default function LevantamentoPage() {
                   periodStart={m.periodStart}
                   periodEnd={m.periodEnd}
                   nextReadingDate={m.nextReadingDate}
+                  unit={utilityConfig.unit}
                 />
               ))}
             </div>
@@ -946,8 +1025,8 @@ export default function LevantamentoPage() {
                 margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} unit=" m³" width={60} />
-                <Tooltip formatter={(val: any) => [`${val} m³`, 'Consumo']} labelStyle={{ fontWeight: 'bold' }} />
+                <YAxis tick={{ fontSize: 11 }} unit={` ${utilityConfig.unit}`} width={60} />
+                <Tooltip formatter={(val: any) => [`${val} ${utilityConfig.unit}`, 'Consumo']} labelStyle={{ fontWeight: 'bold' }} />
                 <ReferenceLine
                   y={moradorRow.avgConsumption}
                   stroke="#94a3b8" strokeDasharray="4 4"
@@ -990,12 +1069,12 @@ export default function LevantamentoPage() {
               { label: 'Meses', value: selectedMonths.length.toString(), icon: Calendar, color: 'text-purple-600', bg: 'bg-purple-50' },
               {
                 label: 'Consumo Médio/Mês',
-                value: `${(chartData.reduce((a, b) => a + b.média, 0) / (chartData.length || 1)).toFixed(2)} m³`,
-                icon: Droplets, color: 'text-teal-600', bg: 'bg-teal-50',
+                value: `${(chartData.reduce((a, b) => a + b.média, 0) / (chartData.length || 1)).toFixed(2)} ${utilityConfig.unit}`,
+                icon: utilityConfig.icon, color: utilityConfig.color, bg: utilityConfig.bg,
               },
               {
                 label: 'Consumo Total',
-                value: `${chartData.reduce((a, b) => a + b.total, 0).toFixed(2)} m³`,
+                value: `${chartData.reduce((a, b) => a + b.total, 0).toFixed(2)} ${utilityConfig.unit}`,
                 icon: TrendingUp, color: 'text-orange-600', bg: 'bg-orange-50',
               },
             ].map(kpi => (
@@ -1013,7 +1092,7 @@ export default function LevantamentoPage() {
           <div className="bg-white border rounded-xl p-4 print:border-gray-400">
             <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-teal-500" />
-              Evolução do Consumo Médio por Mês (m³)
+              Evolução do Consumo Médio por Mês ({utilityConfig.unit})
               {(selectedBlockObj || selectedAptObj) && (
                 <span className="text-xs text-muted-foreground font-normal ml-1">
                   — {selectedAptObj ? `Bl.${selectedBlockObj?.name} Ap.${selectedAptObj?.name}` : `Bloco ${selectedBlockObj?.name}`}
@@ -1024,9 +1103,9 @@ export default function LevantamentoPage() {
               <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} unit=" m³" width={60} />
+                <YAxis tick={{ fontSize: 11 }} unit={` ${utilityConfig.unit}`} width={60} />
                 <Tooltip
-                  formatter={(val: any) => [`${val} m³`, 'Consumo médio']}
+                  formatter={(val: any) => [`${val} ${utilityConfig.unit}`, 'Consumo médio']}
                   labelStyle={{ fontWeight: 'bold' }}
                 />
                 <ReferenceLine
@@ -1053,7 +1132,7 @@ export default function LevantamentoPage() {
                       {complexDisplayName} — Bl. {singleRow.blockName} / Ap. {singleRow.aptName}
                     </p>
                     <p className="text-xs text-teal-600">
-                      {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'} · Média {singleRow.avgConsumption.toFixed(2)} m³/mês
+                      {selectedMonths.length} {selectedMonths.length === 1 ? 'mês selecionado' : 'meses selecionados'} · Média {singleRow.avgConsumption.toFixed(2)} {utilityConfig.unit}/mês
                     </p>
                   </div>
                 </div>
@@ -1085,6 +1164,7 @@ export default function LevantamentoPage() {
                       periodStart={m.periodStart}
                       periodEnd={m.periodEnd}
                       nextReadingDate={m.nextReadingDate}
+                      unit={utilityConfig.unit}
                     />
                   ))}
                 </div>
@@ -1116,7 +1196,7 @@ export default function LevantamentoPage() {
                       </th>
                     ))}
                     <th className="px-3 py-2.5 text-center font-semibold text-gray-700 whitespace-nowrap min-w-[90px] border-l bg-teal-50 text-teal-700">
-                      Média m³
+                      Média {utilityConfig.unit}
                     </th>
                   </tr>
                 </thead>
@@ -1151,14 +1231,14 @@ export default function LevantamentoPage() {
                                       {fmt(m.consumption)}
                                     </span>
                                   </div>
-                                  <span className="text-gray-400 text-[10px]">m³</span>
+                                  <span className="text-gray-400 text-[10px]">{utilityConfig.unit}</span>
                                 </div>
                               </td>
                             );
                           })}
                           <td className="px-3 py-2.5 text-center border-l bg-teal-50 levantamento-avg-cell">
                             <span className="font-bold text-teal-700">{row.avgConsumption.toFixed(2)}</span>
-                            <div className="text-[10px] text-teal-400">m³/mês</div>
+                            <div className="text-[10px] text-teal-400">{utilityConfig.unit}/mês</div>
                           </td>
                         </tr>
 
@@ -1194,14 +1274,14 @@ export default function LevantamentoPage() {
                                     <tr>
                                       <td className="pr-3 py-1.5 text-gray-500 whitespace-nowrap">Leit. Anterior</td>
                                       {row.months.map((m, mi) => (
-                                        <td key={mi} className="px-3 py-1.5 text-center text-gray-700">{fmt(m.prevReading)} m³</td>
+                                        <td key={mi} className="px-3 py-1.5 text-center text-gray-700">{fmt(m.prevReading)} {utilityConfig.unit}</td>
                                       ))}
                                     </tr>
                                     {/* Leitura atual */}
                                     <tr>
                                       <td className="pr-3 py-1.5 text-gray-500 whitespace-nowrap">Leit. Atual</td>
                                       {row.months.map((m, mi) => (
-                                        <td key={mi} className="px-3 py-1.5 text-center font-semibold text-blue-700">{fmt(m.currReading)} m³</td>
+                                        <td key={mi} className="px-3 py-1.5 text-center font-semibold text-blue-700">{fmt(m.currReading)} {utilityConfig.unit}</td>
                                       ))}
                                     </tr>
                                     {/* Período de leitura */}
@@ -1228,7 +1308,7 @@ export default function LevantamentoPage() {
                                         const diff = m.consumption != null && prev != null ? m.consumption - prev : null;
                                         return (
                                           <td key={mi} className="px-3 py-1.5 text-center">
-                                            <span className="font-bold text-teal-700">{fmt(m.consumption)} m³</span>
+                                            <span className="font-bold text-teal-700">{fmt(m.consumption)} {utilityConfig.unit}</span>
                                             {diff != null && (
                                               <div className={`text-[10px] ${diff > 0.01 ? 'text-red-500' : diff < -0.01 ? 'text-green-500' : 'text-gray-400'}`}>
                                                 {diff > 0 ? '+' : ''}{diff.toFixed(3)}
@@ -1238,9 +1318,9 @@ export default function LevantamentoPage() {
                                         );
                                       })}
                                     </tr>
-                                    {/* Água/Esgoto */}
+                                    {/* Água/Esgoto (ou equivalente do tipo selecionado) */}
                                     <tr>
-                                      <td className="pr-3 py-1.5 text-gray-500 whitespace-nowrap">Água/Esgoto</td>
+                                      <td className="pr-3 py-1.5 text-gray-500 whitespace-nowrap">{selectedUtility === 'water' ? 'Água/Esgoto' : utilityConfig.label}</td>
                                       {row.months.map((m, mi) => (
                                         <td key={mi} className="px-3 py-1.5 text-center text-gray-700">{fmtBRL(m.waterSewage)}</td>
                                       ))}
@@ -1267,7 +1347,7 @@ export default function LevantamentoPage() {
                                           <LineChart data={row.months.map(m => ({ label: m.label, consumo: m.consumption }))}>
                                             <XAxis dataKey="label" tick={{ fontSize: 9 }} />
                                             <YAxis hide />
-                                            <Tooltip formatter={(v: any) => [`${v} m³`, '']} />
+                                            <Tooltip formatter={(v: any) => [`${v} ${utilityConfig.unit}`, '']} />
                                             <Line type="monotone" dataKey="consumo" stroke="#0d9488" strokeWidth={2} dot={{ r: 3 }} />
                                           </LineChart>
                                         </ResponsiveContainer>
