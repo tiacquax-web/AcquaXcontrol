@@ -108,6 +108,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         consumption: true,
         partial: true,
         totalUnit: true,
+        // Campos específicos de gás/energia — sem eles, a Filipeta mostra
+        // consumo/valor zerados para unidades de gás/energia, pois esses
+        // relatórios não usam consumption/totalUnit (ficam 0 no banco).
+        consumptionGasValue: true,
+        totalGasValue: true,
+        consumptionEnergyValue: true,
+        totalEnergyValue: true,
         apartmentId: true,
         lastReadingId: true,
         apartment: {
@@ -207,6 +214,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         monthRef: true,
         yearRef: true,
         consumption: true,
+        // Mesmo motivo do select acima: histórico de gás/energia também
+        // precisa desses campos para exibir consumo correto nos meses
+        // anteriores da filipeta.
+        consumptionGasValue: true,
+        totalGasValue: true,
+        consumptionEnergyValue: true,
+        totalEnergyValue: true,
         apartmentId: true,
         lastReading: {
           select: {

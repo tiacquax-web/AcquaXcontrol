@@ -13,6 +13,14 @@ export interface MeterReportItem {
   consumption: number | null;
   totalUnit: number | null;
   partial: number | null;
+  // Campos específicos de gás/energia (ver mapeamento em apartment-report-row.tsx):
+  // água → consumption/totalUnit; gás → consumptionGasValue/totalGasValue;
+  // energia → consumption/consumptionEnergyValue.
+  consumptionGasValue?: number | null;
+  totalGasValue?: number | null;
+  consumptionEnergyValue?: number | null;
+  totalEnergyValue?: number | null;
+  utilityType?: string | null;
   apartmentId: string;
   dealershipReadingId: string | null;
   apartment: {

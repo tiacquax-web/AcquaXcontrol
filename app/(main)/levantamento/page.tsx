@@ -25,7 +25,7 @@ import SelectApartment from '@/components/ComboboxApartment';
 import { useUserContext } from '@/hooks/useUserContext';
 import { useRolePreview } from '@/contexts/RolePreviewContext';
 import { MeterReportItem } from '@/hooks/useMeterReport';
-import { sanitizeImageUrl } from '@/lib/utils';
+import { sanitizeImageUrl, getUtilityConsumption, getUtilityTotalValue } from '@/lib/utils';
 
 const API = '/api';
 
@@ -629,11 +629,18 @@ export default function LevantamentoPage() {
         const row = map.get(aptId)!;
         const mIdx = monthsData.findIndex(m2 => m2.month === md.month && m2.year === md.year);
         if (mIdx >= 0) {
-          const ws = item.totalUnit != null && item.partial != null ? item.totalUnit - item.partial : null;
+          // Consumo e valor não são intercambiáveis entre água/gás/energia — cada
+          // tipo usa colunas diferentes no ApartmentConsumptionReport (ver
+          // lib/utils.ts getUtilityConsumption/getUtilityTotalValue, que replica
+          // o mapeamento já validado na aba "Contas"). Sem isso, unidades de
+          // gás/energia mostravam consumo e valores zerados aqui.
+          const itemConsumption = getUtilityConsumption(item, selectedUtility);
+          const itemTotalValue = getUtilityTotalValue(item, selectedUtility);
+          const ws = itemTotalValue != null && item.partial != null ? itemTotalValue - item.partial : null;
           row.months[mIdx] = {
             label: md.label,
-            consumption: item.consumption,
-            totalUnit: item.totalUnit,
+            consumption: itemConsumption,
+            totalUnit: itemTotalValue,
             partial: item.partial,
             waterSewage: ws,
             prevReading: item.history?.[0]?.lastReading?.reading ?? null,

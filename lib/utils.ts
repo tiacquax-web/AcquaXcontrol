@@ -392,3 +392,48 @@ export function sanitizeImageUrl(url: string | null | undefined): string {
     return url;
   }
 }
+
+/**
+ * Mapeamento de campos de consumo/valor por tipo de utilidade (água/gás/energia).
+ *
+ * Estes campos NÃO são intercambiáveis no ApartmentConsumptionReport — cada tipo
+ * de utilidade usa colunas diferentes (herdadas do processo de importação por
+ * planilha em lib/services/combined-import-service.ts). O mapeamento abaixo é a
+ * mesma lógica já usada e validada na aba "Contas"
+ * (components/dealership-reading/apartment-report-row.tsx), tratada como fonte
+ * da verdade:
+ *
+ *   água   → consumo: consumption          | valor: totalUnit
+ *   gás    → consumo: consumptionGasValue  | valor: totalGasValue
+ *   energia→ consumo: consumption          | valor: consumptionEnergyValue
+ *            (sim, NÃO é totalEnergyValue, apesar do nome sugerir isso)
+ *
+ * Usado por Levantamento e Filipeta para não exibir consumo/valor zerados nos
+ * relatórios de gás/energia (que ficam com consumption/totalUnit = 0 no banco).
+ */
+export function getUtilityConsumption(
+  report: {
+    consumption?: number | null;
+    consumptionGasValue?: number | null;
+  } | null | undefined,
+  utilityType?: string | null
+): number | null {
+  if (!report) return null;
+  if (utilityType === 'gas') return report.consumptionGasValue ?? null;
+  // água e energia usam o mesmo campo "consumption"
+  return report.consumption ?? null;
+}
+
+export function getUtilityTotalValue(
+  report: {
+    totalUnit?: number | null;
+    totalGasValue?: number | null;
+    consumptionEnergyValue?: number | null;
+  } | null | undefined,
+  utilityType?: string | null
+): number | null {
+  if (!report) return null;
+  if (utilityType === 'gas') return report.totalGasValue ?? null;
+  if (utilityType === 'energy') return report.consumptionEnergyValue ?? null;
+  return report.totalUnit ?? null;
+}
