@@ -325,9 +325,28 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 });
                 return { entity: companies, error: null, status: 200 };
             case PermissionableEntity.complex: {
+                // Escalonamento de hierarquia: usuários vinculados apenas a apartamentos (moradores)
+                // ou blocos não têm complexIds diretos. Sem isso, o filtro OR ficava vazio e a listagem
+                // retornava TODOS os condomínios para qualquer morador (bug de privacidade).
+                let derivedComplexIds: string[] = [];
+                if (!hasSystemPermission && contexts.complexIds.length === 0 && contexts.companyIds.length === 0 && (contexts.apartmentIds.length > 0 || contexts.blockIds.length > 0)) {
+                    const [aptRows, blkRows] = await Promise.all([
+                        contexts.apartmentIds.length > 0
+                            ? prisma.apartment.findMany({ where: { AND: [notDeleted, { id: { in: contexts.apartmentIds } }] }, select: { complexId: true, block: { select: { complexId: true } } } })
+                            : Promise.resolve([] as { complexId: string | null, block: { complexId: string | null } | null }[]),
+                        contexts.blockIds.length > 0
+                            ? prisma.block.findMany({ where: { AND: [notDeleted, { id: { in: contexts.blockIds } }] }, select: { complexId: true } })
+                            : Promise.resolve([] as { complexId: string | null }[]),
+                    ]);
+                    const cxIds = new Set<string>();
+                    aptRows.forEach(a => { const cx = a.block?.complexId || a.complexId; if (cx) cxIds.add(cx); });
+                    blkRows.forEach(b => { if (b.complexId) cxIds.add(b.complexId); });
+                    derivedComplexIds = Array.from(cxIds);
+                }
                 const complexWhereOr = hasSystemPermission ? undefined : [
                     ...(contexts.complexIds.length > 0 ? [{ id: { in: contexts.complexIds } }] : []),
                     ...(contexts.companyIds.length > 0 ? [{ companyId: { in: contexts.companyIds } }] : []),
+                    ...(derivedComplexIds.length > 0 ? [{ id: { in: derivedComplexIds } }] : []),
                 ];
                 const complexesQuery = {
                     where: cleanWhere({
@@ -350,10 +369,18 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 return { entity: complexes, totalCount: complexesCount, error: null, status: 200 };
             }
             case PermissionableEntity.block: {
+                // Mesma proteção: moradores (contexto só de apartamento) passam a ver apenas
+                // o bloco da própria unidade, e não todos os blocos de qualquer condomínio.
+                let derivedBlockIds: string[] = [];
+                if (!hasSystemPermission && contexts.blockIds.length === 0 && contexts.complexIds.length === 0 && contexts.companyIds.length === 0 && contexts.apartmentIds.length > 0) {
+                    const aptRows = await prisma.apartment.findMany({ where: { AND: [notDeleted, { id: { in: contexts.apartmentIds } }] }, select: { blockId: true } });
+                    derivedBlockIds = Array.from(new Set(aptRows.map(a => a.blockId).filter(Boolean))) as string[];
+                }
                 const blockWhereOr = hasSystemPermission ? undefined : [
                     ...(contexts.blockIds.length > 0 ? [{ id: { in: contexts.blockIds } }] : []),
                     ...(contexts.complexIds.length > 0 ? [{ complexId: { in: contexts.complexIds } }] : []),
                     ...(contexts.companyIds.length > 0 ? [{ complex: { companyId: { in: contexts.companyIds } } }] : []),
+                    ...(derivedBlockIds.length > 0 ? [{ id: { in: derivedBlockIds } }] : []),
                 ];
                 const blocksQuery = {
                     where: cleanWhere({
