@@ -4,8 +4,15 @@
  * app/(main)/comunicado/page.tsx
  *
  * Central de Comunicados do sistema.
- * Exibe o comunicado didático adequado ao perfil logado (Morador ou Síndico),
- * com opção de alternar entre os dois e imprimir/exportar em PDF.
+ *
+ * A exibição é restrita ao público do perfil logado:
+ *  - Morador  → vê apenas o comunicado do MORADOR;
+ *  - Síndico  → vê apenas o comunicado do SÍNDICO;
+ *  - Perfis gerais (Administradora / Programador / Administrador) → veem os DOIS,
+ *    podendo alternar entre eles. É também por aqui que um comunicado "geral"
+ *    (para todos) seria exibido.
+ *
+ * Suporta impressão/exportação em PDF.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -20,30 +27,62 @@ type Audience = 'morador' | 'sindico';
 
 export default function ComunicadoPage() {
   const { context: realCtx, loading: realLoading } = useUserContext();
-  const { isPreviewing, effectiveContext } = useRolePreview();
+  const { isPreviewing, effectiveContext, previewRole } = useRolePreview();
   const context = isPreviewing ? effectiveContext : realCtx;
   const loading = isPreviewing ? false : realLoading;
 
-  // Descobre o público natural do usuário logado
-  const detected: Audience = useMemo(() => {
-    if (!context) return 'morador';
-    // Morador: tem apartamento e não tem vínculo de gestão (empresa/condomínio/bloco)
+  /**
+   * Quais comunicados o perfil atual pode ver.
+   *  - morador  → ['morador']
+   *  - síndico  → ['sindico']
+   *  - geral    → ['morador', 'sindico'] (pode alternar)
+   */
+  const availableAudiences: Audience[] = useMemo(() => {
+    // ── Modo preview (simulação de perfil) ──
+    if (isPreviewing) {
+      if (previewRole === 'morador') return ['morador'];
+      if (previewRole === 'sindico') return ['sindico'];
+      return ['morador', 'sindico'];
+    }
+
+    // Durante o carregamento não restringe (evita "piscar" o comunicado errado)
+    if (!context) return ['morador', 'sindico'];
+
+    // Perfis de sistema (Administrador/Programador) → ambos
+    if (context.isSystem) return ['morador', 'sindico'];
+
+    const hasCompany = (context.companyIds?.length ?? 0) > 0;
+    const hasComplex = (context.complexes?.length ?? 0) > 0;
+    const hasBlock = (context.blocks?.length ?? 0) > 0;
     const hasApartment = (context.apartments?.length ?? 0) > 0;
-    const hasManagementScope =
-      (context.complexes?.length ?? 0) > 0 ||
-      (context.blocks?.length ?? 0) > 0 ||
-      (context.companyIds?.length ?? 0) > 0 ||
-      context.isSystem;
-    if (hasApartment && !hasManagementScope) return 'morador';
-    return 'sindico';
-  }, [context]);
 
-  const [audience, setAudience] = useState<Audience>(detected);
+    // Administradora (possui empresa) → perfil geral, vê os dois
+    if (hasCompany) return ['morador', 'sindico'];
 
-  // Acompanha a detecção quando o contexto carrega / muda
+    // Morador: tem unidade e NÃO tem escopo de gestão (condomínio/bloco)
+    if (hasApartment && !hasComplex && !hasBlock) return ['morador'];
+
+    // Síndico: tem condomínio/bloco, mas não empresa
+    if (hasComplex || hasBlock) return ['sindico'];
+
+    // Fallback seguro
+    return ['morador', 'sindico'];
+  }, [context, isPreviewing, previewRole]);
+
+  // Só permite escolher quando há mais de um comunicado disponível
+  const canChoose = availableAudiences.length > 1;
+
+  const [audience, setAudience] = useState<Audience>(availableAudiences[0] ?? 'morador');
+
+  // Mantém o comunicado selecionado sempre dentro dos disponíveis
   useEffect(() => {
-    setAudience(detected);
-  }, [detected]);
+    setAudience((prev) => (availableAudiences.includes(prev) ? prev : (availableAudiences[0] ?? 'morador')));
+  }, [availableAudiences]);
+
+  // Público efetivamente exibido (garante consistência mesmo antes do efeito rodar)
+  const activeAudience: Audience = availableAudiences.includes(audience)
+    ? audience
+    : (availableAudiences[0] ?? 'morador');
 
   return (
     <div className="w-full">
@@ -52,29 +91,34 @@ export default function ComunicadoPage() {
         <div className="max-w-3xl mx-auto px-4 md:px-6 py-3 flex items-center gap-3 flex-wrap">
           <div className="mr-auto">
             <p className="text-sm font-semibold text-slate-800">Central de Comunicados</p>
-            <p className="text-xs text-muted-foreground">Escolha o comunicado que deseja ler</p>
+            <p className="text-xs text-muted-foreground">
+              {canChoose ? 'Escolha o comunicado que deseja ler' : 'Comunicado destinado ao seu perfil'}
+            </p>
           </div>
 
-          <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setAudience('morador')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${
-                audience === 'morador' ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <Home className="w-3.5 h-3.5" /> Morador
-            </button>
-            <button
-              type="button"
-              onClick={() => setAudience('sindico')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-l border-slate-200 ${
-                audience === 'sindico' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5" /> Síndico
-            </button>
-          </div>
+          {/* Seletor: aparece apenas para perfis que podem ver os dois comunicados */}
+          {canChoose && (
+            <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setAudience('morador')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeAudience === 'morador' ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Home className="w-3.5 h-3.5" /> Morador
+              </button>
+              <button
+                type="button"
+                onClick={() => setAudience('sindico')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-l border-slate-200 ${
+                  activeAudience === 'sindico' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5" /> Síndico
+              </button>
+            </div>
+          )}
 
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="w-4 h-4 mr-2" /> Imprimir / PDF
@@ -89,7 +133,7 @@ export default function ComunicadoPage() {
             <Loader2 className="w-6 h-6 animate-spin mr-2" />
             Carregando comunicado...
           </div>
-        ) : audience === 'morador' ? (
+        ) : activeAudience === 'morador' ? (
           <ComunicadoMorador />
         ) : (
           <ComunicadoSindico />
