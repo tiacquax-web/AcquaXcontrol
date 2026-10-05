@@ -7,7 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import {
   MessageSquare, Plus, Send, Loader2, X, ChevronLeft,
   CheckCircle2, Clock, AlertCircle, RefreshCw, Paperclip,
-  User as UserIcon, ShieldCheck, Inbox,
+  User as UserIcon, ShieldCheck, Inbox, BellDot, Building2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,6 +87,9 @@ export default function SuportePage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  // Notificações: atendimentos em aberto (aguardando o suporte) e não lidos pelo admin
+  const [openCount, setOpenCount] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
   
   // Admin/programador entram automaticamente na visão de todos os chamados
   // No modo preview, NUNCA permite visão de admin para morador/sindico/adm
@@ -154,6 +157,8 @@ export default function SuportePage() {
       setTickets(list);
       setTotalCount(count);
       setIsAdmin(isPreviewing ? false : res.data.isAdmin);
+      setOpenCount(res.data.openCount ?? 0);
+      setUnreadCount(res.data.unreadCount ?? 0);
       
       if (!isPreviewing && res.data.isAdmin && !adminView) {
         setAdminView(true);
@@ -304,7 +309,27 @@ export default function SuportePage() {
             <MessageSquare className="w-5 h-5 text-teal-600" />
           </div>
           <div>
-            <h1 className="text-lg font-bold">Suporte</h1>
+            <h1 className="text-lg font-bold flex items-center gap-2">
+              Suporte
+              {openCount > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-300"
+                  title={`${openCount} atendimento(s) em aberto`}
+                >
+                  <AlertCircle className="w-3 h-3" />
+                  {openCount} em aberto
+                </span>
+              )}
+              {isAdmin && adminView && unreadCount > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-300"
+                  title={`${unreadCount} chamado(s) com mensagens não lidas`}
+                >
+                  <BellDot className="w-3 h-3" />
+                  {unreadCount} nova{unreadCount !== 1 ? 's' : ''}
+                </span>
+              )}
+            </h1>
             <p className="text-xs text-muted-foreground">Atendimento privado com a equipe AcquaX</p>
           </div>
         </div>
@@ -378,8 +403,22 @@ export default function SuportePage() {
                       {isAdmin && t.user && (
                         <span className="text-xs text-muted-foreground truncate">{t.user.name}</span>
                       )}
-                      {t.complex && (
-                        <span className="text-xs text-muted-foreground truncate">{t.complex.socialName}</span>
+                      {t.complex ? (
+                        <span className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                          <Building2 className="w-3 h-3 shrink-0" />
+                          {t.complex.socialName}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/60 truncate flex items-center gap-1 italic">
+                          <Building2 className="w-3 h-3 shrink-0" />
+                          Condomínio não informado
+                        </span>
+                      )}
+                      {t.status === 'open' && (
+                        <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          Aguardando resposta do suporte
+                        </span>
                       )}
                       <div className="flex items-center justify-between mt-0.5">
                         <span className="text-[10px] text-muted-foreground">
@@ -435,6 +474,10 @@ export default function SuportePage() {
                       {selectedTicket.user.name} · {selectedTicket.user.email}
                     </p>
                   )}
+                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                    <Building2 className="w-3 h-3 shrink-0" />
+                    {selectedTicket.complex?.socialName || 'Condomínio não informado'}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     Aberto em {timeAgo(selectedTicket.createdAt)}
                   </p>

@@ -1,6 +1,7 @@
 import prisma, { cleanEntityBody, isValidPermissionableEntity } from "@/lib/prisma"
 import { createEntity, deleteEntity, getAvailableComplexesForEntity, getEntityListData, updateEntityData } from "@/lib/userData"
 import { createUser, createBulkResidentsUsers, isSessionValid, validateUserSession } from "@/lib/users"
+import { getUserLocations } from "@/lib/user-location"
 import { ContextType } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
 import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
@@ -184,8 +185,25 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         console.log("######### Users found:", entity.length, "Total:", totalCount)
 
+        // ── Enriquecer com a localização (condomínio / bloco / apartamento) ──────────
+        // O condomínio do usuário é essencial na aba de usuários. Resolvemos a partir
+        // dos RoleAssignments (apartment → block → complex) em uma única passada.
+        const locationMap = await getUserLocations(entity.map((u: any) => u.id))
+        const list = entity.map((u: any) => {
+            const loc = locationMap.get(u.id)
+            return {
+                ...u,
+                complexId: loc?.complexId ?? null,
+                complexName: loc?.complexName ?? null,
+                blockId: loc?.blockId ?? null,
+                blockName: loc?.blockName ?? null,
+                apartmentId: loc?.apartmentId ?? null,
+                apartmentName: loc?.apartmentName ?? null,
+            }
+        })
+
         return NextResponse.json({ 
-            list: entity, 
+            list, 
             totalCount: totalCount || entity.length,
             hasNextPage: skip + take < (totalCount || entity.length),
             hasPreviousPage: skip > 0

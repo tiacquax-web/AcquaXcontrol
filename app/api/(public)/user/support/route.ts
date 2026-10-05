@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSessionValid } from '@/lib/users';
 import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
+import { getUserLocations } from '@/lib/user-location';
 import prisma from '@/lib/prisma';
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -58,7 +59,40 @@ export async function GET(req: NextRequest): Promise<Response> {
       prisma.supportTicket.count({ where }),
     ]);
 
-    return NextResponse.json({ list: tickets, totalCount, isAdmin });
+    // ── Condomínio do solicitante (fallback quando o ticket não tem complexId) ──
+    // Muitos tickets antigos foram criados sem vincular o condomínio. Resolvemos
+    // a localização do usuário via RoleAssignments para nunca exibir "sem condomínio".
+    const needsFallback = tickets.filter(t => !t.complexId && t.userId).map(t => t.userId);
+    const locationMap = needsFallback.length
+      ? await getUserLocations(needsFallback)
+      : new Map();
+
+    const list = tickets.map(t => {
+      if (t.complex?.socialName) return t;
+      const loc = locationMap.get(t.userId);
+      if (loc?.complexName) {
+        return { ...t, complex: { id: loc.complexId ?? '', socialName: loc.complexName } };
+      }
+      return t;
+    });
+
+    // ── Notificação: contagem de atendimentos em aberto (aguardando resposta do suporte) ──
+    // Para o admin: total de tickets 'open' no escopo atual (respeitando filtros de
+    // condomínio do usuário). Para o morador/síndico: tickets 'open' dele(s).
+    const openWhere: any = isAdminView && isAdmin ? {} : { userId };
+    if (isAdminView && isAdmin && complexId) openWhere.complexId = complexId;
+    openWhere.status = 'open';
+    const openCount = await prisma.supportTicket.count({ where: openWhere });
+
+    // Contagem de tickets com mensagens não lidas pelo admin (requer atenção imediata)
+    let unreadCount = 0;
+    if (isAdminView && isAdmin) {
+      const unreadWhere: any = { unreadByAdmin: true };
+      if (complexId) unreadWhere.complexId = complexId;
+      unreadCount = await prisma.supportTicket.count({ where: unreadWhere });
+    }
+
+    return NextResponse.json({ list, totalCount, isAdmin, openCount, unreadCount });
   } catch (error: any) {
     console.error('[SUPPORT] GET error:', error);
     return NextResponse.json({ error: error?.message || 'Erro interno' }, { status: 500 });

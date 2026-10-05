@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, Mail, Phone, Plus, Search, User as UserIcon, Download, ChevronLeft, ChevronRight, Filter, X, RotateCcw } from "lucide-react"
+import { Loader2, Mail, Phone, Plus, Search, User as UserIcon, Download, ChevronLeft, ChevronRight, Filter, X, RotateCcw, Building2 } from "lucide-react"
 import { useUsers, useUserMutations } from "@/hooks/useUsers"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,6 +30,16 @@ import type { Complex, Block, Apartment } from "@prisma/client"
 import * as XLSX from "xlsx"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import BulkImportTab from "./bulk-import-tab"
+
+// Usuário enriquecido pela API com a localização resolvida (condomínio/bloco/unidade)
+type UserWithLocation = User & {
+    complexId?: string | null
+    complexName?: string | null
+    blockId?: string | null
+    blockName?: string | null
+    apartmentId?: string | null
+    apartmentName?: string | null
+}
 
 export default function UsersPage() {
     const { context: realCtx, loading: realLoading } = useUserContext()
@@ -607,7 +617,7 @@ export default function UsersPage() {
                                                 <TableHead>Nome</TableHead>
                                                 <TableHead>Email</TableHead>
                                                 <TableHead>Telefone</TableHead>
-                                                <TableHead>Status</TableHead>
+                                                <TableHead>Condomínio</TableHead>
                                                 <TableHead className="text-right">Ações</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -656,9 +666,26 @@ export default function UsersPage() {
                                                             )}
                                                         </TableCell>
                                                         <TableCell>
-                                                            <Badge variant="secondary">
-                                                                Ativo
-                                                            </Badge>
+                                                            {(() => {
+                                                                const u = user as UserWithLocation
+                                                                const detail = [
+                                                                    u.blockName && `Bl. ${u.blockName}`,
+                                                                    u.apartmentName && `Ap. ${u.apartmentName}`,
+                                                                ].filter(Boolean).join(' · ')
+                                                                return u.complexName ? (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                                                                        <div className="flex flex-col min-w-0">
+                                                                            <span className="font-medium truncate">{u.complexName}</span>
+                                                                            {detail && (
+                                                                                <span className="text-xs text-muted-foreground truncate">{detail}</span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-muted-foreground text-sm">—</span>
+                                                                )
+                                                            })()}
                                                         </TableCell>
                                                         <TableCell className="text-right">
                                                             <div className="flex justify-end gap-2">

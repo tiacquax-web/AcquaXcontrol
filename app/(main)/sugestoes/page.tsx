@@ -7,7 +7,8 @@ import { ptBR } from 'date-fns/locale';
 import {
   Lightbulb, Plus, ThumbsUp, ThumbsDown, Loader2, Search, X,
   Filter, ChevronDown, Trash2, CheckCircle2, Clock, BarChart3,
-  ShieldCheck, SlidersHorizontal, AlertTriangle,
+  ShieldCheck, SlidersHorizontal, AlertTriangle, User as UserIcon, Mail,
+  Building2, Building, DoorClosed,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +36,11 @@ interface Suggestion {
   updatedAt: string;
   moderatorNote?: string | null;
   authorId?: string | null; // apenas para admins
+  // Dados do solicitante — exibidos apenas para administradores
+  author?: { name: string | null; email: string | null } | null;
+  authorComplexName?: string | null;
+  authorBlockName?: string | null;
+  authorApartmentName?: string | null;
 }
 
 // ─── Status config ────────────────────────────────────────────────────────────
@@ -420,6 +426,43 @@ export default function SugestoesPage() {
 
                 {/* Content */}
                 <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{s.content}</p>
+
+                {/* Dados do solicitante — visíveis apenas para administradores */}
+                {isAdmin && (
+                  <div className="rounded-lg bg-muted/60 border border-border px-3 py-2 space-y-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3" />
+                      Dados do solicitante (visível apenas para administradores)
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <UserIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground">Usuário:</span>
+                        <span className="font-medium truncate">{s.author?.name || 'Desconhecido'}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <Mail className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground">E-mail:</span>
+                        <span className="truncate">{s.author?.email || '—'}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground">Condomínio:</span>
+                        <span className="font-medium truncate">{s.authorComplexName || '—'}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <DoorClosed className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground">Unidade:</span>
+                        <span className="font-medium truncate">{s.authorApartmentName || '—'}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <Building className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground">Bloco:</span>
+                        <span className="font-medium truncate">{s.authorBlockName || '—'}</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Moderator note */}
                 {s.moderatorNote && (
