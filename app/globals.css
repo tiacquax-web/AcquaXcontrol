@@ -610,6 +610,26 @@
   display: none;
 }
 
+/* ── Cabeçalho oficial de impressão (logo AcquaX) ──────────────────────────────
+ * Fica oculto na tela e aparece no topo de TODA impressão do sistema,
+ * dando aparência de documento oficial a filipetas, levantamentos e relatórios. */
+.print-only-header {
+  display: none;
+}
+
+@media print {
+  .print-only-header {
+    display: block !important;
+    margin: 0 0 12px 0;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .print-only-header img {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
 @media print {
   @page {
     size: A4 portrait;

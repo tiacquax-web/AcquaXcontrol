@@ -41,6 +41,7 @@ import ComboboxComplex from "@/components/ComboboxComplex";
 import ComboboxBlock from "@/components/ComboboxBlock";
 import ComboboxApartment from "@/components/ComboboxApartment";
 import { useUserContext } from "@/hooks/useUserContext";
+import { useRolePreview } from "@/contexts/RolePreviewContext";
 import { DateRange } from "react-day-picker";
 
 // ─── tipos ─────────────────────────────────────────────────────────────────────
@@ -125,7 +126,11 @@ function AnomalyBadge({ type }: { type: string }) {
 // ─── componente principal ──────────────────────────────────────────────────────
 
 export default function AlertsPage() {
-  const { context: userContext, loading: ctxLoading } = useUserContext();
+  const { context: realUserContext, loading: realCtxLoading } = useUserContext();
+  const { isPreviewing, effectiveContext } = useRolePreview();
+  // Em modo de visualização (preview de perfil), usa o contexto simulado.
+  const userContext = isPreviewing ? effectiveContext : realUserContext;
+  const ctxLoading = isPreviewing ? false : realCtxLoading;
 
   const [companyObj, setCompanyObj] = useState<any>();
   const [complexObj, setComplexObj] = useState<any>();
@@ -151,7 +156,7 @@ export default function AlertsPage() {
     // Síndico/administradora: seleciona o condomínio (se tiver só 1)
     // Filtra apenas condomínios com GL
     if (!userContext.isSystem && userContext.complexes.length > 0) {
-      const glComplexes = userContext.complexes.filter(c => userContext.glComplexIds?.includes(c.id));
+      const glComplexes = userContext.complexes.filter((c: any) => userContext.glComplexIds?.includes(c.id));
       if (glComplexes.length === 1) {
         setComplexObj(glComplexes[0]);
       }
@@ -229,6 +234,28 @@ export default function AlertsPage() {
       setLoading(false);
     }
   }, [dateRange, sigma, apartmentObj, blockObj, complexObj, companyObj]);
+
+  // ── Bloqueio de acesso ──────────────────────────────────────────────────────
+  // A Central de Alertas depende do sistema em tempo real (medidores com GL/IoT).
+  // Usuários sem nenhum condomínio com medidores em tempo real não têm acesso.
+  // (Após todos os hooks, para respeitar as Regras dos Hooks do React.)
+  if (!ctxLoading && !hasGLAccess) {
+    return (
+      <div className="p-4 max-w-3xl mx-auto">
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="pt-8 pb-8 text-center">
+            <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+            <p className="text-base font-semibold text-amber-800">Central de Alertas indisponível</p>
+            <p className="text-sm text-amber-700 mt-2 max-w-xl mx-auto">
+              Esta funcionalidade é exclusiva para condomínios com sistema em tempo real
+              (medidores integrados ao GroupLink). Se o seu condomínio já possui medição em tempo real
+              e você deveria ver esta tela, entre em contato com o suporte.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4 max-w-6xl mx-auto">
