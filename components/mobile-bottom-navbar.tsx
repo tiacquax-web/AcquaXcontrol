@@ -2,15 +2,25 @@ import * as React from "react"
 import { LayoutDashboard, ChartBarIncreasing, ReceiptText, CircleGauge, Droplets, Menu, FileText } from 'lucide-react'
 import { MobileSidebarDrawer } from "./mobile-sidebar-drawer"
 import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
+import { useUserContext } from "@/hooks/useUserContext"
 import { sidebarPermissionMap } from "./sidebar-permission-map"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export function MobileBottomNavbar() {
   const [drawerOpen, setDrawerOpen] = React.useState(false)
   const { permissions, loading } = usePermissionsContext();
+  const { context: userContext } = useUserContext();
 
-  function hasAnyPermission(url: string) {
+  // Só exibe abas de monitoramento em tempo real para quem tem GL/IoT
+  const hasGLAccess = (() => {
+    if (!userContext) return false;
+    if (userContext.isSystem) return true;
+    return (userContext.glComplexIds?.length ?? 0) > 0;
+  })();
+
+  function hasAnyPermission(url: string, requiresGL?: boolean) {
     if (url === '/dashboard') return true;
+    if (requiresGL && !hasGLAccess) return false;
     if (!permissions) return false;
     const entity = sidebarPermissionMap[url];
     if (!entity) return permissions.length > 0;
@@ -23,8 +33,8 @@ export function MobileBottomNavbar() {
     { icon: CircleGauge, label: "Leituras", href: "/readings" },
     { icon: FileText, label: "Filipeta", href: "/meter-report" },
     { icon: ReceiptText, label: "Contas", href: "/dealership-readings" },
-    { icon: Droplets, label: "Nível", href: "/reservoir-monitoring" },
-  ].filter((item) => hasAnyPermission(item.href));
+    { icon: Droplets, label: "Nível", href: "/reservoir-monitoring", requiresGL: true },
+  ].filter((item) => hasAnyPermission(item.href, (item as any).requiresGL));
 
   return (
     <>

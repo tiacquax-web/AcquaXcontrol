@@ -7,7 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import {
   MessageSquare, Plus, Send, Loader2, X, ChevronLeft,
   CheckCircle2, Clock, AlertCircle, RefreshCw, Paperclip,
-  User as UserIcon, ShieldCheck, Inbox,
+  User as UserIcon, ShieldCheck, Inbox, BellDot, Building2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,10 @@ import { useToast } from '@/hooks/use-toast';
 import { useUserContext } from '@/hooks/useUserContext';
 import { useRolePreview } from '@/contexts/RolePreviewContext';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import ComplexesCombobox from '@/components/ComboboxComplex';
+import BlocksCombobox from '@/components/ComboboxBlock';
+import SelectApartment from '@/components/ComboboxApartment';
+import type { Complex, Block, Apartment } from '@prisma/client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type TicketStatus = 'open' | 'answered' | 'closed';
@@ -87,6 +91,9 @@ export default function SuportePage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  // Notificações: atendimentos em aberto (aguardando o suporte) e não lidos pelo admin
+  const [openCount, setOpenCount] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
   
   // Admin/programador entram automaticamente na visão de todos os chamados
   // No modo preview, NUNCA permite visão de admin para morador/sindico/adm
@@ -116,6 +123,18 @@ export default function SuportePage() {
   const [newSubject, setNewSubject] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [creatingTicket, setCreatingTicket] = useState(false);
+
+  // ── State: admin → conversar com unidade ─────────────────────────────────────
+  const [adminNewOpen, setAdminNewOpen] = useState(false);
+  const [adminComplexId, setAdminComplexId] = useState('');
+  const [adminBlockId, setAdminBlockId] = useState('');
+  const [adminApartmentId, setAdminApartmentId] = useState('');
+  const [adminSubject, setAdminSubject] = useState('');
+  const [adminMessage, setAdminMessage] = useState('');
+  const [adminTargets, setAdminTargets] = useState<{ userId: string; name: string; email: string; apartmentName?: string | null }[]>([]);
+  const [adminTargetsLoading, setAdminTargetsLoading] = useState(false);
+  const [adminTargetUserId, setAdminTargetUserId] = useState('');
+  const [creatingAdminTicket, setCreatingAdminTicket] = useState(false);
 
   // ── State: status update ─────────────────────────────────────────────────────
   const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -154,6 +173,8 @@ export default function SuportePage() {
       setTickets(list);
       setTotalCount(count);
       setIsAdmin(isPreviewing ? false : res.data.isAdmin);
+      setOpenCount(res.data.openCount ?? 0);
+      setUnreadCount(res.data.unreadCount ?? 0);
       
       if (!isPreviewing && res.data.isAdmin && !adminView) {
         setAdminView(true);
@@ -278,6 +299,70 @@ export default function SuportePage() {
     }
   };
 
+  // ── Admin: buscar moradores da unidade selecionada ───────────────────────────
+  useEffect(() => {
+    if (!adminNewOpen || !adminApartmentId) {
+      setAdminTargets([]);
+      setAdminTargetUserId('');
+      return;
+    }
+    let cancelled = false;
+    setAdminTargetsLoading(true);
+    axios.get('/api/user/users', { params: { apartment_id: adminApartmentId, take: 50 }, withCredentials: true })
+      .then(res => {
+        if (cancelled) return;
+        const list = (res.data?.list || []).map((u: any) => ({
+          userId: u.id,
+          name: u.name,
+          email: u.email,
+          apartmentName: u.apartmentName ?? null,
+        }));
+        setAdminTargets(list);
+        setAdminTargetUserId(list.length === 1 ? list[0].userId : '');
+      })
+      .catch(() => { if (!cancelled) setAdminTargets([]); })
+      .finally(() => { if (!cancelled) setAdminTargetsLoading(false); });
+    return () => { cancelled = true; };
+  }, [adminNewOpen, adminApartmentId]);
+
+  // ── Admin: abrir conversa com uma unidade ────────────────────────────────────
+  const handleCreateAdminTicket = async () => {
+    if (!adminTargetUserId) {
+      toast({ title: 'Atenção', description: 'Selecione o destinatário (usuário da unidade).', variant: 'destructive' });
+      return;
+    }
+    if (!adminSubject.trim() || !adminMessage.trim()) {
+      toast({ title: 'Atenção', description: 'Preencha o assunto e a mensagem.', variant: 'destructive' });
+      return;
+    }
+    setCreatingAdminTicket(true);
+    try {
+      const res = await axios.post('/api/user/support', {
+        subject: adminSubject.trim(),
+        message: adminMessage.trim(),
+        targetUserId: adminTargetUserId,
+        targetApartmentId: adminApartmentId || undefined,
+        complexId: adminComplexId || undefined,
+      }, { withCredentials: true });
+      toast({ title: 'Conversa iniciada!', description: 'A unidade foi notificada sobre a nova conversa.' });
+      setAdminNewOpen(false);
+      setAdminSubject('');
+      setAdminMessage('');
+      setAdminComplexId('');
+      setAdminBlockId('');
+      setAdminApartmentId('');
+      setAdminTargetUserId('');
+      await fetchTickets();
+      if (res.data?.id) {
+        await fetchTicketDetail(res.data.id);
+      }
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err?.response?.data?.error || 'Falha ao iniciar conversa.', variant: 'destructive' });
+    } finally {
+      setCreatingAdminTicket(false);
+    }
+  };
+
   // ── Update status ────────────────────────────────────────────────────────────
   const handleUpdateStatus = async (status: TicketStatus) => {
     if (!selectedTicket) return;
@@ -304,16 +389,42 @@ export default function SuportePage() {
             <MessageSquare className="w-5 h-5 text-teal-600" />
           </div>
           <div>
-            <h1 className="text-lg font-bold">Suporte</h1>
+            <h1 className="text-lg font-bold flex items-center gap-2">
+              Suporte
+              {openCount > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-300"
+                  title={`${openCount} atendimento(s) em aberto`}
+                >
+                  <AlertCircle className="w-3 h-3" />
+                  {openCount} em aberto
+                </span>
+              )}
+              {isAdmin && adminView && unreadCount > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-300"
+                  title={`${unreadCount} chamado(s) com mensagens não lidas`}
+                >
+                  <BellDot className="w-3 h-3" />
+                  {unreadCount} nova{unreadCount !== 1 ? 's' : ''}
+                </span>
+              )}
+            </h1>
             <p className="text-xs text-muted-foreground">Atendimento privado com a equipe AcquaX</p>
           </div>
         </div>
-        {!(isAdmin && adminView) && (
+        <div className="flex items-center gap-2">
           <Button size="sm" onClick={() => setNewTicketOpen(true)}>
             <Plus className="w-4 h-4 mr-1.5" />
             Novo Chamado
           </Button>
-        )}
+          {isAdmin && adminView && (
+            <Button size="sm" variant="outline" className="border-teal-300 text-teal-700 hover:bg-teal-50" onClick={() => setAdminNewOpen(true)}>
+              <Building2 className="w-4 h-4 mr-1.5" />
+              Conversar com Unidade
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -378,8 +489,22 @@ export default function SuportePage() {
                       {isAdmin && t.user && (
                         <span className="text-xs text-muted-foreground truncate">{t.user.name}</span>
                       )}
-                      {t.complex && (
-                        <span className="text-xs text-muted-foreground truncate">{t.complex.socialName}</span>
+                      {t.complex ? (
+                        <span className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                          <Building2 className="w-3 h-3 shrink-0" />
+                          {t.complex.socialName}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/60 truncate flex items-center gap-1 italic">
+                          <Building2 className="w-3 h-3 shrink-0" />
+                          Condomínio não informado
+                        </span>
+                      )}
+                      {t.status === 'open' && (
+                        <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          Aguardando resposta do suporte
+                        </span>
                       )}
                       <div className="flex items-center justify-between mt-0.5">
                         <span className="text-[10px] text-muted-foreground">
@@ -435,6 +560,10 @@ export default function SuportePage() {
                       {selectedTicket.user.name} · {selectedTicket.user.email}
                     </p>
                   )}
+                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                    <Building2 className="w-3 h-3 shrink-0" />
+                    {selectedTicket.complex?.socialName || 'Condomínio não informado'}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     Aberto em {timeAgo(selectedTicket.createdAt)}
                   </p>
@@ -659,6 +788,140 @@ export default function SuportePage() {
               className="bg-teal-600 hover:bg-teal-700"
             >
               {creatingTicket ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Abrindo...</> : <><Send className="w-4 h-4 mr-2" />Abrir Chamado</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ════════════════════════════════════════════════════════════════
+          DIALOG: Admin — Conversar com Unidade
+          ════════════════════════════════════════════════════════════════ */}
+      <Dialog open={adminNewOpen} onOpenChange={v => { if (!creatingAdminTicket) setAdminNewOpen(v); }}>
+        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-teal-600" />
+              Conversar com Unidade
+            </DialogTitle>
+            <DialogDescription>
+              Inicie uma conversa com uma unidade. A mensagem aparecerá no suporte da unidade como um novo atendimento.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* Localização da unidade */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Localizar unidade</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Condomínio</Label>
+                  <ComplexesCombobox
+                    complex={undefined}
+                    setSelectedComplex={(c) => {
+                      setAdminComplexId((c as Complex | undefined)?.id || '');
+                      setAdminBlockId('');
+                      setAdminApartmentId('');
+                      setAdminTargetUserId('');
+                    }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Bloco</Label>
+                  <BlocksCombobox
+                    block={undefined}
+                    complexId={adminComplexId || undefined}
+                    setSelectedBlock={(b) => {
+                      setAdminBlockId((b as Block | undefined)?.id || '');
+                      setAdminApartmentId('');
+                      setAdminTargetUserId('');
+                    }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Apartamento</Label>
+                  <SelectApartment
+                    apartment={undefined}
+                    blockId={adminBlockId || undefined}
+                    setSelectedApartment={(apt) => {
+                      setAdminApartmentId((apt as Apartment | undefined)?.id || '');
+                      setAdminTargetUserId('');
+                    }}
+                    disabled={!adminBlockId}
+                  />
+                </div>
+              </div>
+
+              {/* Seleção do morador da unidade */}
+              {adminApartmentId && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Destinatário (morador da unidade) <span className="text-red-500">*</span></Label>
+                  {adminTargetsLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Carregando moradores...
+                    </div>
+                  ) : adminTargets.length === 0 ? (
+                    <Alert className="border-amber-200 bg-amber-50">
+                      <AlertCircle className="w-4 h-4 text-amber-500" />
+                      <AlertDescription className="text-amber-800 text-xs">
+                        Nenhum usuário vinculado a esta unidade.
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <Select value={adminTargetUserId} onValueChange={setAdminTargetUserId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o morador" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {adminTargets.map(t => (
+                          <SelectItem key={t.userId} value={t.userId}>
+                            {t.name} · {t.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Mensagem */}
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-subject">Assunto <span className="text-red-500">*</span></Label>
+              <Input
+                id="admin-subject"
+                placeholder="Ex: Verificação de leitura da unidade 102"
+                value={adminSubject}
+                onChange={e => setAdminSubject(e.target.value)}
+                disabled={creatingAdminTicket}
+                maxLength={120}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-message">Mensagem <span className="text-red-500">*</span></Label>
+              <Textarea
+                id="admin-message"
+                placeholder="Escreva a mensagem que a unidade receberá..."
+                value={adminMessage}
+                onChange={e => setAdminMessage(e.target.value)}
+                disabled={creatingAdminTicket}
+                className="min-h-[120px] resize-none"
+                maxLength={3000}
+              />
+              <p className="text-xs text-muted-foreground text-right">{adminMessage.length}/3000</p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={() => setAdminNewOpen(false)} disabled={creatingAdminTicket}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleCreateAdminTicket}
+              disabled={creatingAdminTicket || !adminTargetUserId || !adminSubject.trim() || !adminMessage.trim()}
+              className="bg-teal-600 hover:bg-teal-700"
+            >
+              {creatingAdminTicket ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Iniciando...</> : <><Send className="w-4 h-4 mr-2" />Iniciar Conversa</>}
             </Button>
           </DialogFooter>
         </DialogContent>

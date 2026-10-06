@@ -3,6 +3,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/toaster";
 import { PermissionsProvider } from "./PermissionsContext";
 import { RolePreviewProvider } from "@/contexts/RolePreviewContext";
+import { PrintHeader } from "@/components/print-header";
 
 
 export default function RootLayout({
@@ -16,6 +17,8 @@ export default function RootLayout({
                 <SidebarProvider>
                     <ResponsiveNavigation />
                     <main className="overflow-hidden pt-8 md:w-full">
+                        {/* Cabeçalho oficial (logo AcquaX) — visível apenas na impressão */}
+                        <PrintHeader />
                         {children}
                         <Toaster />
                     </main>

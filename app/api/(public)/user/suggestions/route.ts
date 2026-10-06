@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSessionValid } from '@/lib/users';
 import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
+import { getUserLocations } from '@/lib/user-location';
 import prisma from '@/lib/prisma';
 import crypto from 'crypto';
 
@@ -87,18 +88,50 @@ export async function GET(req: NextRequest): Promise<Response> {
     ]);
 
     // ── Map — keep authorId private from non-admins ─────────────────────────────
-    const mapped = suggestions.map(s => ({
-      id: s.id,
-      content: s.content,
-      status: s.status,
-      likes: s.likes,
-      dislikes: s.dislikes,
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt,
-      moderatorNote: canModerate ? s.moderatorNote : undefined,
-      authorId: canModerate ? s.authorId : undefined,
-      myVote: s.votes.length > 0 ? (s.votes[0].isLike ? 'like' : 'dislike') : null,
-    }));
+    // Para administradores, exibimos quem fez a solicitação + localização
+    // (condomínio, bloco, unidade) para permitir tirar dúvidas sobre a sugestão.
+    let authorInfo = new Map<string, { name: string | null; email: string | null }>();
+    let authorLocations = new Map<string, any>();
+    if (canModerate) {
+      const authorIds = [...new Set(suggestions.map(s => s.authorId).filter(Boolean))] as string[];
+      if (authorIds.length > 0) {
+        const [users, locs] = await Promise.all([
+          prisma.user.findMany({
+            where: { id: { in: authorIds } },
+            select: { id: true, name: true, email: true },
+          }),
+          getUserLocations(authorIds),
+        ]);
+        authorInfo = new Map(users.map(u => [u.id, { name: u.name, email: u.email }]));
+        authorLocations = locs;
+      }
+    }
+
+    const mapped = suggestions.map(s => {
+      const base = {
+        id: s.id,
+        content: s.content,
+        status: s.status,
+        likes: s.likes,
+        dislikes: s.dislikes,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        moderatorNote: canModerate ? s.moderatorNote : undefined,
+        authorId: canModerate ? s.authorId : undefined,
+        myVote: s.votes.length > 0 ? (s.votes[0].isLike ? 'like' : 'dislike') : null,
+      };
+      if (!canModerate || !s.authorId) return base;
+
+      const info = authorInfo.get(s.authorId);
+      const loc = authorLocations.get(s.authorId);
+      return {
+        ...base,
+        author: info ? { name: info.name, email: info.email } : null,
+        authorComplexName: loc?.complexName ?? null,
+        authorBlockName: loc?.blockName ?? null,
+        authorApartmentName: loc?.apartmentName ?? null,
+      };
+    });
 
     return NextResponse.json({ list: mapped, totalCount, isAdmin: canModerate, canDelete });
 

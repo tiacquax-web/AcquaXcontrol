@@ -2,15 +2,25 @@ import * as React from "react"
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader } from "@/components/ui/sidebar"
 import { FooterSidebar } from "./footer-sidebar"
 import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
+import { useUserContext } from "@/hooks/useUserContext"
 import { sidebarPermissionMap } from './sidebar-permission-map';
 import { items as sidebarItems, type ItemType } from "./app-sidebar"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 
 export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
   const { permissions } = usePermissionsContext();
+  const { context: userContext } = useUserContext();
 
-  function hasAnyPermission(url: string, requiresCreate?: boolean) {
+  // Só exibe abas de monitoramento em tempo real para quem tem GL/IoT
+  const hasGLAccess = (() => {
+    if (!userContext) return false;
+    if (userContext.isSystem) return true;
+    return (userContext.glComplexIds?.length ?? 0) > 0;
+  })();
+
+  function hasAnyPermission(url: string, requiresCreate?: boolean, requiresGL?: boolean) {
     if (url === '/dashboard') return true;
+    if (requiresGL && !hasGLAccess) return false;
     if (!permissions) return false;
     const entity = sidebarPermissionMap[url];
     if (!entity) return permissions.length > 0;
@@ -29,7 +39,7 @@ export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onO
     sidebarItems.some(
       (item: ItemType) =>
         item.group === group &&
-        hasAnyPermission(item.url, (item as any).requiresCreate)
+        hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).requiresGL)
     )
   );
 
@@ -54,7 +64,7 @@ export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onO
                         .filter(
                           (item: ItemType) =>
                             item.group === group &&
-                            hasAnyPermission(item.url, (item as any).requiresCreate)
+                            hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).requiresGL)
                         )
                         .map((item: ItemType) => (
                           <SidebarMenuItem key={item.title}>

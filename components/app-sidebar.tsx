@@ -11,7 +11,7 @@ import {
   Gauge, ShieldCheck, HousePlus, ReceiptText,
   ChartBarIncreasing, LayoutDashboard, GaugeCircle,
   Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen, ClipboardList,
-  MessageSquare, Lightbulb, Key, DatabaseZap, BellDot, Settings,
+  MessageSquare, Lightbulb, Key, DatabaseZap, BellDot, Settings, Megaphone,
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
@@ -100,6 +100,14 @@ const items = [
     url: "/guia",
     icon: BookOpen,
     group: 'Geral',
+  },
+  {
+    title: "Comunicados",
+    url: "/comunicado",
+    icon: Megaphone,
+    group: 'Geral',
+    // Sem mapeamento em sidebarPermissionMap → visível para qualquer usuário
+    // autenticado (morador e síndico). O conteúdo exibido se adapta ao perfil.
   },
   {
     title: "Suporte",

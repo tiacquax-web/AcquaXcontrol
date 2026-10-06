@@ -284,6 +284,26 @@ export default function MonitoringPage() {
     )
   }
 
+  // ── Bloqueio por sistema em tempo real ───────────────────────────────────────
+  // O dashboard de Monitoramento depende de leituras em tempo real (GL/IoT).
+  // Sem nenhum condomínio com medição em tempo real, a tela não se aplica.
+  if (!hasGLAccess) {
+    return (
+      <div className='p-4'>
+        <Card className='max-w-xl border-amber-200 bg-amber-50'>
+          <CardHeader>
+            <CardTitle className='text-lg text-amber-800'>Monitoramento indisponível</CardTitle>
+          </CardHeader>
+          <CardContent className='text-sm text-amber-700'>
+            Esta funcionalidade é exclusiva para condomínios com sistema em tempo real (medidores integrados
+            ao GroupLink). Se o seu condomínio já possui medição em tempo real e você deveria ver esta tela,
+            entre em contato com o suporte.
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className='monitoring-page p-4 space-y-4'>
       <div className='flex items-center justify-between gap-3 monitoring-print-header'>
