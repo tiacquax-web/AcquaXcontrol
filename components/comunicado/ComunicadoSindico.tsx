@@ -85,9 +85,9 @@ export default function ComunicadoSindico() {
         title="Início (Dashboard): o panorama do condomínio"
         intro={<p>É a primeira tela após o login. Se você administra mais de um condomínio, aparece um seletor no topo para escolher qual visualizar.</p>}
       >
-        <div className="rounded-xl border border-slate-200 bg-white p-4 print:break-inside-avoid">
-          <p className="font-semibold text-slate-800 text-sm mb-2">O que você acompanha aqui</p>
-          <ul className="space-y-2 text-sm text-slate-600">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 print:break-inside-avoid">
+          <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm mb-2">O que você acompanha aqui</p>
+          <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
             <li className="flex gap-2"><FileText className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" /> <span><strong>Filipetas</strong>: prévia das unidades do mês, com consumo e total.</span></li>
             <li className="flex gap-2"><TrendingUp className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" /> <span><strong>Resumo de Consumo</strong>: consumo total, valor arrecadado, unidades acima de 15 m³ e unidades sem consumo.</span></li>
             <li className="flex gap-2"><ReceiptText className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" /> <span><strong>Conta da Concessionária</strong>: valor total, data da leitura e consumo total do mês.</span></li>
@@ -113,7 +113,7 @@ export default function ComunicadoSindico() {
           </p>
         }
       >
-        <p className="font-semibold text-slate-800 text-sm">Como consultar as filipetas do condomínio</p>
+        <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Como consultar as filipetas do condomínio</p>
         <Steps items={[
           <>No menu, clique em <strong>Filipeta Medição</strong>.</>,
           <>Escolha o <strong>Mês de Referência</strong> e o <strong>Tipo de Medição</strong> (Água, Gás ou Energia).</>,
@@ -147,11 +147,11 @@ export default function ComunicadoSindico() {
           </p>
         }
       >
-        <div className="rounded-xl border-2 border-teal-200 bg-teal-50/40 p-4 print:break-inside-avoid">
-          <p className="font-semibold text-teal-900 text-sm mb-2 flex items-center gap-2">
+        <div className="rounded-xl border-2 border-teal-200 dark:border-teal-800 bg-teal-50/40 dark:bg-teal-950/30 p-4 print:break-inside-avoid">
+          <p className="font-semibold text-teal-900 dark:text-teal-100 text-sm mb-2 flex items-center gap-2">
             <Building2 className="w-4 h-4" /> O Levantamento do síndico/administradora
           </p>
-          <ul className="space-y-2 text-sm text-teal-900/90">
+          <ul className="space-y-2 text-sm text-teal-900 dark:text-teal-100/90">
             <li className="flex gap-2"><CheckDot /> Você escolhe o <strong>período</strong> (De / Até) e o <strong>condomínio</strong>.</li>
             <li className="flex gap-2"><CheckDot /> Aparece uma <strong>tabela densa</strong>: todas as unidades × todos os meses.</li>
             <li className="flex gap-2"><CheckDot /> <strong>Setas de tendência</strong> (↑ / ↓) apontam o consumo fora do padrão.</li>
@@ -159,7 +159,7 @@ export default function ComunicadoSindico() {
             <li className="flex gap-2"><CheckDot /> KPIs no topo: unidades, meses, consumo médio/mês e consumo total.</li>
           </ul>
         </div>
-        <p className="font-semibold text-slate-800 text-sm">Como usar</p>
+        <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Como usar</p>
         <Steps items={[
           <>No menu, clique em <strong>Levantamento</strong>.</>,
           <>Em <strong>De</strong> e <strong>Até</strong>, selecione o período desejado.</>,
@@ -232,8 +232,8 @@ export default function ComunicadoSindico() {
         title="Moradores e acessos (aba Usuários)"
         intro={<p>Na aba <strong>Usuários</strong> você administra as pessoas vinculadas ao condomínio e o que cada uma pode ver.</p>}
       >
-        <div className="rounded-xl border border-slate-200 bg-white p-4 print:break-inside-avoid">
-          <ul className="space-y-2 text-sm text-slate-600">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 print:break-inside-avoid">
+          <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
             <li className="flex gap-2"><ShieldCheck className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" /> Cada pessoa aparece com o <strong>condomínio</strong>, bloco e unidade a que está vinculada.</li>
             <li className="flex gap-2"><Users className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" /> Você define os <strong>papéis</strong> (por exemplo, morador) e o escopo de acesso de cada usuário.</li>
             <li className="flex gap-2"><Mail className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" /> Confira se os <strong>e-mails</strong> dos moradores estão corretos — é por eles que chegam as comunicações.</li>
@@ -262,7 +262,7 @@ export default function ComunicadoSindico() {
           Mantenha um e-mail que você realmente acessa. É por ele que você recebe o resumo mensal e as comunicações
           importantes do sistema.
         </Callout>
-        <p className="font-semibold text-slate-800 text-sm">Como cadastrar ou atualizar seu e-mail</p>
+        <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Como cadastrar ou atualizar seu e-mail</p>
         <Steps items={[
           <>No canto inferior do menu lateral, clique no seu <strong>nome</strong> (rodapé do menu).</>,
           <>Escolha <strong>Minha Conta</strong>.</>,
@@ -271,7 +271,7 @@ export default function ComunicadoSindico() {
           <>Clique em <strong>Salvar</strong>.</>,
         ]} />
         <Callout tone="info" title="Prefere um caminho direto?">
-          Acesse a sua conta pelo endereço <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">/account</code> dentro do sistema.
+          Acesse a sua conta pelo endereço <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-xs">/account</code> dentro do sistema.
         </Callout>
       </Section>
 

@@ -81,9 +81,9 @@ export default function ComunicadoMorador() {
         title="Início (Dashboard): seu consumo em 1 olhada"
         intro={<p>Ao entrar no sistema, a primeira tela é o <strong>Início</strong>. Ela foi feita para você entender tudo em poucos segundos.</p>}
       >
-        <div className="rounded-xl border border-slate-200 bg-white p-4 print:break-inside-avoid">
-          <p className="font-semibold text-slate-800 text-sm mb-2">O que aparece nessa tela</p>
-          <ul className="space-y-2 text-sm text-slate-600">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 print:break-inside-avoid">
+          <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm mb-2">O que aparece nessa tela</p>
+          <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
             <li className="flex gap-2"><Droplets className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" /> <span><strong>Card “Meu Consumo”</strong>: consumo do mês, valor individual, área comum e total da unidade.</span></li>
             <li className="flex gap-2"><BarChart3 className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" /> <span><strong>Gráfico de Consumo Anual</strong>: barras com o consumo de cada mês do ano (o mês de maior consumo fica destacado).</span></li>
             <li className="flex gap-2"><TrendingUp className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" /> <span><strong>Minha Área Comum</strong>: quanto a sua unidade pagou de área comum (em R$) ao longo do ano.</span></li>
@@ -111,31 +111,31 @@ export default function ComunicadoMorador() {
           </p>
         }
       >
-        <div className="rounded-xl border border-slate-200 bg-white p-4 print:break-inside-avoid">
-          <p className="font-semibold text-slate-800 text-sm mb-3 flex items-center gap-2">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 print:break-inside-avoid">
+          <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm mb-3 flex items-center gap-2">
             <Camera className="w-4 h-4 text-teal-500" /> O que contém a sua filipeta
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-slate-600">
-            <div className="rounded-lg bg-slate-50 p-3">
-              <p className="font-medium text-slate-700">📷 Foto do medidor</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-slate-600 dark:text-slate-300">
+            <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3">
+              <p className="font-medium text-slate-700 dark:text-slate-200">📷 Foto do medidor</p>
               <p className="text-xs mt-1">A prova visual da leitura, com os números do mostrador.</p>
             </div>
-            <div className="rounded-lg bg-slate-50 p-3">
-              <p className="font-medium text-slate-700">📈 Leituras e consumo</p>
+            <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3">
+              <p className="font-medium text-slate-700 dark:text-slate-200">📈 Leituras e consumo</p>
               <p className="text-xs mt-1">Leitura anterior, leitura atual e o consumo do período.</p>
             </div>
-            <div className="rounded-lg bg-slate-50 p-3">
-              <p className="font-medium text-slate-700">💰 Valores</p>
+            <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3">
+              <p className="font-medium text-slate-700 dark:text-slate-200">💰 Valores</p>
               <p className="text-xs mt-1">Água/esgoto, área comum e o total a pagar.</p>
             </div>
-            <div className="rounded-lg bg-slate-50 p-3">
-              <p className="font-medium text-slate-700">📅 Período e próxima leitura</p>
+            <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3">
+              <p className="font-medium text-slate-700 dark:text-slate-200">📅 Período e próxima leitura</p>
               <p className="text-xs mt-1">De quando até quando a leitura vale e quando será a próxima.</p>
             </div>
           </div>
         </div>
 
-        <p className="font-semibold text-slate-800 text-sm">Como consultar a sua filipeta</p>
+        <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Como consultar a sua filipeta</p>
         <Steps items={[
           <>No menu lateral, clique em <strong>Filipeta Medição</strong>.</>,
           <>Escolha o <strong>Mês de Referência</strong> desejado (por padrão, o mês atual).</>,
@@ -162,11 +162,11 @@ export default function ComunicadoMorador() {
           </p>
         }
       >
-        <div className="rounded-xl border-2 border-sky-200 bg-sky-50/40 p-4 print:break-inside-avoid">
-          <p className="font-semibold text-sky-900 text-sm mb-2 flex items-center gap-2">
+        <div className="rounded-xl border-2 border-sky-200 dark:border-sky-800 bg-sky-50/40 dark:bg-sky-950/30 p-4 print:break-inside-avoid">
+          <p className="font-semibold text-sky-900 dark:text-sky-100 text-sm mb-2 flex items-center gap-2">
             <Home className="w-4 h-4" /> O Levantamento do morador é feito sob medida para você
           </p>
-          <ul className="space-y-2 text-sm text-sky-900/90">
+          <ul className="space-y-2 text-sm text-sky-900 dark:text-sky-100/90">
             <li className="flex gap-2"><CheckDot /> Você vê <strong>automaticamente apenas a sua unidade</strong> — nada de telas complicadas.</li>
             <li className="flex gap-2"><CheckDot /> Cada mês aparece como um <strong>cartão com a foto do medidor em destaque</strong>, com leituras, consumo e valores.</li>
             <li className="flex gap-2"><CheckDot /> Um <strong>gráfico de evolução</strong> mostra a sua média e a linha de tendência do consumo.</li>
@@ -174,7 +174,7 @@ export default function ComunicadoMorador() {
           </ul>
         </div>
 
-        <p className="font-semibold text-slate-800 text-sm">Como usar</p>
+        <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Como usar</p>
         <Steps items={[
           <>No menu, clique em <strong>Levantamento</strong>.</>,
           <>Em <strong>De</strong> e <strong>Até</strong>, escolha o período (ex.: últimos 6 meses).</>,
@@ -245,7 +245,7 @@ export default function ComunicadoMorador() {
           Mantenha um e-mail que você realmente acessa. É por ele que você vai receber as comunicações e o resumo
           mensal do seu consumo.
         </Callout>
-        <p className="font-semibold text-slate-800 text-sm">Como cadastrar ou atualizar seu e-mail</p>
+        <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Como cadastrar ou atualizar seu e-mail</p>
         <Steps items={[
           <>No canto inferior do menu lateral, clique no seu <strong>nome</strong> (rodapé do menu).</>,
           <>Escolha <strong>Minha Conta</strong>.</>,
@@ -254,7 +254,7 @@ export default function ComunicadoMorador() {
           <>Clique em <strong>Salvar</strong>. Pronto — a partir daí, você entra com esse e-mail e recebe as comunicações nele.</>,
         ]} />
         <Callout tone="info" title="Prefere um caminho direto?">
-          Você também pode acessar a sua conta pelo endereço <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">/account</code> dentro do sistema.
+          Você também pode acessar a sua conta pelo endereço <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-xs">/account</code> dentro do sistema.
         </Callout>
       </Section>
 

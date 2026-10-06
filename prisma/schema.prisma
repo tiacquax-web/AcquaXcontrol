@@ -1966,3 +1966,47 @@ model EmailJob {
   @@index([apartmentConsumptionReportId])
   @@index([complexId, monthRef, yearRef])
 }
+
+// =====================================================
+// CENTRAL DE COMUNICADOS (uploads de arquivos pelo admin)
+// =====================================================
+// Público-alvo de um comunicado. Um único comunicado pode ter
+// vários públicos (ex.: morador + síndico). "all" libera para todos.
+enum ComunicadoAudience {
+  all        // Todos os perfis
+  morador    // Somente moradores
+  sindico    // Somente síndicos
+  administradora
+  programador
+  administrador
+}
+
+model Comunicado {
+  id           String   @id @map("_id") @default(uuid())
+
+  title        String              // Título exibido na lista
+  description  String?             // Descrição/legenda opcional
+
+  // Arquivo anexado (armazenado como base64 no banco, como as fotos de leitura)
+  fileName     String              // Nome original do arquivo
+  fileType     String              // MIME type (application/pdf, image/png, ...)
+  fileSize     Int                 // Tamanho em bytes
+  fileBase64   String              // Conteúdo do arquivo em base64 (sem prefixo data:)
+
+  // Público-alvo: array de ComunicadoAudience (ex.: ["morador","sindico"])
+  audiences    String[]            // Públicos que podem ver este comunicado
+
+  // Publicação
+  isPublished  Boolean  @default(true)
+  publishedAt  DateTime? @db.Timestamp
+
+  // Auditoria
+  createdByUserId String?
+  createdAt    DateTime @default(now()) @db.Timestamp
+  updatedAt    DateTime? @updatedAt @db.Timestamp
+  deletedAt    DateTime? @db.Timestamp
+
+  @@map("Comunicados")
+  @@index([isPublished, createdAt])
+  @@index([deletedAt])
+}

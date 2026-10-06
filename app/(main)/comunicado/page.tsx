@@ -5,25 +5,27 @@
  *
  * Central de Comunicados do sistema.
  *
- * A exibição é restrita ao público do perfil logado:
- *  - Morador  → vê apenas o comunicado do MORADOR;
- *  - Síndico  → vê apenas o comunicado do SÍNDICO;
- *  - Perfis gerais (Administradora / Programador / Administrador) → veem os DOIS,
- *    podendo alternar entre eles. É também por aqui que um comunicado "geral"
- *    (para todos) seria exibido.
+ * Duas áreas:
+ *  1. "Comunicados" — arquivos enviados pela administração (uploads). Todos veem
+ *     os comunicados destinados ao seu perfil; administradores podem publicar e
+ *     escolher, no momento do upload, quem poderá ver (todos, moradores, síndicos...).
+ *  2. "Guia" — comunicado didático. A exibição é restrita ao público do perfil:
+ *     morador → guia do morador; síndico → guia do síndico; perfis gerais → ambos.
  *
  * Suporta impressão/exportação em PDF.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Printer, Home, Building2, Loader2 } from 'lucide-react';
+import { Printer, Home, Building2, Loader2, Megaphone, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUserContext } from '@/hooks/useUserContext';
 import { useRolePreview } from '@/contexts/RolePreviewContext';
 import ComunicadoMorador from '@/components/comunicado/ComunicadoMorador';
 import ComunicadoSindico from '@/components/comunicado/ComunicadoSindico';
+import ComunicadoFeed from '@/components/comunicado/ComunicadoFeed';
 
 type Audience = 'morador' | 'sindico';
+type ViewTab = 'comunicados' | 'guia';
 
 export default function ComunicadoPage() {
   const { context: realCtx, loading: realLoading } = useUserContext();
@@ -31,8 +33,10 @@ export default function ComunicadoPage() {
   const context = isPreviewing ? effectiveContext : realCtx;
   const loading = isPreviewing ? false : realLoading;
 
+  const isAdmin = !!context?.isSystem;
+
   /**
-   * Quais comunicados o perfil atual pode ver.
+   * Quais guias o perfil atual pode ver.
    *  - morador  → ['morador']
    *  - síndico  → ['sindico']
    *  - geral    → ['morador', 'sindico'] (pode alternar)
@@ -69,12 +73,13 @@ export default function ComunicadoPage() {
     return ['morador', 'sindico'];
   }, [context, isPreviewing, previewRole]);
 
-  // Só permite escolher quando há mais de um comunicado disponível
+  // Só permite escolher quando há mais de um guia disponível
   const canChoose = availableAudiences.length > 1;
 
   const [audience, setAudience] = useState<Audience>(availableAudiences[0] ?? 'morador');
+  const [tab, setTab] = useState<ViewTab>('comunicados');
 
-  // Mantém o comunicado selecionado sempre dentro dos disponíveis
+  // Mantém o guia selecionado sempre dentro dos disponíveis
   useEffect(() => {
     setAudience((prev) => (availableAudiences.includes(prev) ? prev : (availableAudiences[0] ?? 'morador')));
   }, [availableAudiences]);
@@ -87,23 +92,47 @@ export default function ComunicadoPage() {
   return (
     <div className="w-full">
       {/* Barra de ações (não aparece na impressão) */}
-      <div className="print:hidden sticky top-0 z-10 bg-background/90 backdrop-blur border-b border-slate-200">
+      <div className="print:hidden sticky top-0 z-10 bg-background/90 backdrop-blur border-b border-border">
         <div className="max-w-3xl mx-auto px-4 md:px-6 py-3 flex items-center gap-3 flex-wrap">
           <div className="mr-auto">
-            <p className="text-sm font-semibold text-slate-800">Central de Comunicados</p>
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Central de Comunicados</p>
             <p className="text-xs text-muted-foreground">
-              {canChoose ? 'Escolha o comunicado que deseja ler' : 'Comunicado destinado ao seu perfil'}
+              {tab === 'comunicados'
+                ? (isAdmin ? 'Publique e gerencie comunicados para os usuários' : 'Comunicados enviados para o seu perfil')
+                : (canChoose ? 'Escolha o guia que deseja ler' : 'Guia destinado ao seu perfil')}
             </p>
           </div>
 
-          {/* Seletor: aparece apenas para perfis que podem ver os dois comunicados */}
-          {canChoose && (
-            <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+          {/* Abas: Comunicados (uploads) e Guia (didático) */}
+          <div className="flex rounded-lg border border-border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setTab('comunicados')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${
+                tab === 'comunicados' ? 'bg-teal-600 text-white' : 'bg-background text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <Megaphone className="w-3.5 h-3.5" /> Comunicados
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('guia')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-l border-border ${
+                tab === 'guia' ? 'bg-teal-600 text-white' : 'bg-background text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" /> Guia
+            </button>
+          </div>
+
+          {/* Seletor de guia (Morador/Síndico) — só quando há mais de um e na aba Guia */}
+          {tab === 'guia' && canChoose && (
+            <div className="flex rounded-lg border border-border overflow-hidden">
               <button
                 type="button"
                 onClick={() => setAudience('morador')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${
-                  activeAudience === 'morador' ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                  activeAudience === 'morador' ? 'bg-teal-600 text-white' : 'bg-background text-muted-foreground hover:bg-muted'
                 }`}
               >
                 <Home className="w-3.5 h-3.5" /> Morador
@@ -111,8 +140,8 @@ export default function ComunicadoPage() {
               <button
                 type="button"
                 onClick={() => setAudience('sindico')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-l border-slate-200 ${
-                  activeAudience === 'sindico' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-l border-border ${
+                  activeAudience === 'sindico' ? 'bg-blue-600 text-white' : 'bg-background text-muted-foreground hover:bg-muted'
                 }`}
               >
                 <Building2 className="w-3.5 h-3.5" /> Síndico
@@ -128,7 +157,9 @@ export default function ComunicadoPage() {
 
       {/* Conteúdo */}
       <div className="px-4 md:px-6 py-8 print:py-0">
-        {loading ? (
+        {tab === 'comunicados' ? (
+          <ComunicadoFeed isAdmin={isAdmin} />
+        ) : loading ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground">
             <Loader2 className="w-6 h-6 animate-spin mr-2" />
             Carregando comunicado...
