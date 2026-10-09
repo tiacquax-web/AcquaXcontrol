@@ -22,10 +22,15 @@ import { getConsumptionAnalysis } from '@/lib/services/consumption-analysis';
 import { buildManagementInsightEmail, cleanManagementInsightSubject, isManagementInsightJob } from '@/lib/services/management-insights-email';
 
 export const runtime = 'nodejs';
-export const maxDuration = 120; // 2 min — suficiente para 50 emails
+export const maxDuration = 120; // 2 min — suficiente para o lote reduzido
 
-const MAX_BATCH = 50;
+// Zoho bloqueia com ~45-50 envios seguidos ("Unusual sending activity").
+// Lote de 5 por execução (cron de 10 min) = ~30 emails/hora, taxa segura.
+const MAX_BATCH = Number(process.env.EMAIL_BATCH_SIZE || 5);
 const MAX_ATTEMPTS = 3;
+const SLEEP_MS = Number(process.env.EMAIL_BATCH_SPACING_MS || 2000);
+const isZohoBlocked = (err: string | undefined | null) => !!err && err.includes('Unusual sending activity');
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 function previousMonth(monthRef: string, yearRef: string) {
   const date = new Date(Number(yearRef), Number(monthRef) - 2, 1);
@@ -168,7 +173,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     let skipped = 0;
 
     // Processar cada job
+    let zohoBlocked = false;
     for (const job of pendingJobs) {
+      if (zohoBlocked) break;
       try {
         // Pular emails de domínios internos da empresa (sistema/admin)
         if (isBlockedEmailDomain(job.toEmail)) {
@@ -204,6 +211,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           if (insightResult.success) {
             await prisma.emailJob.update({ where: { id: job.id }, data: { status: 'sent', sentAt: new Date() } });
             sent++;
+          } else if (isZohoBlocked(insightResult.error)) {
+            zohoBlocked = true;
+            await prisma.emailJob.update({ where: { id: job.id }, data: { attempts: { decrement: 1 }, errorMessage: 'Zoho bloqueado — reprocessar' } });
+            console.warn('[EmailCron] Zoho bloqueou o envio; interrompendo o lote. Tentar novamente mais tarde.');
+            break;
           } else {
             const newAttempts = job.attempts + 1;
             await prisma.emailJob.update({ where: { id: job.id }, data: { status: newAttempts >= MAX_ATTEMPTS ? 'failed' : 'pending', errorMessage: insightResult.error } });
@@ -300,6 +312,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
             data: { status: 'sent', sentAt: new Date() },
           });
           sent++;
+          await sleep(SLEEP_MS); // espaçamento entre envios
+        } else if (isZohoBlocked(result.error)) {
+          zohoBlocked = true;
+          // Bloqueio antispam do Zoho: não conta como tentativa, volta pra fila
+          await prisma.emailJob.update({ where: { id: job.id }, data: { attempts: { decrement: 1 }, errorMessage: 'Zoho bloqueado — reprocessar' } });
+          console.warn('[EmailCron] Zoho bloqueou o envio; interrompendo o lote. Tentar novamente mais tarde.');
+          break;
         } else {
           // Se excedeu tentativas, marcar como failed permanente
           const newAttempts = job.attempts + 1;
@@ -327,7 +346,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     console.log(`[EmailCron] Processados: ${pendingJobs.length}, enviados: ${sent}, falhas: ${failed}, pulados: ${skipped}`);
-    return NextResponse.json({ processed: pendingJobs.length, sent, failed, skipped });
+    return NextResponse.json({ processed: pendingJobs.length, sent, failed, skipped, zohoBlocked });
   } catch (error: any) {
     console.error('[EmailCron] Erro fatal:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
