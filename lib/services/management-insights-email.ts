@@ -57,7 +57,9 @@ export async function enqueueManagementInsightJobs(
       complexId: reading.complexId,
       monthRef: readingMonthRef,
       yearRef: readingYearRef,
-      subject: { startsWith: MANAGEMENT_INSIGHT_PREFIX },
+      // startsWith quebra no MongoDB quando o valor começa com '[' (Prisma 6 não escapa
+      // regex specials; erro 51111). contains é equivalente aqui e funciona.
+      subject: { contains: MANAGEMENT_INSIGHT_PREFIX },
     },
     select: { id: true, toEmail: true, status: true },
   });
@@ -76,9 +78,15 @@ export async function enqueueManagementInsightJobs(
       .map((job) => job.toEmail.toLowerCase()),
   );
 
-  const jobs: Prisma.EmailJobCreateManyInput[] = recipients
-    .filter((recipient) => !activeEmails.has(recipient.email.toLowerCase()))
-    .map((recipient) => ({
+  // Dedupe por email dentro do próprio lote (evita N jobs para o mesmo destinatário
+  // quando múltiplos usuários/assignments resolvem para o mesmo endereço).
+  const seenEmails = new Set<string>(activeEmails);
+  const jobs: Prisma.EmailJobCreateManyInput[] = [];
+  for (const recipient of recipients) {
+    const key = recipient.email.toLowerCase();
+    if (seenEmails.has(key)) continue;
+    seenEmails.add(key);
+    jobs.push(({
       apartmentConsumptionReportId: null,
       dealershipReadingId: reading.id,
       toEmail: recipient.email,
@@ -91,6 +99,7 @@ export async function enqueueManagementInsightJobs(
       status: 'pending' as const,
       createdByUserId: createdByUserId || null,
     }));
+  }
 
   if (jobs.length > 0) await prisma.emailJob.createMany({ data: jobs });
   return { created: jobs.length, skipped: recipients.length - jobs.length, total: recipients.length };

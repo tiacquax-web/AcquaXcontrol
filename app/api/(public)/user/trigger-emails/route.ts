@@ -47,7 +47,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (dealershipReadingId) {
       // Limpar jobs antigos de insights para garantir foco 100% nas unidades
       await prisma.emailJob.deleteMany({
-        where: { dealershipReadingId, subject: { startsWith: '[ACQUAX_INSIGHT]' } }
+        where: { dealershipReadingId, subject: { contains: '[ACQUAX_INSIGHT]' } }
       });
 
       const created = await createEmailJobsForDealershipReading(dealershipReadingId, userId);
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const whereClause: any = {
       status: 'pending',
       attempts: { lt: 3 },
-      NOT: { subject: { startsWith: '[ACQUAX_INSIGHT]' } }
+      NOT: { subject: { contains: '[ACQUAX_INSIGHT]' } }
     };
     if (dealershipReadingId) {
       whereClause.dealershipReadingId = dealershipReadingId;
