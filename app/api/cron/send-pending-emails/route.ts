@@ -55,17 +55,21 @@ function derivePeriodStart(value: string | null | undefined, totalDays: number |
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // ── Autenticação ──────────────────────────────────────────────────────────
-  // CRON_SECRET é opcional: se configurado, valida o Bearer token enviado
-  // automaticamente pelo Vercel Cron. Se não configurado, apenas loga um aviso
-  // e continua (igual ao cron do GL Import).
+  // O Vercel Cron NÃO envia Authorization: ele invoca a rota via GET com o
+  // header 'x-vercel-cron' (<schedule>). Com CRON_SECRET configurado e só o
+  // Bearer aceito, toda invocação do cron tomava 401 e a fila nunca rodava
+  // (bug real: Filipetas não eram enviadas aos moradores).
+  // - Chamada do Vercel Cron (x-vercel-cron presente) → autorizada
+  // - Chamada externa/ manual → exige Bearer CRON_SECRET (se configurado)
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
+  const isVercelCron = !!req.headers.get('x-vercel-cron');
+  if (cronSecret && !isVercelCron) {
     const authHeader = req.headers.get('authorization');
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
     if (token !== cronSecret) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-  } else {
+  } else if (!cronSecret) {
     console.warn('[EmailCron] CRON_SECRET não configurado — executando sem autenticação.');
   }
 
