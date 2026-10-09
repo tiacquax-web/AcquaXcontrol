@@ -24,9 +24,12 @@ import { buildManagementInsightEmail, cleanManagementInsightSubject, isManagemen
 export const runtime = 'nodejs';
 export const maxDuration = 120; // 2 min — suficiente para o lote reduzido
 
-// Zoho bloqueia com ~45-50 envios seguidos ("Unusual sending activity").
-// Lote de 5 por execução (cron de 10 min) = ~30 emails/hora, taxa segura.
-const MAX_BATCH = Number(process.env.EMAIL_BATCH_SIZE || 5);
+// Zoho bloqueia com ~45-50 envios seguidos ("Unusual sending activity") —
+// quando isso acontece o lote é interrompido e os jobs voltam pra fila sem
+// queimar tentativa, então dá pra ser agressivo com segurança.
+// Lote de 10 por execução (cron de 5 min) = ~120 emails/hora: condomínio de
+// 500 unidades esvazia a fila em ~4-5 horas em vez de dias.
+const MAX_BATCH = Number(process.env.EMAIL_BATCH_SIZE || 10);
 const MAX_ATTEMPTS = 3;
 const SLEEP_MS = Number(process.env.EMAIL_BATCH_SPACING_MS || 2000);
 const isZohoBlocked = (err: string | undefined | null) => !!err && err.includes('Unusual sending activity');
