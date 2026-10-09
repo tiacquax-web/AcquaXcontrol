@@ -18,6 +18,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
         // Parse request body
         const reqBody = await req.json();
         const body = cleanEntityBody({...reqBody}); // Clean the body to remove unwanted fields
+        // A listagem de usuários enriquece cada item com a localização (condomínio/bloco/apto)
+        // apenas para exibição. Esses campos NÃO existem no modelo User; se voltarem no PUT
+        // (o modal reenvia o objeto inteiro) o Prisma recusa com "Unknown argument `complexId`".
+        for (const k of ['complexId', 'complexName', 'blockId', 'blockName', 'apartmentId', 'apartmentName']) {
+            delete (body as any)[k];
+        }
         console.log("######### Request Body:", reqBody)
 
         console.log("######### Body:", body)
