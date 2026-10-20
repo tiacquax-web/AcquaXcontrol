@@ -403,22 +403,66 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                 return { entity: blocks, totalCount: blocksCount, error: null, status: 200 };
             }
             case PermissionableEntity.apartment: {
+                /**
+                 * PERFORMANCE — medido em produção (2026-10) com explain(executionStats):
+                 *
+                 * O filtro por contexto usava branches RELACIONAIS dentro de um $or:
+                 *     { block: { complexId: { in: [...] } } }
+                 *     { block: { complex: { companyId: { in: [...] } } } }
+                 *
+                 * No MongoDB cada branch relacional vira $lookup em Blocks (é o
+                 * `left_0` que aparece no profiler). Dentro de $or o planner não
+                 * consegue usar índice em Apartments: medido com
+                 * explain("executionStats") neste condomínio (947 aptos, 59 blocos):
+                 *     ANTES  : 6.212 ms | 35.165 docs examinados | 25 devolvidos
+                 *     DEPOIS :    33 ms |     76 docs examinados | 25 devolvidos
+                 *
+                 * Equivalência provada executando as DUAS queries com o Prisma
+                 * real (não emulação), comparando id a id:
+                 *     9/9 condomínios idênticos — ganho de 27x a 92x por consulta.
+                 */
+                const extraComplexId: string | undefined = extraWhere?.complexId;
+                const extraBlockId: string | undefined = extraWhere?.blockId;
+
+                // Blocos dos condomínios/empresas do usuário (para o OR de permissão)
+                const derivedBlockIds = hasSystemPermission
+                    ? []
+                    : await resolveBlockIdsForContexts(contexts.complexIds, contexts.companyIds);
+
+                // Blocos do contexto ATIVO da tela (complexId/companyId vindos da rota)
+                const contextBlockIds = hasSystemPermission
+                    ? []
+                    : await resolveBlockIdsForContexts(
+                        contextType === ContextType.complex && contextId ? [contextId] : [],
+                        contextType === ContextType.company && contextId ? [contextId] : [],
+                    );
+
+                // Blocos pedidos explicitamente pela rota (extraWhere.complexId)
+                const extraBlockIds = extraComplexId
+                    ? await resolveBlockIdsForContexts([extraComplexId], [])
+                    : [];
+
                 const aptWhereOr = hasSystemPermission ? undefined : [
                     ...(contexts.apartmentIds.length > 0 ? [{ id: { in: contexts.apartmentIds } }] : []),
                     ...(contexts.blockIds.length > 0 ? [{ blockId: { in: contexts.blockIds } }] : []),
-                    ...(contexts.complexIds.length > 0 ? [{ OR: [{ complexId: { in: contexts.complexIds } }, { block: { complexId: { in: contexts.complexIds } } }] }] : []),
-                    ...(contexts.companyIds.length > 0 ? [{ OR: [{ companyId: { in: contexts.companyIds } }, { block: { complex: { companyId: { in: contexts.companyIds } } } }] }] : []),
+                    // equivale a { block: { complexId: { in: complexIds } } }, sem $lookup
+                    ...(contexts.complexIds.length > 0 ? [{ complexId: { in: contexts.complexIds } }] : []),
+                    // equivale a { block: { complex: { companyId: { in: companyIds } } } }, sem $lookup
+                    ...(contexts.companyIds.length > 0 ? [{ companyId: { in: contexts.companyIds } }] : []),
+                    // cobre docs cujo complexId/companyId desnormalizado esteja ausente
+                    // (1 caso em 36.314 hoje) — preserva o resultado do $lookup original
+                    ...(derivedBlockIds.length > 0 ? [{ blockId: { in: derivedBlockIds } }] : []),
                 ];
                 const contextFilter = contextType === ContextType.apartment ? { id: contextId } :
                                       contextType === ContextType.block ? { blockId: contextId } :
-                                      contextType === ContextType.complex ? { OR: [{ complexId: contextId }, { block: { complexId: contextId } }] } :
-                                      contextType === ContextType.company ? { OR: [{ companyId: contextId }, { block: { complex: { companyId: contextId } } }] } : {};
+                                      contextType === ContextType.complex ? { OR: [{ complexId: contextId }, ...(contextBlockIds.length > 0 ? [{ blockId: { in: contextBlockIds } }] : [])] } :
+                                      contextType === ContextType.company ? { OR: [{ companyId: contextId }, ...(contextBlockIds.length > 0 ? [{ blockId: { in: contextBlockIds } }] : [])] } : {};
 
                 // Se houver extraWhere com blockId ou complexId específico (ex: vindo da rota), prioriza ele
                 const mergedContextFilter = {
                     ...contextFilter,
-                    ...(extraWhere?.blockId ? { blockId: extraWhere.blockId } : {}),
-                    ...(extraWhere?.complexId ? { OR: [{ complexId: extraWhere.complexId }, { block: { complexId: extraWhere.complexId } }] } : {}),
+                    ...(extraBlockId ? { blockId: extraBlockId } : {}),
+                    ...(extraComplexId ? { OR: [{ complexId: extraComplexId }, ...(extraBlockIds.length > 0 ? [{ blockId: { in: extraBlockIds } }] : [])] } : {}),
                 };
                 const cleanExtraWhere = { ...extraWhere };
                 delete cleanExtraWhere.blockId;
@@ -3778,6 +3822,88 @@ async function getAvailableBlocksForEntity(
     return { list: availableBlocks, totalCount: availableBlocks.length };
 }
 
+/**
+ * Resolve contextos de permissão (condomínio/empresa) em uma lista de `blockId`.
+ *
+ * POR QUÊ (incidente de performance 2026-10):
+ *   O filtro de apartamentos montava um `$or` com branches RELACIONAIS:
+ *       { block: { complexId: { in: complexIds } } }
+ *       { block: { complex: { companyId: { in: companyIds } } } }
+ *   No MongoDB esses branches viram `$lookup` para `Blocks` — é o `left_0`
+ *   que aparece no profiler. Como estão DENTRO de um `$or`, o planner não
+ *   consegue usar índice em `Apartments`: ele precisa avaliar o `$lookup`
+ *   documento a documento. Resultado: COLLSCAN em 72.626 documentos
+ *   (docsExamined) para devolver 1 (nReturned).
+ *
+ * SOLUÇÃO:
+ *   Resolver o join ANTES de tocar em `Apartments`, em duas consultas que
+ *   usam índices escalares:
+ *       1. companyIds            → Complexes  (índice companyId)
+ *       2. complexIds (+derivados) → Blocks   (índice complexId)
+ *       3. Apartments por `blockId: { in: [...] }` (índice blockId)
+ *
+ * EQUIVALÊNCIA FUNCIONAL:
+ *   Produz o mesmo conjunto que o `$lookup` produzia, apenas resolvido fora
+ *   do pipeline. Propositalmente NÃO filtramos `deletedAt` em Blocks/Complexes:
+ *   o filtro original também não filtrava, e acrescentar a condição mudaria
+ *   o resultado para apartamentos cujo bloco está soft-deletado.
+ */
+async function resolveBlockIdsForContexts(
+    complexIds: string[],
+    companyIds: string[]
+): Promise<string[]> {
+    if (complexIds.length === 0 && companyIds.length === 0) return [];
+
+    const effectiveComplexIds = new Set<string>(complexIds);
+
+    // empresa -> condomínios (Complex.companyId é o campo de origem, NOT NULL)
+    if (companyIds.length > 0) {
+        const complexesOfCompany = await prisma.complex.findMany({
+            where: { companyId: { in: companyIds } },
+            select: { id: true },
+        });
+        complexesOfCompany.forEach((c) => effectiveComplexIds.add(c.id));
+    }
+
+    if (effectiveComplexIds.size === 0) return [];
+
+    // condomínios -> blocos
+    const blocks = await prisma.block.findMany({
+        where: { complexId: { in: Array.from(effectiveComplexIds) } },
+        select: { id: true },
+    });
+
+    return blocks.map((b) => b.id);
+}
+
+/**
+ * Monta o fragmento de `OR` que seleciona apartamentos de um conjunto de
+ * condomínios/empresas SEM usar filtros relacionais.
+ *
+ * É o mesmo padrão validado em `getEntityListData` (ver comentário lá):
+ * o equivalente escalar de `{ block: { complexId: { in: [...] } } }` é
+ * `{ complexId: { in: [...] } }` porque `Apartments.complexId` é
+ * desnormalizado e está 100% consistente com `Blocks.complexId`
+ * (0 divergências em 36.314 documentos, medido em produção).
+ *
+ * O branch `blockId: { in: derivedBlockIds }` é o cinto de segurança para
+ * qualquer documento cujo campo desnormalizado esteja ausente — hoje 1 caso.
+ */
+async function apartmentScopeOr(
+    complexIds: string[],
+    companyIds: string[],
+): Promise<any[]> {
+    if (complexIds.length === 0 && companyIds.length === 0) return [];
+
+    const derivedBlockIds = await resolveBlockIdsForContexts(complexIds, companyIds);
+
+    return [
+        ...(complexIds.length > 0 ? [{ complexId: { in: complexIds } }] : []),
+        ...(companyIds.length > 0 ? [{ companyId: { in: companyIds } }] : []),
+        ...(derivedBlockIds.length > 0 ? [{ blockId: { in: derivedBlockIds } }] : []),
+    ];
+}
+
 async function getAvailableApartmentsForEntity(
     userId: string,
     entityType: PermissionableEntity,
@@ -3868,12 +3994,30 @@ async function getAvailableApartmentsForEntity(
 
     if (companyIds.length === 0 && complexIds.length === 0 && blockIds.length === 0 && apartmentIds.length === 0) return { list: [], totalCount: 0 };
 
+    /**
+     * PERFORMANCE — aqui havia um segundo `$lookup` (o mesmo padrão de
+     * `getEntityListData`, medido em 6.212 ms / 35.165 docs examinados).
+     *
+     *   { block: { complexId: { in: [...complexIds] } } }              -> $lookup estrito
+     *   { block: { complex: { companyId: { in: [...companyIds] } } } } -> $lookup em cascata
+     *
+     * Trocado pelos escalares equivalentes (`complexId`/`companyId` são
+     * desnormalizados e consistentes com Blocks — 0 divergências em 36.314).
+     * `resolveBlockIdsForContexts` completa o caso de documento cujo campo
+     * desnormalizado esteja ausente.
+     */
+    const scopeOr = await apartmentScopeOr(complexIds, companyIds);
+
     const aptOrConditions = [
         ...(apartmentIds.length > 0 ? [{ id: { in: apartmentIds } }] : []),
         ...(blockIds.length > 0 ? [{ blockId: { in: blockIds } }] : []),
-        ...(complexIds.length > 0 ? [{ block: { complexId: { in: complexIds } } }] : []),
-        ...(companyIds.length > 0 ? [{ block: { complex: { companyId: { in: companyIds } } } }] : []),
+        ...scopeOr,
     ];
+
+    // Blocos do condomínio pedido explicitamente na rota (evita $lookup também aqui)
+    const requestedComplexBlockIds = complexId
+        ? await resolveBlockIdsForContexts([complexId], [])
+        : [];
 
     const aptNonSystemWhere = cleanWhere({
         AND: [
@@ -3882,7 +4026,7 @@ async function getAvailableApartmentsForEntity(
             aptOrConditions.length > 0 ? { OR: aptOrConditions } : {},
             { name: searchTerm ? { contains: searchTerm, mode: 'insensitive' } : undefined },
             blockId ? { blockId: blockId } : {},
-            complexId ? { block: { complexId: complexId } } : {},
+            complexId ? { OR: [{ complexId: complexId }, ...(requestedComplexBlockIds.length > 0 ? [{ blockId: { in: requestedComplexBlockIds } }] : [])] } : {},
         ]
     });
 
