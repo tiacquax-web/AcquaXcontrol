@@ -113,7 +113,7 @@ async function validateMetersBatch(reqBody: any[]): Promise<ValidationResult> {
                 },
                 select: { id: true, name: true, blockId: true }
             });
-            apartments = apartments.concat(foundApartments);
+            apartments = apartments.concat(foundApartments as typeof apartments);
         }
     }
 

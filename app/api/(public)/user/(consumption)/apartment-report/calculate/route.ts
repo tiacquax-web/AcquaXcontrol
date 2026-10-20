@@ -52,9 +52,10 @@ export async function POST(req: NextRequest): Promise<Response> {
         // Get total apartments in the complex for equal distribution
         const totalApartments = await prisma.apartment.count({
             where: {
-                block: {
-                    complexId: apartment.block.complexId
-                }
+                OR: [
+                    { block: { complexId: apartment.block?.complexId ?? apartment.complexId ?? undefined } },
+                    { complexId: apartment.complexId ?? undefined },
+                ]
             }
         })
 

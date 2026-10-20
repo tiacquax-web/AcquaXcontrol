@@ -512,8 +512,8 @@ model Apartment {
   name                      String
   status                    String      @default("Ativo")
   
-  blockId                   String
-  block                     Block       @relation(fields: [blockId], references: [id]) // Relacionamento com Block
+  blockId                   String?
+  block                     Block?      @relation(fields: [blockId], references: [id]) // Relacionamento com Block (opcional: aptos cadastrados direto no complexo não têm bloco)
   
   // Campos desnormalizados para otimização de queries
   complexId                 String?     // ID do complexo (desnormalizado)

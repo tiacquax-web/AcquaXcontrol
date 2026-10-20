@@ -198,8 +198,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
                     yearRef: yearStr,
                     apartmentId: apartment.id,
                     blockId: apartment.blockId,
-                    complexId: apartment.block.complexId,
-                    companyId: apartment.block.complex?.companyId,
+                    complexId: apartment.block?.complexId ?? apartment.complexId ?? null,
+                    companyId: apartment.block?.complex?.companyId ?? apartment.companyId ?? null,
                     isManualReading: true,
                     isPreReading: payload.reading.isPreReading ?? false,
                     nextReadingDate: payload.reading.nextReadingDate || undefined,
@@ -249,8 +249,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           consumptionGasValue: payload.report.consumptionGasValue ?? 0,
           totalGasValue: payload.report.totalGasValue ?? 0,
           blockId: apartment.blockId,
-          complexId: apartment.block.complexId,
-          companyId: apartment.block.complex?.companyId,
+          complexId: apartment.block?.complexId ?? apartment.complexId ?? null,
+          companyId: apartment.block?.complex?.companyId ?? apartment.companyId ?? null,
           lastReadingId: readingId || undefined,
         };
 

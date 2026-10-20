@@ -157,7 +157,7 @@ async function getApartmentsMap(rows: ImportRow[]): Promise<Map<string, any>> {
   const apartmentsMap = new Map();
   
   apartments.forEach(apartment => {
-    const key = `${apartment.block.complex.socialName.toLowerCase()}|${apartment.block.name.toLowerCase()}|${apartment.name.toLowerCase()}`;
+    const key = `${apartment.block?.complex?.socialName?.toLowerCase() ?? ''}|${apartment.block?.name?.toLowerCase() ?? ''}|${apartment.name.toLowerCase()}`;
     apartmentsMap.set(key, apartment);
   });
 
