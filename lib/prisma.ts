@@ -9,8 +9,51 @@ interface ModelClient {
   updateMany?(args: { where: object; data: object }): Promise<any>;
 }
 
+/**
+ * Fail-fast / fail-clean para o MongoDB.
+ *
+ * PROBLEMA (incidente 2026-10-20):
+ *   Quando o MongoDB do DigitalOcean caiu, TODAS as rotas que tocavam o banco
+ *   ficaram penduradas por ~30s (server selection timeout padrão do driver)
+ *   antes de devolver 500. O usuário via "erro interno" depois de uma espera
+ *   enorme, e cada request segurava uma conexão/lambda até o limite.
+ *
+ * SOLUÇÃO:
+ *   Injetamos timeouts explícitos na connection string. Não sobrescrevemos
+ *   valores que já existam na URL (o operador manda), só completamos o que falta.
+ *
+ *   - serverSelectionTimeoutMS: 5s  → quanto esperar por um servidor disponível
+ *   - connectTimeoutMS:        10s → quanto esperar pelo handshake TCP/TLS
+ *   - socketTimeoutMS:         45s → corte de queries realmente travadas
+ *   - maxPoolSize:             10  → evita esgotar conexões em serverless
+ */
+const DB_TIMEOUT_DEFAULTS: Record<string, string> = {
+  serverSelectionTimeoutMS: '5000',
+  connectTimeoutMS: '10000',
+  socketTimeoutMS: '45000',
+  maxPoolSize: '10',
+};
+
+function withDbTimeouts(url: string | undefined): string | undefined {
+  if (!url) return url;
+
+  // Já tem query string? Então o separador é '&', senão '?'.
+  // URLs mongodb+srv:// nunca têm query no path, mas tratamos os dois casos.
+  const [base, existingQuery = ''] = url.split('?');
+  const params = new URLSearchParams(existingQuery);
+
+  for (const [key, value] of Object.entries(DB_TIMEOUT_DEFAULTS)) {
+    if (!params.has(key)) params.set(key, value);
+  }
+
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
+}
+
 const prismaClientSingleton = () => {
-  const client = new PrismaClient().$extends({
+  const client = new PrismaClient({
+    datasourceUrl: withDbTimeouts(process.env.DATABASE_URL),
+  }).$extends({
     model: {
       $allModels: {
         async delete({ where }: { where: { id: string } }) {
