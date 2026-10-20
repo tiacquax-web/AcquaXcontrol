@@ -153,15 +153,15 @@ const FilipetaGridReport = React.memo<FilipetaGridReportProps>(({ report, dealer
 
   const curDate = valid(
     lastReading?.readAtDate,
-    lastReading?.readingDate,
-    lastReading?.readAt,
+    (lastReading as any)?.readingDate,
+    (lastReading as any)?.readAt,
     dealershipReading?.readingDate
   ) || monthEndFallback;
 
   const prevDate = valid(
     prevReport1?.lastReading?.readAtDate,
-    prevReport1?.lastReading?.readingDate,
-    prevReport1?.lastReading?.readAt
+    (prevReport1?.lastReading as any)?.readingDate,
+    (prevReport1?.lastReading as any)?.readAt
   );
 
   const totalDays = Number(dealershipReading?.totalDays) || 30;
@@ -169,7 +169,7 @@ const FilipetaGridReport = React.memo<FilipetaGridReportProps>(({ report, dealer
 
   const nextDate = valid(
     lastReading?.nextReadingDate,
-    lastReading?.readingDateNext,
+    (lastReading as any)?.readingDateNext,
     dealershipReading?.readingDateNext,
     dealershipReading?.nextReadingDate
   ) || (curDate ? new Date(curDate.getTime() + 30 * 24 * 60 * 60 * 1000) : null);

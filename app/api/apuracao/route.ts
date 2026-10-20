@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateUserSession } from '@/lib/users';
 import prisma from '@/lib/prisma';
+import { latestReportByComplex } from '@/lib/services/latest-report-by-complex';
 import { serverError } from '@/lib/safeError';
 
 
@@ -79,19 +80,13 @@ export async function GET(req: NextRequest): Promise<Response> {
         const meterCountMap: Record<string, number> = {};
         meterCounts.forEach(m => { if (m.complexId) meterCountMap[m.complexId] = m._count.id; });
 
-        // Get last reading date per complex
-        const lastReadings = await prisma.apartmentConsumptionReport.findMany({
-            where: { complexId: { in: complexIds }, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
-            select: { complexId: true, yearRef: true, monthRef: true },
-            orderBy: [{ yearRef: 'desc' }, { monthRef: 'desc' }],
-            distinct: ['complexId'],
-        });
+        // Get last reading date per complex (sondas indexadas; antes: distinct global
+        // sobre ~362k relatórios com sort — a query de ~37s do log)
+        const latestReports = await latestReportByComplex(complexIds);
         const lastReadingMap: Record<string, string> = {};
-        lastReadings.forEach(r => {
-            if (r.complexId) {
-                lastReadingMap[r.complexId] = `${String(r.monthRef).padStart(2, '0')}/${r.yearRef}`;
-            }
-        });
+        for (const [cxId, lr] of Object.entries(latestReports)) {
+            lastReadingMap[cxId] = `${String(lr.monthRef).padStart(2, '0')}/${lr.yearRef}`;
+        }
 
         // Get login counts per complex (last 30 days via RoleAssignments)
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);

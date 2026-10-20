@@ -85,14 +85,19 @@ async function getUserContextsForActionOnEntity(userId: string, entityType: Perm
 }
 
 async function getUserPermissions(userId: string) {
+    // PERF: antes usava filtro relacional triplo (permission -> role -> RoleAssignments),
+    // que examinava a colecao inteira com $lookup por permissao em cada chamada.
+    // Pre-resolvemos os roleIds do usuario (mesmo criterio do `some: { userId }` original,
+    // incluindo assignments arquivados) e filtramos por escalar.
+    const userRoles = await prisma.roleAssignment.findMany({
+        where: { userId },
+        distinct: ['roleId'],
+        select: { roleId: true },
+    });
+    const roleIds = userRoles.map(r => r.roleId).filter(Boolean);
+    if (roleIds.length === 0) return { permissions: [] };
     const permissions = await prisma.permission.findMany({
-        where: {
-            role: {
-                RoleAssignments: {
-                    some: { userId },
-                },
-            },
-        },
+        where: { roleId: { in: roleIds } },
         select: { action: true, entity: true },
     });
 
@@ -100,15 +105,16 @@ async function getUserPermissions(userId: string) {
 }
 
 async function getUserEntityPermissions(userId: string, entityType: PermissionableEntity) {
+    // Mesma otimização de getUserPermissions: filtro escalar por roleId.
+    const userRoles = await prisma.roleAssignment.findMany({
+        where: { userId },
+        distinct: ['roleId'],
+        select: { roleId: true },
+    });
+    const roleIds = userRoles.map(r => r.roleId).filter(Boolean);
+    if (roleIds.length === 0) return { permissions: [] };
     const permissions = await prisma.permission.findMany({
-        where: {
-            role: {
-                RoleAssignments: {
-                    some: { userId },
-                },
-            },
-            entity: entityType,
-        },
+        where: { roleId: { in: roleIds }, entity: entityType },
         select: { action: true },
     });
 

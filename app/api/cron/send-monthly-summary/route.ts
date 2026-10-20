@@ -52,53 +52,53 @@ export async function POST(req: NextRequest) {
   const prevMonth = String(prevDate.getMonth() + 1).padStart(2, '0');
   const prevYear = String(prevDate.getFullYear());
 
-  // 1. Buscar todos os condomínios que têm relatórios no mês de referência
-  const complexesWithReports = await prisma.apartmentConsumptionReport.findMany({
-    where: {
-      deletedAt: null,
-      monthRef,
-      yearRef,
-    },
-    select: {
-      id: true,
-      consumption: true,
-      totalConsumption: true,
-      totalUnit: true,
-      apartmentId: true,
-      apartment: {
-        select: {
-          id: true,
-          name: true,
-          block: {
-            select: {
-              id: true,
-              name: true,
-              complex: { select: { id: true, socialName: true } },
-            },
-          },
-        },
-      },
-    },
+  // 1. Buscar os condomínios que têm relatórios no mês de referência
+  // PERF (2026-10-20): antes carregava TODOS os relatórios do mês de uma vez
+  // (~115k docs, resposta de ~16,7MB) para agrupar em JS. Agora listamos os
+  // complexIds (distinct server-side) e processamos condomínio por condomínio
+  // usando o índice {complexId, yearRef, monthRef, deletedAt}.
+  // Equivalência comprovada em 20/10/2026 (mes 09/2026): agrupamento por
+  // ACR.complexId == agrupamento por apartment.block.complex, 0 divergências.
+  const complexRows = await prisma.apartmentConsumptionReport.findMany({
+    where: { deletedAt: null, monthRef, yearRef, complexId: { not: null } },
+    distinct: ['complexId'],
+    select: { complexId: true },
   });
-
-  // Agrupar por condomínio
-  const byComplex: Record<string, {
-    complexName: string;
-    reports: typeof complexesWithReports;
-  }> = {};
-
-  for (const report of complexesWithReports) {
-    const cx = report.apartment?.block?.complex;
-    if (!cx) continue;
-    if (!byComplex[cx.id]) {
-      byComplex[cx.id] = { complexName: cx.socialName, reports: [] };
-    }
-    byComplex[cx.id].reports.push(report);
-  }
+  const complexIdsWithReports: { complexId: string }[] = complexRows
+    .map(r => ({ complexId: r.complexId as string }))
+    .filter(r => !!r.complexId);
+  const complexInfo = await prisma.complex.findMany({
+    where: { id: { in: complexIdsWithReports.map(r => r.complexId) } },
+    select: { id: true, socialName: true },
+  });
+  const complexNameById = new Map(complexInfo.map(c => [c.id, c.socialName]));
 
   let emailsSent = 0;
 
-  for (const [complexId, { complexName, reports }] of Object.entries(byComplex)) {
+  for (const { complexId } of complexIdsWithReports) {
+    const complexName = complexNameById.get(complexId);
+    if (!complexName) continue;
+
+    // Relatórios do mês deste condomínio (índice complexId+yearRef+monthRef)
+    const complexesWithReports = await prisma.apartmentConsumptionReport.findMany({
+      where: { deletedAt: null, monthRef, yearRef, complexId },
+      select: {
+        id: true,
+        consumption: true,
+        totalConsumption: true,
+        totalUnit: true,
+        apartmentId: true,
+        apartment: {
+          select: {
+            id: true,
+            name: true,
+            block: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    // Mesma regra do agrupamento original: relatório sem apartamento/bloco é ignorado
+    const reports = complexesWithReports.filter(r => r.apartment?.block);
     if (reports.length === 0) continue;
 
     // 2. Calcular estatísticas do mês atual
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
         deletedAt: null,
         monthRef: prevMonth,
         yearRef: prevYear,
-        apartment: { block: { complexId } },
+        complexId,
       },
       select: { consumption: true, totalConsumption: true },
     });
@@ -274,7 +274,7 @@ Em caso de duvidas: medicao@acquaxdobrasil.com.br e/ou 4003-7945.`;
     success: true,
     monthRef,
     yearRef,
-    complexesProcessed: Object.keys(byComplex).length,
+    complexesProcessed: complexIdsWithReports.length,
     emailsSent,
   });
 }

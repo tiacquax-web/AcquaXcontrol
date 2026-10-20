@@ -1,6 +1,6 @@
 const { MongoClient } = require('mongodb');
-const DO_URI = 'mongodb+srv://doadmin:Tm014AtR79y6ZS83@db-mongodb-acquaxc-nyc3-81713-2abc9433.mongo.ondigitalocean.com/AcquaXControl_PRD?authSource=admin&tls=true';
-const ATLAS_URI = 'mongodb+srv://ruivagiulia_db_user:MUWnoaseItSukxnY@acquaxcontrol.gtkok07.mongodb.net/acquax?appName=acquaxcontrol';
+const DO_URI = process.env.DO_URI || (() => { throw new Error('Defina DO_URI (mongodb+srv://...)'); })();
+const ATLAS_URI = process.env.ATLAS_URI || (() => { throw new Error('Defina ATLAS_URI (mongodb+srv://...)'); })();
 
 const COLLECTIONS = [
   'Apartments','TypeMeters','Meters',

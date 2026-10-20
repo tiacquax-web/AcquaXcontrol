@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { serverError } from '@/lib/safeError';
 import { validateUserSession } from '@/lib/users';
 import prisma from '@/lib/prisma';
+import { latestReportByComplex } from '@/lib/services/latest-report-by-complex';
 import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -26,11 +27,9 @@ export async function GET(req: NextRequest): Promise<Response> {
       totalApartments,
       totalUsers,
       totalMeters,
-      roleAssignments,
       todaySessions,
       recentSessions,
       monthlySessions,
-      latestReportsRaw,
       topComplexes,
     ] = await Promise.all([
       prisma.complex.count({ where: { deletedAt: null } }),
@@ -38,11 +37,6 @@ export async function GET(req: NextRequest): Promise<Response> {
       prisma.user.count({ where: { deletedAt: null } }),
       prisma.meter.count({ where: { deletedAt: null } }),
 
-      // Apenas ids e tipos de contexto — sem detalhes pesados
-      prisma.roleAssignment.findMany({
-        where: { deletedAt: null },
-        select: { userId: true, contextType: true, contextId: true },
-      }),
 
       // Sessões de hoje
       prisma.session.findMany({
@@ -65,14 +59,6 @@ export async function GET(req: NextRequest): Promise<Response> {
         take: 50000,
       }),
 
-      // Última filipeta por condomínio (usando distinct para pegar apenas uma por complexId)
-      prisma.apartmentConsumptionReport.findMany({
-        where: { deletedAt: null },
-        select: { complexId: true, yearRef: true, monthRef: true },
-        orderBy: [{ yearRef: 'desc' }, { monthRef: 'desc' }],
-        distinct: ['complexId'],
-      }),
-
       // Top 10 condomínios com contagens básicas (MUITO mais rápido que buscar todos)
       prisma.complex.findMany({
         where: { deletedAt: null },
@@ -89,11 +75,19 @@ export async function GET(req: NextRequest): Promise<Response> {
       }),
     ]);
 
-    // ─── Conjuntos de usuários por tipo ───────────────────────────────────────
-    const systemUsers    = new Set(roleAssignments.filter(r => r.contextType === 'system').map(r => r.userId));
-    const companyUsers   = new Set(roleAssignments.filter(r => r.contextType === 'company').map(r => r.userId));
-    const complexUsers   = new Set(roleAssignments.filter(r => r.contextType === 'complex').map(r => r.userId));
-    const apartmentUsers = new Set(roleAssignments.filter(r => r.contextType === 'apartment').map(r => r.userId));
+    // ─── Conjuntos de usuários por tipo (distincts server-side; antes carregava
+    // todas as ~21k RoleAssignments para memória) ────────────────────────────
+    const [systemRA, companyRA, complexRA, apartmentRA] = await Promise.all([
+      prisma.roleAssignment.findMany({ where: { deletedAt: null, contextType: 'system' }, distinct: ['userId'], select: { userId: true } }),
+      prisma.roleAssignment.findMany({ where: { deletedAt: null, contextType: 'company' }, distinct: ['userId'], select: { userId: true } }),
+      prisma.roleAssignment.findMany({ where: { deletedAt: null, contextType: 'complex' }, distinct: ['userId'], select: { userId: true } }),
+      prisma.roleAssignment.findMany({ where: { deletedAt: null, contextType: 'apartment' }, distinct: ['userId'], select: { userId: true } }),
+    ]);
+    const systemUsers    = new Set(systemRA.map(r => r.userId));
+    const companyUsers   = new Set(companyRA.map(r => r.userId));
+    const complexUsers   = new Set(complexRA.map(r => r.userId));
+    const apartmentUsers = new Set(apartmentRA.map(r => r.userId));
+
 
     // ─── Logins de hoje por perfil ────────────────────────────────────────────
     const todayUserIds = [...new Set(todaySessions.map(s => s.userId))];
@@ -122,13 +116,12 @@ export async function GET(req: NextRequest): Promise<Response> {
       else if (apartmentUsers.has(s.userId)) loginsByDay[key].moradores++;
     }
 
-    // ─── Última leitura por condomínio (índice) ───────────────────────────────
+    // ─── Última leitura por condomínio (sondas indexadas; antes: distinct global
+    // sobre ~362k relatórios, até 37s) ───────────────────────────────────────
+    const latestReports = await latestReportByComplex(topComplexes.map(c => c.id));
     const latestByComplex: Record<string, { year: number; month: number }> = {};
-    for (const r of latestReportsRaw) {
-      if (!r.complexId) continue;
-      if (!latestByComplex[r.complexId]) {
-        latestByComplex[r.complexId] = { year: Number(r.yearRef), month: Number(r.monthRef) };
-      }
+    for (const [cxId, lr] of Object.entries(latestReports)) {
+      latestByComplex[cxId] = { year: lr.yearRef, month: lr.monthRef };
     }
 
     // ─── Condomínios com datas (sem busca pesada de blocos/aptos) ─────────────
@@ -161,9 +154,10 @@ export async function GET(req: NextRequest): Promise<Response> {
     const complexAccessTotal: Record<string, Set<string>> = {};
 
     if (monthlyUserIds.length > 0) {
-      const monthlyAptRoles = roleAssignments.filter(
-        r => r.contextType === 'apartment' && monthlyUserIds.includes(r.userId)
-      );
+      const monthlyAptRoles = await prisma.roleAssignment.findMany({
+        where: { deletedAt: null, contextType: 'apartment', userId: { in: monthlyUserIds } },
+        select: { userId: true, contextId: true },
+      });
       const monthlyAptIds = [...new Set(monthlyAptRoles.map(r => r.contextId))];
 
       if (monthlyAptIds.length > 0) {

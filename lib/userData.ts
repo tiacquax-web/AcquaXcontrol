@@ -371,18 +371,23 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
             case PermissionableEntity.block: {
                 // Mesma proteção: moradores (contexto só de apartamento) passam a ver apenas
                 // o bloco da própria unidade, e não todos os blocos de qualquer condomínio.
+                // PERF: o filtro relacional { complex: { companyId } } virava $lookup e varria
+                // todos os blocos; pre-resolvemos os complexos das empresas do usuario.
                 let derivedBlockIds: string[] = [];
                 if (!hasSystemPermission && contexts.blockIds.length === 0 && contexts.complexIds.length === 0 && contexts.companyIds.length === 0 && contexts.apartmentIds.length > 0) {
                     const aptRows = await prisma.apartment.findMany({ where: { AND: [notDeleted, { id: { in: contexts.apartmentIds } }] }, select: { blockId: true } });
                     derivedBlockIds = Array.from(new Set(aptRows.map(a => a.blockId).filter(Boolean))) as string[];
                 }
+                const userCompanyComplexIds: string[] = (!hasSystemPermission && contexts.companyIds.length > 0)
+                    ? (await prisma.complex.findMany({ where: { companyId: { in: contexts.companyIds } }, select: { id: true } })).map(c => c.id)
+                    : [];
                 const blockWhereOr = hasSystemPermission ? undefined : [
                     ...(contexts.blockIds.length > 0 ? [{ id: { in: contexts.blockIds } }] : []),
                     ...(contexts.complexIds.length > 0 ? [{ complexId: { in: contexts.complexIds } }] : []),
-                    ...(contexts.companyIds.length > 0 ? [{ complex: { companyId: { in: contexts.companyIds } } }] : []),
+                    ...(userCompanyComplexIds.length > 0 ? [{ complexId: { in: userCompanyComplexIds } }] : []),
                     ...(derivedBlockIds.length > 0 ? [{ id: { in: derivedBlockIds } }] : []),
                 ];
-                const blocksQuery = {
+                const blockQuery = {
                     where: cleanWhere({
                         AND: [
                             notDeleted,
@@ -398,27 +403,51 @@ async function getEntityListData(userId: string, entityType: PermissionableEntit
                     include: include ? include : undefined,
                     take: take < 200 ? take : 200,
                 };
-                const blocks = await prisma.block.findMany(blocksQuery);
-                const blocksCount = await prisma.block.count({ where: blocksQuery.where });
+                const blocks = await prisma.block.findMany(blockQuery);
+                const blocksCount = await prisma.block.count({ where: blockQuery.where });
                 return { entity: blocks, totalCount: blocksCount, error: null, status: 200 };
             }
             case PermissionableEntity.apartment: {
+                // PERF: filtros relacionais (block.complexId, block.complex.companyId) no mesmo
+                // OR impedem o uso dos indices {complexId, deletedAt}/{blockId, deletedAt} e
+                // forcavam COLLSCAN de toda a colecao (~36k docs, ate 7s). Pre-resolvemos as
+                // relacoes para IDs escalares (equivalencia comprovada em 20/10/2026:
+                // 0 divergencias em 352 condominios + 1 empresa + 1.095 blocos).
+                // Nota: sem filtro de deletedAt nas pre-resolucoes, igual ao transcurso
+                // relacional do Prisma (que tambem nao filtra deletedAt no traverse).
+                const needsContextComplexBlocks = contextType === ContextType.complex || !!extraWhere?.complexId;
+                const needsContextCompanyBlocks = contextType === ContextType.company;
+                const needsUserComplexBlocks = !hasSystemPermission && contexts.complexIds.length > 0;
+                const needsUserCompanyBlocks = !hasSystemPermission && contexts.companyIds.length > 0;
+
+                const [
+                    contextComplexBlockIds,
+                    contextCompanyComplexBlockIds,
+                    userComplexBlockIds,
+                    userCompanyComplexBlockIds,
+                ] = await Promise.all([
+                    needsContextComplexBlocks ? prisma.block.findMany({ where: { complexId: extraWhere?.complexId || contextId }, select: { id: true } }) : Promise.resolve([] as { id: string }[]),
+                    needsContextCompanyBlocks ? prisma.block.findMany({ where: { complex: { companyId: contextId } }, select: { id: true } }) : Promise.resolve([] as { id: string }[]),
+                    needsUserComplexBlocks ? prisma.block.findMany({ where: { complexId: { in: contexts.complexIds } }, select: { id: true } }) : Promise.resolve([] as { id: string }[]),
+                    needsUserCompanyBlocks ? prisma.block.findMany({ where: { complex: { companyId: { in: contexts.companyIds } } }, select: { id: true } }) : Promise.resolve([] as { id: string }[]),
+                ]);
+
                 const aptWhereOr = hasSystemPermission ? undefined : [
                     ...(contexts.apartmentIds.length > 0 ? [{ id: { in: contexts.apartmentIds } }] : []),
                     ...(contexts.blockIds.length > 0 ? [{ blockId: { in: contexts.blockIds } }] : []),
-                    ...(contexts.complexIds.length > 0 ? [{ OR: [{ complexId: { in: contexts.complexIds } }, { block: { complexId: { in: contexts.complexIds } } }] }] : []),
-                    ...(contexts.companyIds.length > 0 ? [{ OR: [{ companyId: { in: contexts.companyIds } }, { block: { complex: { companyId: { in: contexts.companyIds } } } }] }] : []),
+                    ...(contexts.complexIds.length > 0 ? [{ OR: [{ complexId: { in: contexts.complexIds } }, { blockId: { in: userComplexBlockIds.map(b => b.id) } }] }] : []),
+                    ...(contexts.companyIds.length > 0 ? [{ OR: [{ companyId: { in: contexts.companyIds } }, { blockId: { in: userCompanyComplexBlockIds.map(b => b.id) } }] }] : []),
                 ];
                 const contextFilter = contextType === ContextType.apartment ? { id: contextId } :
                                       contextType === ContextType.block ? { blockId: contextId } :
-                                      contextType === ContextType.complex ? { OR: [{ complexId: contextId }, { block: { complexId: contextId } }] } :
-                                      contextType === ContextType.company ? { OR: [{ companyId: contextId }, { block: { complex: { companyId: contextId } } }] } : {};
+                                      contextType === ContextType.complex ? { OR: [{ complexId: contextId }, { blockId: { in: contextComplexBlockIds.map(b => b.id) } }] } :
+                                      contextType === ContextType.company ? { OR: [{ companyId: contextId }, { blockId: { in: contextCompanyComplexBlockIds.map(b => b.id) } }] } : {};
 
                 // Se houver extraWhere com blockId ou complexId específico (ex: vindo da rota), prioriza ele
                 const mergedContextFilter = {
                     ...contextFilter,
                     ...(extraWhere?.blockId ? { blockId: extraWhere.blockId } : {}),
-                    ...(extraWhere?.complexId ? { OR: [{ complexId: extraWhere.complexId }, { block: { complexId: extraWhere.complexId } }] } : {}),
+                    ...(extraWhere?.complexId ? { OR: [{ complexId: extraWhere.complexId }, { blockId: { in: contextComplexBlockIds.map(b => b.id) } }] } : {}),
                 };
                 const cleanExtraWhere = { ...extraWhere };
                 delete cleanExtraWhere.blockId;

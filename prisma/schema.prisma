@@ -133,7 +133,6 @@ model User {
   webhooks Webhook[]
 
   // Índices
-  @@index([deletedAt])
   @@index([resetToken])
   @@index([createdAt])
   @@index([name])
@@ -705,7 +704,6 @@ model MeterDeviceLink {
   updatedByUserId String?
   updatedByUser   User? @relation("UpdatedByUser", fields: [updatedByUserId], references: [id]) // Relacionamento com User (Atualizador)
 
-  @@index([meterId])
   @@index([deviceId])
   @@index([startDate])
   @@index([endDate])
@@ -861,7 +859,6 @@ model Reading {
 
   // Índices
   @@index([meterId])
-  @@index([readAt])
   @@index([yearRef, monthRef])
   @@index([isPreReading])
   @@index([isManualReading])
@@ -871,12 +868,9 @@ model Reading {
   @@index([readAt, meterId, deletedAt])
   
   // 🔥 ÍNDICES CRÍTICOS PARA PERFORMANCE - Adicionados para otimização
-  @@index([deviceId]) // Para busca por deviceId (CRÍTICO AUSENTE)
-  @@index([deviceId, deletedAt]) // Para contagens por device
   @@index([deviceId, deletedAt, meterId]) // Para contagens específicas de readings desvinculadas
   @@index([deviceId, readAt]) // Para ordenação por device
   @@index([deletedAt, deviceId, readAt]) // Para ordenação por device
-  @@index([deletedAt, readAt])
   @@index([deletedAt, readAt, deviceId])
   @@index([deletedAt, isManualReading, createdAt(sort: Desc)])
   @@index([deletedAt, complexId, isManualReading, createdAt(sort: Desc)])
@@ -895,7 +889,6 @@ model Reading {
   @@index([companyId, deletedAt])
   @@index([deletedAt, meterId, readAtDate])
   @@index([meterId, readAtDate, deletedAt])
-  @@index([nextReadingDate])
   @@index([nextReadingDate, deletedAt])
 }
 

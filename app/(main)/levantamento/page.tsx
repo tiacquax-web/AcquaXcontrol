@@ -645,7 +645,7 @@ export default function LevantamentoPage() {
             waterSewage: ws,
             prevReading: item.history?.[0]?.lastReading?.reading ?? null,
             currReading: item.lastReading?.reading ?? null,
-            ...deriveReadingSchedule(item, md.dealershipReading, md.month, md.year),
+            ...(deriveReadingSchedule(item, md.dealershipReading, md.month, md.year) as any),
             photoUrl: item.lastReading?.urlCover ? sanitizeImageUrl(item.lastReading.urlCover) : null,
           };
         }

@@ -41,18 +41,18 @@ export interface DeviceWithStatus {
     currentMeter?: {
         id: string;
         register: string;
-        apartment: {
+        apartment?: {
             id: string;
             name: string;
-        };
+        } | null;
     };
     meter?: {
         id: string;
         register: string;
-        apartment: {
+        apartment?: {
             id: string;
             name: string;
-        };
+        } | null;
     };
     readingsCount: number;
     unlinkedReadingsCount: number;
@@ -334,6 +334,8 @@ export class DeviceManagementService {
                 id: activeLink.meter.id,
                 register: activeLink.meter.register,
                 apartment: activeLink.meter.apartment
+                    ? { id: activeLink.meter.apartment.id, name: activeLink.meter.apartment.name }
+                    : null
             } : undefined;
 
             return {
