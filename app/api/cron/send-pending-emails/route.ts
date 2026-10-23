@@ -92,14 +92,26 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       take: MAX_BATCH,
     });
 
-    if (pendingJobs.length === 0) {
-      return NextResponse.json({ processed: 0, sent: 0, failed: 0 });
+    // Filipetas individuais DESATIVADAS (23/10/2026, decisão da usuária): e-mails do
+    // sistema vão SOMENTE para o endereço cadastrado na aba do condomínio. Jobs de
+    // Filipeta na fila são cancelados; Management Insights continuam normais.
+    const filipetaJobs = pendingJobs.filter(j => !isManagementInsightJob(j.subject) && /^Filipeta/i.test(j.subject || ''));
+    if (filipetaJobs.length > 0) {
+      await prisma.emailJob.updateMany({
+        where: { id: { in: filipetaJobs.map(j => j.id) } },
+        data: { status: 'cancelled', errorMessage: 'Filipeta individual desativada (23/10/2026) — e-mails só para o e-mail cadastrado do condomínio' },
+      });
+    }
+    const activeJobs = pendingJobs.filter(j => !filipetaJobs.some(f => f.id === j.id));
+
+    if (activeJobs.length === 0) {
+      return NextResponse.json({ processed: 0, sent: 0, failed: 0, filipetasCanceladas: filipetaJobs.length });
     }
 
     // Buscar dados necessários em batch
-    const reportIds = pendingJobs.map(j => j.apartmentConsumptionReportId).filter(Boolean) as string[];
-    const apartmentIds = pendingJobs.map(j => j.apartmentId).filter(Boolean) as string[];
-    const complexIds = [...new Set(pendingJobs.map(j => j.complexId).filter(Boolean))] as string[];
+    const reportIds = activeJobs.map(j => j.apartmentConsumptionReportId).filter(Boolean) as string[];
+    const apartmentIds = activeJobs.map(j => j.apartmentId).filter(Boolean) as string[];
+    const complexIds = [...new Set(activeJobs.map(j => j.complexId).filter(Boolean))] as string[];
 
     const [reports, apartments, complexes] = await Promise.all([
       reportIds.length > 0 ? prisma.apartmentConsumptionReport.findMany({
@@ -126,7 +138,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     // Dados da conta do condomínio e do relatório anterior alimentam o extrato rico.
     const dealershipReadingIds = [...new Set(reports.map(r => r.dealershipReadingId).filter(Boolean))] as string[];
-    const previousRefs = pendingJobs.map(job => {
+    const previousRefs = activeJobs.map(job => {
       const ref = previousMonth(job.monthRef, job.yearRef);
       return { apartmentId: job.apartmentId, ...ref };
     }).filter(ref => ref.apartmentId) as Array<{ apartmentId: string; monthRef: string; yearRef: string }>;
@@ -181,7 +193,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     // Processar cada job
     let zohoBlocked = false;
-    for (const job of pendingJobs) {
+    for (const job of activeJobs) {
       if (zohoBlocked) break;
       try {
         // Pular emails de domínios internos da empresa (sistema/admin)
@@ -352,8 +364,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    console.log(`[EmailCron] Processados: ${pendingJobs.length}, enviados: ${sent}, falhas: ${failed}, pulados: ${skipped}`);
-    return NextResponse.json({ processed: pendingJobs.length, sent, failed, skipped, zohoBlocked });
+    console.log(`[EmailCron] Processados: ${activeJobs.length}, enviados: ${sent}, falhas: ${failed}, pulados: ${skipped}, filipetas canceladas: ${filipetaJobs.length}`);
+    return NextResponse.json({ processed: activeJobs.length, sent, failed, skipped, filipetasCanceladas: filipetaJobs.length, zohoBlocked });
   } catch (error: any) {
     console.error('[EmailCron] Erro fatal:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
