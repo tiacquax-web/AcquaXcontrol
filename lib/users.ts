@@ -85,7 +85,9 @@ export async function updateUserPassword(id: string, password: string) {
         // Limpar flag de redefinição obrigatória quando usuário redefine senha
         resetToken: null,
         resetTokenExpiry: null,
-        mustUpdateCredentials: false
+        mustUpdateCredentials: false,
+        // Auditoria: redefinição feita pelo próprio usuário
+        updatedByUserId: id,
       },
     });
 
@@ -113,6 +115,9 @@ export async function updateUser(id: string, data: User, userId:string) {
       data.email = normalizeEmail(data.email);
     }
 
+    // Auditoria: registra quem fez a alteração (agente interna no dashboard)
+    (data as any).updatedByUserId = userId;
+
     const {entity, error, status} = await updateEntityData(userId, 'user', id, data);
     
     console.log("######### User:", entity)
@@ -138,6 +143,8 @@ export async function updateCurrentUser(id: string, data: Partial<User>, userId:
     for (const key of allowedFields) {
       if ((data as any)[key] !== undefined) updateData[key] = (data as any)[key];
     }
+    // Auditoria: alteração de perfil feita pelo próprio usuário
+    updateData.updatedByUserId = id;
 
     // If password provided, allow change when authenticated user equals target user
     if ((data as any).password) {

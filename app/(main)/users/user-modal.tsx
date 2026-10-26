@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
+import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -149,6 +150,18 @@ export default function UserModal({ isOpen, onClose, onSave, user, handleDeleteR
                                         onChange={handleChange}
                                     />
                                 </div>
+
+                                {userExists && (user as any)?.updatedAt && (
+                                    <div className="rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                                        <span className="font-medium text-foreground">Última atualização: </span>
+                                        {format(new Date((user as any).updatedAt), "dd/MM/yyyy 'às' HH:mm")}
+                                        {(user as any).updatedBySelf
+                                            ? ' — pelo próprio usuário'
+                                            : (user as any).updatedByName
+                                                ? ` — por ${(user as any).updatedByName}`
+                                                : ' — autor não registrado'}
+                                    </div>
+                                )}
                             </div>
                         </TabsContent>
 

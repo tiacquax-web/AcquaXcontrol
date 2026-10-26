@@ -189,8 +189,17 @@ export async function GET(req: NextRequest): Promise<Response> {
         // O condomínio do usuário é essencial na aba de usuários. Resolvemos a partir
         // dos RoleAssignments (apartment → block → complex) em uma única passada.
         const locationMap = await getUserLocations(entity.map((u: any) => u.id))
+
+        // ── Auditoria: quem fez a última atualização de cada usuário ──────────────
+        const editorIds = [...new Set(entity.map((u: any) => u.updatedByUserId).filter(Boolean))] as string[];
+        const editors = editorIds.length > 0
+            ? await prisma.user.findMany({ where: { id: { in: editorIds } }, select: { id: true, name: true } })
+            : [];
+        const editorNameById = new Map(editors.map(e => [e.id, e.name]));
+
         const list = entity.map((u: any) => {
             const loc = locationMap.get(u.id)
+            const updatedBySelf = !!u.updatedByUserId && u.updatedByUserId === u.id
             return {
                 ...u,
                 complexId: loc?.complexId ?? null,
@@ -199,6 +208,8 @@ export async function GET(req: NextRequest): Promise<Response> {
                 blockName: loc?.blockName ?? null,
                 apartmentId: loc?.apartmentId ?? null,
                 apartmentName: loc?.apartmentName ?? null,
+                updatedByName: updatedBySelf ? (u.name || null) : (u.updatedByUserId ? (editorNameById.get(u.updatedByUserId) ?? null) : null),
+                updatedBySelf,
             }
         })
 

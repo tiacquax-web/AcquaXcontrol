@@ -21,7 +21,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
         // A listagem de usuários enriquece cada item com a localização (condomínio/bloco/apto)
         // apenas para exibição. Esses campos NÃO existem no modelo User; se voltarem no PUT
         // (o modal reenvia o objeto inteiro) o Prisma recusa com "Unknown argument `complexId`".
-        for (const k of ['complexId', 'complexName', 'blockId', 'blockName', 'apartmentId', 'apartmentName']) {
+        for (const k of ['complexId', 'complexName', 'blockId', 'blockName', 'apartmentId', 'apartmentName',
+                        // Campos de auditoria: gravados pelo servidor (lib/users.ts), nunca pelo cliente
+                        'updatedAt', 'updatedByUserId', 'updatedByName', 'updatedBySelf', 'createdAt', 'createdByUserId']) {
             delete (body as any)[k];
         }
         console.log("######### Request Body:", reqBody)
