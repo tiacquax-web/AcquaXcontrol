@@ -7,7 +7,7 @@ import { useUserContext } from "@/hooks/useUserContext"
 import { Skeleton } from "@/components/ui/skeleton"
 
 import {
-  CircleGauge, Building2, Building, DoorClosed,
+  CircleGauge, Building2, Building, DoorClosed, Link2,
   Gauge, ShieldCheck, HousePlus, ReceiptText,
   ChartBarIncreasing, LayoutDashboard, GaugeCircle,
   Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen, ClipboardList,
@@ -156,6 +156,13 @@ const items = [
     title: "Apartamentos",
     url: "/apartments",
     icon: DoorClosed,
+    group: 'Cadastros',
+    requiresCreate: true,
+  },
+  {
+    title: "Links de Cadastro",
+    url: "/links-cadastro",
+    icon: Link2,
     group: 'Cadastros',
     requiresCreate: true,
   },

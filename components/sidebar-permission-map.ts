@@ -16,6 +16,7 @@ export const sidebarPermissionMap: Record<string, string> = {
   '/reservoirs': 'reservoir',
   '/companies': 'company',
   '/complexes': 'complex',
+  '/links-cadastro': 'complex',
   '/blocks': 'block',
   '/apartments': 'apartment',
   '/meters': 'meter',

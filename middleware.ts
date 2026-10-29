@@ -142,6 +142,8 @@ export async function middleware(req: NextRequest) {
     '/logo-acquax.png', '/manifest.webmanifest', '/sw.js', '/offline',
     '/icons', '/.well-known', '/screenshots', '/logo-quadrada',
     '/news/', '/services/', '/public/', '/suspended',
+    '/cadastro/', // auto-cadastro de moradores por link público
+    '/api/public/',
   ];
   if (publicPaths.some((p) => pathname.startsWith(p))) {
     const res = NextResponse.next();

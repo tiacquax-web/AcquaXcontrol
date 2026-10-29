@@ -412,6 +412,7 @@ model Complex {
 
   // Relacionamento com Block
   blocks Block[]
+  registrationInvites RegistrationInvite[]
 
   // Relacionamento com Company
   companyId String?
@@ -2002,4 +2003,35 @@ model Comunicado {
   @@map("Comunicados")
   @@index([isPublished, createdAt])
   @@index([deletedAt])
+}
+
+// ─── Auto-cadastro de moradores por link do condomínio ───────────────────────
+// Um link por condomínio (token público). O morador escolhe bloco/unidade e
+// cria o próprio acesso. Uma unidade só pode ser cadastrada uma vez.
+model RegistrationInvite {
+  id              String    @id @map("_id") @default(uuid())
+  token           String    @unique
+  complexId       String
+  Complex         Complex   @relation(fields: [complexId], references: [id])
+  active          Boolean   @default(true)
+  createdByUserId String?
+  createdAt       DateTime  @default(now()) @db.Timestamp
+  updatedAt       DateTime? @updatedAt @db.Timestamp
+  deletedAt       DateTime? @db.Timestamp
+
+  @@map("RegistrationInvites")
+  @@index([complexId])
+}
+
+// Trava atômica por unidade: @unique em apartmentId impede duas pessoas de
+// cadastrarem a mesma unidade simultaneamente (race condition). Quando o
+// morador é removido pela administração, o claim é reaproveitado.
+model RegistrationClaim {
+  id          String   @id @map("_id") @default(uuid())
+  apartmentId String   @unique
+  userId      String?
+  inviteId    String?
+  createdAt   DateTime @default(now()) @db.Timestamp
+
+  @@map("RegistrationClaims")
 }
