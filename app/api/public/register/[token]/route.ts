@@ -81,7 +81,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
     });
   } catch (e: any) {
     console.error('[Register] GET erro:', e?.message);
-    return NextResponse.json({ error: 'Erro ao carregar dados do condomínio.', _debug: String(e?.message || e).slice(-600) + ' | CODE:' + (e?.code || '') }, { status: 500 });
+    return NextResponse.json({ error: 'Erro ao carregar dados do condomínio.' }, { status: 500 });
   }
 }
 
