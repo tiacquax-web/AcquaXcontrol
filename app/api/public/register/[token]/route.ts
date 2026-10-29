@@ -18,7 +18,8 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function loadInvite(token: string) {
   return prisma.registrationInvite.findFirst({
-    where: { token, active: true, deletedAt: null },
+    // Prisma 6: campo ausente no doc não casa com `deletedAt: null` → usar OR
+    where: { token, active: true, ...ACTIVE },
     select: { id: true, complexId: true, Complex: { select: { id: true, socialName: true, deletedAt: true } } },
   });
 }

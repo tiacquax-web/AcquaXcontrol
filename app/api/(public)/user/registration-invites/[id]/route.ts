@@ -16,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const active = !!body.active;
 
     const invite = await prisma.registrationInvite.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
       select: { id: true, complexId: true, Complex: { select: { companyId: true } } },
     });
     if (!invite) return NextResponse.json({ error: 'Link não encontrado.' }, { status: 404 });

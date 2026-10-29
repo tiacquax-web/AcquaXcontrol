@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
     const contexts = await getUserContexts(userId);
     const invites = await prisma.registrationInvite.findMany({
-      where: { deletedAt: null },
+      where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
       select: {
         id: true, token: true, active: true, createdAt: true, complexId: true,
         Complex: { select: { id: true, socialName: true } },
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
 
     // Reaproveita link ativo existente
     const existing = await prisma.registrationInvite.findFirst({
-      where: { complexId, deletedAt: null },
+      where: { complexId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
       select: { id: true, token: true, active: true },
     });
     if (existing) {
