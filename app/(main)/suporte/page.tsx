@@ -381,9 +381,9 @@ export default function SuportePage() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-[calc(100vh-80px)] max-h-[900px]">
+    <div className="flex flex-col h-[calc(100vh-6rem)] supports-[height:100dvh]:h-[calc(100dvh-6rem)] md:h-[calc(100vh-5rem)] md:max-h-[900px]">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-card shrink-0">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b bg-card shrink-0 sm:px-4 sm:py-3">
         <div className="flex items-center gap-3">
           <div className="bg-teal-100 p-2 rounded-lg">
             <MessageSquare className="w-5 h-5 text-teal-600" />
@@ -410,7 +410,7 @@ export default function SuportePage() {
                 </span>
               )}
             </h1>
-            <p className="text-xs text-muted-foreground">Atendimento privado com a equipe AcquaX</p>
+            <p className="hidden text-xs text-muted-foreground sm:block">Atendimento privado com a equipe AcquaX</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -427,11 +427,11 @@ export default function SuportePage() {
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* ════════════════════════════════════════════════════════════════
             LISTA DE TICKETS (painel esquerdo)
             ════════════════════════════════════════════════════════════════ */}
-        <div className={`flex flex-col border-r bg-muted/30 shrink-0 w-full sm:w-72 md:w-80 ${selectedTicket ? 'hidden sm:flex' : 'flex'}`}>
+        <div className={`flex flex-col min-h-0 border-r bg-muted/30 shrink-0 w-full sm:w-72 md:w-80 ${selectedTicket ? 'hidden sm:flex' : 'flex'}`}>
           {/* Filtros */}
           <div className="p-3 border-b bg-card space-y-2">
             <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -529,7 +529,7 @@ export default function SuportePage() {
         {/* ════════════════════════════════════════════════════════════════
             ÁREA DO CHAT (painel direito)
             ════════════════════════════════════════════════════════════════ */}
-        <div className={`flex-1 flex flex-col bg-card ${selectedTicket ? 'flex' : 'hidden sm:flex'}`}>
+        <div className={`flex-1 flex flex-col min-h-0 bg-card ${selectedTicket ? 'flex' : 'hidden sm:flex'}`}>
           {!selectedTicket ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
               <MessageSquare className="w-12 h-12 opacity-20" />
@@ -606,7 +606,7 @@ export default function SuportePage() {
               </div>
 
               {/* ── Messages ── */}
-              <ScrollArea className="flex-1 px-4 py-4">
+              <ScrollArea className="flex-1 min-h-0 px-4 py-4">
                 <div className="space-y-4 max-w-2xl mx-auto">
                   {(selectedTicket.messages ?? []).map(msg => {
                     const isMyMessage = !msg.isAdmin || (isAdmin && msg.isAdmin);
@@ -665,7 +665,7 @@ export default function SuportePage() {
                   </Alert>
                 </div>
               ) : (
-                <div className="px-4 py-3 border-t bg-card shrink-0">
+                <div className="px-3 py-2.5 border-t bg-card shrink-0 sm:px-4 sm:py-3">
                   {/* Hidden file input */}
                   <input
                     ref={fileInputRef}
@@ -698,7 +698,7 @@ export default function SuportePage() {
                       placeholder="Digite sua mensagem..."
                       value={newMsg}
                       onChange={e => setNewMsg(e.target.value)}
-                      className="min-h-[60px] max-h-[140px] resize-none text-sm"
+                      className="min-h-[56px] max-h-[140px] resize-none text-base md:text-sm"
                       onKeyDown={e => {
                         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSendMessage();
                       }}
@@ -729,7 +729,7 @@ export default function SuportePage() {
                       </Button>
                     </div>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1 max-w-2xl mx-auto">Ctrl+Enter para enviar · Anexos até 2 MB</p>
+                  <p className="mt-1 max-w-2xl mx-auto text-center text-[10px] text-muted-foreground"><span className="hidden sm:inline">Ctrl+Enter para enviar · </span>Anexos até 2 MB</p>
                 </div>
               )}
             </>
