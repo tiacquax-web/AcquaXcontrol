@@ -384,7 +384,7 @@ export default function SuportePage() {
     <div className="flex flex-col h-[calc(100vh-6rem)] supports-[height:100dvh]:h-[calc(100dvh-6rem)] md:h-[calc(100vh-5rem)] md:max-h-[900px]">
       {/* ── Header ── */}
       <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b bg-card shrink-0 sm:px-4 sm:py-3">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="bg-teal-100 p-2 rounded-lg">
             <MessageSquare className="w-5 h-5 text-teal-600" />
           </div>
@@ -431,7 +431,7 @@ export default function SuportePage() {
         {/* ════════════════════════════════════════════════════════════════
             LISTA DE TICKETS (painel esquerdo)
             ════════════════════════════════════════════════════════════════ */}
-        <div className={`flex flex-col min-h-0 border-r bg-muted/30 shrink-0 w-full sm:w-72 md:w-80 ${selectedTicket ? 'hidden sm:flex' : 'flex'}`}>
+        <div className={`flex min-w-0 flex-col min-h-0 border-r bg-muted/30 shrink-0 w-full sm:w-72 md:w-80 ${selectedTicket ? 'hidden sm:flex' : 'flex'}`}>
           {/* Filtros */}
           <div className="p-3 border-b bg-card space-y-2">
             <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -529,7 +529,7 @@ export default function SuportePage() {
         {/* ════════════════════════════════════════════════════════════════
             ÁREA DO CHAT (painel direito)
             ════════════════════════════════════════════════════════════════ */}
-        <div className={`flex-1 flex flex-col min-h-0 bg-card ${selectedTicket ? 'flex' : 'hidden sm:flex'}`}>
+        <div className={`flex flex-1 min-w-0 flex-col min-h-0 bg-card ${selectedTicket ? 'flex' : 'hidden sm:flex'}`}>
           {!selectedTicket ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
               <MessageSquare className="w-12 h-12 opacity-20" />
@@ -543,7 +543,7 @@ export default function SuportePage() {
           ) : (
             <>
               {/* ── Ticket header ── */}
-              <div className="flex items-center gap-3 px-4 py-3 border-b bg-muted/30 shrink-0">
+              <div className="flex min-w-0 items-center gap-3 px-4 py-3 border-b bg-muted/30 shrink-0">
                 <button
                   className="sm:hidden p-1 rounded hover:bg-muted"
                   onClick={() => setSelectedTicket(null)}
@@ -551,18 +551,18 @@ export default function SuportePage() {
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="font-semibold text-sm truncate">{selectedTicket.subject}</h2>
+                  <div className="flex min-w-0 items-center gap-2 flex-wrap">
+                    <h2 className="min-w-0 font-semibold text-sm truncate">{selectedTicket.subject}</h2>
                     <StatusBadge status={selectedTicket.status} />
                   </div>
                   {isAdmin && selectedTicket.user && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
                       {selectedTicket.user.name} · {selectedTicket.user.email}
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                  <p className="text-xs text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1">
                     <Building2 className="w-3 h-3 shrink-0" />
-                    {selectedTicket.complex?.socialName || 'Condomínio não informado'}
+                    <span className="truncate">{selectedTicket.complex?.socialName || 'Condomínio não informado'}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Aberto em {timeAgo(selectedTicket.createdAt)}
@@ -622,7 +622,7 @@ export default function SuportePage() {
                         </div>
                         {/* Bubble */}
                         <div className={`max-w-[75%] ${fromAdmin ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-                          <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${fromAdmin ? 'bg-teal-600 text-white rounded-tr-sm' : 'bg-muted text-foreground rounded-tl-sm'}`}>
+                          <div className={`min-w-0 break-words rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${fromAdmin ? 'bg-teal-600 text-white rounded-tr-sm' : 'bg-muted text-foreground rounded-tl-sm'}`}>
                             {msg.content}
                             {msg.attachmentUrl && (
                               msg.attachmentUrl.startsWith('data:image/') ? (
@@ -698,13 +698,13 @@ export default function SuportePage() {
                       placeholder="Digite sua mensagem..."
                       value={newMsg}
                       onChange={e => setNewMsg(e.target.value)}
-                      className="min-h-[56px] max-h-[140px] resize-none text-base md:text-sm"
+                      className="min-w-0 min-h-[56px] max-h-[140px] resize-none text-base md:text-sm"
                       onKeyDown={e => {
                         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSendMessage();
                       }}
                       disabled={sendingMsg}
                     />
-                    <div className="flex flex-col gap-2">
+                    <div className="flex shrink-0 flex-col gap-2">
                       {/* Attach file button */}
                       <Button
                         type="button"
