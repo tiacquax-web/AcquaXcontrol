@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -799,18 +799,33 @@ const CHAPTER_CONTENT: Record<string, React.ReactNode> = {
 // ─── Main page ─────────────────────────────────────────────────────────────────
 export default function GuiaPage() {
   const [activeChapter, setActiveChapter] = useState<string>("intro")
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // No desktop o sumário começa aberto; no celular começa fechado (ocupa a tela toda)
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches) {
+      setSidebarOpen(true)
+    }
+  }, [])
 
   const chapter = chapters.find(c => c.id === activeChapter)!
   const Icon = chapter.icon
   const parts = [...new Set(chapters.map(c => c.part))]
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-slate-50">
+    <div className="flex h-[calc(100vh-6rem)] supports-[height:100dvh]:h-[calc(100dvh-6rem)] overflow-hidden bg-slate-50 md:h-[calc(100vh-4rem)]">
+
+      {/* Backdrop do sumário no celular */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       {/* ── Sidebar ── */}
       <aside
-        className={`shrink-0 overflow-y-auto bg-white border-r border-slate-200 transition-all duration-200 ${sidebarOpen ? "w-64" : "w-0 overflow-hidden"}`}
+        className={`shrink-0 overflow-y-auto bg-white border-r border-slate-200 transition-all duration-200 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl ${sidebarOpen ? "w-64" : "w-0 overflow-hidden"}`}
       >
         <div className="p-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
@@ -831,7 +846,11 @@ export default function GuiaPage() {
                 return (
                   <button
                     key={c.id}
-                    onClick={() => setActiveChapter(c.id)}
+                    onClick={() => {
+                      setActiveChapter(c.id)
+                      // No celular o sumário é um drawer: fecha ao escolher um capítulo
+                      if (window.matchMedia("(max-width: 767px)").matches) setSidebarOpen(false)
+                    }}
                     className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-sm transition-colors mb-0.5 ${
                       isActive
                         ? "bg-teal-50 text-teal-700 font-semibold"
@@ -852,7 +871,7 @@ export default function GuiaPage() {
       {/* ── Content ── */}
       <main className="flex-1 overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 flex items-center gap-4">
+        <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
           <button
             onClick={() => setSidebarOpen(v => !v)}
             className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
@@ -860,7 +879,7 @@ export default function GuiaPage() {
           >
             {sidebarOpen ? <ChevronDown size={18} className="-rotate-90" /> : <ChevronRight size={18} />}
           </button>
-          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium ${colorMap[chapter.color]}`}>
+          <div className={`inline-flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:text-sm ${colorMap[chapter.color]}`}>
             <Icon size={16} />
             {chapter.title}
           </div>
@@ -868,14 +887,14 @@ export default function GuiaPage() {
         </div>
 
         {/* Body */}
-        <div className="px-6 py-6 max-w-3xl">
-          <h1 className="text-2xl font-bold text-slate-800 mb-1">{chapter.title}</h1>
+        <div className="max-w-3xl px-4 py-5 sm:px-6 sm:py-6">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 mb-1">{chapter.title}</h1>
           <div className="h-1 w-16 bg-teal-500 rounded-full mb-6" />
           {CHAPTER_CONTENT[activeChapter] ?? <p className="text-slate-400">Conteúdo em breve.</p>}
         </div>
 
         {/* Navigation footer */}
-        <div className="px-6 pb-10 flex items-center justify-between max-w-3xl">
+        <div className="flex max-w-3xl items-center justify-between gap-3 px-4 pb-10 sm:px-6">
           {(() => {
             const idx = chapters.findIndex(c => c.id === activeChapter)
             const prev = chapters[idx - 1]
