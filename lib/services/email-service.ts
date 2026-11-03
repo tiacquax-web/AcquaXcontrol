@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import prisma from '@/lib/prisma';
 
 let transporter: nodemailer.Transporter | null = null;
 
@@ -50,19 +51,67 @@ function getTransporter(): nodemailer.Transporter {
   return transporter;
 }
 
+/**
+ * Contexto de auditoria: todo envio direto (fora da fila) fica registrado em
+ * EmailJob com origin = 'direct', para aparecer na Saúde do Envio de E-mails.
+ */
+export interface EmailLogContext {
+  category?: string;
+  complexId?: string | null;
+  apartmentId?: string | null;
+  monthRef?: string | null;
+  yearRef?: string | null;
+  userId?: string | null;
+  /** true quando quem envia é o próprio cron da fila (o job já registra o envio). */
+  skipLog?: boolean;
+}
+
 export interface SendEmailParams {
   to: string;
   toName?: string;
   subject: string;
   html: string;
   text?: string;
+  log?: EmailLogContext;
 }
 
-export async function sendEmail({ to, toName, subject, html, text }: SendEmailParams): Promise<{ success: boolean; messageId?: string; error?: string }> {
+async function logEmailSend(
+  params: SendEmailParams,
+  result: { success: boolean; error?: string },
+): Promise<void> {
+  if (params.log?.skipLog) return;
+  try {
+    await prisma.emailJob.create({
+      data: {
+        toEmail: params.to,
+        toName: params.toName || null,
+        subject: params.subject,
+        category: params.log?.category || 'outro',
+        origin: 'direct',
+        priority: 9,
+        monthRef: params.log?.monthRef || '',
+        yearRef: params.log?.yearRef || '',
+        complexId: params.log?.complexId || null,
+        apartmentId: params.log?.apartmentId || null,
+        status: result.success ? 'sent' : 'failed',
+        errorMessage: result.success ? null : (result.error || 'Erro ao enviar'),
+        sentAt: result.success ? new Date() : null,
+        attempts: 1,
+        createdByUserId: params.log?.userId || null,
+      },
+    });
+  } catch (logError: any) {
+    console.warn('[EmailService] Não foi possível registrar o envio:', logError?.message || logError);
+  }
+}
+
+export async function sendEmail(params: SendEmailParams): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const { to, toName, subject, html, text } = params;
   if (!to || !to.includes('@')) {
     return { success: false, error: 'Destinatário de e-mail inválido.' };
   }
 
+  let outcome: { success: boolean; messageId?: string; error?: string };
   try {
     const config = getEmailConfig();
     const mailTransporter = getTransporter();
@@ -75,12 +124,15 @@ export async function sendEmail({ to, toName, subject, html, text }: SendEmailPa
       ...(process.env.EMAIL_REPLY_TO ? { replyTo: process.env.EMAIL_REPLY_TO } : {}),
     });
 
-    return { success: true, messageId: info.messageId };
+    outcome = { success: true, messageId: info.messageId };
   } catch (error: any) {
     const message = error?.response ? `${error.message} (${error.response})` : error?.message;
     console.error('[EmailService] Falha no envio:', message || error);
-    return { success: false, error: message || 'Erro ao enviar email' };
+    outcome = { success: false, error: message || 'Erro ao enviar email' };
   }
+
+  await logEmailSend(params, outcome);
+  return outcome;
 }
 
 /** Retorna se há credenciais suficientes para tentar o envio. */

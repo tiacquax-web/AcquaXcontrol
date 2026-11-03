@@ -7,9 +7,6 @@
 
 import prisma from '@/lib/prisma';
 import { findApartmentRecipients } from '@/lib/services/notification-recipients';
-import { sendEmail } from '@/lib/services/email-service';
-import { generateFilipetaEmail } from '@/lib/services/filipeta-email-template';
-import { getConsumptionAnalysis } from '@/lib/services/consumption-analysis';
 
 const BLOCKED_DOMAINS = [
   'acquaxdobrasil.com.br',
@@ -163,7 +160,6 @@ export async function createEmailJobForReport(
 
     const subject = `Filipeta ${report.DealershipReading.monthRef}/${report.DealershipReading.yearRef} - ${report.apartment.name}`;
     
-    let jobId = existing?.id;
     if (!existing) {
       const newJob = await prisma.emailJob.create({
         data: {
@@ -180,75 +176,16 @@ export async function createEmailJobForReport(
           createdByUserId: createdByUserId || null,
         },
       });
-      jobId = newJob.id;
       created++;
     } else {
       await prisma.emailJob.update({
         where: { id: existing.id },
         data: { status: 'pending', attempts: 0, errorMessage: null, sentAt: null },
       });
-      jobId = existing.id;
     }
 
-    // ENVIAR IMEDIATAMENTE AO SALVAR O RELATÓRIO
-    try {
-      const dealership = report.DealershipReading;
-      const readingDate = report.lastReading?.readAtDate || dealership?.readingDate || null;
-      const nextReadingDate = report.lastReading?.nextReadingDate || dealership?.readingDateNext || undefined;
-      const periodEnd = readingDate ? String(readingDate).split(/[ T]/)[0] : undefined;
-
-      let analysis;
-      try {
-        analysis = await getConsumptionAnalysis(report.apartmentId, report.id, report.totalConsumption ?? report.consumption);
-      } catch (e) {}
-
-      const emailPayload = generateFilipetaEmail({
-        residentName: recipient.name || 'Morador',
-        apartmentName: report.apartment.name || '',
-        blockName: report.apartment.block?.name || '',
-        complexName: 'Condomínio',
-        monthRef: dealership.monthRef,
-        yearRef: dealership.yearRef || '',
-        consumption: report.consumption,
-        totalConsumption: report.totalConsumption ?? undefined,
-        initialReading: null,
-        finalReading: report.lastReading?.reading ?? null,
-        consumptionCost: report.consumptionCost,
-        sewageCost: report.sewageCost,
-        totalUnit: report.totalUnit,
-        rateioValue: report.partial ?? null,
-        utilityType: report.utilityType || undefined,
-        readingDate: readingDate ? String(readingDate) : undefined,
-        nextReadingDate,
-        periodEnd,
-        condominiumConsumption: dealership?.dealershipConsumption ?? null,
-        condominiumBillValue: dealership?.totalValue ?? null,
-        consumptionPerEconomy: dealership?.average ?? null,
-        analysis,
-      });
-
-      const sendResult = await sendEmail({
-        to: recipient.email,
-        toName: recipient.name,
-        subject: emailPayload.subject,
-        html: emailPayload.html,
-        text: emailPayload.text,
-      });
-
-      if (sendResult.success) {
-        await prisma.emailJob.update({
-          where: { id: jobId! },
-          data: { status: 'sent', sentAt: new Date(), errorMessage: null },
-        });
-      } else {
-        await prisma.emailJob.update({
-          where: { id: jobId! },
-          data: { status: 'failed', errorMessage: sendResult.error },
-        });
-      }
-    } catch (sendErr: any) {
-      console.error('[EmailJob] Erro ao enviar:', sendErr);
-    }
+    // O envio é feito pelo cron /api/cron/send-pending-emails, que respeita
+    // o ritmo humano (intervalo aleatório de 25-90s entre e-mails).
   }
 
   return { created, skipped: 0, total: validRecipients.length };

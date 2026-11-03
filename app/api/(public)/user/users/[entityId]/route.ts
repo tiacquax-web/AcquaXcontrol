@@ -105,6 +105,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ enti
                     subject: 'Bem-vindo(a) ao AcquaXcontrol!',
                     html: welcomeHtml,
                     text: 'Seu acesso ao AcquaX Control foi liberado com sucesso. Atraves da plataforma voce podera acompanhar seu consumo de agua, consultar filipetas mensais e monitorar seu consumo diario. Seja bem-vindo(a)! Acesse www.acquaxcontrol.com.br',
+                    log: { category: 'welcome', userId },
                 });
                 emailSent = emailResult.success;
                 emailError = emailResult.success ? null : (emailResult.error || 'Falha no envio');

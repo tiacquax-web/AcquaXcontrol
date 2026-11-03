@@ -195,6 +195,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         sendEmail({
           to: user.email,
           toName: user.name,
+          log: { category: 'welcome' },
           subject: `Cadastro confirmado - ${complexName}`,
           html,
           text: `Cadastro confirmado para ${apartment.name} - Bloco ${apartment.block?.name ?? '-'}. Acesse www.acquaxcontrol.com.br/login`,

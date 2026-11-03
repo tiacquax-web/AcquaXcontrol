@@ -122,6 +122,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       subject,
       html,
       text,
+      log: { category: 'teste' },
     });
 
     if (result.success) {

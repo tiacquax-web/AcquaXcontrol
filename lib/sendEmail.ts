@@ -10,5 +10,6 @@ export default async function sendEmail(to: string, subject: string, text: strin
     subject,
     text,
     html: html || `<p>${text}</p>`,
+    log: { category: 'reset' },
   });
 }

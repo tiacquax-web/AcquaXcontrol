@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { sendEmail } from '@/lib/services/email-service';
+import { enqueueEmail } from '@/lib/services/email-queue';
 import { findComplexManagementRecipients, isExternalNotificationEmail } from '@/lib/services/notification-recipients';
 
 export const runtime = 'nodejs';
@@ -246,12 +247,13 @@ Em caso de duvidas: medicao@acquaxdobrasil.com.br e/ou 4003-7945.`;
     // 7. Enviar email para cada síndico/administradora
     for (const recipient of validRecipients) {
       try {
-        await sendEmail({
+        await enqueueEmail({
           to: recipient.email,
           toName: recipient.name,
           subject: `Alertas de Consumo - ${complexName} (ultimos 7 dias)`,
-          html,
-          text,
+          category: 'aviso',
+          payload: { subject: `Alertas de Consumo - ${complexName} (ultimos 7 dias)`, html, text },
+          complexId,
         });
         emailsSent++;
       } catch (e) {

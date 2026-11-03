@@ -1943,6 +1943,15 @@ model EmailJob {
   complexId               String?
   apartmentId             String?
 
+  // Origem/categoria do e-mail: filipeta | insight | welcome | reset | aviso | teste | outro
+  category                String?     @default("filipeta")
+  // direct = envio imediato fora da fila (registrado só para aparecer na saúde do e-mail)
+  origin                  String?     @default("queue") // queue | direct
+  // Ordem de saída na fila (menor = sai antes). Reset/boas-vindas passam na frente das filipetas.
+  priority                Int         @default(5)
+  // Dados do template renderizado no envio (usado por boas-vindas/reset)
+  payload                 Json?
+
   // Status do envio
   status                  String      @default("pending") // pending | sent | failed | skipped
   errorMessage            String?
@@ -1956,6 +1965,8 @@ model EmailJob {
 
   @@map("EmailJobs")
   @@index([status, createdAt])
+  @@index([status, priority, createdAt])
+  @@index([category, createdAt])
   @@index([dealershipReadingId])
   @@index([apartmentConsumptionReportId])
   @@index([complexId, monthRef, yearRef])

@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { sendEmail } from '@/lib/services/email-service';
+import { enqueueEmail } from '@/lib/services/email-queue';
 import { findComplexManagementRecipients, isExternalNotificationEmail } from '@/lib/services/notification-recipients';
 import { detectLeaksForComplex } from '@/lib/services/leak-detection-service';
 
@@ -118,12 +119,13 @@ Em caso de duvidas: medicao@acquaxdobrasil.com.br e/ou 4003-7945.`;
 
     for (const recipient of validRecipients) {
       try {
-        await sendEmail({
+        await enqueueEmail({
           to: recipient.email,
           toName: recipient.name,
           subject: `Possiveis Vazamentos - ${cx.socialName}`,
-          html,
-          text,
+          category: 'aviso',
+          payload: { subject: `Possiveis Vazamentos - ${cx.socialName}`, html, text },
+          complexId: cx.id,
         });
         emailsSent++;
       } catch (e) {

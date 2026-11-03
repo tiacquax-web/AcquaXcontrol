@@ -42,6 +42,16 @@ import OperationsHealthCard from '@/components/dashboard/OperationsHealthCard';
 import { useRolePreview } from '@/contexts/RolePreviewContext';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
+const EMAIL_CATEGORY_LABEL: Record<string, string> = {
+  filipeta: 'Filipeta',
+  welcome: 'Boas-vindas',
+  reset: 'Reset de senha',
+  aviso: 'Aviso',
+  insight: 'Gestão',
+  teste: 'Teste',
+  outro: 'Outro',
+};
+
 const MONTH_NAMES_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
 function buildMonthOptions(count = 24) {
@@ -1231,7 +1241,7 @@ function AdminKPIDashboard({ showEmailHealth = false }: { showEmailHealth?: bool
               </div>
               <div className="space-y-2">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Últimos disparos:</p>
-                {emailStats.lastJobs?.slice(0, 5).map((j: any) => (
+                {emailStats.lastJobs?.slice(0, 20).map((j: any) => (
                   <div key={j.id} className="flex items-center justify-between text-[11px] py-1 border-b last:border-0">
                     <div className="min-w-0 flex-1">
                       <p className="font-medium truncate">{j.toEmail}</p>
@@ -1242,7 +1252,11 @@ function AdminKPIDashboard({ showEmailHealth = false }: { showEmailHealth?: bool
                       <Badge variant={j.status === 'sent' ? 'default' : j.status === 'failed' ? 'destructive' : 'secondary'} className="text-[9px] px-1 h-4">
                         {j.status}
                       </Badge>
-                      <p className="text-[9px] text-muted-foreground mt-0.5">{new Date(j.createdAt).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">
+                        {EMAIL_CATEGORY_LABEL[j.category || 'outro'] || 'Outro'}
+                        {j.origin === 'direct' ? ' · imediato' : ''}
+                      </p>
+                      <p className="text-[9px] text-muted-foreground">{new Date(j.createdAt).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                     </div>
                   </div>
                 ))}

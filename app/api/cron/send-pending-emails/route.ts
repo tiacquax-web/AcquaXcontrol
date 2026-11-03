@@ -20,18 +20,25 @@ import { generateFilipetaEmail } from '@/lib/services/filipeta-email-template';
 import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 import { getConsumptionAnalysis } from '@/lib/services/consumption-analysis';
 import { buildManagementInsightEmail, cleanManagementInsightSubject, isManagementInsightJob } from '@/lib/services/management-insights-email';
+import { buildWelcomeEmail, buildResetPasswordEmail } from '@/lib/services/transactional-email-templates';
 
 export const runtime = 'nodejs';
-export const maxDuration = 120; // 2 min — suficiente para o lote reduzido
+export const maxDuration = 300; // janela do ritmo humano (orçamento controlado por EMAIL_RUN_BUDGET_MS)
 
-// Zoho bloqueia com ~45-50 envios seguidos ("Unusual sending activity") —
-// quando isso acontece o lote é interrompido e os jobs voltam pra fila sem
-// queimar tentativa, então dá pra ser agressivo com segurança.
-// Lote de 10 por execução (cron de 5 min) = ~120 emails/hora: condomínio de
-// 500 unidades esvazia a fila em ~4-5 horas em vez de dias.
-const MAX_BATCH = Number(process.env.EMAIL_BATCH_SIZE || 10);
+// Ritmo "humano": cada e-mail sai com um intervalo ALEATÓRIO do anterior
+// (padrão 25-90s), dentro de um orçamento de tempo por execução. Assim o envio
+// não parece disparo em massa nem estoura o limite do Zoho, que bloqueia com
+// ~45-50 envios seguidos ("Unusual sending activity").
+//
+// Cada execução do cron dura até RUN_BUDGET_MS e envia o que couber no tempo;
+// o resto continua na fila para a próxima janela de 5 minutos. Com os padrões
+// (~57s de intervalo médio) sai por volta de 60 e-mails/hora.
+const MAX_BATCH = Number(process.env.EMAIL_BATCH_SIZE || 50);
 const MAX_ATTEMPTS = 3;
-const SLEEP_MS = Number(process.env.EMAIL_BATCH_SPACING_MS || 2000);
+const GAP_MIN_MS = Number(process.env.EMAIL_GAP_MIN_MS || 25000);
+const GAP_MAX_MS = Math.max(GAP_MIN_MS, Number(process.env.EMAIL_GAP_MAX_MS || 90000));
+const RUN_BUDGET_MS = Number(process.env.EMAIL_RUN_BUDGET_MS || 250000);
+const nextGapMs = () => GAP_MIN_MS + Math.floor(Math.random() * (GAP_MAX_MS - GAP_MIN_MS + 1));
 const isZohoBlocked = (err: string | undefined | null) => !!err && err.includes('Unusual sending activity');
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -83,29 +90,22 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   try {
     // Buscar jobs pendentes
+    // Prioridade: reset/boas-vindas saem antes das filipetas (ver email-queue.ts).
     const pendingJobs = await prisma.emailJob.findMany({
       where: {
         status: 'pending',
         attempts: { lt: MAX_ATTEMPTS },
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
       take: MAX_BATCH,
     });
 
-    // Filipetas individuais DESATIVADAS (23/10/2026, decisão da usuária): e-mails do
-    // sistema vão SOMENTE para o endereço cadastrado na aba do condomínio. Jobs de
-    // Filipeta na fila são cancelados; Management Insights continuam normais.
-    const filipetaJobs = pendingJobs.filter(j => !isManagementInsightJob(j.subject) && /^Filipeta/i.test(j.subject || ''));
-    if (filipetaJobs.length > 0) {
-      await prisma.emailJob.updateMany({
-        where: { id: { in: filipetaJobs.map(j => j.id) } },
-        data: { status: 'cancelled', errorMessage: 'Filipeta individual desativada (23/10/2026) — e-mails só para o e-mail cadastrado do condomínio' },
-      });
-    }
-    const activeJobs = pendingJobs.filter(j => !filipetaJobs.some(f => f.id === j.id));
+    // Filipetas individuais VOLTARAM a ser enviadas (03/11/2026): o bloqueio de
+    // cancelamento aplicado em 23/10/2026 foi revertido a pedido da usuária.
+    const activeJobs = pendingJobs;
 
     if (activeJobs.length === 0) {
-      return NextResponse.json({ processed: 0, sent: 0, failed: 0, filipetasCanceladas: filipetaJobs.length });
+      return NextResponse.json({ processed: 0, sent: 0, failed: 0 });
     }
 
     // Buscar dados necessários em batch
@@ -191,10 +191,23 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     let failed = 0;
     let skipped = 0;
 
-    // Processar cada job
+    // Processar cada job — um de cada vez, com intervalo aleatório entre envios.
     let zohoBlocked = false;
+    let didSend = false;
+    const runStartedAt = Date.now();
     for (const job of activeJobs) {
       if (zohoBlocked) break;
+
+      // Espera "humana" antes do próximo envio (o primeiro da execução sai direto).
+      if (didSend) {
+        const gap = nextGapMs();
+        if (Date.now() - runStartedAt + gap > RUN_BUDGET_MS) {
+          console.log(`[EmailCron] Orçamento de ${RUN_BUDGET_MS}ms atingido — ${activeJobs.length} jobs seguem na fila.`);
+          break;
+        }
+        await sleep(gap);
+      }
+
       try {
         // Pular emails de domínios internos da empresa (sistema/admin)
         if (isBlockedEmailDomain(job.toEmail)) {
@@ -211,6 +224,57 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           where: { id: job.id },
           data: { attempts: { increment: 1 } },
         });
+        didSend = true;
+
+        // ── E-mails com template próprio na fila ─────────────────────────────
+        // welcome / reset → template transacional; aviso / teste → HTML no payload.
+        const jobCategory = (job as any).category as string | undefined;
+        const jobPayload = ((job as any).payload || {}) as Record<string, any>;
+        let rendered: { subject: string; html: string; text: string } | null = null;
+        if (jobCategory === 'welcome' || jobCategory === 'reset') {
+          rendered = jobCategory === 'welcome'
+            ? buildWelcomeEmail(jobPayload)
+            : buildResetPasswordEmail(jobPayload as any);
+        } else if (typeof jobPayload.html === 'string' && jobPayload.html) {
+          rendered = {
+            subject: jobPayload.subject || job.subject,
+            html: jobPayload.html,
+            text: jobPayload.text || '',
+          };
+        }
+
+        if (rendered) {
+          const templatedResult = await sendEmail({
+            to: job.toEmail,
+            toName: job.toName || undefined,
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+            log: { skipLog: true },
+          });
+
+          if (templatedResult.success) {
+            await prisma.emailJob.update({
+              where: { id: job.id },
+              // Limpa o payload: senha temporária/HTML não ficam guardados depois do envio.
+              data: { status: 'sent', sentAt: new Date(), errorMessage: null, payload: null },
+            });
+            sent++;
+          } else if (isZohoBlocked(templatedResult.error)) {
+            zohoBlocked = true;
+            await prisma.emailJob.update({ where: { id: job.id }, data: { attempts: { decrement: 1 }, errorMessage: 'Zoho bloqueado — reprocessar' } });
+            console.warn('[EmailCron] Zoho bloqueou o envio; interrompendo o lote. Tentar novamente mais tarde.');
+            break;
+          } else {
+            const newAttempts = job.attempts + 1;
+            await prisma.emailJob.update({
+              where: { id: job.id },
+              data: { status: newAttempts >= MAX_ATTEMPTS ? 'failed' : 'pending', errorMessage: templatedResult.error },
+            });
+            failed++;
+          }
+          continue;
+        }
 
         if (isManagementInsightJob(job.subject)) {
           if (!job.complexId) {
@@ -226,6 +290,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
             subject: cleanManagementInsightSubject(job.subject),
             html: insight.html,
             text: insight.text,
+            log: { skipLog: true }, // o próprio job registra o envio
           });
           if (insightResult.success) {
             await prisma.emailJob.update({ where: { id: job.id }, data: { status: 'sent', sentAt: new Date() } });
@@ -323,6 +388,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           subject,
           html,
           text,
+          log: { skipLog: true }, // o próprio job registra o envio
         });
 
         if (result.success) {
@@ -331,7 +397,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
             data: { status: 'sent', sentAt: new Date() },
           });
           sent++;
-          await sleep(SLEEP_MS); // espaçamento entre envios
         } else if (isZohoBlocked(result.error)) {
           zohoBlocked = true;
           // Bloqueio antispam do Zoho: não conta como tentativa, volta pra fila
@@ -364,8 +429,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    console.log(`[EmailCron] Processados: ${activeJobs.length}, enviados: ${sent}, falhas: ${failed}, pulados: ${skipped}, filipetas canceladas: ${filipetaJobs.length}`);
-    return NextResponse.json({ processed: activeJobs.length, sent, failed, skipped, filipetasCanceladas: filipetaJobs.length, zohoBlocked });
+    console.log(`[EmailCron] Na fila: ${activeJobs.length}, enviados: ${sent}, falhas: ${failed}, pulados: ${skipped}, bloqueioZoho: ${zohoBlocked}`);
+    return NextResponse.json({ processed: activeJobs.length, sent, failed, skipped, zohoBlocked });
   } catch (error: any) {
     console.error('[EmailCron] Erro fatal:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

@@ -41,11 +41,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       : null;
 
     // Contar jobs por status
-    const [pending, sent, failed, skipped, total] = await Promise.all([
+    const [pending, sent, failed, skipped, cancelled, total] = await Promise.all([
       prisma.emailJob.count({ where: { status: 'pending' } }),
       prisma.emailJob.count({ where: { status: 'sent' } }),
       prisma.emailJob.count({ where: { status: 'failed' } }),
       prisma.emailJob.count({ where: { status: 'skipped' } }),
+      prisma.emailJob.count({ where: { status: 'cancelled' } }),
       prisma.emailJob.count({}),
     ]);
 
@@ -65,6 +66,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         sentAt: true,
         monthRef: true,
         yearRef: true,
+        category: true,
+        origin: true,
       },
     });
 
@@ -110,6 +113,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         sent,
         failed,
         skipped,
+        cancelled,
         createdLast7Days: recentCount,
       },
       lastSent: lastSent ? {

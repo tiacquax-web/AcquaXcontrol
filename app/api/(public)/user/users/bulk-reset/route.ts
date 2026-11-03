@@ -19,7 +19,8 @@ import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
 import { hash } from 'bcryptjs';
 import prisma from '@/lib/prisma';
 import { ContextType } from '@prisma/client';
-import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
+import { isEmailConfigured } from '@/lib/services/email-service';
+import { enqueueEmail } from '@/lib/services/email-queue';
 import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 
 const BATCH_SIZE = 50; // resetar em lotes para não sobrecarregar o banco
@@ -256,62 +257,32 @@ export async function POST(req: NextRequest): Promise<Response> {
             });
         }
 
-        // Enviar email com senha temporária para cada usuário resetado
+        // Enfileira o e-mail com senha temporária: sai pelo cron com ritmo
+        // humano (25-90s entre um envio e outro), sem disparo em massa.
         let emailsSent = 0;
         let emailErrors = 0;
 
         if (isEmailConfigured()) {
-            const emailPromises = credentials
-                .filter(c => c.email && !isBlockedEmailDomain(c.email))
-                .map(async (c) => {
-                    try {
-                        const html = `
-                            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                                <div style="background: linear-gradient(135deg, #0066B3, #009FE0); padding: 24px; border-radius: 8px 8px 0 0;">
-                                    <h1 style="color: white; margin: 0; font-size: 22px;">AcquaX do Brasil</h1>
-                                    <p style="color: rgba(255,255,255,0.85); margin: 4px 0 0;">Sistema de medicao e controle</p>
-                                </div>
-                                <div style="background: #f8f9fa; padding: 24px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px;">
-                                    <h2 style="color: #333;">Senha Redefinida</h2>
-                                    <p style="color: #555; line-height: 1.6;">
-                                        Sua senha de acesso ao sistema AcquaXcontrol foi redefinida.
-                                    </p>
-                                    <div style="background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin: 16px 0; text-align: center;">
-                                        <p style="color: #999; font-size: 12px; margin: 0 0 4px;">Sua nova senha temporaria:</p>
-                                        <p style="font-size: 24px; font-weight: bold; color: #0066B3; margin: 0; letter-spacing: 2px;">${c.password}</p>
-                                    </div>
-                                    <p style="color: #555; line-height: 1.6;">
-                                        Acesse <a href="https://www.acquaxcontrol.com.br" style="color: #0066B3;">www.acquaxcontrol.com.br</a> e faca login com esta senha.
-                                        Voce sera solicitado a criar uma nova senha no primeiro acesso.
-                                    </p>
-                                    <div style="text-align: center; margin: 24px 0;">
-                                        <a href="https://www.acquaxcontrol.com.br" style="background: #0066B3; color: white; padding: 12px 32px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">Acessar o Sistema</a>
-                                    </div>
-                                    <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
-                                    <p style="color: #999; font-size: 12px;">
-                                        Este e um email automatico do sistema AcquaXcontrol. Nao responda.<br/>
-                                        AcquaX do Brasil - Sistema de medicao e controle
-                                    </p>
-                                </div>
-                            </div>
-                        `;
-                        const result = await sendEmail({
-                            to: c.email,
-                            toName: c.name || undefined,
-                            subject: 'Senha Redefinida - AcquaXcontrol',
-                            html,
-                            text: `Sua senha foi redefinida. Nova senha temporaria: ${c.password}. Acesse www.acquaxcontrol.com.br e faca login.`,
-                        });
-                        if (result.success) {
-                            emailsSent++;
-                        } else {
-                            emailErrors++;
-                        }
-                    } catch {
-                        emailErrors++;
-                    }
-                });
-            await Promise.allSettled(emailPromises);
+            for (const c of credentials) {
+                if (!c.email || isBlockedEmailDomain(c.email)) {
+                    emailErrors++;
+                    continue;
+                }
+                try {
+                    const queued = await enqueueEmail({
+                        to: c.email,
+                        toName: c.name || null,
+                        subject: 'Senha Redefinida - AcquaXcontrol',
+                        category: 'reset',
+                        payload: { residentName: c.name || '', tempPassword: c.password },
+                        createdByUserId: userId,
+                    });
+                    if (queued.queued) emailsSent++;
+                    else emailErrors++;
+                } catch {
+                    emailErrors++;
+                }
+            }
         }
 
         return NextResponse.json({

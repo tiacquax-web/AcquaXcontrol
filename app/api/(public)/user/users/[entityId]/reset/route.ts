@@ -99,6 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ent
                     subject: 'Senha Redefinida - AcquaXcontrol',
                     html,
                     text: `Sua senha foi redefinida. Nova senha temporaria: ${plainPwd}. Acesse www.acquaxcontrol.com.br e faca login.`,
+                    log: { category: 'reset', userId },
                 });
                 emailSent = result.success;
                 if (!result.success) emailError = result.error || 'Falha no envio';

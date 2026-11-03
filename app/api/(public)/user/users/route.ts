@@ -5,6 +5,7 @@ import { getUserLocations } from "@/lib/user-location"
 import { ContextType } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
 import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
+import { enqueueEmail } from '@/lib/services/email-queue';
 import { generateWelcomeEmail } from '@/lib/services/welcome-email-template';
 import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 
@@ -318,23 +319,26 @@ export async function POST(req: NextRequest): Promise<Response> {
                         result.success
                             .filter((resident) => resident.email && !isBlockedEmailDomain(resident.email))
                             .map(async (resident) => {
-                                const { subject, html, text } = generateWelcomeEmail({
-                                    residentName: resident.name || `Morador ${resident.apartmentName}`,
-                                    apartmentName: resident.apartmentName,
-                                    blockName: resident.blockName,
-                                    complexName: '',
-                                    email: resident.email,
-                                    provisionalPassword: resident.password,
-                                });
-                                const sent = await sendEmail({
+                                // Boas-vindas em massa vão para a fila (ritmo humano)
+                                const queued = await enqueueEmail({
                                     to: resident.email,
-                                    toName: resident.name || undefined,
-                                    subject,
-                                    html,
-                                    text,
+                                    toName: resident.name || null,
+                                    subject: 'Bem-vindo ao AcquaXControl - Seu acesso ao sistema',
+                                    category: 'welcome',
+                                    payload: {
+                                        residentName: resident.name || `Morador ${resident.apartmentName}`,
+                                        apartmentName: resident.apartmentName,
+                                        blockName: resident.blockName,
+                                        complexName: '',
+                                        email: resident.email,
+                                        provisionalPassword: resident.password,
+                                    },
+                                    createdByUserId: userId,
                                 });
-                                if (!sent.success) throw new Error(sent.error || 'Falha no envio');
-                                return sent;
+                                if (!queued.queued && queued.reason !== 'dominio_interno') {
+                                    throw new Error(`Falha ao enfileirar: ${queued.reason}`);
+                                }
+                                return queued;
                             }),
                     );
                     emailsSent = emailResults.filter((item) => item.status === 'fulfilled').length;
@@ -384,6 +388,7 @@ export async function POST(req: NextRequest): Promise<Response> {
                 subject,
                 html,
                 text,
+                log: { category: 'welcome', userId },
             });
             emailSent = emailResult.success;
             emailError = emailResult.success ? null : (emailResult.error || 'Falha no envio');

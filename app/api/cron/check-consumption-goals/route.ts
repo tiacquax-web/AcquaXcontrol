@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { sendEmail } from '@/lib/services/email-service';
+import { enqueueEmail } from '@/lib/services/email-queue';
 import { findApartmentRecipients, findComplexManagementRecipients, isExternalNotificationEmail } from '@/lib/services/notification-recipients';
 
 export const runtime = 'nodejs';
@@ -196,12 +197,18 @@ async function sendGoalNotification(apt: any, utility: string, current: number, 
 
   for (const recipient of allRecipients) {
     try {
-      await sendEmail({
+      await enqueueEmail({
         to: recipient.email,
         toName: recipient.name,
         subject: `${title} (${trigger}%) - ${complexName} - ${blockName}/${aptName}`,
-        html,
-        text: `${title}: ${message} Consumo atual: ${current.toFixed(2)}${unit}. Acesse o portal para detalhes.`
+        category: 'aviso',
+        payload: {
+          subject: `${title} (${trigger}%) - ${complexName} - ${blockName}/${aptName}`,
+          html,
+          text: `${title}: ${message} Consumo atual: ${current.toFixed(2)}${unit}. Acesse o portal para detalhes.`,
+        },
+        complexId,
+        apartmentId: apt.id,
       });
     } catch (e) {
       console.error(`[GoalNotification] Erro ao enviar para ${recipient.email}:`, e);

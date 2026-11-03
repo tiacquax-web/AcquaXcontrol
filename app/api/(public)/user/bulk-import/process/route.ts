@@ -22,8 +22,8 @@ import { validateUserSession, normalizeEmail } from '@/lib/users';
 import prisma from '@/lib/prisma';
 import { hash } from 'bcryptjs';
 import * as XLSX from 'xlsx';
-import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
-import { generateWelcomeEmail } from '@/lib/services/welcome-email-template';
+import { isEmailConfigured } from '@/lib/services/email-service';
+import { enqueueEmail } from '@/lib/services/email-queue';
 import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 import { ContextType } from '@prisma/client';
 import crypto from 'crypto';
@@ -211,23 +211,32 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           },
         });
 
-        // Enviar email de boas-vindas
+        // Boas-vindas entram na fila com ritmo humano (não disparam em massa)
         let emailMessage = 'Usuário atualizado';
         if (emailConfigured && !isBlockedEmailDomain(email)) {
           try {
-            const { subject, html, text } = generateWelcomeEmail({
-              residentName: residentName || existingAssignment.User.name || `Morador ${apartment.name}`,
-              apartmentName: apartment.name,
-              blockName: apartment.blockName,
-              complexName: complex.socialName || '',
-              email,
-              provisionalPassword,
+            const residentNameFinal = residentName || existingAssignment.User.name || `Morador ${apartment.name}`;
+            const queued = await enqueueEmail({
+              to: email,
+              toName: residentName || null,
+              subject: `Bem-vindo ao AcquaXControl - Seu acesso ao sistema (${complex.socialName || ''})`,
+              category: 'welcome',
+              payload: {
+                residentName: residentNameFinal,
+                apartmentName: apartment.name,
+                blockName: apartment.blockName,
+                complexName: complex.socialName || '',
+                email,
+                provisionalPassword,
+              },
+              complexId: complex.id,
+              apartmentId: apartment.id,
+              createdByUserId: userId,
             });
-            const result = await sendEmail({ to: email, toName: residentName || undefined, subject, html, text });
-            emailMessage = result.success ? 'Usuário atualizado e email enviado' : `Usuário atualizado (falha no email: ${result.error})`;
-            if (result.success) emailsSent++;
+            emailMessage = queued.queued ? 'Usuário atualizado e boas-vindas na fila' : `Usuário atualizado (email não enfileirado: ${queued.reason})`;
+            if (queued.queued) emailsSent++;
           } catch (e: any) {
-            emailMessage = `Usuário atualizado (erro no email: ${e.message})`;
+            emailMessage = `Usuário atualizado (erro ao enfileirar email: ${e.message})`;
           }
         } else {
           emailsSkipped++;
@@ -289,23 +298,31 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         },
       });
 
-      // Enviar welcome email
+      // Boas-vindas entram na fila com ritmo humano (não disparam em massa)
       let emailMessage = 'Usuário criado';
       if (emailConfigured && !isBlockedEmailDomain(email)) {
         try {
-          const { subject, html, text } = generateWelcomeEmail({
-            residentName: residentName || `Morador ${apartment.name}`,
-            apartmentName: apartment.name,
-            blockName: apartment.blockName,
-            complexName: complex.socialName || '',
-            email,
-            provisionalPassword,
+          const queued = await enqueueEmail({
+            to: email,
+            toName: residentName || null,
+            subject: `Bem-vindo ao AcquaXControl - Seu acesso ao sistema (${complex.socialName || ''})`,
+            category: 'welcome',
+            payload: {
+              residentName: residentName || `Morador ${apartment.name}`,
+              apartmentName: apartment.name,
+              blockName: apartment.blockName,
+              complexName: complex.socialName || '',
+              email,
+              provisionalPassword,
+            },
+            complexId: complex.id,
+            apartmentId: apartment.id,
+            createdByUserId: userId,
           });
-          const result = await sendEmail({ to: email, toName: residentName || undefined, subject, html, text });
-          emailMessage = result.success ? 'Usuário criado e email enviado' : `Usuário criado (falha no email: ${result.error})`;
-          if (result.success) emailsSent++;
+          emailMessage = queued.queued ? 'Usuário criado e boas-vindas na fila' : `Usuário criado (email não enfileirado: ${queued.reason})`;
+          if (queued.queued) emailsSent++;
         } catch (e: any) {
-          emailMessage = `Usuário criado (erro no email: ${e.message})`;
+          emailMessage = `Usuário criado (erro ao enfileirar email: ${e.message})`;
         }
       } else {
         emailsSkipped++;

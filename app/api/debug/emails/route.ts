@@ -7,10 +7,10 @@ export async function GET(req: NextRequest) {
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
-        const stats = await prisma.emailJob.groupBy({
-            by: ['status'],
-            _count: { id: true }
-        });
+        const [stats, byCategory] = await Promise.all([
+            prisma.emailJob.groupBy({ by: ['status'], _count: { id: true } }),
+            prisma.emailJob.groupBy({ by: ['category'], _count: { id: true } }),
+        ]);
 
         const lastJobsRaw = await prisma.emailJob.findMany({
             orderBy: { createdAt: 'desc' },
@@ -28,6 +28,8 @@ export async function GET(req: NextRequest) {
                 apartmentId: true,
                 monthRef: true,
                 yearRef: true,
+                category: true,
+                origin: true,
                 apartmentConsumptionReport: {
                     select: {
                         apartment: {
@@ -87,6 +89,8 @@ export async function GET(req: NextRequest) {
                 sentAt: job.sentAt,
                 monthRef: job.monthRef,
                 yearRef: job.yearRef,
+                category: job.category || 'outro',
+                origin: job.origin || 'queue',
                 complexName,
                 blockName,
                 apartmentName,
@@ -94,7 +98,7 @@ export async function GET(req: NextRequest) {
             };
         });
 
-        return NextResponse.json({ stats, lastJobs });
+        return NextResponse.json({ stats, byCategory, lastJobs });
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }

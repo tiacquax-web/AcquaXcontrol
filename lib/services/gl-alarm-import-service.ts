@@ -33,6 +33,7 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { gunzipSync } from 'zlib';
+import { enqueueEmail } from '@/lib/services/email-queue';
 import { sendEmail } from '@/lib/services/email-service';
 import { findApartmentRecipients, findComplexManagementRecipients, isExternalNotificationEmail } from '@/lib/services/notification-recipients';
 
@@ -406,12 +407,13 @@ Em caso de duvidas: medicao@acquaxdobrasil.com.br e/ou 4003-7945.`;
 
       for (const recipient of allRecipients) {
         try {
-          await sendEmail({
+          await enqueueEmail({
             to: recipient.email,
             toName: recipient.name,
             subject: `Alerta do Medidor - ${complexName} - ${blockName}/${aptName}`,
-            html,
-            text,
+            category: 'aviso',
+            payload: { subject: `Alerta do Medidor - ${complexName} - ${blockName}/${aptName}`, html, text },
+            complexId,
           });
         } catch (e) {
           console.error(`[GL Alarm] Erro ao notificar ${recipient.email}:`, e);

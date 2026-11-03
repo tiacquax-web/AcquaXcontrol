@@ -198,7 +198,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           analysis,
         });
 
-        const res = await sendEmail({ to: job.toEmail, toName: job.toName || undefined, subject, html, text });
+        const res = await sendEmail({ to: job.toEmail, toName: job.toName || undefined, subject, html, text, log: { skipLog: true } });
         if (res.success) {
           await prisma.emailJob.update({
             where: { id: job.id },
