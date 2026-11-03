@@ -7,7 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import {
   MessageSquare, Plus, Send, Loader2, X, ChevronLeft,
   CheckCircle2, Clock, AlertCircle, RefreshCw, Paperclip,
-  User as UserIcon, ShieldCheck, Inbox, BellDot, Building2,
+  User as UserIcon, ShieldCheck, Inbox, BellDot, Building2, Home,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +48,12 @@ interface SupportTicket {
   complexId?: string | null;
   user?: { id: string; name: string; email: string };
   complex?: { id: string; socialName: string } | null;
+  userLocation?: {
+    apartmentId?: string | null;
+    apartmentName?: string | null;
+    blockId?: string | null;
+    blockName?: string | null;
+  } | null;
   messages?: SupportMessage[];
   _count?: { messages: number };
   unreadByUser: boolean;
@@ -57,6 +63,15 @@ interface SupportTicket {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+/** Rótulo da unidade do solicitante: "Bloco 2 · Apto 101". */
+function unitLabel(loc?: SupportTicket['userLocation']): string | null {
+  if (!loc) return null;
+  const parts: string[] = [];
+  if (loc.blockName) parts.push(`Bloco ${loc.blockName}`);
+  if (loc.apartmentName) parts.push(`Apto ${loc.apartmentName}`);
+  return parts.length ? parts.join(' · ') : null;
+}
+
 const STATUS_MAP: Record<TicketStatus, { label: string; color: string; icon: React.ReactNode }> = {
   open:     { label: 'Aberto',     color: 'bg-blue-100 text-blue-700 border-blue-200',   icon: <Clock className="w-3 h-3" /> },
   answered: { label: 'Respondido', color: 'bg-green-100 text-green-700 border-green-200', icon: <CheckCircle2 className="w-3 h-3" /> },
@@ -473,6 +488,7 @@ export default function SuportePage() {
                 {tickets.map(t => {
                   const unread = isAdmin ? t.unreadByAdmin : t.unreadByUser;
                   const isSelected = selectedTicket?.id === t.id;
+                  const unit = unitLabel(t.userLocation);
                   return (
                     <button
                       key={t.id}
@@ -498,6 +514,12 @@ export default function SuportePage() {
                         <span className="text-xs text-muted-foreground/60 truncate flex items-center gap-1 italic">
                           <Building2 className="w-3 h-3 shrink-0" />
                           Condomínio não informado
+                        </span>
+                      )}
+                      {unit && (
+                        <span className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                          <Home className="w-3 h-3 shrink-0" />
+                          {unit}
                         </span>
                       )}
                       {t.status === 'open' && (
@@ -564,6 +586,12 @@ export default function SuportePage() {
                     <Building2 className="w-3 h-3 shrink-0" />
                     <span className="truncate">{selectedTicket.complex?.socialName || 'Condomínio não informado'}</span>
                   </p>
+                  {unitLabel(selectedTicket.userLocation) && (
+                    <p className="text-xs text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1">
+                      <Home className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{unitLabel(selectedTicket.userLocation)}</span>
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Aberto em {timeAgo(selectedTicket.createdAt)}
                   </p>

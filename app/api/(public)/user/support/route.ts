@@ -59,21 +59,30 @@ export async function GET(req: NextRequest): Promise<Response> {
       prisma.supportTicket.count({ where }),
     ]);
 
-    // ── Condomínio do solicitante (fallback quando o ticket não tem complexId) ──
-    // Muitos tickets antigos foram criados sem vincular o condomínio. Resolvemos
-    // a localização do usuário via RoleAssignments para nunca exibir "sem condomínio".
-    const needsFallback = tickets.filter(t => !t.complexId && t.userId).map(t => t.userId);
-    const locationMap = needsFallback.length
-      ? await getUserLocations(needsFallback)
+    // ── Localização do solicitante (condomínio + bloco + apartamento) ──
+    // Resolvemos para TODOS os tickets: o condomínio cobre tickets antigos sem
+    // complexId, e o apartamento ajuda o suporte a identificar a unidade.
+    const requesterIds = [...new Set(tickets.map(t => t.userId).filter(Boolean))] as string[];
+    const locationMap = requesterIds.length
+      ? await getUserLocations(requesterIds)
       : new Map();
 
     const list = tickets.map(t => {
-      if (t.complex?.socialName) return t;
       const loc = locationMap.get(t.userId);
+      const userLocation = loc
+        ? {
+            apartmentId: loc.apartmentId ?? null,
+            apartmentName: loc.apartmentName ?? null,
+            blockId: loc.blockId ?? null,
+            blockName: loc.blockName ?? null,
+          }
+        : null;
+
+      if (t.complex?.socialName) return { ...t, userLocation };
       if (loc?.complexName) {
-        return { ...t, complex: { id: loc.complexId ?? '', socialName: loc.complexName } };
+        return { ...t, complex: { id: loc.complexId ?? '', socialName: loc.complexName }, userLocation };
       }
-      return t;
+      return { ...t, userLocation };
     });
 
     // ── Notificação: contagem de atendimentos em aberto (aguardando resposta do suporte) ──

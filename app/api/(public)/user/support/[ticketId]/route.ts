@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSessionValid } from '@/lib/users';
 import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
+import { getUserLocation } from '@/lib/user-location';
 import prisma from '@/lib/prisma';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ ticketId: string }> }): Promise<Response> {
@@ -42,7 +43,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ tick
       });
     }
 
-    return NextResponse.json({ ...ticket, isAdmin });
+    // Unidade do solicitante (bloco/apartamento) para o suporte localizar rápido
+    const loc = await getUserLocation(ticket.userId);
+    const userLocation = loc
+      ? {
+          apartmentId: loc.apartmentId ?? null,
+          apartmentName: loc.apartmentName ?? null,
+          blockId: loc.blockId ?? null,
+          blockName: loc.blockName ?? null,
+        }
+      : null;
+
+    const complex = ticket.complex?.socialName
+      ? ticket.complex
+      : loc?.complexName
+        ? { id: loc.complexId ?? '', socialName: loc.complexName }
+        : ticket.complex;
+
+    return NextResponse.json({ ...ticket, userLocation, complex, isAdmin });
   } catch (error: any) {
     console.error('[SUPPORT_TICKET] GET error:', error);
     return NextResponse.json({ error: error?.message || 'Erro interno' }, { status: 500 });
