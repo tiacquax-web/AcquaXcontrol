@@ -38,6 +38,11 @@ const MAX_ATTEMPTS = 3;
 const GAP_MIN_MS = Number(process.env.EMAIL_GAP_MIN_MS || 25000);
 const GAP_MAX_MS = Math.max(GAP_MIN_MS, Number(process.env.EMAIL_GAP_MAX_MS || 90000));
 const RUN_BUDGET_MS = Number(process.env.EMAIL_RUN_BUDGET_MS || 250000);
+// Teto de envios por hora: garante que a cadência nunca passe disso, mesmo que
+// o cron e o disparo imediato pós-salvamento se sobreponham.
+const HOURLY_LIMIT = Number(process.env.EMAIL_HOURLY_LIMIT || 60);
+// Não inicia nova leva se um envio acabou de sair (evita duas execuções paralelas).
+const RUN_COOLDOWN_MS = Number(process.env.EMAIL_RUN_COOLDOWN_MS || 20000);
 const nextGapMs = () => GAP_MIN_MS + Math.floor(Math.random() * (GAP_MAX_MS - GAP_MIN_MS + 1));
 const isZohoBlocked = (err: string | undefined | null) => !!err && err.includes('Unusual sending activity');
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -90,6 +95,31 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   try {
     // Buscar jobs pendentes
+    // ── Guardas de ritmo ─────────────────────────────────────────────────────
+    const now = Date.now();
+    const [lastSent, sentLastHour] = await Promise.all([
+      prisma.emailJob.findFirst({
+        where: { status: 'sent', sentAt: { not: null } },
+        orderBy: { sentAt: 'desc' },
+        select: { sentAt: true },
+      }),
+      prisma.emailJob.count({
+        where: { status: 'sent', sentAt: { gte: new Date(now - 60 * 60 * 1000) } },
+      }),
+    ]);
+
+    if (sentLastHour >= HOURLY_LIMIT) {
+      console.log(`[EmailCron] Teto de ${HOURLY_LIMIT} envios/hora atingido — aguardando a próxima hora.`);
+      return NextResponse.json({ skipped: true, reason: 'hourly_limit', sentLastHour, limit: HOURLY_LIMIT });
+    }
+
+    if (lastSent?.sentAt) {
+      const sinceLast = now - new Date(lastSent.sentAt).getTime();
+      if (sinceLast >= 0 && sinceLast < RUN_COOLDOWN_MS) {
+        return NextResponse.json({ skipped: true, reason: 'cooldown', secondsSinceLast: Math.round(sinceLast / 1000) });
+      }
+    }
+
     // Prioridade: reset/boas-vindas saem antes das filipetas (ver email-queue.ts).
     const pendingJobs = await prisma.emailJob.findMany({
       where: {
