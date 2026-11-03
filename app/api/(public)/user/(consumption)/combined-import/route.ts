@@ -192,16 +192,43 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const readingKeySetInFile = new Set<string>(); // detectar duplicadas dentro do próprio arquivo
 
     // Helper para checar se o medidor é do mesmo utilitário
-    const isMeterOfUtility = (meter: any, util: 'water' | 'gas') => {
+    // Tipos de utilitário suportados na importação: água (water), gás (gas) e energia (energy).
+    // OBS: a versão anterior só tratava water/gas — com uma leitura de concessionária do tipo
+    // 'energy' qualquer medidor caía no ramo de água e nunca era encontrado ("chassi não encontrado").
+    const normalizeUtilityLabel = (value: unknown) =>
+      (value ?? '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+    const isMeterOfUtility = (meter: any, util: string) => {
       const tm = meter?.typeMeter;
       if (!tm) return true; // fallback: se não tiver typemeter, não bloquear
-      const name = (tm.name || '').toString().toLowerCase();
-      const acr = (tm.acronym || '').toString().toLowerCase();
-      if (util === 'gas') {
-        return name.includes('gas') || name.includes('gás') || acr.includes('gas') || acr.includes('gás') || acr === 'g';
-      } else {
-        return name.includes('agua') || name.includes('água') || name.includes('water') || acr.includes('agua') || acr.includes('água') || acr === 'h2o' || acr === 'w';
+      const name = normalizeUtilityLabel(tm.name);
+      const acr = normalizeUtilityLabel(tm.acronym);
+      const utility = normalizeUtilityLabel(util);
+
+      if (utility === 'gas') {
+        return name.includes('gas') || acr === 'g' || acr === 'gs' || acr === 'gas';
       }
+      if (utility === 'energy' || utility === 'energia' || utility === 'electric' || utility === 'electricity') {
+        return (
+          name.includes('energia') ||
+          name.includes('energy') ||
+          name.includes('eletric') ||
+          acr === 'ee' ||
+          acr === 'en' ||
+          acr === 'e'
+        );
+      }
+      // Água (inclui Água Fria / Água Quente, que também são hidrômetros)
+      return (
+        name.includes('agua') ||
+        name.includes('water') ||
+        ['a', 'ag', 'af', 'aq', 'h2o', 'w'].includes(acr)
+      );
     };
 
     // Percorrer linhas apenas para montar estruturas em memória
