@@ -1241,7 +1241,7 @@ function AdminKPIDashboard({ showEmailHealth = false }: { showEmailHealth?: bool
               </div>
               <div className="space-y-2">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Últimos disparos:</p>
-                {emailStats.lastJobs?.slice(0, 20).map((j: any) => (
+                {emailStats.lastJobs?.slice(0, 10).map((j: any) => (
                   <div key={j.id} className="flex items-center justify-between text-[11px] py-1 border-b last:border-0">
                     <div className="min-w-0 flex-1">
                       <p className="font-medium truncate">{j.toEmail}</p>
@@ -1256,7 +1256,11 @@ function AdminKPIDashboard({ showEmailHealth = false }: { showEmailHealth?: bool
                         {EMAIL_CATEGORY_LABEL[j.category || 'outro'] || 'Outro'}
                         {j.origin === 'direct' ? ' · imediato' : ''}
                       </p>
-                      <p className="text-[9px] text-muted-foreground">{new Date(j.createdAt).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                      <p className="text-[9px] text-muted-foreground">{new Date(j.createdAt).toLocaleString('pt-BR', {
+                          day: '2-digit', month: '2-digit', year: '2-digit',
+                          hour: '2-digit', minute: '2-digit',
+                          timeZone: 'America/Sao_Paulo',
+                        })}</p>
                     </div>
                   </div>
                 ))}

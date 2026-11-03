@@ -40,6 +40,45 @@ export const EMAIL_CATEGORY_LABEL: Record<string, string> = {
   outro: 'Outro',
 };
 
+/**
+ * Janela de envio: só vai para o morador o e-mail de consumo cuja referência
+ * esteja dentro dos últimos SEND_WINDOW_MONTHS meses (mês corrente incluído).
+ * Em novembro/2026 entram 11, 10 e 09/2026; 08/2026 e anteriores não saem.
+ * Isso evita mandar extrato velho quando alguém atualiza um consumo atrasado.
+ */
+export const SEND_WINDOW_MONTHS = Number(process.env.EMAIL_MONTH_WINDOW || 3);
+
+/** Mês/ano corrente no fuso de São Paulo. */
+export function currentRefSP(): { month: number; year: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit',
+  }).formatToParts(new Date());
+  const month = Number(parts.find(p => p.type === 'month')?.value);
+  const year = Number(parts.find(p => p.type === 'year')?.value);
+  return { month, year };
+}
+
+/** true quando a referência está dentro da janela permitida (ou não existe referência). */
+export function isWithinSendWindow(
+  monthRef?: string | null,
+  yearRef?: string | null,
+  windowMonths = SEND_WINDOW_MONTHS,
+): boolean {
+  const month = Number(monthRef);
+  const year = Number(yearRef);
+  if (!month || !year || month < 1 || month > 12 || year < 2000) return true;
+  const cur = currentRefSP();
+  const monthsBack = (cur.year - year) * 12 + (cur.month - month);
+  return monthsBack < windowMonths;
+}
+
+/** Categorias cujo conteúdo é de um mês de referência (passível de expirar). */
+const REFERENCE_CATEGORIES: EmailCategory[] = ['filipeta', 'insight', 'aviso'];
+
+export function isReferenceCategory(category?: string | null): boolean {
+  return REFERENCE_CATEGORIES.includes((category || 'filipeta') as EmailCategory);
+}
+
 export interface EnqueueEmailParams {
   to: string;
   toName?: string | null;
@@ -69,6 +108,11 @@ export async function enqueueEmail(params: EnqueueEmailParams): Promise<{ queued
 
   if (!to || !to.includes('@')) return { queued: false, reason: 'email_invalido' };
   if (isBlockedEmailDomain(to)) return { queued: false, reason: 'dominio_interno' };
+
+  // Nunca enfileira e-mail de consumo fora da janela (ref. antiga não vai ao morador).
+  if (isReferenceCategory(category) && !isWithinSendWindow(monthRef, yearRef)) {
+    return { queued: false, reason: 'fora_da_janela' };
+  }
 
   if (dedupePending) {
     const existing = await prisma.emailJob.findFirst({

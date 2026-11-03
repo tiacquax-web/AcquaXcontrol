@@ -21,6 +21,7 @@ import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 import { getConsumptionAnalysis } from '@/lib/services/consumption-analysis';
 import { buildManagementInsightEmail, cleanManagementInsightSubject, isManagementInsightJob } from '@/lib/services/management-insights-email';
 import { buildWelcomeEmail, buildResetPasswordEmail } from '@/lib/services/transactional-email-templates';
+import { isWithinSendWindow, isReferenceCategory, SEND_WINDOW_MONTHS } from '@/lib/services/email-queue';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // janela do ritmo humano (orçamento controlado por EMAIL_RUN_BUDGET_MS)
@@ -239,6 +240,20 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }
 
       try {
+        // Não envia conteúdo de mês antigo (janela de 3 meses): cancela em vez de enviar.
+        if (isReferenceCategory((job as any).category) && !isWithinSendWindow((job as any).monthRef, (job as any).yearRef)) {
+          await prisma.emailJob.update({
+            where: { id: job.id },
+            data: {
+              status: 'cancelled',
+              errorMessage: `Fora da janela de ${SEND_WINDOW_MONTHS} meses (ref. ${(job as any).monthRef}/${(job as any).yearRef})`,
+              sentAt: new Date(),
+            },
+          });
+          skipped++;
+          continue;
+        }
+
         // Pular emails de domínios internos da empresa (sistema/admin)
         if (isBlockedEmailDomain(job.toEmail)) {
           await prisma.emailJob.update({
