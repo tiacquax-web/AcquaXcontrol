@@ -16,13 +16,38 @@ export interface WelcomeEmailData {
   blockName: string;
   complexName: string;
   email: string;
-  provisionalPassword: string;
+  /** Omitido quando o usuário já tem senha (boas-vindas de acesso existente). */
+  provisionalPassword?: string;
 }
 
 export function generateWelcomeEmail(data: WelcomeEmailData): { subject: string; html: string; text: string } {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_API_URL || 'https://www.acquaxcontrol.com.br';
 
   const subject = `Bem-vindo ao AcquaXControl - Seu acesso ao sistema (${data.complexName})`;
+
+  // Sem senha provisória (usuário já cadastrado), a linha da senha e o aviso
+  // de troca no primeiro acesso não fazem sentido e são omitidos.
+  const passwordRow = data.provisionalPassword
+    ? `                      <tr>
+                        <td style="padding:6px 0;font-size:14px;color:#888;">Senha provisória</td>
+                        <td style="padding:6px 0;font-size:14px;color:#333;font-weight:600;text-align:right;font-family:monospace;letter-spacing:1px;">${data.provisionalPassword}</td>
+                      </tr>`
+    : '';
+
+  const passwordNotice = data.provisionalPassword
+    ? `          <!-- Aviso troca de senha -->
+          <tr>
+            <td style="padding:0 32px 16px 32px;">
+              <div style="background:#fff3cd;border:1px solid #ffeaa7;border-radius:8px;padding:12px 16px;">
+                <p style="margin:0;font-size:13px;color:#856404;line-height:1.5;">
+                  ⚠️ Por segurança, você será solicitado a trocar sua senha no primeiro acesso ao sistema.
+                </p>
+              </div>
+            </td>
+          </tr>
+
+`
+    : '';
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -84,10 +109,7 @@ export function generateWelcomeEmail(data: WelcomeEmailData): { subject: string;
                         <td style="padding:6px 0;font-size:14px;color:#888;">E-mail</td>
                         <td style="padding:6px 0;font-size:14px;color:#333;font-weight:600;text-align:right;">${data.email}</td>
                       </tr>
-                      <tr>
-                        <td style="padding:6px 0;font-size:14px;color:#888;">Senha provisória</td>
-                        <td style="padding:6px 0;font-size:14px;color:#333;font-weight:600;text-align:right;font-family:monospace;letter-spacing:1px;">${data.provisionalPassword}</td>
-                      </tr>
+${passwordRow}
                     </table>
                   </td>
                 </tr>
@@ -95,18 +117,7 @@ export function generateWelcomeEmail(data: WelcomeEmailData): { subject: string;
             </td>
           </tr>
 
-          <!-- Aviso troca de senha -->
-          <tr>
-            <td style="padding:0 32px 16px 32px;">
-              <div style="background:#fff3cd;border:1px solid #ffeaa7;border-radius:8px;padding:12px 16px;">
-                <p style="margin:0;font-size:13px;color:#856404;line-height:1.5;">
-                  ⚠️ Por segurança, você será solicitado a trocar sua senha no primeiro acesso ao sistema.
-                </p>
-              </div>
-            </td>
-          </tr>
-
-          <!-- CTA -->
+${passwordNotice}          <!-- CTA -->
           <tr>
             <td style="padding:0 32px 28px 32px;text-align:center;">
               <a href="${baseUrl}/login"
@@ -133,7 +144,7 @@ export function generateWelcomeEmail(data: WelcomeEmailData): { subject: string;
 </body>
 </html>`;
 
-  const text = `AcquaX do Brasil - Sistema de Medição e Controle\n\nOlá, ${data.residentName}!\n\nSeu acesso ao sistema AcquaXControl foi criado. Através dele você poderá acompanhar suas filipetas de consumo, histórico de medições e muito mais.\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\n\nE-mail: ${data.email}\nSenha provisória: ${data.provisionalPassword}\n\nPor segurança, você será solicitado a trocar sua senha no primeiro acesso.\n\nAcesse ${baseUrl}/login para entrar no sistema.\n\nEm caso de dúvidas, entre em contato com medicao@acquaxdobrasil.com.br e/ou 4003-7945.\n\nEste é um email automático. Não responda a esta mensagem.`;
+  const text = `AcquaX do Brasil - Sistema de Medição e Controle\n\nOlá, ${data.residentName}!\n\nSeu acesso ao sistema AcquaXControl foi criado. Através dele você poderá acompanhar suas filipetas de consumo, histórico de medições e muito mais.\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\n\nE-mail: ${data.email}${data.provisionalPassword ? `\nSenha provisória: ${data.provisionalPassword}\n\nPor segurança, você será solicitado a trocar sua senha no primeiro acesso.` : ''}\n\nAcesse ${baseUrl}/login para entrar no sistema.\n\nEm caso de dúvidas, entre em contato com medicao@acquaxdobrasil.com.br e/ou 4003-7945.\n\nEste é um email automático. Não responda a esta mensagem.`;
 
   return { subject, html, text };
 }

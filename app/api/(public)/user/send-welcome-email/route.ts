@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { validateUserSession } from '@/lib/users';
-import { isEmailConfigured } from '@/lib/services/email-service';
-import { enqueueEmail } from '@/lib/services/email-queue';
+import { isEmailConfigured, sendEmail } from '@/lib/services/email-service';
+import { generateWelcomeEmail } from '@/lib/services/welcome-email-template';
 import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 
 export const runtime = 'nodejs';
@@ -102,32 +102,48 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ message: 'SMTP nao configurado' }, { status: 500 });
     }
 
-    // 5. Boas-vindas entram na fila e saem pelo cron com ritmo humano
+    // 5. Boas-vindas de UMA unidade são imediatas (envio direto pelo SMTP).
+    // Só os fluxos em lote (importação/cadastro em massa) vão para a fila com
+    // ritmo humano — ver bulk-import e users/route.ts (createBulkResidentsUsers).
     const results: any[] = [];
     for (const user of usersWithEmail) {
-      const queued = await enqueueEmail({
-        to: user.email!,
-        toName: user.name || null,
-        subject: 'Bem-vindo ao AcquaXControl - Seu acesso ao sistema (' + complex.socialName + ')',
-        category: 'welcome',
-        payload: {
-          residentName: user.name || '',
-          apartmentName: apartment.name,
-          blockName: block.name,
-          complexName: complex.socialName,
-          email: user.email!,
-        },
-        complexId: complex.id,
-        apartmentId: apartment.id,
-        createdByUserId: userId,
+      const { subject, html, text } = generateWelcomeEmail({
+        residentName: user.name || 'Morador',
+        apartmentName: apartment.name,
+        blockName: block.name,
+        complexName: complex.socialName,
+        email: user.email!,
       });
+
+      let sent = false;
+      let error: string | null = null;
+      try {
+        const result = await sendEmail({
+          to: user.email!,
+          toName: user.name || undefined,
+          subject,
+          html,
+          text,
+          log: {
+            category: 'welcome',
+            userId,
+            complexId: complex.id,
+            apartmentId: apartment.id,
+          },
+        });
+        sent = result.success;
+        if (!result.success) error = result.error || 'Falha no envio';
+      } catch (err: any) {
+        error = err?.message || 'Erro ao enviar email';
+      }
 
       results.push({
         name: user.name,
         email: user.email!.substring(0, 5) + '***',
-        sent: queued.queued,
-        error: queued.queued ? null : `não enfileirado: ${queued.reason}`,
-        queued: queued.queued,
+        sent,
+        error,
+        queued: false,
+        immediate: true,
       });
     }
 
@@ -139,8 +155,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       apartment: apartment.name,
       results,
       message: allSent
-        ? 'E-mail de boas-vindas na fila — sai em instantes com envio espaçado.'
-        : 'Alguns e-mails não puderam ser enfileirados',
+        ? 'E-mail de boas-vindas enviado.'
+        : 'Alguns e-mails não puderam ser enviados',
     });
 
   } catch (error: any) {
