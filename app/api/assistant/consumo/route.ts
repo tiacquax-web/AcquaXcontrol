@@ -32,6 +32,13 @@ function normalizar(valor: string): string {
     .trim();
 }
 
+/** Quantos caracteres iniciais os dois nomes normalizados têm em comum (para sugerir). */
+function prefixoComum(a: string, b: string): number {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i;
+}
+
 /** Lista de referências (mês/ano) das últimas N competências, da mais antiga para a mais nova. */
 function ultimasCompetencias(quantidade: number): Array<{ mes: string; ano: string }> {
   const hoje = new Date();
@@ -80,11 +87,10 @@ export async function POST(req: NextRequest): Promise<Response> {
           deletedAt: null,
           ...(escopo.complexId ? { id: escopo.complexId } : {}),
           ...(isSystem && body?.companyId ? { companyId: body.companyId } : {}),
-          socialName: { contains: condominio, mode: 'insensitive' },
           ...(escopo.apartmentId ? { apartments: { some: { id: escopo.apartmentId } } } : {}),
         },
         select: { id: true, socialName: true, aliasName: true, company: { select: { name: true } } },
-        take: 20,
+        take: 600, // nomes são poucos; o casamento é feito por nome normalizado (sem acento)
       });
       const pontuar = (c: any) => {
         const nomes = [c.socialName, c.aliasName].filter(Boolean).map(normalizar);
@@ -97,10 +103,18 @@ export async function POST(req: NextRequest): Promise<Response> {
         .filter(c => pontuar(c) < 3)
         .sort((a, b) => pontuar(a) - pontuar(b) || String(a.socialName).length - String(b.socialName).length);
       if (!achados.length) {
+        // Sem casamento: sugere os nomes mais parecidos (prefixo comum), para o modelo
+        // confirmar com o usuário em vez de simplesmente dizer "não encontrei".
+        const parecidos = [...candidatos]
+          .sort((a, b) => prefixoComum(normalizar(a.socialName || ''), alvo)
+            - prefixoComum(normalizar(b.socialName || ''), alvo))
+          .reverse()
+          .filter(c => prefixoComum(normalizar(c.socialName || ''), alvo) >= 3);
         return NextResponse.json({
           erro: 'condominio_nao_encontrado',
           mensagem: `Não encontrei o condomínio "${condominio}" nos seus acessos.`,
-          sugestoes: candidatos.slice(0, 8).map(c => c.socialName),
+          sugestoes: parecidos.slice(0, 8).map(c => c.socialName),
+          total_condominios: candidatos.length,
         });
       }
       complexId = achados[0].id;
