@@ -314,7 +314,9 @@ export async function executarFerramenta(
         e_sistema: Boolean(ctxData.isSystem),
         papeis: ctxData.systemRoles || [],
         unidades: apartments,
-        condominios: complexes.slice(0, 40),
+        // Só exemplos: a lista completa confundia o modelo (ele concluía "não existe"
+        // quando o condomínio citado não estava entre os primeiros nomes).
+        exemplos_de_condominios: complexes.slice(0, 5),
         total_condominios: complexes.length,
         observacao: ctxData.isSystem
           ? 'Este usuário é administrador/síndico: pode ver dados do condomínio.'
