@@ -86,16 +86,21 @@ export async function GET(req: NextRequest): Promise<Response> {
   // ── Unidade(s) ────────────────────────────────────────────────────────────
   let apartmentIds: string[] | undefined;
   if (unidade) {
-    const apts = await prisma.apartment.findMany({
-      where: {
-        deletedAt: null, complexId, name: unidade,
-        ...(bloco ? { block: { name: bloco } } : {}),
-        ...(escopoApartamento.id ? escopoApartamento : {}),
-      },
-      select: { id: true },
+    const numeroUnidade = unidade.replace(/[^0-9A-Za-z]/g, '');
+    const candidatas = await prisma.apartment.findMany({
+      where: { deletedAt: null, complexId, ...(escopoApartamento.id ? escopoApartamento : {}) },
+      select: { id: true, name: true, block: { select: { name: true } } },
     });
-    if (!apts.length) return NextResponse.json({ erro: 'unidade_nao_encontrada', mensagem: `Unidade ${unidade} não encontrada.` }, { status: 404 });
-    apartmentIds = apts.map(a => a.id);
+    const filtradas = candidatas.filter(a => {
+      const nome = String(a.name || '').replace(/[^0-9A-Za-z]/g, '');
+      const casaUnidade = nome === numeroUnidade || (numeroUnidade.length >= 2 && nome.includes(numeroUnidade));
+      const casaBloco = !bloco || normalizar(String(a.block?.name || '')) === normalizar(bloco);
+      return casaUnidade && casaBloco;
+    });
+    if (!filtradas.length) {
+      return NextResponse.json({ erro: 'unidade_nao_encontrada', mensagem: `Unidade ${unidade} não encontrada.` }, { status: 404 });
+    }
+    apartmentIds = filtradas.map(a => a.id);
   }
 
   // ── Dados ─────────────────────────────────────────────────────────────────

@@ -213,14 +213,14 @@ export const TOOL_DECLARATIONS: GeminiToolDeclaration[] = [
     parameters: {
       type: 'OBJECT',
       properties: {
-        mes: { type: 'NUMBER', description: 'Mês de referência, 1 a 12' },
-        ano: { type: 'NUMBER', description: 'Ano de referência, ex.: 2026' },
+        mes: { type: 'NUMBER', description: 'Mês de referência, 1 a 12. Se o usuário não disse o mês, OMITA para usar a competência mais recente com leitura.' },
+        ano: { type: 'NUMBER', description: 'Ano de referência. Se não foi dito, OMITA.' },
         tipo: { type: 'STRING', description: 'Tipo de medição: Agua, Esgoto, Gas ou Energia (padrão: Agua)' },
         condominio: { type: 'STRING', description: 'Somente para administrador/síndico: nome (ou parte) do condomínio' },
         unidade: { type: 'STRING', description: 'Somente para administrador/síndico: nome da unidade, ex.: 94' },
         bloco: { type: 'STRING', description: 'Somente para administrador/síndico: bloco da unidade, ex.: 2' },
       },
-      required: ['mes', 'ano'],
+      required: [],
     },
   },
   {
@@ -373,10 +373,10 @@ export async function executarFerramenta(
     }
 
     case 'minha_filipeta': {
-      const mes = Number(args.mes);
-      const ano = Number(args.ano);
-      if (!mes || !ano || mes < 1 || mes > 12) {
-        return { erro: true, mensagem: 'Informe mês (1-12) e ano (ex.: 2026).' };
+      const mes = Number(args.mes) || undefined;
+      const ano = Number(args.ano) || undefined;
+      if ((mes && (mes < 1 || mes > 12)) || (ano && (ano < 2000 || ano > 2100))) {
+        return { erro: true, mensagem: 'Mês deve estar entre 1 e 12 e o ano no formato 2026.' };
       }
 
       const bloqueio = await exigirEscopoAdmin(args, ctx);
@@ -398,7 +398,9 @@ export async function executarFerramenta(
           encontrado: false,
           condominio: resposta.condominio,
           unidade: resposta.unidade,
-          mensagem: `Não há filipeta processada para ${MONTH_LABELS[mes - 1]}/${ano}. A conta desse mês pode ainda não ter sido fechada.`,
+          mensagem: mes && ano
+            ? `Não há filipeta processada para ${MONTH_LABELS[(mes || 1) - 1]}/${ano}. A conta desse mês pode ainda não ter sido fechada.`
+            : 'Não há filipeta processada nos últimos meses para esse filtro.',
           tarifa: comp?.tarifa ?? null,
         };
       }

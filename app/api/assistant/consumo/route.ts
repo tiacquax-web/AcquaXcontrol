@@ -141,6 +141,15 @@ export async function POST(req: NextRequest): Promise<Response> {
       if (!aptos.length) {
         return NextResponse.json({ erro: 'unidade_nao_encontrada', mensagem: `Não encontrei a unidade ${unidade}${condominioNome ? ` no ${condominioNome}` : ''}.` });
       }
+      if (aptos.length > 1 && !bloco) {
+        return NextResponse.json({
+          precisa_bloco: true,
+          condominio: condominioNome,
+          unidade,
+          blocos: aptos.map(a => a.block?.name).filter(Boolean),
+          mensagem: `A unidade ${unidade} existe em mais de um bloco. Pergunte ao usuário qual bloco.`,
+        });
+      }
       apartmentIds = aptos.map(a => a.id);
     }
 
