@@ -13,6 +13,8 @@ export interface ToolContext {
   baseUrl: string;
   cookie: string;
   userId: string;
+  /** Cache curto por requisição: evita repetir my-context e a mesma filipeta. */
+  cache?: Map<string, any>;
 }
 
 const MONTH_LABELS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
@@ -23,6 +25,10 @@ const MONTH_LABELS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho'
 const FETCH_TIMEOUT_MS = 20000;
 
 async function internalFetch(ctx: ToolContext, path: string, init?: RequestInit): Promise<any> {
+  const metodo = (init?.method || 'GET').toUpperCase();
+  const chave = `${metodo} ${path}`;
+  if (metodo === 'GET' && ctx.cache?.has(chave)) return ctx.cache.get(chave);
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   let res: Response;
@@ -55,7 +61,13 @@ async function internalFetch(ctx: ToolContext, path: string, init?: RequestInit)
   if (!res.ok) {
     return { erro: true, status: res.status, mensagem: data?.error || data?.sessionError || 'Falha ao consultar o sistema' };
   }
+  if (metodo === 'GET') ctx.cache?.set(chave, data);
   return data;
+}
+
+/** Contexto do usuário (morador x administrador) com cache por requisição. */
+async function obterContexto(ctx: ToolContext): Promise<any> {
+  return internalFetch(ctx, '/api/auth/my-context');
 }
 
 /** Período atual em America/Sao_Paulo (mês 1-12, ano). */
@@ -73,15 +85,52 @@ function norm(v: string): string {
 }
 
 /** Descobre o id do condomínio a partir do nome informado (só faz sentido para admin/síndico). */
-async function resolverCondominio(nome: string | undefined, ctx: ToolContext): Promise<{ id?: string; erro?: string }> {
-  if (!nome) return {};
-  const ctxData = await internalFetch(ctx, '/api/auth/my-context');
+async function resolverCondominio(
+  nome: string | undefined,
+  ctx: ToolContext,
+): Promise<{ id?: string; erro?: string; opcoes?: string[] }> {
+  const ctxData = await obterContexto(ctx);
   if (ctxData?.erro) return { erro: ctxData.mensagem };
+
+  const lista: any[] = ctxData.complexes || [];
+  const opcoes = lista.map((c: any) => c.socialName || c.aliasName).filter(Boolean).slice(0, 40);
+
+  if (!nome) return { opcoes };
+
   const alvo = norm(nome);
-  const achado = (ctxData.complexes || []).find((c: any) =>
+  const achado = lista.find((c: any) =>
     norm(c.socialName || '').includes(alvo) || norm(c.aliasName || '').includes(alvo));
-  if (!achado) return { erro: `Não encontrei o condomínio "${nome}" nos seus acessos.` };
+  if (!achado) return { erro: `Não encontrei o condomínio "${nome}" nos seus acessos.`, opcoes };
   return { id: achado.id };
+}
+
+/**
+ * Administrador sem condomínio informado não pode disparar a consulta: a rota
+ * de relatórios devolveria TODOS os condomínios da carteira e a resposta estoura
+ * o tempo da função. Nesse caso devolvemos a lista para o modelo perguntar.
+ */
+async function exigirEscopoAdmin(
+  args: Record<string, any>,
+  ctx: ToolContext,
+): Promise<{ bloqueado: true; resposta: Record<string, any> } | { bloqueado: false; complexId?: string }> {
+  const ctxData = await obterContexto(ctx);
+  const isSystem = Boolean(ctxData?.isSystem);
+  const cond = await resolverCondominio(args.condominio ? String(args.condominio) : undefined, ctx);
+
+  if (cond.erro) {
+    return { bloqueado: true, resposta: { erro: true, mensagem: cond.erro, condominios_disponiveis: cond.opcoes } };
+  }
+  if (isSystem && !cond.id) {
+    return {
+      bloqueado: true,
+      resposta: {
+        precisa_condominio: true,
+        mensagem: 'Este usuário é administrador. Peça o nome do condomínio (e a unidade, se for o caso) antes de consultar.',
+        condominios_disponiveis: cond.opcoes,
+      },
+    };
+  }
+  return { bloqueado: false, complexId: cond.id };
 }
 
 function resumirRelatorio(item: any) {
@@ -175,7 +224,7 @@ export async function executarFerramenta(
 ): Promise<Record<string, any>> {
   switch (nome) {
     case 'minha_unidade': {
-      const ctxData = await internalFetch(ctx, '/api/auth/my-context');
+      const ctxData = await obterContexto(ctx);
       if (ctxData?.erro) return ctxData;
       const apartments = (ctxData.apartments || []).map((a: any) => ({
         unidade: a.name, bloco: a.block?.name ?? a.blockName ?? null, id: a.id,
@@ -187,7 +236,8 @@ export async function executarFerramenta(
         e_sistema: Boolean(ctxData.isSystem),
         papeis: ctxData.systemRoles || [],
         unidades: apartments,
-        condominios: ctxData.isSystem ? complexes.slice(0, 5) : complexes,
+        condominios: complexes.slice(0, 40),
+        total_condominios: complexes.length,
         observacao: ctxData.isSystem
           ? 'Este usuário é administrador/síndico: pode ver dados do condomínio.'
           : 'Este usuário é morador: vê apenas a própria unidade.',
@@ -200,12 +250,12 @@ export async function executarFerramenta(
       if (!mes || !ano || mes < 1 || mes > 12) {
         return { erro: true, mensagem: 'Informe mês (1-12) e ano (ex.: 2026).' };
       }
-      const cond = await resolverCondominio(args.condominio ? String(args.condominio) : undefined, ctx);
-      if (cond.erro) return { erro: true, mensagem: cond.erro };
+      const escopo = await exigirEscopoAdmin(args, ctx);
+      if (escopo.bloqueado) return escopo.resposta;
 
       const qs = new URLSearchParams({ month: String(mes), year: String(ano) });
       if (args.tipo) qs.set('utility_type', String(args.tipo));
-      if (cond.id) qs.set('complex_id', cond.id);
+      if (escopo.complexId) qs.set('complex_id', escopo.complexId);
       const data = await internalFetch(ctx, `/api/meter-report?${qs.toString()}`);
       if (data?.erro) return data;
 
@@ -258,18 +308,23 @@ export async function executarFerramenta(
         alvos.push({ mes: d.getUTCMonth() + 1, ano: d.getUTCFullYear() });
       }
 
-      const cond = await resolverCondominio(args.condominio ? String(args.condominio) : undefined, ctx);
-      if (cond.erro) return { erro: true, mensagem: cond.erro };
+      const escopo = await exigirEscopoAdmin(args, ctx);
+      if (escopo.bloqueado) return escopo.resposta;
       const unidadeAlvo = args.unidade ? norm(String(args.unidade)) : null;
+
+      // Busca os meses em paralelo (a rota leva ~2s por mês; em série estouraria o tempo).
+      const respostas = await Promise.all(alvos.map(async (alvo) => {
+        const qs = new URLSearchParams({ month: String(alvo.mes), year: String(alvo.ano) });
+        if (tipo) qs.set('utility_type', tipo);
+        if (escopo.complexId) qs.set('complex_id', escopo.complexId);
+        const data = await internalFetch(ctx, `/api/meter-report?${qs.toString()}`);
+        return { alvo, data };
+      }));
 
       const serie: any[] = [];
       let modoAgregado = false;
-      for (const alvo of alvos) {
-        const qs = new URLSearchParams({ month: String(alvo.mes), year: String(alvo.ano) });
-        if (tipo) qs.set('utility_type', tipo);
-        if (cond.id) qs.set('complex_id', cond.id);
-        const data = await internalFetch(ctx, `/api/meter-report?${qs.toString()}`);
-        if (data?.erro) continue;
+      for (const { alvo, data } of respostas) {
+        if (!data || data?.erro) continue;
 
         let itens: any[] = data.list || [];
         if (unidadeAlvo) {

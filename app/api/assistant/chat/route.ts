@@ -110,6 +110,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       baseUrl: process.env.NEXT_PUBLIC_APP_URL || origin,
       cookie: req.headers.get('cookie') || '',
       userId,
+      cache: new Map(),
     };
 
     const contents: GeminiContent[] = [];
