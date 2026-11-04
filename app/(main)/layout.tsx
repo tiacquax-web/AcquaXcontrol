@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { PermissionsProvider } from "./PermissionsContext";
 import { RolePreviewProvider } from "@/contexts/RolePreviewContext";
 import { PrintHeader } from "@/components/print-header";
+import AssistantWidget from "@/components/assistant/AssistantWidget";
 
 
 export default function RootLayout({
@@ -20,6 +21,7 @@ export default function RootLayout({
                         {/* Cabeçalho oficial (logo AcquaX) — visível apenas na impressão */}
                         <PrintHeader />
                         {children}
+                        <AssistantWidget />
                         <Toaster />
                     </main>
                     <ResponsivePadding />

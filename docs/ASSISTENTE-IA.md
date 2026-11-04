@@ -1,6 +1,15 @@
 # Assistente IA do AcquaXcontrol — proposta técnica
 
-Status: proposta (nada implementado). Data: 03/11/2026.
+Status: Fase 0 implementada (código no repositório, falta a chave de IA para ligar). Data: 03/11/2026.
+
+## Decisões tomadas (03/11/2026)
+
+- **Provedor**: Google Gemini (`gemini-2.5-flash`), via REST com function calling. Chave em
+  `GEMINI_API_KEY` (opcionalmente `GOOGLE_API_KEY`); modelo ajustável em `GEMINI_MODEL`.
+- **Escopo**: consultas + ações + suporte (tudo), entregues em fases.
+- **Troca de e-mail**: o usuário já está autenticado no sistema para usar o assistente, então a
+  troca é sempre da própria conta (a ferramenta ignora qualquer id vindo do modelo e usa o id da
+  sessão). O sistema já avisa/envia credenciais para o novo e-mail pelo fluxo existente de usuário.
 
 ## 1. Objetivo
 
@@ -119,10 +128,22 @@ automático no início), resumo do histórico do morador e alerta de SLA.
 | 3 | Síndico: resumos e unidades sem leitura | "Como está o consumo do condomínio em outubro" responde certo |
 | 4 | Suporte: triagem + resposta sugerida | Atendente aprova sugestão em 1 clique |
 
-## 8. Decisões pendentes (produto)
+## 8. O que já está no código (Fase 0)
 
-1. **Provedor/modelo e chave de API** (OpenAI, Anthropic, Gemini ou gateway interno).
-2. **Por onde começar**: morador (FAQ + filipeta + consumo) ou suporte (triagem).
-3. **Política de troca de e-mail**: confirmar no e-mail atual (recomendado) ou apenas
-   avisar depois da troca.
-4. **Quem usa**: todos os moradores desde o início ou liberação por condomínio.
+| Arquivo | Papel |
+|---|---|
+| `lib/services/assistant/gemini.ts` | Cliente Gemini (generateContent + function calling), chave só no servidor |
+| `lib/services/assistant/tools.ts` | Ferramentas: `minha_unidade`, `minha_filipeta`, `meu_historico_consumo`, `abrir_chamado`, `alterar_meu_email` |
+| `lib/services/assistant/prompt.ts` | System prompt com as regras invioláveis |
+| `app/api/assistant/chat/route.ts` | Rota do chat: valida sessão, roda até 4 rodadas de tool calling, limite de 40 mensagens/hora por usuário |
+| `components/assistant/AssistantWidget.tsx` | Botão flutuante + painel de conversa (montado em `app/(main)/layout.tsx`) |
+
+Para ligar: cadastrar `GEMINI_API_KEY` na Vercel (produção e preview) e redeployar.
+
+## 9. Próximos passos
+
+1. Ligar a chave e validar a Fase 0 com um morador de teste (filipeta de outubro + consumo do ano).
+2. FAQ por condomínio (`FaqItem`) para responder sem chamar o modelo.
+3. Auditoria em banco (`AssistantConversation`/`AssistantMessage`).
+4. Síndico: `resumo_condominio`, `unidades_sem_leitura`, `variacao_por_bloco`.
+5. Suporte: triagem de tickets e resposta sugerida ao atendente.
