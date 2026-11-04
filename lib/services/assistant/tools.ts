@@ -48,6 +48,23 @@ function hojeBR(): { mes: number; ano: number } {
   return { mes, ano: isNaN(ano) ? new Date().getFullYear() : ano, ...(isNaN(mes) ? { mes: new Date().getMonth() + 1 } : {}) };
 }
 
+/** Normaliza texto para comparação (sem acento, minúsculo). */
+function norm(v: string): string {
+  return (v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+/** Descobre o id do condomínio a partir do nome informado (só faz sentido para admin/síndico). */
+async function resolverCondominio(nome: string | undefined, ctx: ToolContext): Promise<{ id?: string; erro?: string }> {
+  if (!nome) return {};
+  const ctxData = await internalFetch(ctx, '/api/auth/my-context');
+  if (ctxData?.erro) return { erro: ctxData.mensagem };
+  const alvo = norm(nome);
+  const achado = (ctxData.complexes || []).find((c: any) =>
+    norm(c.socialName || '').includes(alvo) || norm(c.aliasName || '').includes(alvo));
+  if (!achado) return { erro: `Não encontrei o condomínio "${nome}" nos seus acessos.` };
+  return { id: achado.id };
+}
+
 function resumirRelatorio(item: any) {
   return {
     mes: item.monthRef,
@@ -83,6 +100,8 @@ export const TOOL_DECLARATIONS: GeminiToolDeclaration[] = [
         mes: { type: 'NUMBER', description: 'Mês de referência, 1 a 12' },
         ano: { type: 'NUMBER', description: 'Ano de referência, ex.: 2026' },
         tipo: { type: 'STRING', description: 'Tipo de medição: Agua, Esgoto, Gas ou Energia (padrão: Agua)' },
+        condominio: { type: 'STRING', description: 'Somente para administrador/síndico: nome (ou parte) do condomínio' },
+        unidade: { type: 'STRING', description: 'Somente para administrador/síndico: nome da unidade, ex.: 94' },
       },
       required: ['mes', 'ano'],
     },
@@ -96,6 +115,8 @@ export const TOOL_DECLARATIONS: GeminiToolDeclaration[] = [
       properties: {
         meses: { type: 'NUMBER', description: 'Quantidade de meses para trás (1 a 24). Padrão 12.' },
         tipo: { type: 'STRING', description: 'Tipo de medição: Agua, Esgoto, Gas ou Energia (padrão: Agua)' },
+        condominio: { type: 'STRING', description: 'Somente para administrador/síndico: nome (ou parte) do condomínio' },
+        unidade: { type: 'STRING', description: 'Somente para administrador/síndico: nome da unidade' },
       },
     },
   },
@@ -160,12 +181,20 @@ export async function executarFerramenta(
       if (!mes || !ano || mes < 1 || mes > 12) {
         return { erro: true, mensagem: 'Informe mês (1-12) e ano (ex.: 2026).' };
       }
+      const cond = await resolverCondominio(args.condominio ? String(args.condominio) : undefined, ctx);
+      if (cond.erro) return { erro: true, mensagem: cond.erro };
+
       const qs = new URLSearchParams({ month: String(mes), year: String(ano) });
       if (args.tipo) qs.set('utility_type', String(args.tipo));
+      if (cond.id) qs.set('complex_id', cond.id);
       const data = await internalFetch(ctx, `/api/meter-report?${qs.toString()}`);
       if (data?.erro) return data;
 
-      const list = (data.list || []).map(resumirRelatorio);
+      let list = (data.list || []).map(resumirRelatorio);
+      if (args.unidade) {
+        const u = norm(String(args.unidade));
+        list = list.filter((l: any) => norm(l.unidade || '').includes(u));
+      }
       const tarifas = (data.dealershipReadings || [])
         .map((d: any) => ({ mes: d.monthRef, ano: d.yearRef, tarifa: d.coeficiente ?? null, valor_conta_condominio: d.totalValue ?? null }))
         .filter((d: any) => d.tarifa || d.valor_conta_condominio);
@@ -177,6 +206,25 @@ export async function executarFerramenta(
           tarifas,
         };
       }
+      // Muitas unidades (visão de administrador): devolve agregado em vez de despejar tudo.
+      if (list.length > 25) {
+        const consumos = list.map((l: any) => l.consumo).filter((v: any) => typeof v === 'number') as number[];
+        const valores = list.map((l: any) => l.valor_total).filter((v: any) => typeof v === 'number') as number[];
+        const soma = (a: number[]) => Number(a.reduce((x, y) => x + y, 0).toFixed(2));
+        return {
+          encontrado: true,
+          referencia: `${MONTH_LABELS[mes - 1]}/${ano}`,
+          modo: 'agregado',
+          unidades_com_filipeta: list.length,
+          consumo_total: consumos.length ? soma(consumos) : null,
+          consumo_medio_por_unidade: consumos.length ? Number((soma(consumos) / consumos.length).toFixed(2)) : null,
+          valor_total: valores.length ? soma(valores) : null,
+          maiores_consumos: list.slice().sort((a: any, b: any) => (b.consumo || 0) - (a.consumo || 0)).slice(0, 10),
+          tarifas,
+          observacao: 'São muitas unidades. Se precisar de uma unidade específica, informe o condomínio e a unidade.',
+        };
+      }
+
       return { encontrado: true, referencia: `${MONTH_LABELS[mes - 1]}/${ano}`, linhas: list, tarifas };
     }
 
@@ -191,22 +239,52 @@ export async function executarFerramenta(
         alvos.push({ mes: d.getUTCMonth() + 1, ano: d.getUTCFullYear() });
       }
 
+      const cond = await resolverCondominio(args.condominio ? String(args.condominio) : undefined, ctx);
+      if (cond.erro) return { erro: true, mensagem: cond.erro };
+      const unidadeAlvo = args.unidade ? norm(String(args.unidade)) : null;
+
       const serie: any[] = [];
+      let modoAgregado = false;
       for (const alvo of alvos) {
         const qs = new URLSearchParams({ month: String(alvo.mes), year: String(alvo.ano) });
         if (tipo) qs.set('utility_type', tipo);
+        if (cond.id) qs.set('complex_id', cond.id);
         const data = await internalFetch(ctx, `/api/meter-report?${qs.toString()}`);
         if (data?.erro) continue;
-        const item = (data.list || [])[0];
+
+        let itens: any[] = data.list || [];
+        if (unidadeAlvo) {
+          itens = itens.filter((i: any) => norm(i.apartment?.name || '').includes(unidadeAlvo));
+        }
+
         const tarifa = (data.dealershipReadings || [])[0]?.coeficiente ?? null;
-        serie.push({
-          referencia: `${MONTH_LABELS[alvo.mes - 1]}/${alvo.ano}`,
-          mes: alvo.mes,
-          ano: alvo.ano,
-          consumo: item ? item.consumption ?? null : null,
-          valor_total: item ? item.totalUnit ?? null : null,
-          tarifa,
-        });
+
+        if (itens.length > 1) {
+          // Visão de administrador: agrega o condomínio em vez de listar unidades.
+          modoAgregado = true;
+          const consumos = itens.map(i => i.consumption).filter((v: any) => typeof v === 'number') as number[];
+          const valores = itens.map(i => i.totalUnit).filter((v: any) => typeof v === 'number') as number[];
+          const soma = (a: number[]) => Number(a.reduce((x, y) => x + y, 0).toFixed(2));
+          serie.push({
+            referencia: `${MONTH_LABELS[alvo.mes - 1]}/${alvo.ano}`,
+            mes: alvo.mes,
+            ano: alvo.ano,
+            unidades: itens.length,
+            consumo: consumos.length ? soma(consumos) : null,
+            valor_total: valores.length ? soma(valores) : null,
+            tarifa,
+          });
+        } else {
+          const item = itens[0];
+          serie.push({
+            referencia: `${MONTH_LABELS[alvo.mes - 1]}/${alvo.ano}`,
+            mes: alvo.mes,
+            ano: alvo.ano,
+            consumo: item ? item.consumption ?? null : null,
+            valor_total: item ? item.totalUnit ?? null : null,
+            tarifa,
+          });
+        }
       }
 
       const comConsumo = serie.filter(s => typeof s.consumo === 'number');
@@ -216,6 +294,7 @@ export async function executarFerramenta(
 
       return {
         meses_consultados: serie.length,
+        escopo: modoAgregado ? 'condominio (soma das unidades)' : 'unidade',
         media_consumo: media,
         serie_em_ordem_cronologica: serie.slice().reverse(),
         observacao: 'Consumo nulo significa que não há filipeta processada naquele mês.',
