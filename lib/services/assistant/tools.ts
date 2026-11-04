@@ -109,10 +109,16 @@ async function resolverCondominio(
  * de relatórios devolveria TODOS os condomínios da carteira e a resposta estoura
  * o tempo da função. Nesse caso devolvemos a lista para o modelo perguntar.
  */
+interface ResultadoEscopo {
+  bloqueado: boolean;
+  resposta?: Record<string, any>;
+  complexId?: string;
+}
+
 async function exigirEscopoAdmin(
   args: Record<string, any>,
   ctx: ToolContext,
-): Promise<{ bloqueado: true; resposta: Record<string, any> } | { bloqueado: false; complexId?: string }> {
+): Promise<ResultadoEscopo> {
   const ctxData = await obterContexto(ctx);
   const isSystem = Boolean(ctxData?.isSystem);
   const cond = await resolverCondominio(args.condominio ? String(args.condominio) : undefined, ctx);
@@ -133,16 +139,32 @@ async function exigirEscopoAdmin(
   return { bloqueado: false, complexId: cond.id };
 }
 
+/** Arredonda para 2 casas, evitando dízimas como 10.19999999999982. */
+function n2(v: any): number | null {
+  return typeof v === 'number' && isFinite(v) ? Number(v.toFixed(2)) : null;
+}
+
+/** Enum interno → rótulo que o morador entende. */
+function rotuloTipo(v: any): string | null {
+  if (!v) return null;
+  const mapa: Record<string, string> = {
+    water: 'Água', agua: 'Água', agua_esgoto: 'Água', sewage: 'Esgoto', esgoto: 'Esgoto',
+    gas: 'Gás', energy: 'Energia', energia: 'Energia', electricity: 'Energia',
+  };
+  return mapa[String(v).toLowerCase()] || String(v);
+}
+
 function resumirRelatorio(item: any) {
   return {
     mes: item.monthRef,
     ano: item.yearRef,
-    tipo: item.utilityType,
+    tipo: rotuloTipo(item.utilityType),
+    condominio: item.apartment?.block?.complex?.socialName ?? null,
     unidade: item.apartment?.name ?? null,
     bloco: item.apartment?.block?.name ?? null,
-    consumo: item.consumption ?? null,
-    valor_total: item.totalUnit ?? null,
-    parte_comum: item.partial ?? null,
+    consumo: n2(item.consumption),
+    valor_total: n2(item.totalUnit),
+    parte_comum: n2(item.partial),
     leitura_atual: item.lastReading?.reading ?? null,
     leitura_anterior: item.history?.[0]?.lastReading?.reading ?? null,
     data_leitura: item.lastReading?.readingDate ?? null,
@@ -227,7 +249,10 @@ export async function executarFerramenta(
       const ctxData = await obterContexto(ctx);
       if (ctxData?.erro) return ctxData;
       const apartments = (ctxData.apartments || []).map((a: any) => ({
-        unidade: a.name, bloco: a.block?.name ?? a.blockName ?? null, id: a.id,
+        condominio: a.block?.complex?.socialName ?? a.complex?.socialName ?? null,
+        unidade: a.name,
+        bloco: a.block?.name ?? a.blockName ?? null,
+        id: a.id,
       }));
       const complexes = (ctxData.complexes || []).map((c: any) => ({
         condominio: c.socialName || c.aliasName, id: c.id,
@@ -251,7 +276,7 @@ export async function executarFerramenta(
         return { erro: true, mensagem: 'Informe mês (1-12) e ano (ex.: 2026).' };
       }
       const escopo = await exigirEscopoAdmin(args, ctx);
-      if (escopo.bloqueado) return escopo.resposta;
+      if (escopo.bloqueado) return escopo.resposta ?? { erro: true, mensagem: 'Consulta bloqueada.' };
 
       const qs = new URLSearchParams({ month: String(mes), year: String(ano) });
       if (args.tipo) qs.set('utility_type', String(args.tipo));
@@ -309,7 +334,7 @@ export async function executarFerramenta(
       }
 
       const escopo = await exigirEscopoAdmin(args, ctx);
-      if (escopo.bloqueado) return escopo.resposta;
+      if (escopo.bloqueado) return escopo.resposta ?? { erro: true, mensagem: 'Consulta bloqueada.' };
       const unidadeAlvo = args.unidade ? norm(String(args.unidade)) : null;
 
       // Busca os meses em paralelo (a rota leva ~2s por mês; em série estouraria o tempo).
@@ -344,7 +369,7 @@ export async function executarFerramenta(
             mes: alvo.mes,
             ano: alvo.ano,
             unidades: itens.length,
-            consumo: consumos.length ? soma(consumos) : null,
+            consumo: consumos.length ? n2(soma(consumos)) : null,
             valor_total: valores.length ? soma(valores) : null,
             tarifa,
           });
