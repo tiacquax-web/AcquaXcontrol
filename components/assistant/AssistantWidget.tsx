@@ -5,6 +5,37 @@ import { X, Send, Loader2, Sparkles, AlertTriangle } from 'lucide-react';
 
 interface Msg { role: 'user' | 'assistant'; text: string }
 
+/** Transforma [texto](url) e URLs soltas em links clicáveis, mantendo o resto do texto. */
+function renderizarTexto(texto: string) {
+  const partes: Array<{ tipo: 'texto' | 'link'; valor: string; rotulo?: string }> = [];
+  const regex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]+)/g;
+  let ultimo = 0;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(texto)) !== null) {
+    if (m.index > ultimo) partes.push({ tipo: 'texto', valor: texto.slice(ultimo, m.index) });
+    if (m[1] && m[2]) partes.push({ tipo: 'link', valor: m[2], rotulo: m[1] });
+    else partes.push({ tipo: 'link', valor: m[3], rotulo: 'abrir arquivo' });
+    ultimo = m.index + m[0].length;
+  }
+  if (ultimo < texto.length) partes.push({ tipo: 'texto', valor: texto.slice(ultimo) });
+
+  return partes.map((p, i) =>
+    p.tipo === 'texto'
+      ? <span key={i}>{p.valor}</span>
+      : (
+        <a
+          key={i}
+          href={p.valor}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="break-all font-medium underline"
+        >
+          {p.rotulo}
+        </a>
+      ),
+  );
+}
+
 export default function AssistantWidget() {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -145,7 +176,7 @@ export default function AssistantWidget() {
                       : 'max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800'
                   }
                 >
-                  {m.text}
+                  {renderizarTexto(m.text)}
                 </div>
               </div>
             ))}
