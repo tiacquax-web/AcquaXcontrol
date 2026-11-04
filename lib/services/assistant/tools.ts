@@ -251,6 +251,41 @@ export const TOOL_DECLARATIONS: GeminiToolDeclaration[] = [
     },
   },
   {
+    name: 'gerar_relatorio',
+    description:
+      'Gera o ARQUIVO do levantamento/filipeta e devolve dois links: um pronto para imprimir/salvar em PDF e um CSV para baixar. Use sempre que o usuário pedir relatório, arquivo, PDF, exportar, planilha ou "me manda".',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        condominio: { type: 'STRING', description: 'Nome do condomínio' },
+        mes: { type: 'NUMBER', description: 'Mês de referência, 1 a 12' },
+        ano: { type: 'NUMBER', description: 'Ano de referência' },
+        unidade: { type: 'STRING', description: 'Unidade (opcional)' },
+        bloco: { type: 'STRING', description: 'Bloco (opcional)' },
+      },
+      required: ['condominio', 'mes', 'ano'],
+    },
+  },
+  {
+    name: 'unidades_sem_leitura',
+    description:
+      'Lista as unidades do condomínio que ainda não têm leitura/filipeta processada em um mês. Útil para síndico cobrar leitura pendente.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        condominio: { type: 'STRING', description: 'Nome do condomínio' },
+        mes: { type: 'NUMBER', description: 'Mês, 1 a 12' },
+        ano: { type: 'NUMBER', description: 'Ano' },
+      },
+      required: ['condominio', 'mes', 'ano'],
+    },
+  },
+  {
+    name: 'meus_chamados',
+    description: 'Lista os chamados de suporte do próprio usuário com status e última mensagem.',
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
     name: 'alterar_meu_email',
     description:
       'Altera o e-mail de acesso do próprio usuário (somente o dele). O sistema envia as novas credenciais/aviso para o novo e-mail. Confirme com o usuário antes de chamar e nunca use e-mail de outra pessoa.',
@@ -417,6 +452,74 @@ export async function executarFerramenta(
       });
       if (data?.erro) return data;
       return { aberto: true, chamado_id: data?.id ?? null, assunto, aviso: 'O chamado foi registrado e a equipe responderá na aba Suporte.' };
+    }
+
+    case 'gerar_relatorio': {
+      const mes = Number(args.mes);
+      const ano = Number(args.ano);
+      if (!mes || !ano || mes < 1 || mes > 12) {
+        return { erro: true, mensagem: 'Informe mês (1-12) e ano.' };
+      }
+      const condominio = String(args.condominio || '').trim();
+      if (!condominio) return { erro: true, mensagem: 'Informe o condomínio.' };
+
+      // Valida antes de devolver o link, para não mandar link quebrado.
+      const confere = await postJson(ctx, '/api/assistant/consumo', {
+        condominio,
+        unidade: args.unidade ? String(args.unidade) : undefined,
+        bloco: args.bloco ? String(args.bloco) : undefined,
+        mes,
+        ano,
+      });
+      if (confere?.erro) return confere;
+
+      const params = new URLSearchParams({
+        condominio,
+        mes: String(mes),
+        ano: String(ano),
+      });
+      if (args.unidade) params.set('unidade', String(args.unidade));
+      if (args.bloco) params.set('bloco', String(args.bloco));
+
+      const base = `${ctx.baseUrl}/api/assistant/relatorio`;
+      const paramsPdf = new URLSearchParams(params);
+      paramsPdf.set('formato', 'html');
+      const paramsCsv = new URLSearchParams(params);
+      paramsCsv.set('formato', 'csv');
+
+      return {
+        pronto: true,
+        condominio: confere.condominio,
+        referencia: (confere.competencias || [])[0]?.referencia ?? null,
+        link_para_salvar_em_pdf: `${base}?${paramsPdf.toString()}`,
+        link_da_planilha_csv: `${base}?${paramsCsv.toString()}`,
+        instrucao:
+          'Envie os dois links ao usuário. O primeiro abre o relatório pronto (Ctrl+P salva em PDF) e o segundo baixa a planilha.',
+      };
+    }
+
+    case 'unidades_sem_leitura': {
+      const mes = Number(args.mes);
+      const ano = Number(args.ano);
+      if (!mes || !ano) return { erro: true, mensagem: 'Informe mês e ano.' };
+      return postJson(ctx, '/api/assistant/consumo', {
+        condominio: args.condominio ? String(args.condominio) : undefined,
+        mes,
+        ano,
+        sem_leitura: true,
+      });
+    }
+
+    case 'meus_chamados': {
+      const data = await internalFetch(ctx, '/api/user/support?take=5');
+      if (data?.erro) return data;
+      const tickets = (data.tickets || data.data || data || []).slice(0, 5).map((t: any) => ({
+        assunto: t.subject,
+        status: t.status,
+        complexo: t.complex?.socialName ?? null,
+        aberto_em: t.createdAt,
+      }));
+      return { total: Array.isArray(tickets) ? tickets.length : 0, chamados: tickets };
     }
 
     case 'alterar_meu_email': {

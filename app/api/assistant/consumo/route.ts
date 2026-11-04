@@ -64,6 +64,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     const tipo: string = (body?.tipo || '').toLowerCase();
     const meses = Math.min(Math.max(Number(body?.meses) || 1, 1), 12);
     const mesPedido = Number(body?.mes) || 0;
+    const semLeitura = Boolean(body?.sem_leitura);
     const anoPedido = Number(body?.ano) || 0;
 
     // ── Escopo do usuário (mesma regra da tela) ───────────────────────────────
@@ -157,6 +158,35 @@ export async function POST(req: NextRequest): Promise<Response> {
       ...(apartmentIds ? { apartmentId: { in: apartmentIds } } : {}),
       ...(tipo === 'water' || tipo === 'gas' || tipo === 'energy' ? { utilityType: tipo as any } : {}),
     };
+
+    // Modo "unidades sem leitura": lista as unidades do condomínio sem relatório na competência.
+    if (semLeitura) {
+      if (!complexId || !mesPedido || !anoPedido) {
+        return NextResponse.json({ erro: 'informe_mes_ano', mensagem: 'Informe o condomínio, o mês e o ano para listar as unidades sem leitura.' });
+      }
+      const aptos = await prisma.apartment.findMany({
+        where: { deletedAt: null, complexId, ...escopo },
+        select: { id: true, name: true, block: { select: { name: true } } },
+      });
+      const comRelatorio = await prisma.apartmentConsumptionReport.findMany({
+        where: {
+          deletedAt: null, complexId,
+          monthRef: String(mesPedido).padStart(2, '0'), yearRef: String(anoPedido),
+        },
+        select: { apartmentId: true },
+        distinct: ['apartmentId'],
+      });
+      const lidos = new Set(comRelatorio.map(r => r.apartmentId));
+      const pendentes = aptos.filter(a => !lidos.has(a.id));
+      return NextResponse.json({
+        condominio: condominioNome,
+        referencia: `${MESES[mesPedido - 1]}/${anoPedido}`,
+        total_unidades: aptos.length,
+        com_leitura: lidos.size,
+        sem_leitura: pendentes.length,
+        unidades_sem_leitura: pendentes.slice(0, 60).map(a => ({ bloco: a.block?.name || '', unidade: a.name })),
+      });
+    }
 
     const linhas = await prisma.apartmentConsumptionReport.findMany({
       where,

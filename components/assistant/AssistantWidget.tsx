@@ -87,10 +87,10 @@ export default function AssistantWidget() {
         <button
           onClick={() => setOpen(true)}
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-teal-700"
-          title="Assistente AcquaX"
+          title="Falar com a Mariana"
         >
           <Sparkles className="h-4 w-4" />
-          Assistente
+          Mariana
         </button>
       )}
 
@@ -101,8 +101,8 @@ export default function AssistantWidget() {
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4" />
               <div className="leading-tight">
-                <p className="text-sm font-semibold">Assistente AcquaX</p>
-                <p className="text-[11px] text-teal-50">Filipeta, consumo e suporte</p>
+                <p className="text-sm font-semibold">Mariana</p>
+                <p className="text-[11px] text-teal-50">Assistente AcquaX</p>
               </div>
             </div>
             <button onClick={() => setOpen(false)} className="rounded-full p-1 hover:bg-teal-700" title="Fechar">
@@ -120,7 +120,7 @@ export default function AssistantWidget() {
           <div className="flex-1 space-y-3 overflow-y-auto bg-gray-50 px-3 py-3">
             {msgs.length === 0 && (
               <div className="rounded-xl border border-teal-100 bg-white p-3 text-sm text-gray-600">
-                <p className="font-medium text-gray-800">Olá! Eu sou o assistente virtual.</p>
+                <p className="font-medium text-gray-800">Oi! Eu sou a Mariana, assistente virtual.</p>
                 <p className="mt-1">Posso explicar sua filipeta, analisar seu consumo no ano e abrir um chamado no suporte.</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {['Explique minha filipeta de outubro', 'Como está meu consumo no ano?', 'Qual a tarifa da minha conta?'].map(s => (
