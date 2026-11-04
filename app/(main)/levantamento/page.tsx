@@ -267,7 +267,7 @@ function MeterPhoto({ url, alt, monthLabel }: { url: string; alt?: string; month
 // Exibe foto em tamanho grande com todos os dados abaixo
 function MeterPhotoCard({
   photoUrl, label, currReading, prevReading, consumption, totalUnit, partial, waterSewage,
-  periodStart, periodEnd, nextReadingDate, unit = 'm³',
+  periodStart, periodEnd, nextReadingDate, unit = 'm³', tarifa,
 }: {
   photoUrl: string | null;
   label: string;
@@ -281,6 +281,7 @@ function MeterPhotoCard({
   periodEnd?: string | null;
   nextReadingDate?: string | null;
   unit?: string;
+  tarifa?: string | null;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -289,6 +290,15 @@ function MeterPhotoCard({
       {/* Badge do mês */}
       <div className="bg-teal-600 text-white text-center text-xs font-bold uppercase tracking-wider py-1.5 px-3">
         {label}
+      </div>
+
+      {/* Tarifa da conta do condomínio no mês — sempre visível */}
+      <div className="flex items-center justify-center gap-1.5 border-b border-teal-100 bg-teal-50 px-3 py-1">
+        <Tag className="h-3 w-3 shrink-0 text-teal-500" />
+        <span className="text-[11px] font-medium text-teal-700">Tarifa:</span>
+        <span className="min-w-0 truncate text-[11px] font-semibold text-teal-800">
+          {tarifa?.trim() || 'não informada'}
+        </span>
       </div>
 
       {/* FOTO — grande, sem corte */}
@@ -611,6 +621,8 @@ export default function LevantamentoPage() {
       periodEnd: string | null;
       nextReadingDate: string | null;
       photoUrl: string | null;
+      /** Tarifa da conta do condomínio naquele mês (pode ter várias, separadas por "/") */
+      tarifa: string | null;
     }>;
     avgConsumption: number;
     maxConsumption: number;
@@ -629,7 +641,7 @@ export default function LevantamentoPage() {
             apartmentId: aptId,
             aptName: item.apartment?.name ?? '',
             blockName: item.apartment?.block?.name ?? '',
-            months: monthsData.map(m2 => ({ label: m2.label, consumption: null, totalUnit: null, partial: null, waterSewage: null, prevReading: null, currReading: null, periodStart: null, periodEnd: null, nextReadingDate: null, photoUrl: null })),
+            months: monthsData.map(m2 => ({ label: m2.label, consumption: null, totalUnit: null, partial: null, waterSewage: null, prevReading: null, currReading: null, periodStart: null, periodEnd: null, nextReadingDate: null, photoUrl: null, tarifa: (m2.dealershipReading?.coeficiente || '').trim() || null })),
             avgConsumption: 0,
             maxConsumption: 0,
             minConsumption: 0,
@@ -656,6 +668,7 @@ export default function LevantamentoPage() {
             currReading: item.lastReading?.reading ?? null,
             ...(deriveReadingSchedule(item, md.dealershipReading, md.month, md.year) as any),
             photoUrl: item.lastReading?.urlCover ? sanitizeImageUrl(item.lastReading.urlCover) : null,
+            tarifa: (md.dealershipReading?.coeficiente || '').trim() || null,
           };
         }
       });
@@ -751,12 +764,16 @@ export default function LevantamentoPage() {
             <p className="text-sm text-muted-foreground">
               {isMorador ? 'Histórico de leituras da sua unidade' : 'Comparativo por período — consumo, leituras e valores'}
             </p>
-            {allLoaded && (
+            {selectedComplexId && (
               <p className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700">
                 <Tag className="w-3.5 h-3.5 shrink-0" />
                 <span className="shrink-0">Tarifa:</span>
                 <span className="min-w-0 truncate font-semibold">
-                  {tarifasDoPeriodo.length ? tarifasDoPeriodo.join(' · ') : 'não informada'}
+                  {isAnyLoading
+                    ? 'carregando…'
+                    : tarifasDoPeriodo.length
+                      ? tarifasDoPeriodo.join(' · ')
+                      : 'não informada'}
                 </span>
               </p>
             )}
@@ -984,6 +1001,9 @@ export default function LevantamentoPage() {
             <p className="text-sm text-gray-600">
               Bl. {moradorRow.blockName} — Ap. {moradorRow.aptName} — {selectedMonths[0]?.labelFull} a {selectedMonths[selectedMonths.length - 1]?.labelFull}
             </p>
+            <p className="text-xs text-gray-600 font-medium">
+              Tarifa: {tarifasDoPeriodo.length ? tarifasDoPeriodo.join(' · ') : 'não informada'}
+            </p>
             <p className="text-xs text-gray-400">Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}</p>
           </div>
 
@@ -1064,7 +1084,7 @@ export default function LevantamentoPage() {
 
           {/* Footer print */}
           <div className="hidden print:block text-xs text-gray-400 text-center mt-4">
-            AcquaX Control — Levantamento — {complexDisplayName} Bl.{moradorRow.blockName} Ap.{moradorRow.aptName} — Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}
+            AcquaX Control — Levantamento — {complexDisplayName} Bl.{moradorRow.blockName} Ap.{moradorRow.aptName} — Tarifa: {tarifasDoPeriodo.length ? tarifasDoPeriodo.join(' · ') : 'não informada'} — Gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}
           </div>
         </>
       )}
@@ -1190,6 +1210,7 @@ export default function LevantamentoPage() {
                       periodEnd={m.periodEnd}
                       nextReadingDate={m.nextReadingDate}
                       unit={utilityConfig.unit}
+                      tarifa={m.tarifa}
                     />
                   ))}
                 </div>
@@ -1218,11 +1239,9 @@ export default function LevantamentoPage() {
                     {monthsData.map(m => (
                       <th key={m.label} className="px-3 py-2.5 text-center font-semibold text-gray-700 whitespace-nowrap min-w-[110px] border-l">
                         <span className="block">{m.label}</span>
-                        {m.dealershipReading?.coeficiente?.trim() && (
-                          <span className="block text-[10px] font-normal text-teal-600">
-                            Tarifa {m.dealershipReading.coeficiente.trim()}
-                          </span>
-                        )}
+                        <span className="block text-[10px] font-normal text-teal-600">
+                          Tarifa {m.dealershipReading?.coeficiente?.trim() || '—'}
+                        </span>
                       </th>
                     ))}
                     <th className="px-3 py-2.5 text-center font-semibold text-gray-700 whitespace-nowrap min-w-[90px] border-l bg-teal-50 text-teal-700">
