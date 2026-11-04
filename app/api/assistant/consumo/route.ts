@@ -316,6 +316,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     });
   } catch (error: any) {
     console.error('[assistant/consumo] erro:', error?.message || error);
-    return NextResponse.json({ erro: 'interno', mensagem: 'Falha ao consultar o consumo.' }, { status: 500 });
+    const debug = req.headers.get('x-mariana-debug') === '1';
+    return NextResponse.json({
+      erro: 'interno',
+      mensagem: 'Falha ao consultar o consumo.',
+      ...(debug ? { detalhe: String(error?.message || error).slice(0, 300) } : {}),
+    }, { status: 500 });
   }
 }
