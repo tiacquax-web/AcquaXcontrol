@@ -65,6 +65,13 @@ async function internalFetch(ctx: ToolContext, path: string, init?: RequestInit)
   return data;
 }
 
+/** Aquece o contexto em paralelo com a primeira chamada ao modelo (economiza 1-6s). */
+export function prefetchContexto(ctx: ToolContext): void {
+  const chave = 'GET /api/auth/my-context';
+  if (ctx.cache?.has(chave)) return;
+  void internalFetch(ctx, '/api/auth/my-context').catch(() => {});
+}
+
 /** Contexto do usuário (morador x administrador) com cache por requisição. */
 async function obterContexto(ctx: ToolContext): Promise<any> {
   return internalFetch(ctx, '/api/auth/my-context');
@@ -98,10 +105,28 @@ async function resolverCondominio(
   if (!nome) return { opcoes };
 
   const alvo = norm(nome);
-  const achado = lista.find((c: any) =>
-    norm(c.socialName || '').includes(alvo) || norm(c.aliasName || '').includes(alvo));
-  if (!achado) return { erro: `Não encontrei o condomínio "${nome}" nos seus acessos.`, opcoes };
-  return { id: achado.id };
+  // Pontua o melhor casamento: exato > começa com > contém. Assim "Pop Art"
+  // não perde para um "Pop Art Residence" nem para nomes parecidos.
+  const pontuar = (c: any): number => {
+    const nomes = [norm(c.socialName || ''), norm(c.aliasName || '')].filter(Boolean);
+    let melhor = 0;
+    for (const n of nomes) {
+      if (n === alvo) melhor = Math.max(melhor, 100 - n.length * 0.01);
+      else if (n.startsWith(alvo)) melhor = Math.max(melhor, 70 - n.length * 0.01);
+      else if (n.includes(alvo)) melhor = Math.max(melhor, 40 - n.length * 0.01);
+    }
+    return melhor;
+  };
+
+  const ranqueados = lista
+    .map((c: any) => ({ c, p: pontuar(c) }))
+    .filter((x: any) => x.p > 0)
+    .sort((a: any, b: any) => b.p - a.p);
+
+  if (!ranqueados.length) {
+    return { erro: `Não encontrei o condomínio "${nome}" nos seus acessos.`, opcoes };
+  }
+  return { id: ranqueados[0].c.id };
 }
 
 /**

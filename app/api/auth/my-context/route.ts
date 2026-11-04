@@ -178,7 +178,9 @@ export async function GET(req: NextRequest): Promise<Response> {
             // Otimização: Admins não precisam de todos os apartamentos/blocos no contexto global
             apartments,
             blocks,
-            complexes: isSystem ? complexes.slice(0, 100) : complexes,
+            // Sem truncar: o corte em 100 escondia condomínios do assistente e de
+            // seletores (ex.: Pop Art ficava fora da lista de quem tem carteira grande).
+            complexes,
             companyIds,
             // Adicionamos as IDs diretas para ajudar o frontend a distinguir Morador de Síndico
             directApartmentIds: apartmentIds,

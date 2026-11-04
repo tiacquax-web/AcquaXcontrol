@@ -9,7 +9,7 @@ import {
   type GeminiContent,
   type GeminiFunctionCallPart,
 } from '@/lib/services/assistant/gemini';
-import { TOOL_DECLARATIONS, executarFerramenta, type ToolContext } from '@/lib/services/assistant/tools';
+import { TOOL_DECLARATIONS, executarFerramenta, prefetchContexto, type ToolContext } from '@/lib/services/assistant/tools';
 import { buildSystemPrompt } from '@/lib/services/assistant/prompt';
 import { avaliarAcesso } from '@/lib/services/assistant/policy';
 import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
@@ -112,6 +112,8 @@ export async function POST(req: NextRequest): Promise<Response> {
       userId,
       cache: new Map(),
     };
+    // Aquece my-context enquanto o modelo pensa: a primeira ferramenta já acha o cache.
+    prefetchContexto(toolCtx);
 
     const contents: GeminiContent[] = [];
     for (const h of history.slice(-MAX_HISTORY)) {
