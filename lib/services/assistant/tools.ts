@@ -22,7 +22,7 @@ const MONTH_LABELS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho'
 
 // Teto por consulta: sem isso, uma rota lenta consome o tempo inteiro da função
 // (60s) e o usuário recebe um 504 sem explicação.
-const FETCH_TIMEOUT_MS = 20000;
+const FETCH_TIMEOUT_MS = 20000; // teto por consulta interna (a consulta de consumo agora leva ~200ms)
 
 async function internalFetch(ctx: ToolContext, path: string, init?: RequestInit): Promise<any> {
   const metodo = (init?.method || 'GET').toUpperCase();
@@ -217,6 +217,7 @@ export const TOOL_DECLARATIONS: GeminiToolDeclaration[] = [
         tipo: { type: 'STRING', description: 'Tipo de medição: Agua, Esgoto, Gas ou Energia (padrão: Agua)' },
         condominio: { type: 'STRING', description: 'Somente para administrador/síndico: nome (ou parte) do condomínio' },
         unidade: { type: 'STRING', description: 'Somente para administrador/síndico: nome da unidade, ex.: 94' },
+        bloco: { type: 'STRING', description: 'Somente para administrador/síndico: bloco da unidade, ex.: 2' },
       },
       required: ['mes', 'ano'],
     },
@@ -232,6 +233,7 @@ export const TOOL_DECLARATIONS: GeminiToolDeclaration[] = [
         tipo: { type: 'STRING', description: 'Tipo de medição: Agua, Esgoto, Gas ou Energia (padrão: Agua)' },
         condominio: { type: 'STRING', description: 'Somente para administrador/síndico: nome (ou parte) do condomínio' },
         unidade: { type: 'STRING', description: 'Somente para administrador/síndico: nome da unidade' },
+        bloco: { type: 'STRING', description: 'Somente para administrador/síndico: bloco da unidade' },
       },
     },
   },
@@ -263,6 +265,32 @@ export const TOOL_DECLARATIONS: GeminiToolDeclaration[] = [
 ];
 
 // ─── Execução ────────────────────────────────────────────────────────────────
+
+
+/** POST JSON para as rotas internas, com o cookie da sessão do usuário. */
+async function postJson(ctx: ToolContext, path: string, body: Record<string, any>): Promise<any> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${ctx.baseUrl}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', cookie: ctx.cookie },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    const texto = await res.text();
+    let dados: any = null;
+    try { dados = texto ? JSON.parse(texto) : null; } catch { dados = { mensagem: texto.slice(0, 300) }; }
+    if (!res.ok && !dados?.erro) return { erro: true, mensagem: `Consulta falhou (HTTP ${res.status}).` };
+    return dados;
+  } catch (e: any) {
+    const abortado = e?.name === 'AbortError';
+    return { erro: true, mensagem: abortado ? 'A consulta demorou demais. Tente novamente.' : 'Falha ao consultar.' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export async function executarFerramenta(
   nome: string,
@@ -300,128 +328,79 @@ export async function executarFerramenta(
       if (!mes || !ano || mes < 1 || mes > 12) {
         return { erro: true, mensagem: 'Informe mês (1-12) e ano (ex.: 2026).' };
       }
-      const escopo = await exigirEscopoAdmin(args, ctx);
-      if (escopo.bloqueado) return escopo.resposta ?? { erro: true, mensagem: 'Consulta bloqueada.' };
 
-      const qs = new URLSearchParams({ month: String(mes), year: String(ano) });
-      if (args.tipo) qs.set('utility_type', String(args.tipo));
-      if (escopo.complexId) qs.set('complex_id', escopo.complexId);
-      const data = await internalFetch(ctx, `/api/meter-report?${qs.toString()}`);
-      if (data?.erro) return data;
+      const bloqueio = await exigirEscopoAdmin(args, ctx);
+      if (bloqueio.bloqueado) return bloqueio.resposta ?? { erro: true, mensagem: 'Informe o condomínio.' };
 
-      let list = (data.list || []).map(resumirRelatorio);
-      if (args.unidade) {
-        const u = norm(String(args.unidade));
-        list = list.filter((l: any) => norm(l.unidade || '').includes(u));
-      }
-      const tarifas = (data.dealershipReadings || [])
-        .map((d: any) => ({ mes: d.monthRef, ano: d.yearRef, tarifa: d.coeficiente ?? null, valor_conta_condominio: d.totalValue ?? null }))
-        .filter((d: any) => d.tarifa || d.valor_conta_condominio);
+      const resposta = await postJson(ctx, '/api/assistant/consumo', {
+        condominio: args.condominio ? String(args.condominio) : undefined,
+        unidade: args.unidade ? String(args.unidade) : undefined,
+        bloco: args.bloco ? String(args.bloco) : undefined,
+        tipo: args.tipo ? String(args.tipo) : undefined,
+        mes,
+        ano,
+      });
+      if (resposta?.erro) return resposta;
 
-      if (!list.length) {
+      const comp = (resposta.competencias || [])[0];
+      if (!comp || !comp.tipos.length) {
         return {
           encontrado: false,
-          mensagem: `Não há filipeta registrada para ${MONTH_LABELS[mes - 1]}/${ano}. A conta desse mês pode ainda não ter sido processada.`,
-          tarifas,
+          condominio: resposta.condominio,
+          unidade: resposta.unidade,
+          mensagem: `Não há filipeta processada para ${MONTH_LABELS[mes - 1]}/${ano}. A conta desse mês pode ainda não ter sido fechada.`,
+          tarifa: comp?.tarifa ?? null,
         };
       }
-      // Muitas unidades (visão de administrador): devolve agregado em vez de despejar tudo.
-      if (list.length > 25) {
-        const consumos = list.map((l: any) => l.consumo).filter((v: any) => typeof v === 'number') as number[];
-        const valores = list.map((l: any) => l.valor_total).filter((v: any) => typeof v === 'number') as number[];
-        const soma = (a: number[]) => Number(a.reduce((x, y) => x + y, 0).toFixed(2));
-        return {
-          encontrado: true,
-          referencia: `${MONTH_LABELS[mes - 1]}/${ano}`,
-          modo: 'agregado',
-          unidades_com_filipeta: list.length,
-          consumo_total: consumos.length ? soma(consumos) : null,
-          consumo_medio_por_unidade: consumos.length ? Number((soma(consumos) / consumos.length).toFixed(2)) : null,
-          valor_total: valores.length ? soma(valores) : null,
-          maiores_consumos: list.slice().sort((a: any, b: any) => (b.consumo || 0) - (a.consumo || 0)).slice(0, 10),
-          tarifas,
-          observacao: 'São muitas unidades. Se precisar de uma unidade específica, informe o condomínio e a unidade.',
-        };
-      }
-
-      return { encontrado: true, referencia: `${MONTH_LABELS[mes - 1]}/${ano}`, linhas: list, tarifas };
+      return {
+        encontrado: true,
+        condominio: resposta.condominio,
+        unidade: resposta.unidade,
+        referencia: comp.referencia,
+        itens: comp.tipos,
+        tarifa: comp.tarifa,
+        valor_conta_condominio: comp.valor_conta_condominio,
+      };
     }
 
     case 'meu_historico_consumo': {
-      const meses = Math.min(Math.max(Number(args.meses) || 12, 1), 24);
-      const tipo = args.tipo ? String(args.tipo) : undefined;
-      const { mes: mesAtual, ano: anoAtual } = hojeBR();
+      const meses = Math.min(Math.max(Number(args.meses) || 12, 1), 12);
 
-      const alvos: Array<{ mes: number; ano: number }> = [];
-      for (let i = 0; i < meses; i++) {
-        const d = new Date(Date.UTC(anoAtual, mesAtual - 1 - i, 1));
-        alvos.push({ mes: d.getUTCMonth() + 1, ano: d.getUTCFullYear() });
-      }
+      const bloqueio = await exigirEscopoAdmin(args, ctx);
+      if (bloqueio.bloqueado) return bloqueio.resposta ?? { erro: true, mensagem: 'Informe o condomínio.' };
 
-      const escopo = await exigirEscopoAdmin(args, ctx);
-      if (escopo.bloqueado) return escopo.resposta ?? { erro: true, mensagem: 'Consulta bloqueada.' };
-      const unidadeAlvo = args.unidade ? norm(String(args.unidade)) : null;
+      const resposta = await postJson(ctx, '/api/assistant/consumo', {
+        condominio: args.condominio ? String(args.condominio) : undefined,
+        unidade: args.unidade ? String(args.unidade) : undefined,
+        bloco: args.bloco ? String(args.bloco) : undefined,
+        tipo: args.tipo ? String(args.tipo) : undefined,
+        meses,
+      });
+      if (resposta?.erro) return resposta;
 
-      // Busca os meses em paralelo (a rota leva ~2s por mês; em série estouraria o tempo).
-      const respostas = await Promise.all(alvos.map(async (alvo) => {
-        const qs = new URLSearchParams({ month: String(alvo.mes), year: String(alvo.ano) });
-        if (tipo) qs.set('utility_type', tipo);
-        if (escopo.complexId) qs.set('complex_id', escopo.complexId);
-        const data = await internalFetch(ctx, `/api/meter-report?${qs.toString()}`);
-        return { alvo, data };
+      const serie = (resposta.competencias || []).map((c: any) => ({
+        referencia: c.referencia,
+        mes: c.mes,
+        ano: c.ano,
+        tipos: c.tipos,
+        tarifa: c.tarifa,
       }));
-
-      const serie: any[] = [];
-      let modoAgregado = false;
-      for (const { alvo, data } of respostas) {
-        if (!data || data?.erro) continue;
-
-        let itens: any[] = data.list || [];
-        if (unidadeAlvo) {
-          itens = itens.filter((i: any) => norm(i.apartment?.name || '').includes(unidadeAlvo));
-        }
-
-        const tarifa = (data.dealershipReadings || [])[0]?.coeficiente ?? null;
-
-        if (itens.length > 1) {
-          // Visão de administrador: agrega o condomínio em vez de listar unidades.
-          modoAgregado = true;
-          const consumos = itens.map(i => i.consumption).filter((v: any) => typeof v === 'number') as number[];
-          const valores = itens.map(i => i.totalUnit).filter((v: any) => typeof v === 'number') as number[];
-          const soma = (a: number[]) => Number(a.reduce((x, y) => x + y, 0).toFixed(2));
-          serie.push({
-            referencia: `${MONTH_LABELS[alvo.mes - 1]}/${alvo.ano}`,
-            mes: alvo.mes,
-            ano: alvo.ano,
-            unidades: itens.length,
-            consumo: consumos.length ? n2(soma(consumos)) : null,
-            valor_total: valores.length ? soma(valores) : null,
-            tarifa,
-          });
-        } else {
-          const item = itens[0];
-          serie.push({
-            referencia: `${MONTH_LABELS[alvo.mes - 1]}/${alvo.ano}`,
-            mes: alvo.mes,
-            ano: alvo.ano,
-            consumo: item ? item.consumption ?? null : null,
-            valor_total: item ? item.totalUnit ?? null : null,
-            tarifa,
-          });
-        }
-      }
-
-      const comConsumo = serie.filter(s => typeof s.consumo === 'number');
-      const media = comConsumo.length
-        ? Number((comConsumo.reduce((a, s) => a + s.consumo, 0) / comConsumo.length).toFixed(2))
+      const comDados = serie.filter((s: any) => s.tipos.length > 0);
+      const consumos = comDados.flatMap((s: any) =>
+        s.tipos.filter((t: any) => t.tipo === 'water').map((t: any) => t.consumo),
+      );
+      const media = consumos.length
+        ? Math.round((consumos.reduce((a: number, b: number) => a + b, 0) / consumos.length) * 100) / 100
         : null;
 
       return {
+        condominio: resposta.condominio,
+        unidade: resposta.unidade,
         meses_consultados: serie.length,
-        escopo: modoAgregado ? 'condominio (soma das unidades)' : 'unidade',
-        media_consumo: media,
-        serie_em_ordem_cronologica: serie.slice().reverse(),
-        observacao: 'Consumo nulo significa que não há filipeta processada naquele mês.',
+        meses_com_dados: comDados.length,
+        media_consumo_agua: media,
+        serie_em_ordem_cronologica: serie,
+        observacao: 'Competência sem itens significa que não há filipeta processada naquele mês.',
       };
     }
 

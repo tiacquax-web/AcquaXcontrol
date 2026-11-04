@@ -127,8 +127,20 @@ export async function POST(req: NextRequest): Promise<Response> {
     });
 
     const ferramentasUsadas: string[] = [];
+    const iniciadoEm = Date.now();
+    const TETO_MS = 42000; // a função morre em 60s; acima disso é melhor responder do que estourar
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+      if (Date.now() - iniciadoEm > TETO_MS) {
+        return NextResponse.json({
+          reply: 'A consulta ficou pesada demais e eu parei no meio para não te deixar esperando. '
+            + 'Tente pedir um período menor (por exemplo, um mês ou um condomínio só).',
+          tools: ferramentasUsadas,
+          beta: acesso.beta,
+          banner: acesso.banner,
+        });
+      }
+
       const isLastChance = round === MAX_TOOL_ROUNDS;
       const parts = await geminiGenerate({
         systemPrompt,

@@ -10,6 +10,7 @@ export default function AssistantWidget() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [segundos, setSegundos] = useState(0);
   const [acesso, setAcesso] = useState<{ enabled: boolean; beta: boolean; banner: string | null } | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -40,12 +41,17 @@ export default function AssistantWidget() {
     setMsgs(prev => [...prev, { role: 'user', text: texto }]);
     setInput('');
     setLoading(true);
+    setSegundos(0);
+    const relogio = setInterval(() => setSegundos(s => s + 1), 1000);
+    const controller = new AbortController();
+    const corte = setTimeout(() => controller.abort(), 55000);
 
     try {
       const res = await fetch('/api/assistant/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: texto, history: historico }),
+        signal: controller.signal,
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.banner !== undefined) {
@@ -55,9 +61,17 @@ export default function AssistantWidget() {
         ? (data.reply || 'Não consegui responder agora.')
         : (data.error || 'Erro ao falar com o assistente.');
       setMsgs(prev => [...prev, { role: 'assistant', text: resposta }]);
-    } catch {
-      setMsgs(prev => [...prev, { role: 'assistant', text: 'Falha de conexão com o assistente. Tente novamente.' }]);
+    } catch (e: any) {
+      const demorou = e?.name === 'AbortError';
+      setMsgs(prev => [...prev, {
+        role: 'assistant',
+        text: demorou
+          ? 'A consulta passou de 55 segundos e eu parei. Tente pedir algo mais específico, como um mês e um condomínio só.'
+          : 'Falha de conexão com o assistente. Tente novamente.',
+      }]);
     } finally {
+      clearInterval(relogio);
+      clearTimeout(corte);
       setLoading(false);
     }
   }
@@ -139,7 +153,10 @@ export default function AssistantWidget() {
             {loading && (
               <div className="flex items-center gap-2 text-xs text-gray-500">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                consultando...
+                <span>
+                  consultando{segundos > 0 ? ` (${segundos}s)` : '...'}
+                  {segundos >= 15 ? ' — quanto mais meses e unidades, mais demora' : ''}
+                </span>
               </div>
             )}
             <div ref={endRef} />
