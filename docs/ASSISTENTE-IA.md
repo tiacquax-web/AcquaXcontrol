@@ -4,8 +4,12 @@ Status: Fase 0 implementada (código no repositório, falta a chave de IA para l
 
 ## Decisões tomadas (03/11/2026)
 
-- **Provedor**: Google Gemini (`gemini-2.5-flash`), via REST com function calling. Chave em
-  `GEMINI_API_KEY` (opcionalmente `GOOGLE_API_KEY`); modelo ajustável em `GEMINI_MODEL`.
+- **Provedor**: Google Gemini, via REST com function calling. Chave em `GEMINI_API_KEY`
+  (opcionalmente `GOOGLE_API_KEY`).
+- **Modelos (03/11/2026)**: o Google descontinuou `gemini-2.5-flash` para chaves novas
+  (retorna 404 "no longer available to new users"). O cliente tenta em ordem:
+  `gemini-flash-latest` → `gemini-3-flash-preview` → `gemini-flash-lite-latest`,
+  passando para o próximo em 404/429/503. `GEMINI_MODEL` força o primeiro da lista.
 - **Escopo**: consultas + ações + suporte (tudo), entregues em fases.
 - **Troca de e-mail**: o usuário já está autenticado no sistema para usar o assistente, então a
   troca é sempre da própria conta (a ferramenta ignora qualquer id vindo do modelo e usa o id da
@@ -139,6 +143,11 @@ automático no início), resumo do histórico do morador e alerta de SLA.
 | `components/assistant/AssistantWidget.tsx` | Botão flutuante + painel de conversa (montado em `app/(main)/layout.tsx`) |
 
 Para ligar: cadastrar `GEMINI_API_KEY` na Vercel (produção e preview) e redeployar.
+
+Validado em 03/11/2026 contra a API do Google: chave OK, function calling OK nas duas
+pontas (pedido de ferramenta e resposta final depois do resultado), com os modelos
+`gemini-3-flash-preview` e `gemini-flash-lite-latest` (o `gemini-flash-latest` estava
+em sobrecarga momentânea no teste).
 
 ## 9. Próximos passos
 

@@ -5,7 +5,17 @@
  * Env: GEMINI_API_KEY (ou GOOGLE_API_KEY) e, opcional, GEMINI_MODEL.
  */
 
-export const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+/**
+ * Modelos tentados em ordem. Os aliases "-latest" acompanham a versão corrente do
+ * Google, então não ficam obsoletos como os nomes fixos (gemini-2.5-flash foi
+ * descontinuado para novas chaves em 11/2026).
+ */
+export const GEMINI_MODELS: string[] = [
+  process.env.GEMINI_MODEL,
+  'gemini-flash-latest',
+  'gemini-3-flash-preview',
+  'gemini-flash-lite-latest',
+].filter(Boolean) as string[];
 
 export interface GeminiTextPart { text: string }
 export interface GeminiFunctionCallPart {
@@ -43,7 +53,15 @@ export function isAssistantConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
 }
 
-/** Uma chamada ao modelo. Retorna as partes de conteúdo devolvidas. */
+function isRetryableStatus(status: number): boolean {
+  // 404 = modelo descontinuado para esta chave; 429/503 = sobrecarga temporária.
+  return status === 404 || status === 429 || status === 503 || status === 500;
+}
+
+/**
+ * Uma chamada ao modelo, tentando os modelos em ordem até um responder.
+ * Retorna as partes de conteúdo devolvidas.
+ */
 export async function geminiGenerate(opts: {
   systemPrompt: string;
   contents: GeminiContent[];
@@ -52,7 +70,6 @@ export async function geminiGenerate(opts: {
   timeoutMs?: number;
 }): Promise<GeminiPart[]> {
   const key = apiKey();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
 
   const body: Record<string, any> = {
     systemInstruction: { parts: [{ text: opts.systemPrompt }] },
@@ -75,25 +92,40 @@ export async function geminiGenerate(opts: {
     ];
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30000);
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+  let ultimoErro = '';
+  for (const modelo of GEMINI_MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`;
 
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      throw new Error(`Gemini ${res.status}: ${detail.slice(0, 400)}`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30000);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        ultimoErro = `Gemini ${modelo} ${res.status}: ${detail.slice(0, 200)}`;
+        if (isRetryableStatus(res.status)) continue;
+        throw new Error(ultimoErro);
+      }
+
+      const data = await res.json();
+      const parts: GeminiPart[] = data?.candidates?.[0]?.content?.parts ?? [];
+      if (parts.length) return parts;
+      ultimoErro = `Gemini ${modelo}: resposta vazia`;
+    } catch (e: any) {
+      // Timeout/erro de rede: tenta o próximo modelo.
+      ultimoErro = e?.message || 'falha de rede';
+      if (e?.name === 'AbortError') continue;
+      if (e instanceof Error && e.message.startsWith('Gemini ') && !/50[03]|429/.test(e.message)) throw e;
+    } finally {
+      clearTimeout(timer);
     }
-
-    const data = await res.json();
-    const parts: GeminiPart[] = data?.candidates?.[0]?.content?.parts ?? [];
-    return parts;
-  } finally {
-    clearTimeout(timer);
   }
+
+  throw new Error(`Nenhum modelo de IA respondeu agora. Último erro: ${ultimoErro}`);
 }
