@@ -42,6 +42,10 @@ export default function AssistantWidget() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [segundos, setSegundos] = useState(0);
+  const [conversaId] = useState(() =>
+    (globalThis.crypto?.randomUUID?.() || `c-${Date.now()}-${Math.random().toString(16).slice(2)}`));
+  const [avisos, setAvisos] = useState<Array<{ tipo: string; titulo: string; detalhe?: string }>>([]);
+  const [notas, setNotas] = useState<Record<number, 'util' | 'inutil'>>({});
   const [acesso, setAcesso] = useState<{ enabled: boolean; beta: boolean; banner: string | null } | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -64,6 +68,27 @@ export default function AssistantWidget() {
     if (open) inputRef.current?.focus();
   }, [open]);
 
+  // Avisos proativos (consumo fora do padrão, leitura pendente, tarifa em falta)
+  useEffect(() => {
+    if (!open || !acesso?.enabled) return;
+    fetch('/api/assistant/avisos')
+      .then(r => (r.ok ? r.json() : { avisos: [] }))
+      .then(d => setAvisos(Array.isArray(d?.avisos) ? d.avisos : []))
+      .catch(() => setAvisos([]));
+  }, [open, acesso?.enabled]);
+
+  async function avaliar(indice: number, nota: 'util' | 'inutil') {
+    setNotas(prev => ({ ...prev, [indice]: nota }));
+    const pergunta = [...msgs.slice(0, indice)].reverse().find(m => m.role === 'user')?.text ?? null;
+    try {
+      await fetch('/api/assistant/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversaId, nota, pergunta, resposta: msgs[indice]?.text ?? null }),
+      });
+    } catch { /* silencioso: avaliação é opcional */ }
+  }
+
   async function enviar() {
     const texto = input.trim();
     if (!texto || loading) return;
@@ -81,7 +106,7 @@ export default function AssistantWidget() {
       const res = await fetch('/api/assistant/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: texto, history: historico }),
+        body: JSON.stringify({ message: texto, history: historico, conversaId }),
         signal: controller.signal,
       });
       const data = await res.json().catch(() => ({}));
@@ -151,6 +176,17 @@ export default function AssistantWidget() {
           )}
 
           <div className="flex-1 space-y-3 overflow-y-auto bg-gray-50 px-3 py-3">
+            {avisos.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Avisos para você</p>
+                {avisos.map((a, i) => (
+                  <div key={i} className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2">
+                    <p className="text-[12px] font-medium text-amber-900">{a.titulo}</p>
+                    {a.detalhe && <p className="mt-0.5 text-[11px] leading-snug text-amber-800/80">{a.detalhe}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
             {msgs.length === 0 && (
               <div className="rounded-xl border border-teal-100 bg-white p-3 text-sm text-gray-600">
                 <p className="font-medium text-gray-800">Oi! Eu sou a Mariana, do time AcquaX.</p>
@@ -179,6 +215,32 @@ export default function AssistantWidget() {
                   }
                 >
                   {renderizarTexto(m.text)}
+                  {m.role !== 'user' && (
+                    <div className="mt-1.5 flex items-center gap-1 border-t border-gray-100 pt-1.5">
+                      {notas[i] ? (
+                        <span className="text-[10px] text-gray-400">
+                          {notas[i] === 'util' ? 'Obrigada pelo retorno.' : 'Anotado, vou melhorar.'}
+                        </span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => avaliar(i, 'util')}
+                            title="Respondeu o que eu precisava"
+                            className="rounded px-1 text-[11px] text-gray-400 hover:bg-gray-100 hover:text-teal-600"
+                          >
+                            👍
+                          </button>
+                          <button
+                            onClick={() => avaliar(i, 'inutil')}
+                            title="Não ajudou"
+                            className="rounded px-1 text-[11px] text-gray-400 hover:bg-gray-100 hover:text-red-500"
+                          >
+                            👎
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

@@ -12,6 +12,7 @@ import {
 import { TOOL_DECLARATIONS, executarFerramenta, prefetchContexto, type ToolContext } from '@/lib/services/assistant/tools';
 import { buildSystemPrompt } from '@/lib/services/assistant/prompt';
 import { avaliarAcesso } from '@/lib/services/assistant/policy';
+import { registrarLog } from '@/lib/services/assistant/audit';
 import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
 import prisma from '@/lib/prisma';
 
@@ -100,6 +101,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     const body = await req.json().catch(() => ({}));
     const message = String(body?.message || '').trim();
+    const conversaId = body?.conversaId ? String(body.conversaId).slice(0, 60) : null;
     const history: Array<{ role: 'user' | 'model'; text: string }> = Array.isArray(body?.history) ? body.history : [];
 
     if (!message) return NextResponse.json({ error: 'Mensagem vazia' }, { status: 400 });
@@ -125,6 +127,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     const systemPrompt = buildSystemPrompt({
       hoje: new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'long' }).format(new Date()),
     });
+
+    await registrarLog({ conversaId, userId, papel: 'user', texto: message });
 
     const ferramentasUsadas: string[] = [];
     const iniciadoEm = Date.now();
@@ -162,6 +166,11 @@ export async function POST(req: NextRequest): Promise<Response> {
       const calls = parts.filter((p): p is GeminiFunctionCallPart => 'functionCall' in p);
 
       if (!calls.length) {
+        await registrarLog({
+          conversaId, userId, papel: 'assistant',
+          texto: textParts || '', ferramentas: ferramentasUsadas,
+          totalMs: Date.now() - iniciadoEm,
+        });
         return NextResponse.json({
           reply: textParts || 'Não consegui montar uma resposta agora. Pode reformular?',
           tools: ferramentasUsadas,
