@@ -128,6 +128,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     const ferramentasUsadas: string[] = [];
     const iniciadoEm = Date.now();
+    const timings: Array<Record<string, any>> = [];
     const TETO_MS = 42000; // a função morre em 60s; acima disso é melhor responder do que estourar
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
@@ -136,17 +137,21 @@ export async function POST(req: NextRequest): Promise<Response> {
           reply: 'A consulta ficou pesada demais e eu parei no meio para não te deixar esperando. '
             + 'Tente pedir um período menor (por exemplo, um mês ou um condomínio só).',
           tools: ferramentasUsadas,
+          timings,
+          totalMs: Date.now() - iniciadoEm,
           beta: acesso.beta,
           banner: acesso.banner,
         });
       }
 
       const isLastChance = round === MAX_TOOL_ROUNDS;
+      const tGemini = Date.now();
       const parts = await geminiGenerate({
         systemPrompt,
         contents,
         tools: isLastChance ? undefined : TOOL_DECLARATIONS,
       });
+      timings.push({ etapa: `gemini_${round}`, ms: Date.now() - tGemini });
 
       const textParts = parts
         .filter((p): p is { text: string } => 'text' in p && typeof (p as any).text === 'string')
@@ -160,6 +165,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         return NextResponse.json({
           reply: textParts || 'Não consegui montar uma resposta agora. Pode reformular?',
           tools: ferramentasUsadas,
+          timings,
+          totalMs: Date.now() - iniciadoEm,
           beta: acesso.beta,
           banner: acesso.banner,
         });
@@ -173,11 +180,13 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (!nome) continue;
         ferramentasUsadas.push(nome);
         let resultado: Record<string, any>;
+        const tFerramenta = Date.now();
         try {
           resultado = await executarFerramenta(nome, call.functionCall.args || {}, toolCtx);
         } catch (e: any) {
           resultado = { erro: true, mensagem: e?.message || 'Falha ao executar a consulta' };
         }
+        timings.push({ etapa: `tool_${nome}`, ms: Date.now() - tFerramenta });
         responses.push({ functionResponse: { name: nome, response: resultado } });
       }
       contents.push({ role: 'user', parts: responses as any });
@@ -186,6 +195,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({
       reply: 'Não consegui concluir essa consulta agora. Quer que eu abra um chamado para o suporte?',
       tools: ferramentasUsadas,
+      timings,
+      totalMs: Date.now() - iniciadoEm,
     });
   } catch (e: any) {
     if (e instanceof GeminiConfigError) {
