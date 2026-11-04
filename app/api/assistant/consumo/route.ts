@@ -102,7 +102,6 @@ export async function POST(req: NextRequest): Promise<Response> {
           ...(escopo.complexId ? { id: escopo.complexId } : {}),
           ...(isSystem ? {} : { id: { in: complexosPermitidos } }),
           ...(isSystem && body?.companyId ? { companyId: body.companyId } : {}),
-          ...(escopo.apartmentId ? { apartments: { some: { id: escopo.apartmentId } } } : {}),
         },
         select: { id: true, socialName: true, aliasName: true, company: { select: { name: true } } },
         take: 600, // nomes são poucos; o casamento é feito por nome normalizado (sem acento)
