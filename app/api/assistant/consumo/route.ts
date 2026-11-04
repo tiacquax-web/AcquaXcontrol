@@ -78,6 +78,19 @@ export async function POST(req: NextRequest): Promise<Response> {
       else return NextResponse.json({ erro: 'sem_permissao', mensagem: 'Você não tem acesso a relatórios de consumo.' });
     }
 
+    // Quem é morador puro (só apartamento) só pode citar o condomínio das próprias
+    // unidades: derivamos a lista a partir dos apartamentos dele.
+    let complexosPermitidos = ctx.complexIds;
+    if (!isSystem && !complexosPermitidos.length && ctx.apartmentIds.length) {
+      const meus = await prisma.apartment.findMany({
+        where: { id: { in: ctx.apartmentIds } },
+        select: { block: { select: { complexId: true } }, complexId: true },
+      });
+      complexosPermitidos = Array.from(new Set(
+        meus.map(a => a.complexId || a.block?.complexId).filter(Boolean) as string[],
+      ));
+    }
+
     // ── Condomínio: resolver por nome DENTRO do escopo do usuário ─────────────
     let complexId: string | null = null;
     let condominioNome: string | null = null;
@@ -87,6 +100,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         where: {
           deletedAt: null,
           ...(escopo.complexId ? { id: escopo.complexId } : {}),
+          ...(isSystem ? {} : { id: { in: complexosPermitidos } }),
           ...(isSystem && body?.companyId ? { companyId: body.companyId } : {}),
           ...(escopo.apartmentId ? { apartments: { some: { id: escopo.apartmentId } } } : {}),
         },
@@ -290,6 +304,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     return NextResponse.json({
       condominio: condominioNome,
+      complex_id: complexId,
+      apartment_ids: apartmentIds,
       competencia_automatica: competenciaAutomatica,
       unidade: unidade
         ? `${unidade}${apartmentIds && apartmentIds.length > 1 ? ' (mais de uma unidade com esse número)' : ''}`

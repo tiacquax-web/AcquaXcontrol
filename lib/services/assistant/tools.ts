@@ -342,6 +342,32 @@ async function postJson(ctx: ToolContext, path: string, body: Record<string, any
   }
 }
 
+
+/** Monta o link da Filpeta Medição já filtrado (condomínio, mês, ano e unidade). */
+function linkFilipeta(ctx: ToolContext, dados: any, mes: number, ano: number): string {
+  const params = new URLSearchParams();
+  if (dados?.complex_id) params.set('complexId', String(dados.complex_id));
+  if (mes) params.set('month', String(mes).padStart(2, '0'));
+  if (ano) params.set('year', String(ano));
+  const apts = dados?.apartment_ids;
+  if (Array.isArray(apts) && apts.length === 1) params.set('apartmentId', String(apts[0]));
+  return `${ctx.baseUrl}/meter-report?${params.toString()}`;
+}
+
+/** Monta o link do Levantamento já filtrado no período pedido. */
+function linkLevantamento(ctx: ToolContext, dados: any, meses: number): string {
+  const params = new URLSearchParams();
+  if (dados?.complex_id) params.set('complexId', String(dados.complex_id));
+  const competencias = (dados?.competencias || []).filter((c: any) => c.tipos?.length);
+  if (competencias.length) {
+    const primeira = competencias[0];
+    const ultima = competencias[competencias.length - 1];
+    params.set('from', `${primeira.mes}-${primeira.ano}`);
+    params.set('to', `${ultima.mes}-${ultima.ano}`);
+  }
+  return `${ctx.baseUrl}/levantamento?${params.toString()}`;
+}
+
 export async function executarFerramenta(
   nome: string,
   args: Record<string, any> = {},
@@ -413,8 +439,8 @@ export async function executarFerramenta(
         referencia: comp.referencia,
         arquivo_pela_plataforma: {
           tela: 'Filipeta Medição',
-          link: `${ctx.baseUrl}/meter-report`,
-          como: 'a aba já monta a filipeta: selecione condomínio/mês e use imprimir para salvar em PDF',
+          link: linkFilipeta(ctx, resposta, Number(comp.mes), Number(comp.ano)),
+          como: 'a tela abre já filtrada nesse condomínio/mês; use imprimir para salvar em PDF',
         },
         itens: comp.tipos,
         tarifa: comp.tarifa,
@@ -460,8 +486,8 @@ export async function executarFerramenta(
         meses_com_dados: comDados.length,
         arquivo_pela_plataforma: {
           tela: 'Levantamento',
-          link: `${ctx.baseUrl}/levantamento`,
-          como: 'a aba já monta o levantamento: escolha condomínio/período e use imprimir para salvar em PDF',
+          link: linkLevantamento(ctx, resposta, meses),
+          como: 'a tela abre já no período consultado; use imprimir para salvar em PDF',
         },
         media_consumo_agua: media,
         serie_em_ordem_cronologica: serie,

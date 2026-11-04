@@ -63,8 +63,27 @@ export async function GET(req: NextRequest): Promise<Response> {
   const escopoComplexo = !isSystem && ctx.complexIds.length ? { id: { in: ctx.complexIds } } : {};
   const escopoApartamento = !isSystem && !ctx.complexIds.length ? { id: { in: ctx.apartmentIds } } : {};
 
+  // Morador puro: só pode resolver o condomínio das próprias unidades.
+  let idsPermitidos: string[] | undefined;
+  if (!isSystem) {
+    idsPermitidos = ctx.complexIds.length ? ctx.complexIds : undefined;
+    if (!idsPermitidos && ctx.apartmentIds.length) {
+      const meus = await prisma.apartment.findMany({
+        where: { id: { in: ctx.apartmentIds } },
+        select: { complexId: true, block: { select: { complexId: true } } },
+      });
+      idsPermitidos = Array.from(new Set(
+        meus.map(a => a.complexId || a.block?.complexId).filter(Boolean) as string[],
+      ));
+    }
+  }
+
   const todos = await prisma.complex.findMany({
-    where: { deletedAt: null, ...escopoComplexo },
+    where: {
+      deletedAt: null,
+      ...escopoComplexo,
+      ...(idsPermitidos ? { id: { in: idsPermitidos } } : {}),
+    },
     select: { id: true, socialName: true, aliasName: true },
     take: 600,
   });

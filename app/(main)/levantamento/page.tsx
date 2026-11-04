@@ -448,6 +448,9 @@ export default function LevantamentoPage() {
   const [fromMonth, setFromMonth] = useState(ALL_MONTHS[CURRENT_MONTH_INDEX + 5]); // 5 meses atrás
   const [toMonth, setToMonth] = useState(ALL_MONTHS[CURRENT_MONTH_INDEX]);     // mês atual
 
+  // Deep link da Mariana: /levantamento?complexId=..&blockId=..&month=..&year=..
+  const deepLinkAplicado = React.useRef(false);
+
   const [selectedComplexId, setSelectedComplexId] = useState<string | undefined>();
   const [selectedComplexObj, setSelectedComplexObj] = useState<any>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string | undefined>();
@@ -503,6 +506,25 @@ export default function LevantamentoPage() {
       }
     }
   }, [ctxLoading, isMorador, userComplexes, selectedComplexId, context]);
+
+  // Deep link da Mariana: aplica condomínio, bloco e período vindos da URL (uma vez)
+  useEffect(() => {
+    if (deepLinkAplicado.current || ctxLoading) return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const valor = (m: string, a: string) => `${m.padStart(2, '0')}-${a}`;
+    const de = params.get('from') || (params.get('month') && params.get('year') ? valor(params.get('month')!, params.get('year')!) : null);
+    const ate = params.get('to') || de;
+    if (de) { const o = ALL_MONTHS.find(x => x.value === de); if (o) setFromMonth(o); }
+    if (ate) { const o = ALL_MONTHS.find(x => x.value === ate); if (o) setToMonth(o); }
+    const complexId = params.get('complexId');
+    if (complexId) setSelectedComplexId(complexId);
+    const blockId = params.get('blockId');
+    if (blockId) setSelectedBlockId(blockId);
+    const utility = params.get('utility');
+    if (utility === 'water' || utility === 'gas' || utility === 'energy') setSelectedUtility(utility as any);
+    deepLinkAplicado.current = true;
+  }, [ctxLoading]);
 
   // Reset block/apt filter when complex changes
   useEffect(() => {

@@ -40,6 +40,10 @@ export default function MeterReportPage() {
   const context = isPreviewing ? effectiveContext : realCtx;
   const contextLoading = isPreviewing ? false : realLoading;
 
+  // Deep link da Mariana: /meter-report?complexId=..&month=..&year=..&apartmentId=..
+  // aplicado uma única vez, depois que o contexto carrega.
+  const deepLinkAplicado = React.useRef(false);
+
   // Selected month/year (default = current month)
   const [selectedMonthOption, setSelectedMonthOption] = useState(monthOptions[0]);
 
@@ -84,6 +88,28 @@ export default function MeterReportPage() {
     if (!context || !selectedComplexId) return [];
     return context.apartments.filter((a: any) => a.block?.complex?.id === selectedComplexId);
   }, [context, selectedComplexId]);
+
+  // Deep link: aplica os filtros vindos da URL (uma vez)
+  useEffect(() => {
+    if (deepLinkAplicado.current || contextLoading) return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const month = params.get('month');
+    const year = params.get('year');
+    if (month && year) {
+      const alvo = monthOptions.find(o => o.month === month.padStart(2, '0') && o.year === year);
+      if (alvo) setSelectedMonthOption(alvo);
+    }
+    const complexId = params.get('complexId');
+    if (complexId) setSelectedComplexId(complexId);
+    const blockId = params.get('blockId');
+    if (blockId) setSelectedBlockId(blockId);
+    const apartmentId = params.get('apartmentId');
+    if (apartmentId) setSelectedApartmentId(apartmentId);
+    const utility = params.get('utility');
+    if (utility === 'water' || utility === 'gas' || utility === 'energy') setSelectedUtility(utility as any);
+    deepLinkAplicado.current = true;
+  }, [contextLoading]);
 
   // Auto-select complex when morador has only one
   useEffect(() => {
