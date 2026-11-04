@@ -8,6 +8,7 @@
  */
 
 import type { GeminiToolDeclaration } from './gemini';
+import { buscarNoGuia, sumarioGuia, type Papel } from './guia';
 
 export interface ToolContext {
   baseUrl: string;
@@ -251,6 +252,18 @@ export const TOOL_DECLARATIONS: GeminiToolDeclaration[] = [
     },
   },
   {
+    name: 'como_acessar',
+    description:
+      'Explica o passo a passo de COMO o usuário chega em cada informação do sistema (filipeta, levantamento, contas, leituras, monitoramento, suporte, usuários etc.), com a rota e os cliques. Use sempre que perguntarem "onde vejo", "como faço", "como acesso", "como cadastro", "onde fica".',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        tema: { type: 'STRING', description: 'O que a pessoa quer fazer ou ver, ex.: "trocar e-mail", "ver consumo", "cadastrar morador", "tarifa"' },
+      },
+      required: ['tema'],
+    },
+  },
+  {
     name: 'gerar_relatorio',
     description:
       'Gera o ARQUIVO do levantamento/filipeta e devolve dois links: um pronto para imprimir/salvar em PDF e um CSV para baixar. Use sempre que o usuário pedir relatório, arquivo, PDF, exportar, planilha ou "me manda".',
@@ -452,6 +465,34 @@ export async function executarFerramenta(
       });
       if (data?.erro) return data;
       return { aberto: true, chamado_id: data?.id ?? null, assunto, aviso: 'O chamado foi registrado e a equipe responderá na aba Suporte.' };
+    }
+
+    case 'como_acessar': {
+      const ctxData = await obterContexto(ctx);
+      const isSystem = Boolean(ctxData?.isSystem);
+      const papeis: Papel[] = isSystem ? ['admin', 'sindico'] : ['morador'];
+      const termo = String(args.tema || '').trim();
+
+      const achados = buscarNoGuia(termo, papeis);
+      if (!achados.length) {
+        return {
+          tema_nao_encontrado: true,
+          temas_disponiveis: sumarioGuia(papeis),
+          mensagem: 'Não achei um tema exato. Ofereça os temas disponíveis e pergunte qual ele quer.',
+        };
+      }
+
+      return {
+        papeis_do_usuario: papeis,
+        itens: achados.map(g => ({
+          tema: g.titulo,
+          resumo: g.resumo,
+          link: `${ctx.baseUrl}${g.rota}`,
+          passos: (papeis.includes('admin') ? g.passos.admin : papeis.includes('sindico') ? g.passos.sindico : g.passos.morador)
+            ?? g.passos.morador ?? [],
+        })),
+        instrucao: 'Explique os passos numerados e inclua o link de cada tema. Não invente caminho que não esteja aqui.',
+      };
     }
 
     case 'gerar_relatorio': {
