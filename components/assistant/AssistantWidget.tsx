@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageCircle, X, Send, Loader2, Sparkles } from 'lucide-react';
+import { X, Send, Loader2, Sparkles, AlertTriangle } from 'lucide-react';
 
 interface Msg { role: 'user' | 'assistant'; text: string }
 
@@ -10,8 +10,19 @@ export default function AssistantWidget() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [acesso, setAcesso] = useState<{ enabled: boolean; beta: boolean; banner: string | null } | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Só aparece para quem está liberado (durante os testes, apenas convidados/admins).
+  useEffect(() => {
+    let ativo = true;
+    fetch('/api/assistant/chat')
+      .then(r => r.json())
+      .then(d => { if (ativo) setAcesso({ enabled: Boolean(d?.enabled), beta: Boolean(d?.beta), banner: d?.banner ?? null }); })
+      .catch(() => { if (ativo) setAcesso({ enabled: false, beta: true, banner: null }); });
+    return () => { ativo = false; };
+  }, []);
 
   useEffect(() => {
     if (open) endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -37,6 +48,9 @@ export default function AssistantWidget() {
         body: JSON.stringify({ message: texto, history: historico }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.banner !== undefined) {
+        setAcesso(prev => ({ enabled: prev?.enabled ?? true, beta: Boolean(data?.beta ?? prev?.beta ?? true), banner: data?.banner ?? prev?.banner ?? null }));
+      }
       const resposta = res.ok
         ? (data.reply || 'Não consegui responder agora.')
         : (data.error || 'Erro ao falar com o assistente.');
@@ -47,6 +61,10 @@ export default function AssistantWidget() {
       setLoading(false);
     }
   }
+
+  if (!acesso?.enabled) return null;
+
+  const banner = acesso.banner;
 
   return (
     <div className="print:hidden">
@@ -77,6 +95,13 @@ export default function AssistantWidget() {
               <X className="h-4 w-4" />
             </button>
           </div>
+
+          {banner && (
+            <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+              <p className="text-[11px] leading-snug text-amber-800">{banner}</p>
+            </div>
+          )}
 
           <div className="flex-1 space-y-3 overflow-y-auto bg-gray-50 px-3 py-3">
             {msgs.length === 0 && (

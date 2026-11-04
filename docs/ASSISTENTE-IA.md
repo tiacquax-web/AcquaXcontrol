@@ -142,6 +142,22 @@ automático no início), resumo do histórico do morador e alerta de SLA.
 | `app/api/assistant/chat/route.ts` | Rota do chat: valida sessão, roda até 4 rodadas de tool calling, limite de 40 mensagens/hora por usuário |
 | `components/assistant/AssistantWidget.tsx` | Botão flutuante + painel de conversa (montado em `app/(main)/layout.tsx`) |
 
+### Liberação controlada (modo teste)
+
+O assistente **não aparece para todos**: o widget pergunta `GET /api/assistant/chat` se o
+usuário está liberado e, se não estiver, nem o botão é renderizado. A mesma regra é
+revalidada no `POST`, então não dá para furar pela API.
+
+| Variável | Efeito |
+|---|---|
+| `ASSISTANT_TEST_EMAILS` | Lista de e-mails (separada por vírgula) liberados para teste. Ex.: `giulia@...,morador.teste@...` |
+| `ASSISTANT_BETA` | `false` libera para todos os usuários logados (virada oficial). Padrão: `true`. |
+| `ASSISTANT_BANNER_TEXT` | Texto do aviso. Padrão: "Assistente em desenvolvimento. Confirme informações cruciais (valores, consumo e tarifa) com uma pessoa da equipe." |
+
+Sem `ASSISTANT_TEST_EMAILS` e com `ASSISTANT_BETA=true`, só administradores de sistema veem o
+assistente. O aviso fica fixo no topo do painel e o modelo também é instruído a pedir
+confirmação humana quando a resposta envolve valores.
+
 Para ligar: cadastrar `GEMINI_API_KEY` na Vercel (produção e preview) e redeployar.
 
 Validado em 03/11/2026 contra a API do Google: chave OK, function calling OK nas duas

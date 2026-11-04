@@ -11,6 +11,9 @@ import {
 } from '@/lib/services/assistant/gemini';
 import { TOOL_DECLARATIONS, executarFerramenta, type ToolContext } from '@/lib/services/assistant/tools';
 import { buildSystemPrompt } from '@/lib/services/assistant/prompt';
+import { avaliarAcesso } from '@/lib/services/assistant/policy';
+import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
+import prisma from '@/lib/prisma';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -34,12 +37,52 @@ function withinLimit(userId: string): boolean {
   return true;
 }
 
+async function acessoSessao(req: NextRequest): Promise<
+  | { erro: Response }
+  | { userId: string; email: string | null; isSystem: boolean }
+> {
+  const session = req.cookies.get('session')?.value;
+  const validSession = session ? await isSessionValid(session) : false;
+  if (!validSession) return { erro: NextResponse.json({ error: 'Não autorizado' }, { status: 401 }) };
+
+  const userId = validSession.userId as string;
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } }).catch(() => null);
+  const contexts = await getUserContextsForActionOnEntity(userId, 'user', 'update').catch(() => null);
+  return { userId, email: user?.email ?? null, isSystem: Boolean(contexts?.system) };
+}
+
+/** GET: o widget pergunta se deve aparecer para este usuário (e qual aviso exibir). */
+export async function GET(req: NextRequest): Promise<Response> {
+  try {
+    const sessao = await acessoSessao(req);
+    if ('erro' in sessao) return sessao.erro;
+
+    const acesso = avaliarAcesso({ email: sessao.email, isSystem: sessao.isSystem });
+    return NextResponse.json({
+      enabled: acesso.enabled,
+      beta: acesso.beta,
+      banner: acesso.banner,
+      motivo: acesso.motivo ?? null,
+    });
+  } catch (e) {
+    console.error('[assistant/chat][GET] erro:', e);
+    return NextResponse.json({ enabled: false, beta: true, banner: null }, { status: 200 });
+  }
+}
+
 export async function POST(req: NextRequest): Promise<Response> {
   try {
-    const session = req.cookies.get('session')?.value;
-    const validSession = session ? await isSessionValid(session) : false;
-    if (!validSession) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = validSession.userId as string;
+    const sessao = await acessoSessao(req);
+    if ('erro' in sessao) return sessao.erro;
+    const userId = sessao.userId;
+
+    const acesso = avaliarAcesso({ email: sessao.email, isSystem: sessao.isSystem });
+    if (!acesso.enabled) {
+      return NextResponse.json(
+        { error: acesso.motivo || 'O assistente ainda não está liberado para o seu acesso.' },
+        { status: 403 },
+      );
+    }
 
     if (!isAssistantConfigured()) {
       return NextResponse.json(
@@ -99,7 +142,12 @@ export async function POST(req: NextRequest): Promise<Response> {
       const calls = parts.filter((p): p is GeminiFunctionCallPart => 'functionCall' in p);
 
       if (!calls.length) {
-        return NextResponse.json({ reply: textParts || 'Não consegui montar uma resposta agora. Pode reformular?', tools: ferramentasUsadas });
+        return NextResponse.json({
+          reply: textParts || 'Não consegui montar uma resposta agora. Pode reformular?',
+          tools: ferramentasUsadas,
+          beta: acesso.beta,
+          banner: acesso.banner,
+        });
       }
 
       // Devolve ao modelo o que ele pediu e o resultado de cada ferramenta.
