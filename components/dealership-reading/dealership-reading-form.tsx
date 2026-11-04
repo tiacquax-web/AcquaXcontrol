@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { Droplet, Flame, GaugeCircle, Loader2 } from "lucide-react"
+import { Droplet, Flame, GaugeCircle, Info, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -58,7 +58,12 @@ const formSchema = z.object({
   dealershipCost: z.coerce.number().min(0, "Valor não pode ser negativo"),
   consumptionValue: z.coerce.number().min(0, "Valor não pode ser negativo"),
   sewageValue: z.coerce.number().min(0, "Valor não pode ser negativo"),
-  coeficiente: z.string().optional().default(""),
+  // Tarifa: obrigatória na aba de conta (preenchida pelo operador a partir da
+  // aba de Medição/Informações do condomínio; várias tarifas separadas por "/").
+  coeficiente: z
+    .string({ required_error: "Informe a tarifa" })
+    .transform(v => v.trim())
+    .refine(v => v.length > 0, { message: "Informe a tarifa" }),
   metodoCalculo: z.string().optional().default(""),
   totalValue: z.coerce.number().min(0, "Valor não pode ser negativo"),
   diffCost: z.coerce.number(),
@@ -831,21 +836,42 @@ export function DealershipReadingForm({ mode, initialData, id }: DealershipReadi
                           <FormMessage />
                         </FormItem>
                       )}
-                    />                    {/* Coeficiente */}
+                    />
+
+                    {/* Tarifa */}
                     <FormField
                       control={form.control}
                       name="coeficiente"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Coeficiente</FormLabel>
+                          <FormLabel>
+                            Tarifa <span className="text-destructive">*</span>
+                          </FormLabel>
                           <FormControl>
                             <Input
                               type="text"
                               {...field}
                               readOnly={isReadOnly}
+                              placeholder="Ex.: 12,50 — ou 12,50 / 8,90 se houver mais de uma"
                               className={isReadOnly ? "bg-muted" : ""}
                             />
                           </FormControl>
+                          <FormDescription className="text-[11px] leading-snug">
+                            Preenchimento obrigatório. Se o condomínio possuir mais de uma tarifa,
+                            informe-as separadas por
+                            <span className="font-semibold"> / </span>
+                            (ex.: 12,50 / 8,90).
+                          </FormDescription>
+                          <p className="flex items-start gap-1.5 rounded-md border border-blue-100 bg-blue-50 px-2 py-1.5 text-[11px] leading-snug text-blue-700">
+                            <Info className="mt-0.5 h-3 w-3 shrink-0 text-blue-400" />
+                            <span>
+                              Operador interno: a tarifa deve ser retirada da aba de
+                              <span className="font-semibold"> Medição </span>
+                              ou
+                              <span className="font-semibold"> Informações </span>
+                              do condomínio.
+                            </span>
+                          </p>
                           <FormMessage />
                         </FormItem>
                       )}

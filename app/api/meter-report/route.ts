@@ -210,6 +210,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         totalDays: true,
         diffCost: true,
         totalValue: true,
+        coeficiente: true, // Tarifa (string; pode conter várias separadas por "/")
         dealershipConsumption: true,
         monthlyConsumption: true,
         complex: { select: { id: true, socialName: true, aliasName: true, company: { select: { id: true, socialName: true, name: true } } } },

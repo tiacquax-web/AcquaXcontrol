@@ -113,6 +113,9 @@ export async function POST(req: NextRequest): Promise<Response> {
             billedConsumption: body.billedConsumption,
             complexId: body.complexId,
             consumptionValue: body.consumptionValue,
+            // Tarifa da conta (string; várias tarifas separadas por "/")
+            coeficiente: body.coeficiente,
+            metodoCalculo: body.metodoCalculo,
             dealershipConsumption: body.dealershipConsumption,
             dealershipCost: body.dealershipCost,
             dealershipId: body.dealershipId,

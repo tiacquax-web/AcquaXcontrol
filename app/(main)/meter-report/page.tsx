@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Building2, FileText, Loader2, AlertCircle, Info, Search, X, Printer } from 'lucide-react';
+import { Building2, FileText, Loader2, AlertCircle, Info, Search, X, Printer, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -148,6 +148,13 @@ export default function MeterReportPage() {
   };
 
   const complexDisplayName = selectedComplexObj?.socialName || selectedComplexObj?.aliasName || '';
+
+  // Tarifa da conta do condomínio no mês selecionado (pode trazer várias separadas por "/")
+  const monthTarifa = useMemo(() => {
+    const readings = (data?.dealershipReadings ?? []) as Array<{ coeficiente?: string | null }>;
+    const comTarifa = readings.find(r => (r?.coeficiente || '').trim());
+    return (comTarifa?.coeficiente || '').trim();
+  }, [data]);
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
@@ -373,7 +380,12 @@ export default function MeterReportPage() {
                     </>
                   )}
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700">
+                    <Tag className="w-3.5 h-3.5 shrink-0" />
+                    <span className="shrink-0">Tarifa:</span>
+                    <span className="min-w-0 truncate font-semibold">{monthTarifa || 'não informada'}</span>
+                  </span>
                   {searchText && filteredList.length === 0 && (
                     <p className="text-sm text-muted-foreground italic">Nenhuma unidade corresponde à busca.</p>
                   )}

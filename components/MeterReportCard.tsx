@@ -7,7 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl, getUtilityConsumption, getUtilityTotalValue } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { Droplets, Calendar, Building2, DoorClosed, ZoomIn, X, Printer, Info } from 'lucide-react';
+import { Droplets, Calendar, Building2, DoorClosed, ZoomIn, X, Printer, Info, Tag } from 'lucide-react';
 
 interface MeterReportCardProps {
   report: MeterReportItem;
@@ -372,6 +372,17 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
               <p className="text-blue-500 text-[11px] font-medium mb-1 leading-tight">Total a Pagar</p>
               <p className="font-bold text-blue-700 text-xs">{formatCurrency(displayTotalValue)}</p>
             </div>
+          </div>
+
+          {/* Tarifa aplicada na conta do condomínio — sempre visível na filipeta */}
+          <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-4 py-2">
+            <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-gray-500">
+              <Tag className="h-3 w-3 text-gray-400" />
+              Tarifa
+            </span>
+            <span className="min-w-0 truncate text-right text-[11px] font-semibold text-gray-700">
+              {report.dealershipReading?.coeficiente?.trim() || '—'}
+            </span>
           </div>
 
         </div>

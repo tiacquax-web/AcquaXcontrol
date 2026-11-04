@@ -12,7 +12,7 @@ import {
   TrendingUp, TrendingDown, Minus, Building2, Calendar,
   Droplets, Loader2, AlertCircle, Search, X,
   Printer, ChevronDown, ChevronUp, Camera, ZoomIn,
-  Info, Flame, GaugeCircle } from 'lucide-react';
+  Info, Flame, GaugeCircle, Tag } from "lucide-react";
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -582,6 +582,15 @@ export default function LevantamentoPage() {
     });
   }, [selectedComplexId, selectedMonths, apartmentIdFilter, fetchMonth, selectedUtility]);
 
+  // Tarifas do período (a conta de cada mês pode ter tarifa própria; várias
+  // tarifas no mesmo condomínio vêm separadas por "/")
+  const tarifasDoPeriodo = useMemo(() => {
+    const valores = monthsData
+      .map(m => (m.dealershipReading?.coeficiente || '').trim())
+      .filter(Boolean);
+    return [...new Set(valores)];
+  }, [monthsData]);
+
   const isAnyLoading = monthsData.some(m => m.loading);
   const allLoaded = monthsData.length > 0 && !isAnyLoading;
 
@@ -742,6 +751,15 @@ export default function LevantamentoPage() {
             <p className="text-sm text-muted-foreground">
               {isMorador ? 'Histórico de leituras da sua unidade' : 'Comparativo por período — consumo, leituras e valores'}
             </p>
+            {allLoaded && (
+              <p className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700">
+                <Tag className="w-3.5 h-3.5 shrink-0" />
+                <span className="shrink-0">Tarifa:</span>
+                <span className="min-w-0 truncate font-semibold">
+                  {tarifasDoPeriodo.length ? tarifasDoPeriodo.join(' · ') : 'não informada'}
+                </span>
+              </p>
+            )}
           </div>
         </div>
         {allLoaded && (isMorador ? moradorRow : filteredRows.length > 0) && (
@@ -1199,7 +1217,12 @@ export default function LevantamentoPage() {
                     </th>
                     {monthsData.map(m => (
                       <th key={m.label} className="px-3 py-2.5 text-center font-semibold text-gray-700 whitespace-nowrap min-w-[110px] border-l">
-                        {m.label}
+                        <span className="block">{m.label}</span>
+                        {m.dealershipReading?.coeficiente?.trim() && (
+                          <span className="block text-[10px] font-normal text-teal-600">
+                            Tarifa {m.dealershipReading.coeficiente.trim()}
+                          </span>
+                        )}
                       </th>
                     ))}
                     <th className="px-3 py-2.5 text-center font-semibold text-gray-700 whitespace-nowrap min-w-[90px] border-l bg-teal-50 text-teal-700">

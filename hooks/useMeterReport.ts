@@ -68,6 +68,8 @@ export interface MeterReportItem {
   }>;
   dealershipReading: {
     id: string;
+    /** Tarifa da conta do condomínio (string; pode trazer várias separadas por "/"). */
+    coeficiente?: string | null;
     totalDays?: number | null;
     readingDate?: string | null;
     readingDateNext?: string | null;
