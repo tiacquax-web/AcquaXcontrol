@@ -514,7 +514,7 @@ export async function executarFerramenta(
         mes,
         ano,
       });
-      if (confere?.erro) return confere;
+      if (confere?.erro || confere?.precisa_bloco) return confere;
 
       const competencia = (confere.competencias || [])[0];
       if (!competencia || !competencia.tipos?.length) {
