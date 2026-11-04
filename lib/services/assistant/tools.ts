@@ -458,6 +458,11 @@ export async function executarFerramenta(
         unidade: resposta.unidade,
         meses_consultados: serie.length,
         meses_com_dados: comDados.length,
+        arquivo_pela_plataforma: {
+          tela: 'Levantamento',
+          link: `${ctx.baseUrl}/levantamento`,
+          como: 'a aba já monta o levantamento: escolha condomínio/período e use imprimir para salvar em PDF',
+        },
         media_consumo_agua: media,
         serie_em_ordem_cronologica: serie,
         observacao: 'Competência sem itens significa que não há filipeta processada naquele mês.',
