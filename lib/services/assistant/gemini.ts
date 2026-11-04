@@ -12,9 +12,11 @@
  */
 export const GEMINI_MODELS: string[] = [
   process.env.GEMINI_MODEL,
+  // Lite primeiro: responde em ~0,6s, entende function calling e é o que deixa o
+  // atendimento conversacional rápido. Os demais são reserva.
+  'gemini-flash-lite-latest',
   'gemini-flash-latest',
   'gemini-3-flash-preview',
-  'gemini-flash-lite-latest',
 ].filter(Boolean) as string[];
 
 export interface GeminiTextPart { text: string }
@@ -76,7 +78,7 @@ export async function geminiGenerate(opts: {
     contents: opts.contents,
     generationConfig: {
       temperature: opts.temperature ?? 0.3,
-      maxOutputTokens: 1200,
+      maxOutputTokens: 900,
     },
   };
 
@@ -97,12 +99,18 @@ export async function geminiGenerate(opts: {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`;
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30000);
+    const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15000);
     try {
+      // Modelos Gemini 3 pensam antes de responder e isso custa 10-20s na conversa.
+      // Nos que aceitam (tudo menos "-lite") desligamos o pensamento.
+      const bodyModelo = modelo.includes('lite')
+        ? body
+        : { ...body, generationConfig: { ...(body.generationConfig as any), thinkingConfig: { thinkingBudget: 0 } } };
+
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(bodyModelo),
         signal: controller.signal,
       });
 
