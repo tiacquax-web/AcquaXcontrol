@@ -23,6 +23,8 @@ const MONTH_LABELS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho'
 
 // Teto por consulta: sem isso, uma rota lenta consome o tempo inteiro da função
 // (60s) e o usuário recebe um 504 sem explicação.
+/** Janela padrão de levantamento/análise, em meses (definido pela Giulia). */
+const PERIODO_PADRAO_MESES = 3;
 const FETCH_TIMEOUT_MS = 20000; // teto por consulta interna (a consulta de consumo agora leva ~200ms)
 
 async function internalFetch(ctx: ToolContext, path: string, init?: RequestInit): Promise<any> {
@@ -409,6 +411,11 @@ export async function executarFerramenta(
         condominio: resposta.condominio,
         unidade: resposta.unidade,
         referencia: comp.referencia,
+        arquivo_pela_plataforma: {
+          tela: 'Filipeta Medição',
+          link: `${ctx.baseUrl}/meter-report`,
+          como: 'a aba já monta a filipeta: selecione condomínio/mês e use imprimir para salvar em PDF',
+        },
         itens: comp.tipos,
         tarifa: comp.tarifa,
         valor_conta_condominio: comp.valor_conta_condominio,
@@ -416,7 +423,8 @@ export async function executarFerramenta(
     }
 
     case 'meu_historico_consumo': {
-      const meses = Math.min(Math.max(Number(args.meses) || 12, 1), 12);
+      // Padrão de levantamento: últimos 3 meses. Só amplia se o usuário pedir.
+      const meses = Math.min(Math.max(Number(args.meses) || PERIODO_PADRAO_MESES, 1), 12);
 
       const bloqueio = await exigirEscopoAdmin(args, ctx);
       if (bloqueio.bloqueado) return bloqueio.resposta ?? { erro: true, mensagem: 'Informe o condomínio.' };
