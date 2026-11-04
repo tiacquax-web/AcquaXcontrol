@@ -514,6 +514,31 @@ export async function executarFerramenta(
       });
       if (confere?.erro) return confere;
 
+      const competencia = (confere.competencias || [])[0];
+      if (!competencia || !competencia.tipos?.length) {
+        // Nada processado: descobre a última competência com dados nos últimos 12 meses.
+        const historico = await postJson(ctx, '/api/assistant/consumo', {
+          condominio,
+          unidade: args.unidade ? String(args.unidade) : undefined,
+          bloco: args.bloco ? String(args.bloco) : undefined,
+          meses: 12,
+        });
+        const comDados = (historico?.competencias || []).filter((c: any) => c.tipos?.length);
+        const ultima = comDados[comDados.length - 1];
+        return {
+          sem_dados: true,
+          condominio: confere.condominio,
+          referencia_pedida: competencia?.referencia ?? null,
+          ultima_competencia_com_dados: ultima
+            ? { referencia: ultima.referencia, mes: Number(ultima.mes), ano: Number(ultima.ano) }
+            : null,
+          mensagem: ultima
+            ? `Não há leitura processada nessa competência. A mais recente com dados é ${ultima.referencia}.`
+            : 'Não há nenhuma leitura processada nos últimos 12 meses para esse filtro.',
+          instrucao: 'NÃO gere arquivo vazio. Informe isso e pergunte se pode gerar a competência que tem dados.',
+        };
+      }
+
       const params = new URLSearchParams({
         condominio,
         mes: String(mes),

@@ -145,9 +145,28 @@ export async function POST(req: NextRequest): Promise<Response> {
     }
 
     // ── Competências consultadas ─────────────────────────────────────────────
-    const competencias = mesPedido && anoPedido
+    let competenciaAutomatica = false;
+    let competencias = mesPedido && anoPedido
       ? [{ mes: String(mesPedido).padStart(2, '0'), ano: String(anoPedido) }]
       : ultimasCompetencias(meses);
+
+    // Sem mês informado e pedindo uma competência só: usa a última que TEM dados,
+    // em vez do mês corrente (que normalmente ainda não foi processado).
+    if (!mesPedido && !anoPedido && meses === 1) {
+      const ultimo = await prisma.apartmentConsumptionReport.findFirst({
+        where: {
+          deletedAt: null,
+          ...(complexId ? { complexId } : {}),
+          ...(apartmentIds ? { apartmentId: { in: apartmentIds } } : {}),
+        },
+        select: { monthRef: true, yearRef: true },
+        orderBy: [{ yearRef: 'desc' }, { monthRef: 'desc' }],
+      });
+      if (ultimo) {
+        competencias = [{ mes: ultimo.monthRef, ano: ultimo.yearRef }];
+        competenciaAutomatica = true;
+      }
+    }
 
     const where: Record<string, any> = {
       deletedAt: null,
@@ -262,6 +281,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     return NextResponse.json({
       condominio: condominioNome,
+      competencia_automatica: competenciaAutomatica,
       unidade: unidade
         ? `${unidade}${apartmentIds && apartmentIds.length > 1 ? ' (mais de uma unidade com esse número)' : ''}`
         : null,

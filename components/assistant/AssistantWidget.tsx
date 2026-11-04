@@ -120,7 +120,8 @@ export default function AssistantWidget() {
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-teal-700"
           title="Falar com a Mariana"
         >
-          <Sparkles className="h-4 w-4" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/mariana-avatar.png" alt="" className="h-5 w-5 rounded-full object-cover" />
           Mariana
         </button>
       )}
@@ -130,7 +131,8 @@ export default function AssistantWidget() {
         <div className="fixed bottom-5 right-5 z-40 flex h-[520px] w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
           <div className="flex items-center justify-between gap-2 bg-teal-600 px-4 py-3 text-white">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4" />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/mariana-avatar.png" alt="Mariana" className="h-8 w-8 rounded-full border border-white/40 object-cover" />
               <div className="leading-tight">
                 <p className="text-sm font-semibold">Mariana</p>
                 <p className="text-[11px] text-teal-50">Assistente AcquaX</p>
@@ -151,7 +153,7 @@ export default function AssistantWidget() {
           <div className="flex-1 space-y-3 overflow-y-auto bg-gray-50 px-3 py-3">
             {msgs.length === 0 && (
               <div className="rounded-xl border border-teal-100 bg-white p-3 text-sm text-gray-600">
-                <p className="font-medium text-gray-800">Oi! Eu sou a Mariana, assistente virtual.</p>
+                <p className="font-medium text-gray-800">Oi! Eu sou a Mariana, do time AcquaX.</p>
                 <p className="mt-1">Posso explicar sua filipeta, analisar seu consumo no ano e abrir um chamado no suporte.</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {['Explique minha filipeta de outubro', 'Como está meu consumo no ano?', 'Qual a tarifa da minha conta?'].map(s => (
@@ -214,7 +216,7 @@ export default function AssistantWidget() {
           </div>
 
           <p className="bg-white px-3 pb-2 text-[10px] text-gray-400">
-            Assistente virtual. Para falar com uma pessoa, peça para abrir um chamado no suporte.
+            Precisa de uma pessoa? Peça para abrir um chamado no suporte.
           </p>
         </div>
       )}
