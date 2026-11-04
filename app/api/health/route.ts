@@ -21,6 +21,8 @@
 
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { isAssistantConfigured } from '@/lib/services/assistant/gemini';
+import { isBeta } from '@/lib/services/assistant/policy';
 
 // Sempre executa no Node (o Prisma não roda no edge runtime).
 export const runtime = 'nodejs';
@@ -47,6 +49,19 @@ async function pingDatabase(): Promise<void> {
   ]);
 }
 
+/**
+ * Estado do assistente de IA, só com booleanos: serve para conferir se a chave
+ * subiu para o ambiente e em que modo está (teste restrito ou liberado).
+ * Não expõe chave, modelo contratado nem lista de convidados.
+ */
+function assistantStatus() {
+  try {
+    return { configured: isAssistantConfigured(), mode: isBeta() ? 'test' : 'public' };
+  } catch {
+    return { configured: false, mode: 'test' };
+  }
+}
+
 export async function GET() {
   const startedAt = Date.now();
 
@@ -58,6 +73,7 @@ export async function GET() {
         database: 'up',
         latencyMs: Date.now() - startedAt,
         timestamp: new Date().toISOString(),
+        assistant: assistantStatus(),
       },
       { status: 200, headers: { 'Cache-Control': 'no-store' } }
     );
@@ -76,6 +92,7 @@ export async function GET() {
         database: 'down',
         latencyMs: Date.now() - startedAt,
         timestamp: new Date().toISOString(),
+        assistant: assistantStatus(),
       },
       { status: 503, headers: { 'Cache-Control': 'no-store' } }
     );
