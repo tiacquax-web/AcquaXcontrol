@@ -390,7 +390,7 @@ export async function executarFerramenta(
         mes,
         ano,
       });
-      if (resposta?.erro) return resposta;
+      if (resposta?.erro || resposta?.precisa_bloco) return resposta;
 
       const comp = (resposta.competencias || [])[0];
       if (!comp || !comp.tipos.length) {
@@ -428,7 +428,7 @@ export async function executarFerramenta(
         tipo: args.tipo ? String(args.tipo) : undefined,
         meses,
       });
-      if (resposta?.erro) return resposta;
+      if (resposta?.erro || resposta?.precisa_bloco) return resposta;
 
       const serie = (resposta.competencias || []).map((c: any) => ({
         referencia: c.referencia,
