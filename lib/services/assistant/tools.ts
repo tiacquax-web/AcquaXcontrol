@@ -18,16 +18,35 @@ export interface ToolContext {
 const MONTH_LABELS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
+// Teto por consulta: sem isso, uma rota lenta consome o tempo inteiro da função
+// (60s) e o usuário recebe um 504 sem explicação.
+const FETCH_TIMEOUT_MS = 20000;
+
 async function internalFetch(ctx: ToolContext, path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(`${ctx.baseUrl}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      cookie: ctx.cookie,
-      ...(init?.headers || {}),
-    },
-    cache: 'no-store',
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${ctx.baseUrl}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        cookie: ctx.cookie,
+        ...(init?.headers || {}),
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (e: any) {
+    clearTimeout(timer);
+    return {
+      erro: true,
+      mensagem: e?.name === 'AbortError'
+        ? 'A consulta demorou demais para responder. Tente de novo em instantes ou abra um chamado.'
+        : 'Não consegui consultar o sistema agora.',
+    };
+  }
+  clearTimeout(timer);
 
   const text = await res.text();
   let data: any = null;
