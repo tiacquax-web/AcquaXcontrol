@@ -107,18 +107,35 @@ export async function geminiGenerate(opts: {
         ? body
         : { ...body, generationConfig: { ...(body.generationConfig as any), thinkingConfig: { thinkingBudget: 0 } } };
 
-      const res = await fetch(url, {
+      let res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyModelo),
         signal: controller.signal,
       });
 
+      // Alguns modelos recusam thinkingConfig (400). Nesse caso repetimos a mesma
+      // chamada sem esse campo, em vez de derrubar o atendimento.
+      if (!res.ok && res.status === 400) {
+        const detalhe = await res.text().catch(() => '');
+        if (/thinking/i.test(detalhe) && bodyModelo !== body) {
+          res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+        } else {
+          ultimoErro = `Gemini ${modelo} 400: ${detalhe.slice(0, 200)}`;
+          continue;
+        }
+      }
+
       if (!res.ok) {
         const detail = await res.text().catch(() => '');
         ultimoErro = `Gemini ${modelo} ${res.status}: ${detail.slice(0, 200)}`;
         if (isRetryableStatus(res.status)) continue;
-        throw new Error(ultimoErro);
+        continue;
       }
 
       const data = await res.json();
