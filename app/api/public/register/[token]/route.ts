@@ -3,6 +3,12 @@
  * GET  → dados do condomínio + blocos/unidades com disponibilidade
  * POST → cria o acesso do morador (1 cadastro por unidade, garantido por
  *        RegistrationClaim com @unique em apartmentId)
+ *
+ * Regra de ocupação: só bloqueia a unidade que JÁ FOI cadastrada por este link.
+ * Moradores criados internamente (pela administração) não bloqueiam — cada
+ * link libera um acesso por unidade, mesmo que ela já tenha usuário interno.
+ * O limite é um cadastro por unidade por toda a vida do link (não reset por
+ * link novo): depois de usado na 102, o cadastro pela 102 fica fechado.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { hash } from 'bcryptjs';
@@ -24,19 +30,16 @@ async function loadInvite(token: string) {
   });
 }
 
-/** Conjunto de unidades já ocupadas (morador ativo OU claim com usuário ativo) */
+/**
+ * Unidades bloqueadas para novo cadastro pelo link.
+ * Considera APENAS claims de cadastro via link com usuário ainda ativo.
+ * Usuário criado internamente (RoleAssignment de Morador) NÃO bloqueia:
+ * a unidade pode ter o cadastro interno e mais um acesso criado pelo link.
+ * Claim órfão (usuário removido) volta a liberar a unidade.
+ */
 async function getTakenApartmentIds(apartmentIds: string[]) {
   const taken = new Set<string>();
   if (apartmentIds.length === 0) return taken;
-
-  const morador = await prisma.role.findFirst({ where: { name: 'Morador', deletedAt: null }, select: { id: true } });
-  if (morador) {
-    const ras = await prisma.roleAssignment.findMany({
-      where: { roleId: morador.id, contextType: 'apartment', contextId: { in: apartmentIds }, ...ACTIVE },
-      select: { contextId: true },
-    });
-    ras.forEach(r => taken.add(r.contextId));
-  }
 
   const claims = await prisma.registrationClaim.findMany({
     where: { apartmentId: { in: apartmentIds } },
@@ -116,13 +119,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     // Unidade já ocupada?
     const taken = await getTakenApartmentIds([apartmentId]);
     if (taken.has(apartmentId)) {
-      return NextResponse.json({ error: 'Esta unidade já possui um cadastro. Se precisar alterar, fale com a administração.' }, { status: 409 });
+      return NextResponse.json({ error: 'Esta unidade já foi cadastrada por este link. Se precisar de acesso, fale com a administração.' }, { status: 409 });
     }
 
     // E-mail já cadastrado?
     const existingUser = await prisma.user.findFirst({ where: { email, deletedAt: null }, select: { id: true } });
     if (existingUser) {
-      return NextResponse.json({ error: 'Este e-mail já possui cadastro. Use "Esqueci minha senha" na tela de login.' }, { status: 409 });
+      return NextResponse.json({ error: 'Este e-mail já possui cadastro. Entre com ele em /login ou use outro e-mail para criar um novo acesso.' }, { status: 409 });
     }
 
     const morador = await prisma.role.findFirst({ where: { name: 'Morador', deletedAt: null }, select: { id: true } });
@@ -139,9 +142,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       // claim órfão (usuário removido) → reaproveita
       if (existing?.userId) {
         const still = await prisma.user.findFirst({ where: { id: existing.userId, deletedAt: null }, select: { id: true } });
-        if (still) return NextResponse.json({ error: 'Esta unidade já possui um cadastro.' }, { status: 409 });
+        if (still) return NextResponse.json({ error: 'Esta unidade já foi cadastrada por este link.' }, { status: 409 });
       }
-      if (!existing) return NextResponse.json({ error: 'Esta unidade já possui um cadastro.' }, { status: 409 });
+      if (!existing) return NextResponse.json({ error: 'Esta unidade já foi cadastrada por este link.' }, { status: 409 });
       await prisma.registrationClaim.update({ where: { apartmentId }, data: { userId: null, inviteId: invite.id } });
       claimId = existing.id;
     }

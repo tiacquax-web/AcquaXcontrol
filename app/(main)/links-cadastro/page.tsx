@@ -20,13 +20,37 @@ type Invite = {
   url: string
 }
 
-type ComplexOption = { id: string; socialName: string }
+type ComplexOption = { id: string; socialName: string; aliasName?: string | null }
+
+// Busca tolerante a acento/maiúsculas: "pacifico" encontra "Pacífico".
+function normalize(v?: string | null) {
+  return (v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+}
+
+// Carrega TODOS os condomínios do usuário (a API pagina e corta em 200 por página;
+// antes a lista parava nos 200 primeiros e condomínios antigos como o Pacífico
+// nunca apareciam).
+async function loadAllComplexes(): Promise<ComplexOption[]> {
+  const take = 200
+  const all: ComplexOption[] = []
+  for (let page = 0; page < 20; page++) {
+    const r = await fetch(`/api/user/complexes?take=${take}&skip=${page * take}`)
+    if (!r.ok) break
+    const j = await r.json()
+    const items: ComplexOption[] = (j.list || []).map((c: any) => ({ id: c.id, socialName: c.socialName, aliasName: c.aliasName }))
+    all.push(...items)
+    const total = Number(j.totalCount ?? all.length)
+    if (items.length < take || all.length >= total) break
+  }
+  return all.sort((a, b) => normalize(a.socialName).localeCompare(normalize(b.socialName)))
+}
 
 export default function RegistrationLinksPage() {
   const { toast } = useToast()
   const [invites, setInvites] = useState<Invite[]>([])
   const [complexes, setComplexes] = useState<ComplexOption[]>([])
   const [loading, setLoading] = useState(true)
+  const [complexesError, setComplexesError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [generating, setGenerating] = useState<string | null>(null)
 
@@ -38,17 +62,17 @@ export default function RegistrationLinksPage() {
 
   useEffect(() => {
     Promise.all([
-      loadInvites(),
-      fetch("/api/user/complexes?take=200&skip=0").then(r => r.json()).then(j => (j.list || j || [])).catch(() => []),
-    ]).then(([, cx]) => {
-      setComplexes(cx)
-    }).finally(() => setLoading(false))
+      loadInvites().catch(() => setInvites([])),
+      loadAllComplexes()
+        .then(setComplexes)
+        .catch(() => setComplexesError("Não foi possível carregar os condomínios.")),
+    ]).finally(() => setLoading(false))
   }, [])
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return complexes.slice(0, 20)
-    return complexes.filter(c => (c.socialName || "").toLowerCase().includes(q)).slice(0, 30)
+    const q = normalize(search)
+    if (!q) return complexes.slice(0, 25)
+    return complexes.filter(c => normalize(c.socialName).includes(q) || normalize(c.aliasName).includes(q)).slice(0, 40)
   }, [complexes, search])
 
   const invitesByComplex = useMemo(() => {
@@ -104,15 +128,17 @@ export default function RegistrationLinksPage() {
           <Link2 className="h-6 w-6" /> Links de cadastro
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Gere um link por condomínio para o síndico divulgar aos moradores. Cada unidade só aceita <strong>um</strong> cadastro —
-          unidades já cadastradas aparecem indisponíveis para novos moradores.
+          Gere um link por condomínio para o síndico divulgar aos moradores. Cada unidade aceita <strong>um</strong> cadastro por este link,
+          mesmo que ela já tenha um morador cadastrado internamente. Depois de usado, o cadastro daquela unidade fica fechado.
         </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Gerar link</CardTitle>
-          <CardDescription>Busque o condomínio pelo nome.</CardDescription>
+          <CardDescription>
+            Busque o condomínio pelo nome. {complexes.length > 0 && <span className="text-xs">({complexes.length} condomínio(s) disponíveis)</span>}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="relative">
@@ -121,9 +147,11 @@ export default function RegistrationLinksPage() {
           </div>
           {loading ? (
             <div className="flex items-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin mr-2" /> Carregando...</div>
+          ) : complexesError ? (
+            <p className="text-sm text-destructive">{complexesError}</p>
           ) : (
             <div className="max-h-72 overflow-y-auto divide-y rounded-md border">
-              {filtered.length === 0 && <p className="p-3 text-sm text-muted-foreground">Nenhum condomínio encontrado.</p>}
+              {filtered.length === 0 && <p className="p-3 text-sm text-muted-foreground">Nenhum condomínio encontrado para "{search}".</p>}
               {filtered.map(c => {
                 const inv = invitesByComplex.get(c.id)
                 return (

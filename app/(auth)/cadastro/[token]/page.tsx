@@ -1,8 +1,9 @@
 "use client"
 
 // Auto-cadastro público de moradores pelo link do condomínio.
-// O morador escolhe bloco e unidade (unidades já cadastradas ficam cinza) e
-// cria o próprio acesso. Uma unidade só aceita um cadastro.
+// O morador escolhe bloco e unidade (unidades já cadastradas POR ESTE LINK ficam
+// cinza) e cria o próprio acesso. Cada unidade aceita um cadastro por aqui, mesmo
+// que ela já tenha um morador cadastrado internamente pela administração.
 
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
@@ -153,7 +154,7 @@ export default function PublicRegisterPage() {
                           type="button"
                           disabled={disabled}
                           onClick={() => setApartmentId(a.id)}
-                          title={disabled ? "Unidade já cadastrada" : `Unidade ${a.name}`}
+                          title={disabled ? "Unidade já cadastrada por este link" : `Unidade ${a.name}`}
                           className={
                             "h-10 rounded-md border text-sm font-medium transition-colors " +
                             (disabled
@@ -170,7 +171,7 @@ export default function PublicRegisterPage() {
                   </div>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <Building2 className="h-3 w-3" />
-                    Unidades em cinza já possuem cadastro. Se você é o morador, use "Esqueci minha senha" no login.
+                    Unidades em cinza já foram cadastradas por este link. Cada unidade aceita apenas um cadastro por aqui.
                   </p>
                 </div>
               )}
