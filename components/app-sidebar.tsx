@@ -11,7 +11,7 @@ import {
   Gauge, ShieldCheck, HousePlus, ReceiptText,
   ChartBarIncreasing, LayoutDashboard, GaugeCircle,
   Radio, UsersRound, Droplets, FileText, TrendingUp, BookOpen, ClipboardList,
-  MessageSquare, Lightbulb, Key, DatabaseZap, BellDot, Settings, Megaphone,
+  MessageSquare, Lightbulb, Key, DatabaseZap, BellDot, Settings, Megaphone, Camera,
 } from "lucide-react"
 import Image from "next/image"
 import { sidebarPermissionMap } from './sidebar-permission-map';
@@ -216,6 +216,13 @@ const items = [
     icon: Settings,
     group: 'Cadastros',
     requiresCreate: true,
+  },
+  {
+    title: "Fotos de Medidor",
+    url: "/admin/fotos",
+    icon: Camera,
+    group: 'Cadastros',
+    requiresCreate: true, // admin/programador; envio restrito por e-mail na API
   },
 ]
 

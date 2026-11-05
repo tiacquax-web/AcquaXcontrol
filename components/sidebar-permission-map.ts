@@ -37,4 +37,6 @@ export const sidebarPermissionMap: Record<string, string> = {
   '/gl-integration': 'system',
   // Personalização de Perfis: somente admin/programador (entity=system, requiresCreate=true)
   '/role-customization': 'system',
+  // Fotos de Medidor: menu para admin/programador; envio restrito a PHOTO_ADMIN_EMAILS
+  '/admin/fotos': 'system',
 };

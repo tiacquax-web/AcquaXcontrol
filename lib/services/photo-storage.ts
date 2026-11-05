@@ -36,9 +36,10 @@ function getClient(): S3Client {
     throw new Error('Armazenamento de fotos nao configurado (B2_KEY_ID / B2_APP_KEY / B2_BUCKET).');
   }
   if (!client) {
-    const endpoint = process.env.B2_ENDPOINT || 'https://s3.us-west-004.backblazeb2.com';
+    const rawEndpoint = (process.env.B2_ENDPOINT || 's3.us-west-004.backblazeb2.com').trim();
+    const endpoint = /^https?:\/\//.test(rawEndpoint) ? rawEndpoint : `https://${rawEndpoint}`;
     const parts = endpoint.replace(/^https?:\/\//, '').split('.');
-    const region = process.env.B2_REGION || parts[1] || 'us-west-004';
+    const region = (process.env.B2_REGION || parts[1] || 'us-west-004').trim();
     client = new S3Client({
       region,
       endpoint,
