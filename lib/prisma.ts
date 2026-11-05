@@ -107,6 +107,7 @@ const prismaClientSingleton = () => {
            *   • ScheduleOverride
            *   • SupportMessage
            *   • SuggestionVote
+           *   • RegistrationClaim  (trava do auto-cadastro por link; sem deletedAt)
            *
            * WHY WRAP INSTEAD OF SPREAD:
            *   `{ ...args.where, deletedAt: null }` adds `deletedAt: null` as a flat
@@ -127,6 +128,7 @@ const prismaClientSingleton = () => {
             'EmailJob',
             'SupportMessage',
             'SuggestionVote',
+            'RegistrationClaim',
           ]);
 
           // findUnique is intentionally excluded — see comment above.
