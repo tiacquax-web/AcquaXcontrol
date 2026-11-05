@@ -46,8 +46,10 @@ async function getTakenApartmentIds(apartmentIds: string[]) {
     select: { apartmentId: true, userId: true },
   });
   const claimUserIds = claims.map(c => c.userId).filter(Boolean) as string[];
+  // Usuários criados por link não gravam `deletedAt` (campo ausente no doc), então
+  // `deletedAt: null` sozinho não casa — usar o mesmo padrão OR/isSet do resto do sistema.
   const liveUsers = claimUserIds.length > 0
-    ? await prisma.user.findMany({ where: { id: { in: claimUserIds }, deletedAt: null }, select: { id: true } })
+    ? await prisma.user.findMany({ where: { id: { in: claimUserIds }, ...ACTIVE }, select: { id: true } })
     : [];
   const live = new Set(liveUsers.map(u => u.id));
   for (const c of claims) if (c.userId && live.has(c.userId)) taken.add(c.apartmentId);
@@ -123,12 +125,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     }
 
     // E-mail já cadastrado?
-    const existingUser = await prisma.user.findFirst({ where: { email, deletedAt: null }, select: { id: true } });
+    const existingUser = await prisma.user.findFirst({ where: { email, ...ACTIVE }, select: { id: true } });
     if (existingUser) {
       return NextResponse.json({ error: 'Este e-mail já possui cadastro. Entre com ele em /login ou use outro e-mail para criar um novo acesso.' }, { status: 409 });
     }
 
-    const morador = await prisma.role.findFirst({ where: { name: 'Morador', deletedAt: null }, select: { id: true } });
+    const morador = await prisma.role.findFirst({ where: { name: 'Morador', ...ACTIVE }, select: { id: true } });
     if (!morador) return NextResponse.json({ error: 'Papel "Morador" não configurado.' }, { status: 500 });
 
     // Trava atômica: cria o claim antes (unique apartmentId barra corrida)
@@ -141,7 +143,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       const existing = await prisma.registrationClaim.findUnique({ where: { apartmentId } });
       // claim órfão (usuário removido) → reaproveita
       if (existing?.userId) {
-        const still = await prisma.user.findFirst({ where: { id: existing.userId, deletedAt: null }, select: { id: true } });
+        const still = await prisma.user.findFirst({ where: { id: existing.userId, ...ACTIVE }, select: { id: true } });
         if (still) return NextResponse.json({ error: 'Esta unidade já foi cadastrada por este link.' }, { status: 409 });
       }
       if (!existing) return NextResponse.json({ error: 'Esta unidade já foi cadastrada por este link.' }, { status: 409 });
@@ -160,6 +162,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
           mustUpdateCredentials: false,
           createdByUserId: null,
           updatedByUserId: null,
+          // Gravar explicitamente: sem isso a chave fica ausente no Mongo e as
+          // buscas do sistema por `deletedAt: null` (login, listagens) não acham o usuário.
+          deletedAt: null,
         },
         select: { id: true, name: true, email: true },
       });
