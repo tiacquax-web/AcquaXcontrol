@@ -61,6 +61,7 @@ export default function PublicRegisterPage() {
     e.preventDefault()
     setError(null)
     if (!blockId || !apartmentId) { setError("Selecione bloco e unidade."); return }
+    if (phone.replace(/\D/g, "").length < 10) { setError("Informe o celular com DDD."); return }
     if (password !== confirm) { setError("As senhas não conferem."); return }
     setSubmitting(true)
     try {
@@ -185,8 +186,16 @@ export default function PublicRegisterPage() {
                 <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Celular (opcional)</Label>
-                <Input id="phone" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(11) 99999-9999" />
+                <Label htmlFor="phone">Celular</Label>
+                <Input
+                  id="phone"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  placeholder="(11) 99999-9999"
+                  inputMode="tel"
+                  required
+                  minLength={10}
+                />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">

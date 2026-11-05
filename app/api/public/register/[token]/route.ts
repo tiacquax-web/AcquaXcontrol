@@ -109,6 +109,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     if (!blockId || !apartmentId) return NextResponse.json({ error: 'Selecione bloco e unidade.' }, { status: 400 });
     if (name.length < 3) return NextResponse.json({ error: 'Informe seu nome completo.' }, { status: 400 });
     if (!emailRegex.test(email)) return NextResponse.json({ error: 'E-mail inválido.' }, { status: 400 });
+    if (!phone) return NextResponse.json({ error: 'Informe o celular.' }, { status: 400 });
+    if (phone.replace(/\D/g, '').length < 10) return NextResponse.json({ error: 'Celular inválido. Informe com DDD.' }, { status: 400 });
     if (password.length < 8) return NextResponse.json({ error: 'A senha deve ter pelo menos 8 caracteres.' }, { status: 400 });
 
     // Unidade pertence a este bloco/condomínio?
@@ -158,7 +160,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
           name,
           email,
           password: hashed,
-          cell: phone || null,
+          cell: phone,
           mustUpdateCredentials: false,
           createdByUserId: null,
           updatedByUserId: null,
