@@ -107,14 +107,36 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
 
         // ===== Optional Reading Creation =====
+        // Mês/ano de referência vêm do RELATÓRIO (a linha é esse mês), não da data da
+        // leitura: leituras legadas podem ter readAtDate fora do mês de referência.
+        const refMonth = String(payload.report.monthRef ?? '').padStart(2, '0');
+        const refYear = String(payload.report.yearRef ?? '');
+
         let readingId: string | undefined;
         if (payload.reading?.enabled) {
-          // UPDATE path
+          // Resolve a leitura referenciada mesmo se estiver soft-deleted (dados legados
+          // ou lote reprocessado). Antes, isso barrava a edição do valor com
+          // "Leitura para atualização não encontrada."
+          let targetReading: { id: string; deletedAt: Date | null } | null = null;
           if (payload.reading.readingId) {
-            const existingReading = await prisma.reading.findFirst({ where: { id: payload.reading.readingId, deletedAt: null }, select: { id: true } });
-            if (!existingReading) {
-              errors.push('Leitura para atualização não encontrada.');
+            const found = await prisma.reading.findUnique({
+              where: { id: payload.reading.readingId },
+              select: { id: true, deletedAt: true },
+            });
+            if (found) {
+              if (found.deletedAt) {
+                await prisma.reading.update({ where: { id: found.id }, data: { deletedAt: null } });
+                warnings.push('A leitura anterior desta unidade estava removida e foi restaurada.');
+              }
+              targetReading = found;
             } else {
+              warnings.push('A leitura anterior desta unidade não existe mais; uma nova leitura será criada.');
+            }
+          }
+
+          // UPDATE path
+          if (targetReading) {
+            {
               if (payload.reading?.reading == null || isNaN(Number(payload.reading.reading))) {
                 errors.push('Valor de leitura inválido.');
               }
@@ -132,10 +154,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
                   readAt = new Date();
                 }
                 if (!errors.length) {
-                  const monthNum = (readAt.getUTCMonth() + 1).toString().padStart(2, '0');
-                  const yearStr = readAt.getUTCFullYear().toString();
+                  const monthNum = /^\d{2}$/.test(refMonth) ? refMonth : (readAt.getUTCMonth() + 1).toString().padStart(2, '0');
+                  const yearStr = /^\d{4}$/.test(refYear) ? refYear : readAt.getUTCFullYear().toString();
                   const updated = await prisma.reading.update({
-                    where: { id: existingReading.id },
+                    where: { id: targetReading.id },
                     data: {
                       reading: payload.reading.reading!,
                       readAt,
@@ -186,8 +208,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
                 readAt = new Date();
               }
               if (!errors.length) {
-                const monthNum = (readAt.getUTCMonth() + 1).toString().padStart(2, '0');
-                const yearStr = readAt.getUTCFullYear().toString();
+                const monthNum = /^\d{2}$/.test(refMonth) ? refMonth : (readAt.getUTCMonth() + 1).toString().padStart(2, '0');
+                const yearStr = /^\d{4}$/.test(refYear) ? refYear : readAt.getUTCFullYear().toString();
                 const createdReading = await prisma.reading.create({
                   data: {
                     reading: payload.reading.reading!,
