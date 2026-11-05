@@ -36,7 +36,7 @@ export default function PublicRegisterPage() {
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState<{ name: string; email: string; unit: string } | null>(null)
+  const [done, setDone] = useState<{ name: string; email: string; unit: string; existing?: boolean } | null>(null)
 
   useEffect(() => {
     if (!token) return
@@ -72,7 +72,7 @@ export default function PublicRegisterPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || "Erro ao criar o cadastro")
-      setDone({ name: json.name, email: json.email, unit: json.unit })
+      setDone({ name: json.name, email: json.email, unit: json.unit, existing: Boolean(json.existing) })
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -110,9 +110,11 @@ export default function PublicRegisterPage() {
             <div className="space-y-4 text-center py-4">
               <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto" />
               <div>
-                <p className="font-semibold">Cadastro confirmado!</p>
+                <p className="font-semibold">{done.existing ? "Unidade vinculada ao seu acesso!" : "Cadastro confirmado!"}</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {done.name}, seu acesso da unidade {done.unit} foi criado com o e-mail {done.email}.
+                  {done.existing
+                    ? `${done.name}, a unidade ${done.unit} foi vinculada ao seu cadastro (${done.email}). Entre com a senha que você já usa.`
+                    : `${done.name}, seu acesso da unidade ${done.unit} foi criado com o e-mail ${done.email}.`}
                 </p>
               </div>
               <a

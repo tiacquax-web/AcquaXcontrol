@@ -126,11 +126,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       return NextResponse.json({ error: 'Esta unidade já foi cadastrada por este link. Se precisar de acesso, fale com a administração.' }, { status: 409 });
     }
 
-    // E-mail já cadastrado?
+    // E-mail já cadastrado? Não bloqueia: reaproveita o cadastro existente e
+    // apenas vincula a unidade nova (a pessoa pode ter mais de uma unidade).
     const existingUser = await prisma.user.findFirst({ where: { email, ...ACTIVE }, select: { id: true } });
-    if (existingUser) {
-      return NextResponse.json({ error: 'Este e-mail já possui cadastro. Entre com ele em /login ou use outro e-mail para criar um novo acesso.' }, { status: 409 });
-    }
 
     const morador = await prisma.role.findFirst({ where: { name: 'Morador', ...ACTIVE }, select: { id: true } });
     if (!morador) return NextResponse.json({ error: 'Papel "Morador" não configurado.' }, { status: 500 });
@@ -154,47 +152,73 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     }
 
     try {
-      const hashed = await hash(password, 10);
-      const user = await prisma.user.create({
-        data: {
-          name,
-          email,
-          password: hashed,
-          cell: phone,
-          mustUpdateCredentials: false,
-          createdByUserId: null,
-          updatedByUserId: null,
-          // Gravar explicitamente: sem isso a chave fica ausente no Mongo e as
-          // buscas do sistema por `deletedAt: null` (login, listagens) não acham o usuário.
-          deletedAt: null,
-        },
-        select: { id: true, name: true, email: true },
-      });
+      let user: { id: string; name: string; email: string };
 
-      await prisma.roleAssignment.create({
-        data: {
-          userId: user.id,
-          roleId: morador.id,
-          contextType: 'apartment',
-          contextId: apartmentId,
-        },
+      if (existingUser) {
+        // Cadastro já existente: atualiza nome/celular e mantém a senha atual.
+        // A senha NÃO é trocada pelo link público (evita que alguém com o e-mail
+        // de outra pessoa assuma o acesso). Quem esqueceu usa "Esqueci minha senha".
+        user = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { name, cell: phone, deletedAt: null },
+          select: { id: true, name: true, email: true },
+        });
+      } else {
+        const hashed = await hash(password, 10);
+        user = await prisma.user.create({
+          data: {
+            name,
+            email,
+            password: hashed,
+            cell: phone,
+            mustUpdateCredentials: false,
+            createdByUserId: null,
+            updatedByUserId: null,
+            // Gravar explicitamente: sem isso a chave fica ausente no Mongo e as
+            // buscas do sistema por `deletedAt: null` (login, listagens) não acham o usuário.
+            deletedAt: null,
+          },
+          select: { id: true, name: true, email: true },
+        });
+      }
+
+      // Vínculo com a unidade (papel Morador) — não duplica se já existir.
+      const alreadyLinked = await prisma.roleAssignment.findFirst({
+        where: { userId: user.id, roleId: morador.id, contextType: 'apartment', contextId: apartmentId, ...ACTIVE },
+        select: { id: true },
       });
+      if (!alreadyLinked) {
+        await prisma.roleAssignment.create({
+          data: {
+            userId: user.id,
+            roleId: morador.id,
+            contextType: 'apartment',
+            contextId: apartmentId,
+            deletedAt: null,
+          },
+        });
+      }
 
       await prisma.registrationClaim.update({ where: { apartmentId }, data: { userId: user.id } });
 
       // E-mail de boas-vindas (não bloqueia a resposta)
       if (isEmailConfigured() && !isBlockedEmailDomain(user.email)) {
         const complexName = invite.Complex?.socialName ?? '';
+        const jaTinha = Boolean(existingUser);
         const html = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background: linear-gradient(135deg, #0066B3, #009FE0); padding: 24px; border-radius: 8px 8px 0 0;">
               <h1 style="color: white; margin: 0; font-size: 22px;">AcquaX do Brasil</h1>
             </div>
             <div style="background: #f8f9fa; padding: 24px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px;">
-              <h2 style="color: #333;">Cadastro confirmado!</h2>
+              <h2 style="color: #333;">${jaTinha ? 'Unidade vinculada ao seu acesso!' : 'Cadastro confirmado!'}</h2>
               <p style="color: #555; line-height: 1.6;">Olá <strong>${user.name}</strong>,</p>
-              <p style="color: #555; line-height: 1.6;">Seu acesso foi criado para a unidade <strong>${apartment.name}</strong> - Bloco <strong>${apartment.block?.name ?? '-'}</strong> do condomínio <strong>${complexName}</strong>.</p>
-              <p style="color: #555; line-height: 1.6;">Entre com seu e-mail e a senha que você acabou de definir.</p>
+              <p style="color: #555; line-height: 1.6;">${jaTinha
+                ? `Você já tinha cadastro no AcquaXcontrol e agora também tem acesso à unidade <strong>${apartment.name}</strong> - Bloco <strong>${apartment.block?.name ?? '-'}</strong> do condomínio <strong>${complexName}</strong>.`
+                : `Seu acesso foi criado para a unidade <strong>${apartment.name}</strong> - Bloco <strong>${apartment.block?.name ?? '-'}</strong> do condomínio <strong>${complexName}</strong>.`}</p>
+              <p style="color: #555; line-height: 1.6;">${jaTinha
+                ? 'Entre com seu e-mail e a senha que você já usa. Se não lembrar, use a opção "Esqueci minha senha" na tela de login.'
+                : 'Entre com seu e-mail e a senha que você acabou de definir.'}</p>
               <div style="text-align: center; margin: 24px 0;">
                 <a href="https://www.acquaxcontrol.com.br/login" style="background: #0066B3; color: white; padding: 12px 32px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">Acessar o Sistema</a>
               </div>
@@ -206,13 +230,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
           to: user.email,
           toName: user.name,
           log: { category: 'welcome' },
-          subject: `Cadastro confirmado - ${complexName}`,
+          subject: `${jaTinha ? 'Unidade vinculada' : 'Cadastro confirmado'} - ${complexName}`,
           html,
           text: `Cadastro confirmado para ${apartment.name} - Bloco ${apartment.block?.name ?? '-'}. Acesse www.acquaxcontrol.com.br/login`,
         }).catch(err => console.error('[Register] falha email boas-vindas:', err?.message));
       }
 
-      return NextResponse.json({ success: true, name: user.name, email: user.email, unit: `${apartment.block?.name ?? '-'}/${apartment.name}` });
+      return NextResponse.json({ success: true, existing: Boolean(existingUser), name: user.name, email: user.email, unit: `${apartment.block?.name ?? '-'}/${apartment.name}` });
     } catch (innerErr: any) {
       // Falhou depois do claim → libera a unidade
       await prisma.registrationClaim.delete({ where: { id: claimId } }).catch(() => {});
