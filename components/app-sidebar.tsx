@@ -222,7 +222,9 @@ const items = [
     url: "/admin/fotos",
     icon: Camera,
     group: 'Cadastros',
-    requiresCreate: true, // admin/programador; envio restrito por e-mail na API
+    // Oculta como a aba de API: só aparece para o login admin (PHOTO_ADMIN_EMAILS)
+    requiresCreate: true,
+    requiresPhotoAdmin: true,
   },
 ]
 
@@ -265,9 +267,21 @@ export function AppSidebar() {
     return userContext.glComplexIds && userContext.glComplexIds.length > 0;
   })();
 
-  function hasAnyPermission(url: string, requiresCreate?: boolean, requiresGL?: boolean) {
+  function hasAnyPermission(
+    url: string,
+    requiresCreate?: boolean,
+    requiresGL?: boolean,
+    requiresPhotoAdmin?: boolean,
+  ) {
     // Dashboard sempre visível
     if (url === '/dashboard') return true;
+
+    // Abas de dono (ex.: Fotos de Medidor) não entram no preview de papéis:
+    // aparecem só para o e-mail admin logado de verdade.
+    if (requiresPhotoAdmin) {
+      if (isPreviewing) return false;
+      return userContext?.canManagePhotos === true;
+    }
 
     // ── Preview mode: usa permissões simuladas + config de abas ──
     if (isPreviewing && previewPerms) {
@@ -320,7 +334,7 @@ export function AppSidebar() {
 
   const visibleGroups = groups.filter((group) =>
     items.some(
-      (item) => item.group === group && hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).requiresGL)
+      (item) => item.group === group && hasAnyPermission(item.url, (item as any).requiresCreate, (item as any).requiresGL, (item as any).requiresPhotoAdmin)
     )
   );
 

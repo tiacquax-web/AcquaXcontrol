@@ -21,6 +21,18 @@ export async function GET(req: NextRequest): Promise<Response> {
     }
 
     try {
+        // E-mail do usuário: usado pelo front para abas restritas (ex.: Fotos de Medidor)
+        const currentUser = await prisma.user.findFirst({
+            where: { id: userId },
+            select: { email: true },
+        });
+        const email = (currentUser?.email || '').toLowerCase();
+        const photoAdminEmails = (process.env.PHOTO_ADMIN_EMAILS || 'admin@acquax.com')
+            .split(',')
+            .map(e => e.trim().toLowerCase())
+            .filter(Boolean);
+        const canManagePhotos = photoAdminEmails.includes(email);
+
         const assignments = await prisma.roleAssignment.findMany({
             where: {
                 userId,
@@ -175,6 +187,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         return NextResponse.json({
             isSystem,
             systemRoles,
+            email,
+            canManagePhotos,
             // Otimização: Admins não precisam de todos os apartamentos/blocos no contexto global
             apartments,
             blocks,
