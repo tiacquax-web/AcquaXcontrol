@@ -16,6 +16,7 @@ interface Unit {
   readingId: string | null;
   reading: number | null;
   urlCover: string | null;
+  readingSoftDeleted?: boolean;
 }
 interface Block { id: string; name: string; apartments: Unit[] }
 interface UploadResult {

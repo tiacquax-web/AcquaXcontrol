@@ -77,22 +77,37 @@ async function loadUnits(complexId: string, month: string, year: string) {
     orderBy: { name: 'asc' },
   });
 
-  const readings = await prisma.reading.findMany({
-    where: {
+  // Inclui leituras soft-deleted: no Capri e em outros condominios o mes foi
+  // reprocessado e o relatorio continua apontando para a leitura antiga. Se a foto
+  // do mes estiver nela, ainda assim precisa aparecer aqui para ser substituida.
+  const raw = await prisma.$runCommandRaw({
+    find: 'Readings',
+    filter: {
       complexId,
-      yearRef: { in: [year, String(Number(year))] },
-      monthRef: { in: monthVariants(month) },
-      deletedAt: null,
+      yearRef: { $in: [year, Number(year)] },
+      monthRef: { $in: monthVariants(month) },
     },
-    select: { id: true, apartmentId: true, urlCover: true, reading: true, readAtDate: true, monthRef: true, yearRef: true },
+    projection: { _id: 1, apartmentId: 1, urlCover: 1, reading: 1, monthRef: 1, yearRef: 1, deletedAt: 1 },
+    batchSize: 3000,
   });
+  const readings = ((raw as any)?.cursor?.firstBatch ?? []).map((r: any) => ({
+    id: r._id as string,
+    apartmentId: r.apartmentId as string | null,
+    urlCover: (r.urlCover as string | null) ?? null,
+    reading: (r.reading as number | null) ?? null,
+    monthRef: r.monthRef as string | null,
+    yearRef: String(r.yearRef ?? ''),
+    softDeleted: r.deletedAt != null,
+  }));
 
   const byApartment = new Map<string, (typeof readings)[number]>();
   for (const r of readings) {
     if (!r.apartmentId) continue;
     const current = byApartment.get(r.apartmentId);
-    // prefere a leitura que ja tem foto
-    if (!current || (!current.urlCover && r.urlCover)) byApartment.set(r.apartmentId, r);
+    if (!current) { byApartment.set(r.apartmentId, r); continue; }
+    // prefere leitura viva; entre elas, a que ja tem foto
+    if (current.softDeleted && !r.softDeleted) { byApartment.set(r.apartmentId, r); continue; }
+    if (current.softDeleted === r.softDeleted && !current.urlCover && r.urlCover) byApartment.set(r.apartmentId, r);
   }
 
   return blocks.map((b) => ({
@@ -110,6 +125,7 @@ async function loadUnits(complexId: string, month: string, year: string) {
           monthRef: reading?.monthRef ?? null,
           yearRef: reading?.yearRef ?? null,
           urlCover: reading?.urlCover ?? null,
+          readingSoftDeleted: reading?.softDeleted ?? false,
         };
       })
       .sort((x, y) => x.name.localeCompare(y.name, 'pt-BR', { numeric: true })),
@@ -263,10 +279,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
         // 4) Grava o link na leitura do mes
         if (unit.readingId) {
-          await prisma.reading.update({
-            where: { id: unit.readingId },
-            data: { urlCover: url, updatedAt: new Date() },
-          });
+          if ((unit as any).readingSoftDeleted) {
+            // Leitura removida em reprocessamento: grava o link sem reativa-la.
+            await prisma.$runCommandRaw({
+              update: 'Readings',
+              updates: [
+                { q: { _id: unit.readingId }, u: [{ $set: { urlCover: url, updatedAt: '$$NOW' } }] },
+              ],
+            });
+          } else {
+            await prisma.reading.update({
+              where: { id: unit.readingId },
+              data: { urlCover: url, updatedAt: new Date() },
+            });
+          }
           result.updated = true;
         } else {
           result.warnings = [
