@@ -1,0 +1,681 @@
+/**
+ * Especificação OpenAPI 3.1 da API pública v1.
+ * Fonte: docs/openapi.yaml — gerada automaticamente (nao editar a mao).
+ * Servida em /api/openapi.yaml e usada pelo Swagger UI em /api-docs.
+ */
+
+export const OPENAPI_YAML = `openapi: 3.1.0
+info:
+  title: AcquaX Control API
+  version: "1.0.0"
+  summary: API pública v1 do AcquaXcontrol para parceiros e integrações externas.
+  description: |
+    API REST para consulta de condomínios, unidades, medidores, leituras e relatórios
+    de consumo, além de envio de leituras e redefinição de acesso de usuários.
+
+    **Autenticação:** API Key no cabeçalho \`Authorization: Bearer ak_<uuid>_<segredo>\`.
+    A chave é gerada no painel do AcquaXcontrol (menu API) e é exibida uma única vez.
+
+    **Escopo:** a chave pode ser restrita a um condomínio ou a uma administradora.
+    Nesse caso, as consultas retornam apenas dados do escopo, mesmo que outro
+    \`complex_id\` seja informado.
+
+    **Paginação:** parâmetros \`take\` e \`skip\`; a resposta traz \`meta\` com \`total\`,
+    \`take\`, \`skip\`, \`hasNextPage\` e \`hasPreviousPage\`.
+
+    **Datas:** ISO 8601 em UTC. **Valores:** reais (BRL) e m³ em decimal.
+
+    Contato: ti.acquax@gmail.com / adm@acquaxdobrasil.com.br
+
+servers:
+  - url: https://www.acquaxcontrol.com.br/api/v1
+    description: Produção
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Status
+    description: Informações e saúde da API
+  - name: Cadastros
+    description: Condomínios, unidades e medidores
+  - name: Leituras
+    description: Consulta e envio de leituras
+  - name: Relatórios
+    description: Consumo e faturamento por unidade e mês
+  - name: Usuários
+    description: Moradores, síndicos e administração
+
+paths:
+  /:
+    get:
+      tags: [Status]
+      summary: Informações da API
+      security: []
+      responses:
+        "200":
+          description: Metadados da API
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  api: { type: string, example: AcquaX Control API }
+                  version: { type: string, example: v1 }
+                  status: { type: string, example: online }
+                  authentication: { type: string, example: Bearer Token (API Key) }
+                  endpoints: { type: object, additionalProperties: { type: string } }
+
+  /complexes:
+    get:
+      tags: [Cadastros]
+      summary: Lista condomínios
+      description: Permissão \`complexes:read\`.
+      parameters:
+        - $ref: "#/components/parameters/Take20"
+        - $ref: "#/components/parameters/Skip"
+        - name: search
+          in: query
+          description: Filtra pelo nome do condomínio
+          schema: { type: string }
+      responses:
+        "200":
+          description: Lista paginada de condomínios
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Complex" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+              example:
+                data:
+                  - id: cd7d24e2-329a-460c-afbc-81b32b28632d
+                    socialName: A4 Offices
+                    street: Av. das Américas
+                    number: "13.685"
+                    city: Rio de Janeiro
+                    state: RJ
+                    createdAt: "2025-06-18T13:36:21.000Z"
+                    _count: { blocks: 9 }
+                meta: { total: 343, take: 20, skip: 0, hasNextPage: true, hasPreviousPage: false }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /apartments:
+    get:
+      tags: [Cadastros]
+      summary: Lista unidades (apartamentos)
+      description: Permissão \`apartments:read\`.
+      parameters:
+        - name: complex_id
+          in: query
+          description: ID do condomínio (ignorado se a chave tiver escopo)
+          schema: { type: string, format: uuid }
+        - name: block_id
+          in: query
+          description: ID do bloco
+          schema: { type: string, format: uuid }
+        - name: search
+          in: query
+          description: Filtra pelo nome da unidade
+          schema: { type: string }
+        - $ref: "#/components/parameters/Take20"
+        - $ref: "#/components/parameters/Skip"
+      responses:
+        "200":
+          description: Lista paginada de unidades
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Apartment" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+              example:
+                data:
+                  - id: c91e31ec-f4f5-49b6-a7d4-b15d2a3dd118
+                    name: "101"
+                    status: Ativo
+                    fraction: 0
+                    blockId: 49044575-5765-45c9-834d-ce0a32c5132c
+                    complexId: 732eb5c6-2f64-45c3-abad-2f5d8ed95c89
+                    companyId: e8155542-396d-495c-a092-4a7b97fc4ea3
+                    block: { id: 49044575-5765-45c9-834d-ce0a32c5132c, name: "1" }
+                    meters:
+                      - { id: d21fe3e9-dc75-4524-8942-869b5235c5a6, register: RSDCA101, status: Ativo }
+                meta: { total: 56, take: 20, skip: 0, hasNextPage: true, hasPreviousPage: false }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /meters:
+    get:
+      tags: [Cadastros]
+      summary: Lista medidores
+      description: Permissão \`meters:read\`.
+      parameters:
+        - name: complex_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: block_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: search
+          in: query
+          description: Filtra pela referência do medidor (register)
+          schema: { type: string }
+        - $ref: "#/components/parameters/Take20"
+        - $ref: "#/components/parameters/Skip"
+      responses:
+        "200":
+          description: Lista paginada de medidores
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Meter" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+              example:
+                data:
+                  - id: dc4d55ab-05f9-458a-b058-a33d30814f8e
+                    register: RSDCA203
+                    status: Ativo
+                    createdAt: "2025-06-24T16:56:06.000Z"
+                    apartment:
+                      id: 3eb4b257-f178-463f-9444-b89cd915e7ad
+                      name: "203"
+                      block: { id: 49044575-5765-45c9-834d-ce0a32c5132c, name: "1" }
+                meta: { total: 56, take: 20, skip: 0, hasNextPage: true, hasPreviousPage: false }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /readings:
+    get:
+      tags: [Leituras]
+      summary: Lista leituras
+      description: |
+        Permissão \`readings:read\`. Ordenado da leitura mais recente para a mais antiga.
+        \`monthRef\` pode vir como número (\`"10"\`) ou por extenso (\`"Outubro"\`) em
+        registros antigos; para período use sempre \`from\`/\`to\`.
+      parameters:
+        - name: meter_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: apartment_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: complex_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          description: Data inicial (AAAA-MM-DD)
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          description: Data final (AAAA-MM-DD)
+          schema: { type: string, format: date }
+        - $ref: "#/components/parameters/Take20"
+        - $ref: "#/components/parameters/Skip"
+      responses:
+        "200":
+          description: Lista paginada de leituras
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Reading" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+              example:
+                data:
+                  - id: c5d4bf82-a9f6-44dc-b139-f37d9590b91b
+                    reading: 3471.345
+                    readAt: "2026-10-06T00:00:00.000Z"
+                    readAtDate: "2026-10-06 00:00:00"
+                    monthRef: Outubro
+                    yearRef: "2026"
+                    isPreReading: false
+                    isManualReading: true
+                    nextReadingDate: null
+                    urlCover: https://cdn.acquaxcontrol.com.br/RESIDENCIAL%20CAPRI%20FREGUESIA/2026/10%20-%20Outubro/Fotos/708.jpg
+                    meterId: 20acff4d-e83c-4e68-b2f4-ebeb3e656c5b
+                    apartmentId: 29c4487d-1fe4-4b5e-9cea-e8d12d373247
+                    createdAt: "2026-10-13T18:05:21.000Z"
+                    meter:
+                      id: 20acff4d-e83c-4e68-b2f4-ebeb3e656c5b
+                      register: RSDCA708
+                      apartment:
+                        id: 29c4487d-1fe4-4b5e-9cea-e8d12d373247
+                        name: "708"
+                        block: { id: 49044575-5765-45c9-834d-ce0a32c5132c, name: "1" }
+                meta: { total: 1401, take: 20, skip: 0, hasNextPage: true, hasPreviousPage: false }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+    post:
+      tags: [Leituras]
+      summary: Envia leituras
+      description: |
+        Permissão \`readings:create\`. Aceita um objeto ou um lote de até **200** itens.
+        Cada medidor aceita uma leitura por mês/ano: se já existir, o item é devolvido
+        em \`errors\` com o ID da leitura existente e nada é sobrescrito.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/ReadingInput"
+                - type: object
+                  properties:
+                    readings:
+                      type: array
+                      maxItems: 200
+                      items: { $ref: "#/components/schemas/ReadingInput" }
+            example:
+              readings:
+                - meterId: 20acff4d-e83c-4e68-b2f4-ebeb3e656c5b
+                  reading: 3480.5
+                  readAt: "2026-11-05"
+      responses:
+        "201":
+          description: Ao menos uma leitura criada (pode haver erros parciais em \`errors\`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadingBatchResult" }
+        "400":
+          description: Nenhuma leitura criada, ou corpo inválido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadingBatchResult" }
+              example:
+                created: []
+                errors:
+                  - index: 0
+                    error: "Medidor não encontrado: inexistente"
+                summary: "0 leitura(s) criada(s), 1 erro(s)."
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /reports:
+    get:
+      tags: [Relatórios]
+      summary: Relatórios de consumo por unidade
+      description: Permissão \`reports:read\`. \`month\` e \`year\` são obrigatórios.
+      parameters:
+        - name: month
+          in: query
+          required: true
+          description: Mês de referência (1 a 12)
+          schema: { type: integer, minimum: 1, maximum: 12, example: 10 }
+        - name: year
+          in: query
+          required: true
+          schema: { type: integer, example: 2026 }
+        - name: apartment_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: complex_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: take
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - $ref: "#/components/parameters/Skip"
+      responses:
+        "200":
+          description: Lista paginada de relatórios
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Report" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+              example:
+                data:
+                  - id: 2c2c10fc-9a0c-4462-b4f0-92194fb6eecd
+                    monthRef: "10"
+                    yearRef: "2026"
+                    consumption: 11.675
+                    totalConsumption: 11.675
+                    consumptionCost: 127.13
+                    sewageCost: 127.13
+                    partial: 0
+                    kiteCarConsumption: 0
+                    kiteCarCost: 0
+                    utilityType: water
+                    totalUnit: 254.27
+                    apartmentId: 29c4487d-1fe4-4b5e-9cea-e8d12d373247
+                    blockId: 49044575-5765-45c9-834d-ce0a32c5132c
+                    complexId: 732eb5c6-2f64-45c3-abad-2f5d8ed95c89
+                    apartment:
+                      id: 29c4487d-1fe4-4b5e-9cea-e8d12d373247
+                      name: "708"
+                      block: { id: 49044575-5765-45c9-834d-ce0a32c5132c, name: "1" }
+                meta: { total: 56, take: 50, skip: 0, hasNextPage: true, hasPreviousPage: false }
+        "400":
+          description: Falta \`month\` ou \`year\`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /users:
+    get:
+      tags: [Usuários]
+      summary: Lista usuários
+      description: Permissão \`users:read\`.
+      parameters:
+        - name: complex_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: search
+          in: query
+          description: Filtra por nome ou e-mail
+          schema: { type: string }
+        - $ref: "#/components/parameters/Take20"
+        - $ref: "#/components/parameters/Skip"
+      responses:
+        "200":
+          description: Lista paginada de usuários
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/User" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+              example:
+                data:
+                  - id: 4424d634-2cf8-4768-81b1-211b4b9d8386
+                    name: Administração
+                    email: elisiacunha35@gmail.com
+                    telephone: null
+                    cell: null
+                    createdAt: "2026-08-13T12:59:48.000Z"
+                    updatedAt: "2026-10-08T18:40:21.000Z"
+                meta: { total: 57, take: 20, skip: 0, hasNextPage: true, hasPreviousPage: false }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /users/{id}/reset:
+    post:
+      tags: [Usuários]
+      summary: Redefine o acesso de um usuário
+      description: |
+        Permissão \`users:update\`. Sem \`newPassword\`, gera senha temporária e exige
+        troca no próximo login. O usuário master da plataforma não pode ser
+        redefinido via API (403).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                newPassword: { type: string, minLength: 8, example: SenhaForte123 }
+      responses:
+        "200":
+          description: Acesso redefinido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  temporaryPassword: { type: string, nullable: true }
+                  message: { type: string }
+        "403":
+          description: Permissão insuficiente, usuário protegido ou fora do escopo da chave
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error: 'Permissão insuficiente: esta chave não tem acesso a "users:update".'
+                code: UNAUTHORIZED
+        "404":
+          description: Usuário não encontrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: ak_<keyId>_<secret>
+      description: |
+        API Key gerada no painel do AcquaXcontrol (menu API).
+        Formato: \`ak_<uuid-da-chave>_<segredo>\`.
+
+  parameters:
+    Take20:
+      name: take
+      in: query
+      description: Itens por página (máximo 100)
+      schema: { type: integer, default: 20, maximum: 100 }
+    Skip:
+      name: skip
+      in: query
+      description: Itens a pular (paginação)
+      schema: { type: integer, default: 0, minimum: 0 }
+
+  responses:
+    Unauthorized:
+      description: Token ausente, inválido, expirado ou revogado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: Token de autenticação não fornecido. Use Authorization Bearer <token>
+            code: UNAUTHORIZED
+    Forbidden:
+      description: Permissão insuficiente, IP não autorizado, chave suspensa ou recurso fora do escopo
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Meta:
+      type: object
+      properties:
+        total: { type: integer, example: 56 }
+        take: { type: integer, example: 20 }
+        skip: { type: integer, example: 0 }
+        hasNextPage: { type: boolean }
+        hasPreviousPage: { type: boolean }
+
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        code: { type: string, nullable: true }
+
+    Complex:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        socialName: { type: string }
+        street: { type: string, nullable: true }
+        number: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        state: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        _count:
+          type: object
+          properties:
+            blocks: { type: integer }
+
+    Apartment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, description: "Número/nome da unidade (ex: 101)" }
+        status: { type: string, example: Ativo }
+        fraction: { type: number, description: "Fração ideal usada em rateios" }
+        blockId: { type: string, format: uuid, nullable: true }
+        complexId: { type: string, format: uuid }
+        companyId: { type: string, format: uuid, nullable: true }
+        block:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+        meters:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              register: { type: string }
+              status: { type: string }
+
+    Meter:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        register: { type: string, description: "Referência do medidor (chassi/registro)" }
+        status: { type: string }
+        createdAt: { type: string, format: date-time }
+        apartment:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            block:
+              type: object
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+
+    Reading:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        reading: { type: number, description: "Leitura em m³" }
+        readAt: { type: string, format: date-time }
+        readAtDate: { type: string, example: "2026-10-06 00:00:00" }
+        monthRef: { type: string, description: 'Mês de referência ("10" ou "Outubro" em registros antigos)' }
+        yearRef: { type: string }
+        isPreReading: { type: boolean }
+        isManualReading: { type: boolean }
+        nextReadingDate: { type: string, nullable: true }
+        urlCover: { type: string, nullable: true, description: "URL da foto do medidor no CDN" }
+        meterId: { type: string, format: uuid, nullable: true }
+        apartmentId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        meter:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            register: { type: string }
+            apartment:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+                block:
+                  type: object
+                  nullable: true
+                  properties:
+                    id: { type: string, format: uuid }
+                    name: { type: string }
+
+    ReadingInput:
+      type: object
+      required: [meterId, reading]
+      properties:
+        meterId: { type: string, format: uuid, description: "ID do medidor" }
+        reading: { type: number, description: "Leitura em m³" }
+        readAt: { type: string, format: date, description: "Data da leitura (padrão: agora)" }
+
+    ReadingBatchResult:
+      type: object
+      properties:
+        created:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              reading: { type: number }
+              readAt: { type: string, format: date-time }
+              monthRef: { type: string }
+              yearRef: { type: string }
+              meterId: { type: string, format: uuid }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer }
+              error: { type: string }
+        summary: { type: string, example: "1 leitura(s) criada(s), 0 erro(s)." }
+
+    Report:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        monthRef: { type: string, example: "10" }
+        yearRef: { type: string, example: "2026" }
+        consumption: { type: number, description: "Consumo da unidade no mês (m³)" }
+        totalConsumption: { type: number }
+        consumptionCost: { type: number, description: "Valor do consumo de água (BRL)" }
+        sewageCost: { type: number, description: "Valor do esgoto (BRL)" }
+        partial: { type: number, description: "Rateio de área comum (BRL)" }
+        kiteCarConsumption: { type: number }
+        kiteCarCost: { type: number }
+        utilityType: { type: string, enum: [water, gas, energy] }
+        totalUnit: { type: number, description: "Total a pagar pela unidade (BRL)" }
+        apartmentId: { type: string, format: uuid }
+        blockId: { type: string, format: uuid, nullable: true }
+        complexId: { type: string, format: uuid, nullable: true }
+        apartment:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            block:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        telephone: { type: string, nullable: true }
+        cell: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+`;
