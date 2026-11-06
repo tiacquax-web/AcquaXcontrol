@@ -1,7 +1,7 @@
 /**
  * Especificação OpenAPI 3.1 da API pública v1.
  * Fonte: docs/openapi.yaml — gerada automaticamente (nao editar a mao).
- * Servida em /api/openapi.yaml e usada pelo Swagger UI em /api-docs.
+ * Servida em /api/openapi.yaml e usada pelo Swagger UI em /api-docs e /docs/api.
  */
 
 export const OPENAPI_YAML = `openapi: 3.1.0
@@ -24,6 +24,10 @@ info:
     \`take\`, \`skip\`, \`hasNextPage\` e \`hasPreviousPage\`.
 
     **Datas:** ISO 8601 em UTC. **Valores:** reais (BRL) e m³ em decimal.
+
+    **Erros:** \`400\` parâmetros inválidos, \`401\` chave inválida/expirada, \`403\` permissão,
+    IP ou escopo, \`404\` recurso inexistente, \`500\` falha interna (pode repetir com espera
+    exponencial).
 
     Contato: ti.acquax@gmail.com / adm@acquaxdobrasil.com.br
 
@@ -434,18 +438,33 @@ paths:
             schema:
               type: object
               properties:
-                newPassword: { type: string, minLength: 8, example: SenhaForte123 }
+                newPassword:
+                  type: string
+                  minLength: 6
+                  description: Se omitido, o sistema gera uma senha temporaria
+                  example: SenhaForte123
       responses:
         "200":
           description: Acesso redefinido
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  success: { type: boolean }
-                  temporaryPassword: { type: string, nullable: true }
-                  message: { type: string }
+              schema: { $ref: "#/components/schemas/ResetResult" }
+              example:
+                success: true
+                user:
+                  id: 4424d634-2cf8-4768-81b1-211b4b9d8386
+                  name: Maria Souza
+                  email: maria@exemplo.com
+                  mustUpdateCredentials: true
+                tempPassword: Acquax@7F2K9A
+                message: Acesso restaurado. Senha temporaria gerada, compartilhe com seguranca.
+        "400":
+          description: Senha informada com menos de 6 caracteres
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error: A nova senha deve ter ao menos 6 caracteres.
         "403":
           description: Permissão insuficiente, usuário protegido ou fora do escopo da chave
           content:
@@ -667,6 +686,23 @@ components:
               properties:
                 id: { type: string, format: uuid }
                 name: { type: string }
+
+    ResetResult:
+      type: object
+      properties:
+        success: { type: boolean }
+        user:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            email: { type: string, format: email }
+            mustUpdateCredentials: { type: boolean, description: Exige troca de senha no proximo login }
+        tempPassword:
+          type: string
+          nullable: true
+          description: Senha temporaria gerada quando newPassword nao e informado
+        message: { type: string }
 
     User:
       type: object
