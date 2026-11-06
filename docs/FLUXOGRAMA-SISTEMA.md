@@ -97,13 +97,13 @@ que ligam um usuário a um papel dentro de um contexto (sistema, empresa, condom
 ou unidade). As permissões efetivas vêm do papel (`Role` → `Permission` com `entity` + `action`).
 
 ```mermaid
-flowchart LR
+flowchart TB
   U[User] -->|1:N| RA[RoleAssignment]
   RA -->|roleId| R[Role]
-  RA -->|contextType + contextId| CTX{Sistema / Empresa / Condominio / Bloco / Unidade}
-  R -->|1:N| P[Permission entity+action]
-  P --> UI[Menu, abas e botoes]
-  P --> BE[Validacao no backend por escopo]
+  RA -->|contexto| CTX["Sistema, empresa,<br/>condominio, bloco ou unidade"]
+  R -->|1:N| P["Permission<br/>entity + action"]
+  P --> UI["Menu, abas e botoes"]
+  P --> BE["Validacao no backend<br/>por escopo"]
 ```
 
 | Perfil | Como é identificado | Alcance típico |
@@ -215,15 +215,22 @@ sequenceDiagram
 flowchart TD
   L[Link publico /cadastro/TOKEN] --> V{Token valido e ativo?}
   V -- nao --> E[Erro: link expirado]
-  V -- sim --> F[Formulario: nome, email, celular, unidade]
+  V -- sim --> F["Formulario: nome, email,<br/>celular e unidade"]
   F --> G{Celular com 10+ digitos?}
   G -- nao --> F
-  G -- sim --> H{Email ja existe?}
+  G -- sim --> H[Segue para o vinculo]
+```
+
+**4.2.b Criacao do usuario e vinculo**
+
+```mermaid
+flowchart TD
+  H{Email ja existe?}
   H -- nao --> N[Cria usuario + senha provisoria]
-  H -- sim --> R[Atualiza nome/celular, mantem senha]
-  N --> RA[Cria RoleAssignment Morador na unidade]
+  H -- sim --> R["Atualiza nome e celular,<br/>mantem a senha"]
+  N --> RA["RoleAssignment de morador<br/>na unidade"]
   R --> RA
-  RA --> EM[Enfileira boas-vindas / aviso de vinculo]
+  RA --> EM[Enfileira boas-vindas]
   EM --> OK[Tela de sucesso]
 ```
 
@@ -241,7 +248,7 @@ Ordem natural: **Administradora → Condomínio → Bloco → Unidade → Medido
 ### 4.4 Entrada de leituras
 
 ```mermaid
-flowchart TD
+flowchart LR
   subgraph Origens
     M[Digitacao manual /readings/create]
     P[Planilha /api/import-medicao]
@@ -259,8 +266,7 @@ flowchart TD
   UN -- nao --> SAI[Leitura unlinked: /readings/unlinked]
   SAI --> VINC[Vincular device a medidor]
   VINC --> REP[Reprocessar leituras]
-  UN -- sim --> OK[Disponivel para apuracao]
-```
+  UN -- sim --> OK[Disponivel para apuracao]```
 
 - Duplicidade: uma leitura por medidor por mês/ano (a API v1 recusa e devolve o ID existente).
 - Leituras órfãs entram em fila de vinculação (`unlinked`) com reprocessamento em lote.
@@ -311,13 +317,13 @@ Regras conhecidas:
 ### 4.7 Filipeta, levantamento e relatórios
 
 ```mermaid
-flowchart LR
+flowchart TB
   ACR[(ApartmentConsumptionReport)] --> FL[Filipeta por unidade]
-  ACR --> LEV[Levantamento por condominio e mes]
-  ACR --> ANU[Consumo anual e comparativos]
+  ACR --> LEV[Levantamento por<br/>condominio e mes]
+  ACR --> ANU[Consumo anual<br/>e comparativos]
   FL --> PDF1[PDF / impressao]
   LEV --> PDF2[PDF / impressao]
-  FL --> EMJ[EmailJob categoria filipeta]
+  FL --> EMJ[EmailJob: filipeta]
   EMJ --> CRON[Cron send-pending-emails]
   CRON --> ZOHO[Zoho SMTP]
 ```
@@ -329,15 +335,21 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  EV[Evento: relatorio salvo, alerta, reset, boas-vindas, resumo] --> Q{Fluxo}
-  Q -- individual --> DIR[Envio imediato SMTP]
+  EV["Evento: relatorio salvo, alerta,<br/>reset, boas-vindas, resumo"] --> Q{Fluxo}
+  Q -- individual --> DIR[Envio imediato via SMTP]
   Q -- lote --> JOB[(EmailJob)]
-  JOB --> PRIO[Prioridade: reset 0, boas-vindas 2, filipeta 5]
-  PRIO --> CRON[Cron a cada 5 min]
-  CRON --> RITMO[Espacamento aleatorio 25-90s, teto 60/h, orcamento 250s]
+  JOB --> PRIO["Prioridade: reset 0,<br/>boas-vindas 2, filipeta 5"]
+```
+
+**4.8.b Processamento da fila**
+
+```mermaid
+flowchart TD
+  PRIO[EmailJob com prioridade] --> CRON[Cron a cada 5 min]
+  CRON --> RITMO["Espacamento de 25 a 90s,<br/>teto de 60/h, 250s de orcamento"]
   RITMO --> SMTP[Zoho SMTP]
-  SMTP --> LOG[Status: sent, failed, skipped]
-  LOG --> SAUDE[/api/debug/emails e /email-status/]
+  SMTP --> LOG["Status: sent, failed ou skipped"]
+  LOG --> SAUDE["/api/debug/emails e /email-status"]
 ```
 
 - Domínios internos (`@acquax*`) são marcados como `skipped` (economia de cota).
@@ -359,14 +371,14 @@ flowchart TD
 ### 4.10 Fotos de medidor
 
 ```mermaid
-flowchart LR
-  U[/admin/fotos/] --> S[Seleciona condominio, mes e unidade]
+flowchart TB
+  U[/admin/fotos/] --> S["Escolhe condominio,<br/>mes e unidade"]
   S --> UP[Upload da imagem]
-  UP --> SH[Redimensiona 1600px, JPEG q82]
+  UP --> SH["Reduz para 1600px<br/>JPEG q82"]
   SH --> B2[(Backblaze B2)]
   B2 --> CDN[cdn.acquaxcontrol.com.br]
-  CDN --> URL[urlCover na leitura do mes]
-  U --> LOTE[Envio em lote por nome do arquivo]
+  CDN --> URL["urlCover da<br/>leitura do mes"]
+  U --> LOTE["Lote: casa o arquivo<br/>com unidade ou referencia"]
   LOTE --> UP
 ```
 
