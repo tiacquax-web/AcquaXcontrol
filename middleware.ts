@@ -142,6 +142,8 @@ export async function middleware(req: NextRequest) {
     '/logo-acquax.png', '/manifest.webmanifest', '/sw.js', '/offline',
     '/icons', '/.well-known', '/screenshots', '/logo-quadrada',
     '/news/', '/services/', '/public/', '/suspended',
+    // Documentação pública da API (Swagger) e seus assets estáticos
+    '/docs', '/swagger',
     '/cadastro/', // auto-cadastro de moradores por link público
     '/api/public/',
   ];
