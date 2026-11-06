@@ -372,4 +372,7 @@ print(r.json()["meta"], len(r.json()["data"]))
 
 ## 8. Contato
 
-Dúvidas, novas permissões ou aumento de escopo: **ti@acquaxdobrasil.com.br**
+Dúvidas, novas permissões ou aumento de escopo:
+
+- **ti.acquax@gmail.com**
+- **adm@acquaxdobrasil.com.br**
