@@ -5,7 +5,7 @@
 > entidades, serviços, integrações, automações e regras de negócio.
 >
 > Números do sistema nesta data: **54 páginas**, **135 rotas de API**, **36 entidades**,
-> **8 automações agendadas (crons)**, **26 serviços de domínio**.
+> **7 automações agendadas (crons)**, **24 serviços de domínio + 6 módulos do assistente**.
 
 ---
 
@@ -453,6 +453,125 @@ flowchart LR
 
 ---
 
+### 4.14 Reservatórios e medidores de nível
+
+```mermaid
+flowchart TD
+  R[Reservatorio do condominio] --> L{Medidor de nivel vinculado?}
+  L -- nao --> U[Reservatorio sem vinculo]
+  U --> V[Vincular medidor de nivel]
+  L -- sim --> RD[(ReservoirReading)]
+  V --> RD
+  RD --> MON[/monitoring e /reservoir-monitoring/]
+  MON --> AL{Fora da faixa?}
+  AL -- sim --> AV[Alerta de nivel]
+  AL -- nao --> OK[Historico e graficos]
+```
+
+- Cadastro em `/reservoirs`, vínculo em `/reservoirs/{id}/link`, leituras por `/api/reservoir-readings`.
+- Reservatórios sem vínculo aparecem em `/reservoirs/unlinked`.
+
+### 4.15 Alertas, vazamento e metas de consumo
+
+```mermaid
+flowchart TD
+  DD[(Leituras e relatorios)] --> ANA[Analise de consumo]
+  ANA --> G1[Cron check-consumption-goals diario]
+  ANA --> G2[Cron leak-detection semanal]
+  ANA --> G3[Alertas de leitura ausente e consumo zero]
+  G1 --> EMJ[(EmailJob)]
+  G2 --> EMJ
+  G3 --> EMJ
+  G3 --> PAINEL[Avisos no painel e /alerts]
+  EMJ --> RESP[Destinatarios: sindico e administradora]
+```
+
+- `notification-recipients` resolve quem recebe por condomínio e papel.
+- Resumo semanal de alertas (segunda, 9h) e resumo mensal (dia 5, 10h) usam a mesma fila.
+
+### 4.16 Importação de usuários em lote
+
+```mermaid
+flowchart TD
+  UP[Planilha: bloco, unidade, nome, email, celular] --> PARSE[/api/user/bulk-import/parse/]
+  PARSE --> REV[Revisao: criar, vincular ou atualizar]
+  REV --> PROC[/api/user/bulk-import/process/]
+  PROC --> C1{Usuario existe?}
+  C1 -- nao --> NOVO[Cria usuario com senha provisoria]
+  C1 -- sim --> LINK[Reaproveita e cria vinculo na unidade]
+  NOVO --> EMJ[(EmailJob: boas-vindas)]
+  LINK --> EMJ
+  PROC --> RES[Relatorio por linha]
+```
+
+- Redefinição em massa (`/api/user/users/bulk-reset`) segue o mesmo padrão de relatório por linha.
+- Exportações de usuários, unidades, blocos, condomínios e medidores usam `.xlsx`.
+
+### 4.17 Webhooks de saída
+
+```mermaid
+flowchart TD
+  EV["Evento interno: relatorio,<br/>alerta ou leitura"] --> DISP[webhookDispatch]
+  DISP --> W{Webhook ativo e<br/>evento assinado?}
+  W -- nao --> IGN[Ignora]
+  W -- sim --> POST[POST HTTP no destino]
+  POST --> DLV[(WebhookDelivery)]
+  DLV --> LOG[Status, tentativa e resposta]
+```
+
+- Cadastro e teste em `/api/user/webhooks`; histórico em `WebhookDelivery`.
+
+### 4.18 Suspensão de condomínio
+
+```mermaid
+flowchart TD
+  ADM[Admin] --> SUS[PATCH /api/user/complexes/id/suspend]
+  SUS --> FLAG[Complex marcado como suspenso]
+  FLAG --> CTX[/api/auth/my-context/]
+  CTX --> BLQ[403 suspended e redirect /suspended]
+  SUS --> LIB[Reativacao devolve o acesso]
+```
+
+### 4.19 Soft delete, limpeza e retenção
+
+```mermaid
+flowchart TD
+  DEL[Exclusao pela tela] --> SD[deletedAt preenchido]
+  SD --> FIL[Middleware filtra em todas as consultas]
+  SD --> CRON[Cron cleanup-soft-deleted dia 1, 3h]
+  CRON --> INV[Inventario do que esta removido]
+  INV --> PURGE{ENABLE_HARD_PURGE ligado?}
+  PURGE -- nao --> REL[Relatorio, sem apagar]
+  PURGE -- sim --> HARD[Purga definitiva]
+```
+
+- Nada é apagado fisicamente por padrão.
+- Vínculos em cascata são tratados caso a caso (usuário, unidade, medidor).
+
+### 4.20 PWA, offline e atualização de versão
+
+```mermaid
+flowchart LR
+  SW[Service worker] --> CACHE[Cache de assets e telas]
+  CACHE --> OFF[Pagina /offline sem conexao]
+  DEPLOY[Novo deploy] --> UPD[stale-while-revalidate]
+  UPD --> UX[Proxima visita baixa a versao nova]
+```
+
+### 4.21 Processos transversais
+
+| Processo | Onde acontece |
+|---|---|
+| Impressão e PDF | `/levantamento`, `/meter-report`, `/dealership-readings/{id}/filipeta` |
+| Exportação `.xlsx` | Usuários, condomínios, blocos, unidades, medidores, relatórios |
+| Auditoria de uso da API | `ApiLog` (chave, rota, latência, status, IP) |
+| Auditoria do assistente | `AssistantLog` e `AssistantFeedback` |
+| Comunicados | `Comunicado` + público-alvo (`comunicado-audience`) + fila de e-mail |
+| Saúde do sistema | `/api/health`, `/api/debug`, `/api/debug/emails`, `/api/gl-status` |
+| Personalização de abas | `/role-customization` + `lib/role-tab-config.ts` |
+| Sessão e preferências | `/api/auth/me`, `/api/auth/me/preferences` |
+| Agendamentos (schema) | `ScheduledTask`, `RecurringSchedule`, `ScheduleOverride` existem no banco, sem uso no código atual |
+
 ## 5. Entidades (36 modelos)
 
 ```mermaid
@@ -501,128 +620,197 @@ erDiagram
 
 ## 6. Todas as rotas de API (135)
 
+Inventário completo gerado do código: **135 rotas** em 11 domínios.
+
 ### 6.1 Autenticação e sessão
 
 | Métodos | Rota |
 |---|---|
-| POST | `/api/auth/login`, `/api/auth/logout`, `/api/auth/recover`, `/api/auth/reset-password`, `/api/auth/session`, `/api/auth/signup` |
-| GET, PUT | `/api/auth/me`, `/api/auth/me/preferences` |
+| POST | `/api/auth/login` |
+| POST | `/api/auth/logout` |
+| GET, PUT | `/api/auth/me` |
+| GET, PUT | `/api/auth/me/preferences` |
 | GET | `/api/auth/my-context` |
+| POST | `/api/auth/recover` |
+| POST | `/api/auth/reset-password` |
+| POST | `/api/auth/session` |
+| POST | `/api/auth/signup` |
 
-### 6.2 Consumo (leituras, contas, relatórios)
+### 6.2 Consumo: leituras, contas e relatórios
 
 | Métodos | Rota |
 |---|---|
+| GET | `/api/dealership-readings/[id]/filipeta` |
+| GET | `/api/meter-report` |
+| POST | `/api/monitoring/readings` |
+| GET, POST | `/api/user/apartment-report` |
+| DELETE, PUT | `/api/user/apartment-report/[entityId]` |
+| POST | `/api/user/apartment-report/calculate` |
+| POST | `/api/user/apartment-report/generate` |
+| POST | `/api/user/apartment-report/unified` |
+| POST | `/api/user/combined-import` |
+| GET, POST | `/api/user/dealership-reading` |
+| DELETE, PUT | `/api/user/dealership-reading/[entityId]` |
+| POST | `/api/user/import-medicao` |
 | GET, POST | `/api/user/readings` |
 | PUT | `/api/user/readings/[id]` |
+| POST | `/api/user/readings/import-daily` |
+| POST | `/api/user/readings/import-iot` |
 | GET | `/api/user/readings/unlinked` |
-| POST | `/api/user/readings/import-daily`, `/api/user/readings/import-iot` |
-| POST | `/api/user/import-medicao` |
-| GET, POST | `/api/user/dealership-reading` |
-| PUT, DELETE | `/api/user/dealership-reading/[entityId]` |
-| GET, POST | `/api/user/apartment-report` |
-| PUT, DELETE | `/api/user/apartment-report/[entityId]` |
-| POST | `/api/user/apartment-report/calculate`, `/generate`, `/unified` |
-| POST | `/api/user/combined-import` |
-| GET | `/api/meter-report`, `/api/dealership-readings/[id]/filipeta` |
+| GET, POST | `/api/v1/readings` |
+| GET | `/api/v1/reports` |
 
-### 6.3 IoT e dispositivos
+### 6.3 IoT, dispositivos e monitoramento
 
 | Métodos | Rota |
 |---|---|
+| GET | `/api/admin/gl/alarms` |
+| GET | `/api/admin/gl/diagnostics` |
+| GET, POST | `/api/admin/gl/retroactive-import` |
+| GET, POST | `/api/admin/gl/set-meter-ids` |
+| POST | `/api/admin/gl/temp-retro-import` |
+| POST | `/api/admin/gl/update-meter-glids` |
+| GET | `/api/cron/gl-import` |
+| GET | `/api/gl-status` |
+| POST | `/api/monitoring/alerts` |
+| GET, POST | `/api/reservoir-readings` |
+| GET, POST | `/api/reservoirs` |
+| DELETE, GET, PUT | `/api/reservoirs/[id]` |
+| DELETE, POST | `/api/reservoirs/[id]/link` |
+| GET | `/api/reservoirs/unlinked` |
 | GET, POST | `/api/user/devices` |
-| PUT, DELETE | `/api/user/devices/[id]` |
-| GET | `/api/user/devices/devices-list`, `/[id]/meter-links`, `/[id]/unlinked-readings` |
+| DELETE, PUT | `/api/user/devices/[id]` |
+| GET | `/api/user/devices/[id]/meter-links` |
 | POST | `/api/user/devices/[id]/reprocess-readings` |
+| GET | `/api/user/devices/[id]/unlinked-readings` |
+| GET | `/api/user/devices/devices-list` |
+| POST | `/api/user/devices/import-links/process` |
+| POST | `/api/user/devices/import-links/validate` |
 | POST | `/api/user/devices/meter-links` |
-| PUT, DELETE | `/api/user/devices/meter-links/[linkId]` |
-| POST | `/api/user/devices/import-links/validate`, `/import-links/process` |
-| GET | `/api/user/devices/unlinked-readings`, `/with-unlinked-readings` |
-| GET | `/api/gl-status`, `/api/admin/gl/diagnostics`, `/api/admin/gl/alarms` |
-| POST, GET | `/api/admin/gl/retroactive-import`, `/set-meter-ids`, `/temp-retro-import`, `/update-meter-glids` |
-| POST | `/api/monitoring/readings`, `/api/monitoring/alerts` |
+| DELETE, PUT | `/api/user/devices/meter-links/[linkId]` |
+| GET | `/api/user/devices/unlinked-readings` |
+| GET | `/api/user/devices/with-unlinked-readings` |
 
 ### 6.4 Cadastros
 
 | Métodos | Rota |
 |---|---|
-| GET, POST | `/api/user/companies`, `/api/user/type-meters`, `/api/user/dealerships` |
-| PUT, DELETE | `/api/user/companies/[entityId]` |
+| GET, POST | `/api/user/apartments` |
+| DELETE, PUT | `/api/user/apartments/[entityId]` |
+| POST | `/api/user/apartments/export` |
+| GET, POST | `/api/user/blocks` |
+| DELETE, PUT | `/api/user/blocks/[blockId]` |
+| POST | `/api/user/blocks/export` |
+| GET, POST | `/api/user/companies` |
+| DELETE, PUT | `/api/user/companies/[entityId]` |
 | GET, POST | `/api/user/complexes` |
-| PUT, DELETE | `/api/user/complexes/[entityId]` |
+| DELETE, PUT | `/api/user/complexes/[entityId]` |
 | PATCH | `/api/user/complexes/[entityId]/suspend` |
-| POST | `/api/user/complexes/export`, `/api/user/blocks/export`, `/api/user/apartments/export`, `/api/user/meters/export` |
-| GET, POST | `/api/user/blocks`, `/api/user/apartments`, `/api/user/meters` |
-| PUT, DELETE | `/api/user/blocks/[blockId]`, `/api/user/apartments/[entityId]`, `/api/user/meters/[entityId]` |
-| GET, POST | `/api/reservoirs`, `/api/reservoir-readings` |
-| GET, PUT, DELETE | `/api/reservoirs/[id]` |
-| POST, DELETE | `/api/reservoirs/[id]/link` |
-| GET | `/api/reservoirs/unlinked` |
+| POST | `/api/user/complexes/export` |
+| GET, POST | `/api/user/dealerships` |
+| GET, POST | `/api/user/meters` |
+| DELETE, PUT | `/api/user/meters/[entityId]` |
+| POST | `/api/user/meters/export` |
+| GET, POST | `/api/user/type-meters` |
 
 ### 6.5 Usuários, papéis e permissões
 
 | Métodos | Rota |
 |---|---|
-| GET, POST | `/api/user/users`, `/api/user/roles`, `/api/user/permissions`, `/api/user/role-assignments` |
-| PUT, DELETE | `/api/user/users/[entityId]`, `/api/user/roles/[entityId]`, `/api/user/permissions/[entityId]` |
-| DELETE | `/api/user/role-assignments/[entityId]` |
-| POST | `/api/user/users/[entityId]/reset`, `/api/user/users/bulk-reset`, `/api/user/users/export` |
-| POST | `/api/user/bulk-import/parse`, `/api/user/bulk-import/process` |
+| GET, POST | `/api/public/register/[token]` |
 | GET | `/api/user-permissions` |
+| POST | `/api/user/bulk-import/parse` |
+| POST | `/api/user/bulk-import/process` |
+| GET, POST | `/api/user/permissions` |
+| DELETE, PUT | `/api/user/permissions/[entityId]` |
 | GET, POST | `/api/user/registration-invites` |
 | PATCH | `/api/user/registration-invites/[id]` |
-| GET, POST | `/api/public/register/[token]` |
+| GET, POST | `/api/user/role-assignments` |
+| DELETE | `/api/user/role-assignments/[entityId]` |
+| GET, POST | `/api/user/roles` |
+| DELETE, PUT | `/api/user/roles/[entityId]` |
+| GET, POST | `/api/user/users` |
+| DELETE, PUT | `/api/user/users/[entityId]` |
+| POST | `/api/user/users/[entityId]/reset` |
+| POST | `/api/user/users/bulk-reset` |
+| POST | `/api/user/users/export` |
+| GET | `/api/v1/users` |
+| POST | `/api/v1/users/[id]/reset` |
 
 ### 6.6 Comunicação, suporte e conteúdo
 
 | Métodos | Rota |
 |---|---|
-| GET, POST | `/api/user/comunicados`, `/api/user/support`, `/api/user/suggestions` |
-| GET, DELETE | `/api/user/comunicados/[id]` |
+| GET | `/api/assistant/avisos` |
+| GET, POST | `/api/assistant/chat` |
+| POST | `/api/assistant/consumo` |
+| POST | `/api/assistant/feedback` |
+| GET | `/api/assistant/relatorio` |
+| GET, POST | `/api/user/comunicados` |
+| DELETE, GET | `/api/user/comunicados/[id]` |
+| GET, POST | `/api/user/suggestions` |
+| DELETE, PATCH | `/api/user/suggestions/[suggestionId]` |
+| POST | `/api/user/suggestions/[suggestionId]/vote` |
+| GET, POST | `/api/user/support` |
 | GET, PATCH | `/api/user/support/[ticketId]` |
 | POST | `/api/user/support/[ticketId]/messages` |
-| PATCH, DELETE | `/api/user/suggestions/[suggestionId]` |
-| POST | `/api/user/suggestions/[suggestionId]/vote` |
 | GET, POST | `/api/user/webhooks` |
-| GET, PATCH, DELETE | `/api/user/webhooks/[webhookId]` |
+| DELETE, GET, PATCH | `/api/user/webhooks/[webhookId]` |
 
 ### 6.7 E-mail e notificações
 
 | Métodos | Rota |
 |---|---|
-| GET | `/api/user/email-status`, `/api/user/send-test-email`, `/api/user/send-welcome-email` |
-| POST | `/api/user/trigger-emails` |
 | GET | `/api/debug/emails` |
+| GET | `/api/user/email-status` |
+| POST | `/api/user/trigger-emails` |
 
 ### 6.8 API pública, documentação e administração
 
 | Métodos | Rota |
 |---|---|
-| GET | `/api/v1`, `/api/v1/complexes`, `/api/v1/apartments`, `/api/v1/meters`, `/api/v1/readings`, `/api/v1/reports`, `/api/v1/users` |
-| POST | `/api/v1/readings`, `/api/v1/users/[id]/reset` |
+| GET | `/api` |
+| GET | `/api/admin-stats` |
+| GET | `/api/admin/operations/summary` |
+| GET, POST | `/api/admin/photos` |
+| GET | `/api/apuracao` |
 | GET | `/api/openapi.yaml` |
 | GET, POST | `/api/user/api-keys` |
-| GET, PATCH, DELETE | `/api/user/api-keys/[keyId]` |
+| DELETE, GET, PATCH | `/api/user/api-keys/[keyId]` |
 | GET | `/api/user/api-keys/logs` |
-| GET, POST | `/api/admin/photos` |
-| GET | `/api/admin-stats`, `/api/admin/operations/summary`, `/api/apuracao` |
-| GET, POST | `/api` (índice) |
+| GET | `/api/v1` |
+| GET | `/api/v1/apartments` |
+| GET | `/api/v1/complexes` |
+| GET | `/api/v1/meters` |
 
-### 6.9 Assistentes, dashboard e diagnóstico
+### 6.9 Dashboard e diagnóstico
 
 | Métodos | Rota |
 |---|---|
-| GET, POST | `/api/assistant/chat` |
-| POST | `/api/assistant/consumo`, `/api/assistant/feedback` |
-| GET | `/api/assistant/avisos`, `/api/assistant/relatorio` |
-| GET | `/api/dashboard/annual-consumption`, `/api/dashboard/common-area`, `/api/dashboard/consumption-analysis`, `/api/block-comparison` |
-| GET | `/api/health`, `/api/debug` |
+| GET | `/api/block-comparison` |
+| GET | `/api/dashboard/annual-consumption` |
+| GET | `/api/dashboard/common-area` |
+| GET | `/api/dashboard/consumption-analysis` |
+| GET | `/api/debug` |
+| GET | `/api/health` |
 
 ### 6.10 Crons
 
-`/api/cron/gl-import`, `/api/cron/send-pending-emails`, `/api/cron/check-consumption-goals`,
-`/api/cron/leak-detection`, `/api/cron/send-alert-summary`, `/api/cron/send-monthly-summary`,
-`/api/cron/cleanup-soft-deleted`.
+| Métodos | Rota |
+|---|---|
+| POST | `/api/cron/check-consumption-goals` |
+| GET, POST | `/api/cron/cleanup-soft-deleted` |
+| POST | `/api/cron/leak-detection` |
+| POST | `/api/cron/send-alert-summary` |
+| POST | `/api/cron/send-monthly-summary` |
+| GET | `/api/cron/send-pending-emails` |
+
+### 6.11 Outros
+
+| Métodos | Rota |
+|---|---|
+| GET | `/api/user/send-test-email` |
+| GET | `/api/user/send-welcome-email` |
 
 ---
 
@@ -721,3 +909,124 @@ erDiagram
 - **Filipeta**: extrato individual da unidade.
 - **Levantamento**: planilha comparativa de várias unidades e meses.
 - **GL (GroupLink)**: fornecedor de telemetria dos medidores.
+
+---
+
+## 12. Inventário de arquivos (rastreabilidade)
+
+Gerado direto da árvore do projeto, para conferência item a item.
+
+### 12.1 Todas as telas (54)
+
+| Rota | Arquivo |
+|---|---|
+| `/` | `app/page.tsx` |
+| `/account` | `app/(main)/account/page.tsx` |
+| `/admin/fotos` | `app/(main)/admin/fotos/page.tsx` |
+| `/alerts` | `app/(main)/alerts/page.tsx` |
+| `/apartment-report` | `app/(main)/apartment-report/page.tsx` |
+| `/apartment-report/[id]` | `app/(main)/apartment-report/[id]/page.tsx` |
+| `/apartment-report/[id]/edit` | `app/(main)/apartment-report/[id]/edit/page.tsx` |
+| `/apartments` | `app/(main)/apartments/page.tsx` |
+| `/api-docs` | `app/(main)/api-docs/page.tsx` |
+| `/api-manager` | `app/(main)/api-manager/page.tsx` |
+| `/apuracao` | `app/(main)/apuracao/page.tsx` |
+| `/blocks` | `app/(main)/blocks/page.tsx` |
+| `/blog/post-1` | `app/(main)/blog/post-1/page.tsx` |
+| `/cadastro/[token]` | `app/(auth)/cadastro/[token]/page.tsx` |
+| `/companies` | `app/(main)/companies/page.tsx` |
+| `/complexes` | `app/(main)/complexes/page.tsx` |
+| `/comunicado` | `app/(main)/comunicado/page.tsx` |
+| `/consumption-dashboard` | `app/(main)/consumption-dashboard/page.tsx` |
+| `/dashboard` | `app/(main)/dashboard/page.tsx` |
+| `/dashboard/preview` | `app/(main)/dashboard/preview/page.tsx` |
+| `/dealership-readings` | `app/(main)/dealership-readings/page.tsx` |
+| `/dealership-readings/[id]` | `app/(main)/dealership-readings/[id]/page.tsx` |
+| `/dealership-readings/[id]/edit` | `app/(main)/dealership-readings/[id]/edit/page.tsx` |
+| `/dealership-readings/[id]/filipeta` | `app/(main)/dealership-readings/[id]/filipeta/page.tsx` |
+| `/dealership-readings/new` | `app/(main)/dealership-readings/new/page.tsx` |
+| `/devices` | `app/(main)/devices/page.tsx` |
+| `/docs/api` | `app/docs/api/page.tsx` |
+| `/first-access` | `app/(auth)/first-access/page.tsx` |
+| `/gl-integration` | `app/(main)/gl-integration/page.tsx` |
+| `/guia` | `app/(main)/guia/page.tsx` |
+| `/levantamento` | `app/(main)/levantamento/page.tsx` |
+| `/links-cadastro` | `app/(main)/links-cadastro/page.tsx` |
+| `/login` | `app/(auth)/login/page.tsx` |
+| `/meter-report` | `app/(main)/meter-report/page.tsx` |
+| `/meters` | `app/(main)/meters/page.tsx` |
+| `/monitoring` | `app/(main)/monitoring/page.tsx` |
+| `/offline` | `app/offline/page.tsx` |
+| `/politica-de-privacidade` | `app/politica-de-privacidade/page.tsx` |
+| `/readings` | `app/(main)/readings/page.tsx` |
+| `/readings/[id]` | `app/(main)/readings/[id]/page.tsx` |
+| `/readings/create` | `app/(main)/readings/create/page.tsx` |
+| `/recover` | `app/(auth)/recover/page.tsx` |
+| `/reservoir-monitoring` | `app/(main)/reservoir-monitoring/page.tsx` |
+| `/reservoir-monitoring/[id]` | `app/(main)/reservoir-monitoring/[id]/page.tsx` |
+| `/reservoirs` | `app/(main)/reservoirs/page.tsx` |
+| `/reset-password` | `app/(auth)/reset-password/page.tsx` |
+| `/role-customization` | `app/(main)/role-customization/page.tsx` |
+| `/roles` | `app/(main)/roles/page.tsx` |
+| `/signup` | `app/(auth)/signup/page.tsx` |
+| `/solutions` | `app/(main)/solutions/page.tsx` |
+| `/sugestoes` | `app/(main)/sugestoes/page.tsx` |
+| `/suporte` | `app/(main)/suporte/page.tsx` |
+| `/suspended` | `app/(auth)/suspended/page.tsx` |
+| `/users` | `app/(main)/users/page.tsx` |
+
+### 12.2 Serviços de domínio (24)
+
+| Arquivo |
+|---|
+| `lib/services/combined-import-service.ts` |
+| `lib/services/combined-import-test.ts` |
+| `lib/services/consumption-analysis.ts` |
+| `lib/services/device-management-service.ts` |
+| `lib/services/email-queue.ts` |
+| `lib/services/email-queue-trigger.ts` |
+| `lib/services/email-service.ts` |
+| `lib/services/filipeta-email-dispatcher.ts` |
+| `lib/services/filipeta-email-template.ts` |
+| `lib/services/gl-alarm-import-service.ts` |
+| `lib/services/gl-import-service.ts` |
+| `lib/services/iot-reading-service.ts` |
+| `lib/services/latest-report-by-complex.ts` |
+| `lib/services/leak-detection-service.ts` |
+| `lib/services/link-import-service.ts` |
+| `lib/services/management-insights-email.ts` |
+| `lib/services/medicao-parser.ts` |
+| `lib/services/notification-recipients.ts` |
+| `lib/services/photo-storage.ts` |
+| `lib/services/reading-fast-reprocess-service.ts` |
+| `lib/services/reading-link-service.ts` |
+| `lib/services/suspension-service.ts` |
+| `lib/services/transactional-email-templates.ts` |
+| `lib/services/welcome-email-template.ts` |
+
+### 12.3 Módulos do assistente (6)
+
+| Arquivo |
+|---|
+| `lib/services/assistant/audit.ts` |
+| `lib/services/assistant/gemini.ts` |
+| `lib/services/assistant/guia.ts` |
+| `lib/services/assistant/policy.ts` |
+| `lib/services/assistant/prompt.ts` |
+| `lib/services/assistant/tools.ts` |
+
+### 12.4 Utilitários e camada de dados (11)
+
+| Arquivo |
+|---|
+| `lib/comunicado-audience.ts` |
+| `lib/permissions-cache.ts` |
+| `lib/prisma.ts` |
+| `lib/role-tab-config.ts` |
+| `lib/safeError.ts` |
+| `lib/sendEmail.ts` |
+| `lib/user-location.ts` |
+| `lib/userContexts.ts` |
+| `lib/userData.ts` |
+| `lib/users.ts` |
+| `lib/utils.ts` |
