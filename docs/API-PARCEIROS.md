@@ -293,8 +293,20 @@ Permissão `users:update`. Corpo opcional:
 { "newPassword": "SenhaForte123" }
 ```
 
-- Sem `newPassword`: gera senha temporária e exige troca no próximo login.
-- A senha temporária é devolvida na resposta para o parceiro entregar ao morador.
+Resposta:
+
+```json
+{
+  "success": true,
+  "user": { "id": "4424d634-...", "name": "Maria Souza", "email": "maria@exemplo.com", "mustUpdateCredentials": true },
+  "tempPassword": "Acquax@7F2K9A",
+  "message": "Acesso restaurado. Senha temporária gerada, compartilhe com segurança."
+}
+```
+
+- Sem `newPassword`: o sistema gera uma senha temporária e exige troca no próximo login.
+- A senha temporária volta no campo `tempPassword` da resposta, para o parceiro entregar ao morador.
+- Com `newPassword`: mínimo de **6 caracteres** (menos que isso retorna **400**).
 - Não é permitido redefinir o usuário administrador master (`403`).
 - Com chave de escopo, só é possível redefinir usuários vinculados ao condomínio.
 

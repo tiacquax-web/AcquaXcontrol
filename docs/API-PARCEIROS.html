@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AcquaXcontrol - API v1 - Guia de Integracao</title>
+<style>
+:root { --ink:#0f172a; --muted:#475569; --line:#e2e8f0; --brand:#0d9488; }
+* { box-sizing: border-box; }
+body { margin:0; background:#f8fafc; color:var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.6; font-size: 15px; }
+.wrap { max-width: 900px; margin: 0 auto; background:#fff; padding: 48px 56px 64px;
+  box-shadow: 0 1px 3px rgba(15,23,42,.08); }
+h1 { font-size: 30px; margin: 0 0 6px; letter-spacing:-.4px; }
+h1 + blockquote { margin-top: 0; }
+h2 { font-size: 20px; margin: 34px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); color:#0b3b38; }
+h3 { font-size: 16px; margin: 24px 0 8px; color:#0f766e; }
+p, li { color:#1e293b; }
+blockquote { margin: 12px 0 22px; padding: 12px 16px; background:#f0fdfa; border-left: 3px solid var(--brand);
+  color: var(--muted); font-size: 14px; }
+table { width:100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 13.5px; }
+th { background:#f1f5f9; text-align:left; }
+th, td { border: 1px solid var(--line); padding: 7px 9px; vertical-align: top; }
+tr:nth-child(even) td { background:#fbfdfe; }
+code { background:#f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+pre { background:#0f172a; color:#e2e8f0; padding: 14px 16px; border-radius: 8px; overflow-x:auto; font-size:13px; }
+pre code { background: transparent; color: inherit; padding:0; }
+a { color: var(--brand); }
+hr { border:0; border-top:1px solid var(--line); margin: 30px 0; }
+.foot { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+@media print { body { background:#fff; } .wrap { box-shadow:none; padding: 0; max-width: none; }
+  pre { background:#f1f5f9; color:#0f172a; } h2 { page-break-after: avoid; } table, pre { page-break-inside: avoid; } }
+@media (max-width: 640px) { .wrap { padding: 24px 18px; } table { font-size: 12px; } }
+</style></head>
+<body><div class="wrap">
+<h1 id="acquaxcontrol-api-v1-guia-de-integracao">AcquaXcontrol — API v1 (Guia de Integração)</h1>
+<p>Documento para parceiros e sistemas terceiros. Descreve a API pública do AcquaXcontrol
+para leitura de condomínios, unidades, medidores, leituras e relatórios de consumo,
+além de envio de leituras e redefinição de acesso de usuários.</p>
+<ul>
+<li><strong>Base URL:</strong> <code>https://www.acquaxcontrol.com.br/api/v1</code></li>
+<li><strong>Protocolo:</strong> HTTPS, JSON (<code>application/json</code>)</li>
+<li><strong>Versão:</strong> v1</li>
+<li><strong>Status do serviço:</strong> <code>GET /api/v1</code></li>
+</ul>
+<hr />
+<h2 id="1-autenticacao">1. Autenticação</h2>
+<p>A API usa <strong>API Key</strong> enviada no cabeçalho <code>Authorization</code>:</p>
+<pre><code>Authorization: Bearer ak_&lt;uuid-da-chave&gt;_&lt;segredo&gt;
+</code></pre>
+<p>O token é gerado pelo administrador no painel do AcquaXcontrol (menu <strong>API</strong>).
+Ele é exibido <strong>uma única vez</strong>, no momento da criação. Guarde-o em local seguro
+(gere um novo se perder).</p>
+<p>Cada chave define:</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Permissões</td>
+<td>Lista de <code>recurso:ação</code> (veja a seção 2)</td>
+</tr>
+<tr>
+<td>Validade</td>
+<td>Data de expiração opcional (chaves temporárias)</td>
+</tr>
+<tr>
+<td>Escopo</td>
+<td>Pode ser restrita a <strong>um condomínio</strong> ou a <strong>uma administradora</strong></td>
+</tr>
+<tr>
+<td>IPs permitidos</td>
+<td>Lista opcional de IPs/CIDRs autorizados</td>
+</tr>
+<tr>
+<td>Status</td>
+<td><code>active</code>, <code>suspended</code>, <code>revoked</code>, <code>expired</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Escopo:</strong> se a chave estiver restrita a um condomínio, todas as consultas retornam
+apenas dados daquele condomínio, mesmo que a requisição peça outro <code>complex_id</code>.</p>
+<p>Se a chave for exposta, peça a revogação imediata e gere outra.</p>
+<hr />
+<h2 id="2-permissoes-e-endpoints">2. Permissões e endpoints</h2>
+<table>
+<thead>
+<tr>
+<th>Método</th>
+<th>Rota</th>
+<th>Permissão</th>
+<th>O que faz</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/v1</code></td>
+<td>—</td>
+<td>Informações da API e status</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/complexes</code></td>
+<td><code>complexes:read</code></td>
+<td>Lista condomínios</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/apartments</code></td>
+<td><code>apartments:read</code></td>
+<td>Lista unidades (apartamentos)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/meters</code></td>
+<td><code>meters:read</code></td>
+<td>Lista medidores</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/readings</code></td>
+<td><code>readings:read</code></td>
+<td>Lista leituras</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/readings</code></td>
+<td><code>readings:create</code></td>
+<td>Envia leituras (até 200 por requisição)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/reports</code></td>
+<td><code>reports:read</code></td>
+<td>Relatórios de consumo/faturamento por unidade e mês</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/users</code></td>
+<td><code>users:read</code></td>
+<td>Lista usuários (moradores, síndicos, administração)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/users/{id}/reset</code></td>
+<td><code>users:update</code></td>
+<td>Redefine o acesso de um usuário</td>
+</tr>
+</tbody>
+</table>
+<p>Permissão ausente na chave → <strong>403</strong>.</p>
+<hr />
+<h2 id="3-convencoes">3. Convenções</h2>
+<ul>
+<li><strong>IDs:</strong> UUID em texto (ex.: <code>732eb5c6-2f64-45c3-abad-2f5d8ed95c89</code>).</li>
+<li><strong>Datas:</strong> ISO 8601 em UTC (ex.: <code>2026-10-06T00:00:00.000Z</code>). O campo <code>readAtDate</code>
+  vem no formato <code>AAAA-MM-DD HH:mm:ss</code>.</li>
+<li><strong>Valores monetários:</strong> número decimal em reais (BRL), sem símbolo (ex.: <code>544.02</code>).</li>
+<li><strong>Volumes:</strong> número decimal em m³.</li>
+<li><strong>Paginação:</strong> parâmetros <code>take</code> e <code>skip</code>; a resposta traz <code>meta</code>:</li>
+</ul>
+<pre><code class="language-json">&quot;meta&quot;: { &quot;total&quot;: 56, &quot;take&quot;: 20, &quot;skip&quot;: 0, &quot;hasNextPage&quot;: true, &quot;hasPreviousPage&quot;: false }
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th><code>take</code> padrão</th>
+<th><code>take</code> máximo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/complexes</code>, <code>/apartments</code>, <code>/meters</code>, <code>/readings</code>, <code>/users</code></td>
+<td>20</td>
+<td>100</td>
+</tr>
+<tr>
+<td><code>/reports</code></td>
+<td>50</td>
+<td>200</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Formato de resposta:</strong> coleções vêm em <code>{ "data": [...], "meta": {...} }</code>.</li>
+</ul>
+<hr />
+<h2 id="4-endpoints-em-detalhe">4. Endpoints em detalhe</h2>
+<h3 id="41-get-apiv1-status">4.1 <code>GET /api/v1</code> — status</h3>
+<pre><code class="language-json">{
+  &quot;api&quot;: &quot;AcquaX Control API&quot;,
+  &quot;version&quot;: &quot;v1&quot;,
+  &quot;status&quot;: &quot;online&quot;,
+  &quot;authentication&quot;: &quot;Bearer Token (API Key)&quot;
+}
+</code></pre>
+<h3 id="42-get-apiv1complexes-condominios">4.2 <code>GET /api/v1/complexes</code> — condomínios</h3>
+<p>Parâmetros: <code>search</code> (nome), <code>take</code>, <code>skip</code>.</p>
+<pre><code class="language-json">{
+  &quot;data&quot;: [
+    {
+      &quot;id&quot;: &quot;cd7d24e2-329a-460c-afbc-81b32b28632d&quot;,
+      &quot;socialName&quot;: &quot;A4 Offices&quot;,
+      &quot;street&quot;: &quot;Av. das Américas&quot;,
+      &quot;number&quot;: &quot;13.685&quot;,
+      &quot;city&quot;: &quot;Rio de Janeiro&quot;,
+      &quot;state&quot;: &quot;RJ&quot;,
+      &quot;createdAt&quot;: &quot;2025-06-18T13:36:21.000Z&quot;,
+      &quot;_count&quot;: { &quot;blocks&quot;: 9 }
+    }
+  ],
+  &quot;meta&quot;: { &quot;total&quot;: 343, &quot;take&quot;: 20, &quot;skip&quot;: 0, &quot;hasNextPage&quot;: true, &quot;hasPreviousPage&quot;: false }
+}
+</code></pre>
+<h3 id="43-get-apiv1apartments-unidades">4.3 <code>GET /api/v1/apartments</code> — unidades</h3>
+<p>Parâmetros: <code>complex_id</code>, <code>block_id</code>, <code>search</code> (nome da unidade), <code>take</code>, <code>skip</code>.</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;c91e31ec-f4f5-49b6-a7d4-b15d2a3dd118&quot;,
+  &quot;name&quot;: &quot;101&quot;,
+  &quot;status&quot;: &quot;Ativo&quot;,
+  &quot;fraction&quot;: 0,
+  &quot;blockId&quot;: &quot;49044575-5765-45c9-834d-ce0a32c5132c&quot;,
+  &quot;complexId&quot;: &quot;732eb5c6-2f64-45c3-abad-2f5d8ed95c89&quot;,
+  &quot;companyId&quot;: &quot;e8155542-396d-495c-a092-4a7b97fc4ea3&quot;,
+  &quot;block&quot;: { &quot;id&quot;: &quot;49044575-5765-45c9-834d-ce0a32c5132c&quot;, &quot;name&quot;: &quot;1&quot; },
+  &quot;meters&quot;: [{ &quot;id&quot;: &quot;d21fe3e9-dc75-4524-8942-869b5235c5a6&quot;, &quot;register&quot;: &quot;RSDCA101&quot;, &quot;status&quot;: &quot;Ativo&quot; }]
+}
+</code></pre>
+<p><code>fraction</code> é a fração ideal da unidade (usada em rateios).</p>
+<h3 id="44-get-apiv1meters-medidores">4.4 <code>GET /api/v1/meters</code> — medidores</h3>
+<p>Parâmetros: <code>complex_id</code>, <code>block_id</code>, <code>search</code> (referência do medidor), <code>take</code>, <code>skip</code>.</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;dc4d55ab-05f9-458a-b058-a33d30814f8e&quot;,
+  &quot;register&quot;: &quot;RSDCA203&quot;,
+  &quot;status&quot;: &quot;Ativo&quot;,
+  &quot;createdAt&quot;: &quot;2025-06-24T16:56:06.000Z&quot;,
+  &quot;apartment&quot;: {
+    &quot;id&quot;: &quot;3eb4b257-f178-463f-9444-b89cd915e7ad&quot;,
+    &quot;name&quot;: &quot;203&quot;,
+    &quot;block&quot;: { &quot;id&quot;: &quot;49044575-5765-45c9-834d-ce0a32c5132c&quot;, &quot;name&quot;: &quot;1&quot; }
+  }
+}
+</code></pre>
+<p>O campo <code>register</code> é a referência do medidor (a mesma que aparece nas planilhas e
+no aplicativo de campo).</p>
+<h3 id="45-get-apiv1readings-leituras">4.5 <code>GET /api/v1/readings</code> — leituras</h3>
+<p>Parâmetros: <code>meter_id</code>, <code>apartment_id</code>, <code>complex_id</code>, <code>from</code> (AAAA-MM-DD),
+<code>to</code> (AAAA-MM-DD), <code>take</code>, <code>skip</code>. Ordenado da leitura mais recente para a mais antiga.</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;c5d4bf82-a9f6-44dc-b139-f37d9590b91b&quot;,
+  &quot;reading&quot;: 3471.345,
+  &quot;readAt&quot;: &quot;2026-10-06T00:00:00.000Z&quot;,
+  &quot;readAtDate&quot;: &quot;2026-10-06 00:00:00&quot;,
+  &quot;monthRef&quot;: &quot;Outubro&quot;,
+  &quot;yearRef&quot;: &quot;2026&quot;,
+  &quot;isPreReading&quot;: false,
+  &quot;isManualReading&quot;: true,
+  &quot;nextReadingDate&quot;: null,
+  &quot;urlCover&quot;: &quot;https://cdn.acquaxcontrol.com.br/.../Fotos/708.jpg&quot;,
+  &quot;meterId&quot;: &quot;20acff4d-e83c-4e68-b2f4-ebeb3e656c5b&quot;,
+  &quot;apartmentId&quot;: &quot;29c4487d-1fe4-4b5e-9cea-e8d12d373247&quot;,
+  &quot;createdAt&quot;: &quot;2026-10-13T18:05:21.000Z&quot;,
+  &quot;meter&quot;: {
+    &quot;id&quot;: &quot;20acff4d-e83c-4e68-b2f4-ebeb3e656c5b&quot;,
+    &quot;register&quot;: &quot;RSDCA708&quot;,
+    &quot;apartment&quot;: { &quot;id&quot;: &quot;29c4487d-1fe4-4b5e-9cea-e8d12d373247&quot;, &quot;name&quot;: &quot;708&quot;, &quot;block&quot;: { &quot;id&quot;: &quot;...&quot;, &quot;name&quot;: &quot;1&quot; } }
+  }
+}
+</code></pre>
+<blockquote>
+<p><code>monthRef</code> pode vir como número (<code>"10"</code>) ou por extenso (<code>"Outubro"</code>) em registros
+antigos. Para filtrar por período use sempre <code>from</code>/<code>to</code>.</p>
+</blockquote>
+<h3 id="46-post-apiv1readings-enviar-leituras">4.6 <code>POST /api/v1/readings</code> — enviar leituras</h3>
+<p>Corpo: um objeto ou <code>{ "readings": [ ... ] }</code> (até <strong>200</strong> itens por requisição).</p>
+<pre><code class="language-json">{
+  &quot;readings&quot;: [
+    { &quot;meterId&quot;: &quot;20acff4d-e83c-4e68-b2f4-ebeb3e656c5b&quot;, &quot;reading&quot;: 3480.5, &quot;readAt&quot;: &quot;2026-11-05&quot; }
+  ]
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Obrigatório</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>meterId</code></td>
+<td>sim</td>
+<td>ID do medidor</td>
+</tr>
+<tr>
+<td><code>reading</code></td>
+<td>sim</td>
+<td>Leitura em m³</td>
+</tr>
+<tr>
+<td><code>readAt</code></td>
+<td>não</td>
+<td>Data da leitura (padrão: agora)</td>
+</tr>
+</tbody>
+</table>
+<p>Resposta (<strong>201</strong> quando ao menos uma leitura é criada):</p>
+<pre><code class="language-json">{
+  &quot;created&quot;: [
+    { &quot;id&quot;: &quot;2c2c10fc-9a0c-4462-b4f0-92194fb6eecd&quot;, &quot;reading&quot;: 3480.5, &quot;readAt&quot;: &quot;2026-11-05T00:00:00.000Z&quot;, &quot;monthRef&quot;: &quot;11&quot;, &quot;yearRef&quot;: &quot;2026&quot;, &quot;meterId&quot;: &quot;20acff4d-e83c-4e68-b2f4-ebeb3e656c5b&quot; }
+  ],
+  &quot;errors&quot;: [],
+  &quot;summary&quot;: &quot;1 leitura(s) criada(s), 0 erro(s).&quot;
+}
+</code></pre>
+<p>Regras:</p>
+<ul>
+<li>Cada medidor aceita <strong>uma leitura por mês/ano</strong>. Se já existir, o item volta em
+  <code>errors</code> com o ID da leitura existente e nada é sobrescrito.</li>
+<li>O medidor precisa pertencer ao escopo da chave (<code>403</code>/erro por item caso contrário).</li>
+<li>Se todos os itens falharem, o status é <strong>400</strong> e o corpo traz o detalhe em <code>errors</code>.</li>
+</ul>
+<p>Exemplo de erro por item:</p>
+<pre><code class="language-json">{ &quot;created&quot;: [], &quot;errors&quot;: [{ &quot;index&quot;: 0, &quot;error&quot;: &quot;Medidor não encontrado: inexistente&quot; }], &quot;summary&quot;: &quot;0 leitura(s) criada(s), 1 erro(s).&quot; }
+</code></pre>
+<h3 id="47-get-apiv1reports-relatorios-de-consumo">4.7 <code>GET /api/v1/reports</code> — relatórios de consumo</h3>
+<p>Parâmetros <strong>obrigatórios</strong>: <code>month</code> (1 a 12) e <code>year</code> (AAAA).
+Opcionais: <code>apartment_id</code>, <code>complex_id</code>, <code>take</code> (máx. 200), <code>skip</code>.</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;2c2c10fc-9a0c-4462-b4f0-92194fb6eecd&quot;,
+  &quot;monthRef&quot;: &quot;10&quot;,
+  &quot;yearRef&quot;: &quot;2026&quot;,
+  &quot;consumption&quot;: 11.675,
+  &quot;totalConsumption&quot;: 11.675,
+  &quot;consumptionCost&quot;: 127.13,
+  &quot;sewageCost&quot;: 127.13,
+  &quot;partial&quot;: 0,
+  &quot;kiteCarConsumption&quot;: 0,
+  &quot;kiteCarCost&quot;: 0,
+  &quot;utilityType&quot;: &quot;water&quot;,
+  &quot;totalUnit&quot;: 254.27,
+  &quot;apartmentId&quot;: &quot;29c4487d-1fe4-4b5e-9cea-e8d12d373247&quot;,
+  &quot;blockId&quot;: &quot;49044575-5765-45c9-834d-ce0a32c5132c&quot;,
+  &quot;complexId&quot;: &quot;732eb5c6-2f64-45c3-abad-2f5d8ed95c89&quot;,
+  &quot;apartment&quot;: { &quot;id&quot;: &quot;29c4487d-1fe4-4b5e-9cea-e8d12d373247&quot;, &quot;name&quot;: &quot;708&quot;, &quot;block&quot;: { &quot;id&quot;: &quot;...&quot;, &quot;name&quot;: &quot;1&quot; } }
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>consumption</code> / <code>totalConsumption</code></td>
+<td>Consumo da unidade no mês (m³)</td>
+</tr>
+<tr>
+<td><code>consumptionCost</code></td>
+<td>Valor do consumo de água</td>
+</tr>
+<tr>
+<td><code>sewageCost</code></td>
+<td>Valor do esgoto</td>
+</tr>
+<tr>
+<td><code>partial</code></td>
+<td>Rateio de área comum da unidade</td>
+</tr>
+<tr>
+<td><code>kiteCarConsumption</code> / <code>kiteCarCost</code></td>
+<td>Carro-pipa (m³ e R$) quando houver</td>
+</tr>
+<tr>
+<td><code>utilityType</code></td>
+<td><code>water</code>, <code>gas</code> ou <code>energy</code></td>
+</tr>
+<tr>
+<td><code>totalUnit</code></td>
+<td>Total a pagar pela unidade</td>
+</tr>
+</tbody>
+</table>
+<h3 id="48-get-apiv1users-usuarios">4.8 <code>GET /api/v1/users</code> — usuários</h3>
+<p>Parâmetros: <code>complex_id</code>, <code>search</code> (nome ou e-mail), <code>take</code>, <code>skip</code>.</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;4424d634-2cf8-4768-81b1-211b4b9d8386&quot;,
+  &quot;name&quot;: &quot;Administração&quot;,
+  &quot;email&quot;: &quot;elisiacunha35@gmail.com&quot;,
+  &quot;telephone&quot;: null,
+  &quot;cell&quot;: null,
+  &quot;createdAt&quot;: &quot;2026-08-13T12:59:48.000Z&quot;,
+  &quot;updatedAt&quot;: &quot;2026-10-08T18:40:21.000Z&quot;
+}
+</code></pre>
+<p>Com chave sem escopo de condomínio, a lista traz todos os usuários. Com escopo,
+apenas os vinculados àquele condomínio.</p>
+<h3 id="49-post-apiv1usersidreset-redefinir-acesso">4.9 <code>POST /api/v1/users/{id}/reset</code> — redefinir acesso</h3>
+<p>Permissão <code>users:update</code>. Corpo opcional:</p>
+<pre><code class="language-json">{ &quot;newPassword&quot;: &quot;SenhaForte123&quot; }
+</code></pre>
+<p>Resposta:</p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;user&quot;: { &quot;id&quot;: &quot;4424d634-...&quot;, &quot;name&quot;: &quot;Maria Souza&quot;, &quot;email&quot;: &quot;maria@exemplo.com&quot;, &quot;mustUpdateCredentials&quot;: true },
+  &quot;tempPassword&quot;: &quot;Acquax@7F2K9A&quot;,
+  &quot;message&quot;: &quot;Acesso restaurado. Senha temporária gerada, compartilhe com segurança.&quot;
+}
+</code></pre>
+<ul>
+<li>Sem <code>newPassword</code>: o sistema gera uma senha temporária e exige troca no próximo login.</li>
+<li>A senha temporária volta no campo <code>tempPassword</code> da resposta, para o parceiro entregar ao morador.</li>
+<li>Com <code>newPassword</code>: mínimo de <strong>6 caracteres</strong> (menos que isso retorna <strong>400</strong>).</li>
+<li>Não é permitido redefinir o usuário administrador master (<code>403</code>).</li>
+<li>Com chave de escopo, só é possível redefinir usuários vinculados ao condomínio.</li>
+</ul>
+<hr />
+<h2 id="5-erros">5. Erros</h2>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Quando</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>400</td>
+<td>Parâmetros inválidos ou ausentes (ex.: falta <code>month</code>/<code>year</code> em <code>/reports</code>)</td>
+</tr>
+<tr>
+<td>401</td>
+<td>Token ausente, inválido, expirado ou revogado</td>
+</tr>
+<tr>
+<td>403</td>
+<td>Permissão insuficiente, IP não autorizado, chave suspensa ou recurso fora do escopo</td>
+</tr>
+<tr>
+<td>404</td>
+<td>Recurso não encontrado</td>
+</tr>
+<tr>
+<td>500</td>
+<td>Erro interno (pode ser tentado novamente com espera)</td>
+</tr>
+</tbody>
+</table>
+<p>Formato:</p>
+<pre><code class="language-json">{ &quot;error&quot;: &quot;Token de autenticação não fornecido. Use Authorization: Bearer &lt;token&gt;&quot;, &quot;code&quot;: &quot;UNAUTHORIZED&quot; }
+</code></pre>
+<hr />
+<h2 id="6-exemplos">6. Exemplos</h2>
+<h3 id="curl">cURL</h3>
+<pre><code class="language-bash">curl &quot;https://www.acquaxcontrol.com.br/api/v1/readings?from=2026-10-01&amp;to=2026-10-31&amp;take=50&quot; \
+  -H &quot;Authorization: Bearer ak_00000000-0000-0000-0000-000000000000_segredo&quot;
+</code></pre>
+<h3 id="javascript-fetch">JavaScript (fetch)</h3>
+<pre><code class="language-javascript">const res = await fetch(
+  &quot;https://www.acquaxcontrol.com.br/api/v1/reports?month=10&amp;year=2026&amp;complex_id=SEU_COMPLEXO&quot;,
+  { headers: { Authorization: `Bearer ${process.env.ACQUAX_API_KEY}` } }
+);
+if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+const { data, meta } = await res.json();
+</code></pre>
+<h3 id="python-requests">Python (requests)</h3>
+<pre><code class="language-python">import requests
+
+r = requests.get(
+    &quot;https://www.acquaxcontrol.com.br/api/v1/apartments&quot;,
+    params={&quot;complex_id&quot;: &quot;SEU_COMPLEXO&quot;, &quot;take&quot;: 100},
+    headers={&quot;Authorization&quot;: f&quot;Bearer {CHAVE}&quot;},
+    timeout=30,
+)
+r.raise_for_status()
+print(r.json()[&quot;meta&quot;], len(r.json()[&quot;data&quot;]))
+</code></pre>
+<hr />
+<h2 id="7-boas-praticas">7. Boas práticas</h2>
+<ul>
+<li>Use paginação (<code>take</code>/<code>skip</code>) até <code>hasNextPage</code> ser <code>false</code>; não peça tudo em uma
+  chamada só.</li>
+<li>Consulte <code>/reports</code> por mês e condomínio em vez de varrer todas as leituras.</li>
+<li>Trate <code>401</code> como chave inválida/revogada e <code>429</code>/<code>5xx</code> com nova tentativa
+  exponencial (1s, 2s, 4s...).</li>
+<li>Não há um teto rígido de requisições por minuto hoje; recomendamos no máximo
+  5 requisições por segundo por chave.</li>
+<li>Cache os cadastros (<code>complexes</code>, <code>apartments</code>, <code>meters</code>): mudam pouco.</li>
+<li>As fotos de medidor (<code>urlCover</code>) são servidas por CDN e podem ser baixadas
+  diretamente pela URL.</li>
+</ul>
+<hr />
+<h2 id="8-contato">8. Contato</h2>
+<p>Dúvidas, novas permissões ou aumento de escopo:</p>
+<ul>
+<li><strong>ti.acquax@gmail.com</strong></li>
+<li><strong>adm@acquaxdobrasil.com.br</strong></li>
+</ul>
+<div class="foot">AcquaX Control API v1 &middot; Gerado em 06/11/2026 &middot; Referencia interativa: https://www.acquaxcontrol.com.br/docs/api</div>
+</div></body></html>
