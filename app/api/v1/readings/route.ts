@@ -68,6 +68,10 @@ export async function GET(req: NextRequest): Promise<Response> {
                     yearRef: true,
                     isPreReading: true,
                     isManualReading: true,
+                    nextReadingDate: true,
+                    urlCover: true,
+                    meterId: true,
+                    apartmentId: true,
                     createdAt: true,
                     meter: {
                         select: {
