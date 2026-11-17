@@ -6,11 +6,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateUserSession } from '@/lib/users';
 import { getUserContextsForActionOnEntity } from '@/lib/userContexts';
 import prisma from '@/lib/prisma';
-import {
-  getUserAudiences,
-  canViewComunicado,
-  type ComunicadoAudience,
-} from '@/lib/comunicado-audience';
+import { canViewComunicado } from '@/lib/comunicado-audience';
+import { getComunicadoScope, canViewComunicadoForComplex } from '@/lib/comunicado-scope';
 
 export async function GET(
   req: NextRequest,
@@ -32,6 +29,7 @@ export async function GET(
         fileType: true,
         fileBase64: true,
         audiences: true,
+        complexIds: true,
         isPublished: true,
         deletedAt: true,
       },
@@ -50,31 +48,15 @@ export async function GET(
         return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
       }
 
-      const assignments = await prisma.roleAssignment.findMany({
-        where: { userId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
-        select: { contextType: true, Role: { select: { name: true } } },
-      });
+      const scope = await getComunicadoScope(userId);
 
-      const isSystem = assignments.some(
-        (a) =>
-          a.contextType === 'system' ||
-          ['administrador', 'programador', 'master', 'admin'].includes((a.Role?.name || '').toLowerCase()),
-      );
-      const systemRoles = assignments
-        .filter((a) => a.contextType === 'system')
-        .map((a) => a.Role?.name || '')
-        .filter(Boolean);
+      // 1) Público-alvo (morador, síndico, administradora...)
+      if (!canViewComunicado(comunicado.audiences, scope.userAudiences)) {
+        return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
+      }
 
-      const userAudiences: ComunicadoAudience[] = getUserAudiences({
-        isSystem,
-        systemRoles,
-        hasApartment: assignments.some((a) => a.contextType === 'apartment'),
-        hasBlock: assignments.some((a) => a.contextType === 'block'),
-        hasComplex: assignments.some((a) => a.contextType === 'complex'),
-        hasCompany: assignments.some((a) => a.contextType === 'company'),
-      });
-
-      if (!canViewComunicado(comunicado.audiences, userAudiences)) {
+      // 2) Condomínio destinatário
+      if (!canViewComunicadoForComplex(comunicado.complexIds, scope)) {
         return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
       }
     }

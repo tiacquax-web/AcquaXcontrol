@@ -2001,6 +2001,9 @@ model Comunicado {
   // Público-alvo: array de ComunicadoAudience (ex.: ["morador","sindico"])
   audiences    String[]            // Públicos que podem ver este comunicado
 
+  // Condomínios destinatários (IDs de Complex). Array vazio = todos os condomínios.
+  complexIds   String[]  @default([])
+
   // Publicação
   isPublished  Boolean  @default(true)
   publishedAt  DateTime? @db.Timestamp

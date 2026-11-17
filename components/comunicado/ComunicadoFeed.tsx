@@ -12,7 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Megaphone, Upload, FileText, Download, Eye, Trash2, Loader2, X,
-  Users, CalendarDays, Paperclip, CheckCircle2, AlertTriangle,
+  Users, CalendarDays, Paperclip, CheckCircle2, AlertTriangle, Building2, Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { useUserContext } from '@/hooks/useUserContext';
 import { COMUNICADO_AUDIENCES, describeAudiences, type ComunicadoAudience } from '@/lib/comunicado-audience';
 
 interface ComunicadoMeta {
@@ -33,6 +34,7 @@ interface ComunicadoMeta {
   fileType: string;
   fileSize: number;
   audiences: string[];
+  complexIds?: string[];
   isPublished: boolean;
   publishedAt?: string | null;
   createdAt: string;
@@ -63,9 +65,23 @@ function fileIconColor(type: string): string {
   return 'text-slate-500';
 }
 
+/** Resumo dos condomínios destinatários de um comunicado. */
+function describeComplexes(
+  ids: string[] | null | undefined,
+  names: Record<string, string>,
+): string {
+  const list = (ids || []).filter(Boolean);
+  if (list.length === 0) return 'Todos os condomínios';
+  const labels = list.map((id) => names[id]).filter(Boolean);
+  if (labels.length === 0) return `${list.length} condomínio${list.length > 1 ? 's' : ''}`;
+  if (labels.length === 1) return labels[0];
+  return `${labels[0]} +${labels.length - 1}`;
+}
+
 export default function ComunicadoFeed({ isAdmin }: { isAdmin: boolean }) {
   const { toast } = useToast();
   const [items, setItems] = useState<ComunicadoMeta[]>([]);
+  const [complexNames, setComplexNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -80,6 +96,7 @@ export default function ComunicadoFeed({ isAdmin }: { isAdmin: boolean }) {
       if (!res.ok) throw new Error('Não foi possível carregar os comunicados.');
       const data = await res.json();
       setItems(data.comunicados || []);
+      setComplexNames(data.complexMap || {});
     } catch (e: any) {
       setError(e?.message || 'Erro ao carregar comunicados.');
     } finally {
@@ -121,7 +138,7 @@ export default function ComunicadoFeed({ isAdmin }: { isAdmin: boolean }) {
             <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Comunicados</h2>
             <p className="text-sm text-slate-600 dark:text-slate-300">
               {isAdmin
-                ? 'Publique avisos, circulares e documentos para os usuários do sistema.'
+                ? 'Publique avisos, circulares e documentos para os usuários do sistema, no geral ou por condomínio.'
                 : 'Avisos e documentos enviados pela administração para o seu perfil.'}
             </p>
           </div>
@@ -183,6 +200,9 @@ export default function ComunicadoFeed({ isAdmin }: { isAdmin: boolean }) {
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px] text-slate-500 dark:text-slate-400">
                   <span className="inline-flex items-center gap-1">
                     <Users className="w-3 h-3" /> {describeAudiences(c.audiences)}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Building2 className="w-3 h-3" /> {describeComplexes(c.complexIds, complexNames)}
                   </span>
                   <span className="inline-flex items-center gap-1">
                     <CalendarDays className="w-3 h-3" /> {formatDate(c.publishedAt || c.createdAt)}
@@ -259,6 +279,9 @@ function UploadComunicadoDialog({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [audiences, setAudiences] = useState<string[]>(['all']);
+  const [complexMode, setComplexMode] = useState<'all' | 'specific'>('all');
+  const [complexIds, setComplexIds] = useState<string[]>([]);
+  const [complexSearch, setComplexSearch] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -268,6 +291,9 @@ function UploadComunicadoDialog({
     setTitle('');
     setDescription('');
     setAudiences(['all']);
+    setComplexMode('all');
+    setComplexIds([]);
+    setComplexSearch('');
     setFile(null);
     setErr(null);
     setSaving(false);
@@ -275,6 +301,28 @@ function UploadComunicadoDialog({
   };
 
   const allSelected = audiences.includes('all');
+
+  // Condomínios disponíveis para o administrador (o contexto de sistema traz todos)
+  const { context } = useUserContext();
+  const complexOptions = useMemo(() => {
+    const list = context?.complexes || [];
+    return [...list]
+      .map((c) => ({
+        id: c.id,
+        name: (c.aliasName || c.socialName || '').trim() || 'Condomínio sem nome',
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [context]);
+
+  const filteredComplexOptions = useMemo(() => {
+    const q = complexSearch.trim().toLowerCase();
+    if (!q) return complexOptions;
+    return complexOptions.filter((c) => c.name.toLowerCase().includes(q));
+  }, [complexOptions, complexSearch]);
+
+  function toggleComplex(id: string) {
+    setComplexIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
 
   function toggleAudience(value: ComunicadoAudience) {
     setAudiences((prev) => {
@@ -302,12 +350,17 @@ function UploadComunicadoDialog({
       setErr('Selecione pelo menos um público.');
       return;
     }
+    if (complexMode === 'specific' && complexIds.length === 0) {
+      setErr('Selecione pelo menos um condomínio (ou marque “Todos os condomínios”).');
+      return;
+    }
     setSaving(true);
     try {
       const form = new FormData();
       form.append('title', title.trim());
       if (description.trim()) form.append('description', description.trim());
       form.append('audiences', JSON.stringify(audiences));
+      form.append('complexIds', JSON.stringify(complexMode === 'all' ? [] : complexIds));
       form.append('file', file);
 
       const res = await fetch('/api/user/comunicados', {
@@ -319,7 +372,13 @@ function UploadComunicadoDialog({
         const d = await res.json().catch(() => ({}));
         throw new Error(d?.error || 'Erro ao publicar comunicado.');
       }
-      toast({ title: 'Comunicado publicado!', description: 'Ele já está visível para os públicos selecionados.' });
+      toast({
+        title: 'Comunicado publicado!',
+        description:
+          complexMode === 'all'
+            ? 'Ele já está visível para os públicos selecionados em todos os condomínios.'
+            : `Ele já está visível para os públicos selecionados nos ${complexIds.length} condomínio(s) escolhido(s).`,
+      });
       reset();
       onPublished();
     } catch (e: any) {
@@ -340,7 +399,7 @@ function UploadComunicadoDialog({
         <DialogHeader>
           <DialogTitle>Publicar comunicado</DialogTitle>
           <DialogDescription>
-            Anexe um arquivo e escolha quem poderá vê-lo. O comunicado aparece na aba Comunicados do usuário.
+            Anexe um arquivo, escolha quem poderá vê-lo e para quais condomínios. O comunicado aparece na aba Comunicados do usuário.
           </DialogDescription>
         </DialogHeader>
 
@@ -400,6 +459,95 @@ function UploadComunicadoDialog({
                 );
               })}
             </div>
+          </div>
+
+          {/* Condomínios destinatários */}
+          <div className="space-y-2">
+            <Label>Para quais condomínios? *</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setComplexMode('all')}
+                className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-left transition-colors ${
+                  complexMode === 'all'
+                    ? 'border-teal-400 bg-teal-50 dark:border-teal-700 dark:bg-teal-950/40'
+                    : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                }`}
+              >
+                <Building2 className="w-4 h-4 mt-0.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">Todos os condomínios</span>
+                  <span className="block text-[11px] text-slate-500 dark:text-slate-400">Vale para qualquer condomínio</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setComplexMode('specific')}
+                className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-left transition-colors ${
+                  complexMode === 'specific'
+                    ? 'border-teal-400 bg-teal-50 dark:border-teal-700 dark:bg-teal-950/40'
+                    : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                }`}
+              >
+                <Building2 className="w-4 h-4 mt-0.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">Condomínios específicos</span>
+                  <span className="block text-[11px] text-slate-500 dark:text-slate-400">Escolher um ou vários</span>
+                </span>
+              </button>
+            </div>
+
+            {complexMode === 'specific' && (
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div className="flex items-center gap-2 px-2.5 py-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40">
+                  <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <Input
+                    value={complexSearch}
+                    onChange={(e) => setComplexSearch(e.target.value)}
+                    placeholder="Buscar condomínio..."
+                    className="h-7 border-0 bg-transparent px-0 focus-visible:ring-0 text-sm"
+                  />
+                </div>
+                <div className="max-h-44 overflow-y-auto p-1.5">
+                  {filteredComplexOptions.length === 0 ? (
+                    <p className="px-2 py-4 text-center text-xs text-slate-500 dark:text-slate-400">
+                      Nenhum condomínio encontrado.
+                    </p>
+                  ) : (
+                    filteredComplexOptions.map((c) => {
+                      const checked = complexIds.includes(c.id);
+                      return (
+                        <label
+                          key={c.id}
+                          className={`flex items-center gap-2.5 rounded px-2 py-1.5 cursor-pointer ${
+                            checked ? 'bg-teal-50 dark:bg-teal-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                          }`}
+                        >
+                          <Checkbox checked={checked} onCheckedChange={() => toggleComplex(c.id)} />
+                          <span className="text-sm text-slate-700 dark:text-slate-200 truncate">{c.name}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 border-t border-slate-200 dark:border-slate-700 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span>
+                    {complexIds.length === 0
+                      ? 'Nenhum condomínio selecionado'
+                      : `${complexIds.length} condomínio${complexIds.length > 1 ? 's' : ''} selecionado${complexIds.length > 1 ? 's' : ''}`}
+                  </span>
+                  {complexIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setComplexIds([])}
+                      className="font-medium text-teal-700 dark:text-teal-400 hover:underline"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Arquivo */}
