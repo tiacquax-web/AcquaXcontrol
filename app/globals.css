@@ -478,9 +478,9 @@
     print-color-adjust: exact !important;
   }
 
-  /* Células de média: manter cor de fundo teal */
+  /* Células de média: manter a cor de fundo do tipo selecionado (água/gás/energia) */
   .levantamento-detail-table td.levantamento-avg-cell {
-    background-color: #f0fdfa !important;
+    background-color: var(--lev-avg-bg, #eff6ff) !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
