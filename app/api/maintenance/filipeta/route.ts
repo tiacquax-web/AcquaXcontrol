@@ -102,6 +102,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         previousReport,
         unitsCount,
         analysis,
+        isErrata: !!(body as any).errata,
       });
       const rendered = generateFilipetaEmail(data);
 

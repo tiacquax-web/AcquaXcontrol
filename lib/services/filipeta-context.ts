@@ -93,6 +93,7 @@ export function buildFilipetaData(args: {
   analysis?: any;
   alertCount?: number;
   alarmsMessage?: string;
+  isErrata?: boolean;
 }): FilipetaEmailData {
   const { report, dealership, previousReport } = args;
   const consumption = currentConsumptionOf(report);
@@ -139,5 +140,6 @@ export function buildFilipetaData(args: {
       ? args.alarmsMessage || `Sua unidade possui ${alertCount} alerta(s) recente(s) do sistema de monitoramento. Acesse o sistema para visualizar os detalhes.`
       : undefined,
     analysis: args.analysis,
+    isErrata: !!args.isErrata,
   };
 }

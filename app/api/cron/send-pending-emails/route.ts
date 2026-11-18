@@ -403,6 +403,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           unitsCount,
           analysis,
           alertCount,
+          isErrata: !!jobPayload?.errata,
         }));
 
         const result = await sendEmail({

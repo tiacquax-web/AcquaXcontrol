@@ -35,6 +35,8 @@ export interface FilipetaEmailData {
   alertMessage?: string;
   analysis?: ConsumptionAnalysis;
   economyTip?: string;
+  /** Reenvio corrigido: assunto com "ERRATA" e pedido de desculpas no fim. */
+  isErrata?: boolean;
 }
 
 function escapeHtml(value: unknown): string {
@@ -125,7 +127,15 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
       </div>
     </td></tr>` : '';
 
-  const subject = `${utilityLabel}: extrato de consumo ${monthYear} - ${data.complexName}`;
+  const errataSection = data.isErrata ? `
+    <tr><td style="padding:0 24px 24px;">
+      <div style="background:#fff7ed;border:1px solid #f0c9a8;border-radius:8px;padding:13px 16px;">
+        <p style="margin:0 0 5px;font-size:13px;font-weight:700;color:#8a4b12;">Errata</p>
+        <p style="margin:0;font-size:13px;color:#8a4b12;line-height:1.5;">Pedimos desculpas pelo envio anterior desta filipeta: o extrato trazia a leitura anterior incorreta. Os dados desta mensagem estão corrigidos e são exatamente os que constam no sistema e na planilha do condomínio. Os valores a pagar continuam os mesmos.</p>
+      </div>
+    </td></tr>` : '';
+
+  const subject = `${data.isErrata ? 'ERRATA — ' : ''}${utilityLabel}: extrato de consumo ${monthYear} - ${data.complexName}`;
   const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f1f4f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
@@ -161,12 +171,13 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
   ${analysisSection}
   ${alertSection}
   ${economySection}
+  ${errataSection}
   <tr><td style="padding:2px 24px 28px;text-align:center;"><a href="${detailUrl}" style="display:inline-block;background:#075985;color:#fff;text-decoration:none;font-size:14px;font-weight:700;padding:12px 26px;border-radius:6px;">Ver extrato completo no AcquaX</a><p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Consulte o histórico, fotos do medidor, gráficos e alertas da unidade.</p></td></tr>
   <tr><td style="padding:15px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;"><p style="margin:0;font-size:11px;line-height:1.5;color:#94a3b8;">Este é um e-mail automático do AcquaX Control. Não responda a esta mensagem.<br>Em caso de dúvidas, entre em contato com medicao@acquaxdobrasil.com.br ou 4003-7945.</p></td></tr>
 </table></td></tr></table>
 </body></html>`;
 
-  const text = `AcquaX do Brasil - Extrato de consumo individual\n\nPrezado(a) ${data.residentName},\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\nPeríodo: ${periodStr}\nPróxima leitura prevista: ${nextReading}\n\nCONSUMO INDIVIDUAL\nÍndice inicial: ${fmtNumber(data.initialReading, 3)} ${unit}\nÍndice final: ${fmtNumber(data.finalReading, 3)} ${unit}\nConsumo no período: ${fmtNumber(individualConsumption, 3)} ${unit}\nValor consumido: ${fmtCurrency(data.consumptionCost)}\nValor de rateio: ${fmtCurrency(data.rateioValue)}\nValor total: ${fmtCurrency(data.totalUnit)}\n\nCONSUMO DO CONDOMÍNIO\nConsumo medido: ${fmtNumber(data.condominiumConsumption, 3)} ${unit}\nValor da conta: ${fmtCurrency(data.condominiumBillValue)}\nConsumo por economia: ${fmtNumber(data.consumptionPerEconomy, 3)} ${unit}\n\nAcesse ${baseUrl} para consultar o extrato completo.`;
+  const text = `AcquaX do Brasil - Extrato de consumo individual\n\nPrezado(a) ${data.residentName},\n\nCondomínio: ${data.complexName}\nUnidade: ${data.blockName} - ${data.apartmentName}\nPeríodo: ${periodStr}\nPróxima leitura prevista: ${nextReading}\n\nCONSUMO INDIVIDUAL\nÍndice inicial: ${fmtNumber(data.initialReading, 3)} ${unit}\nÍndice final: ${fmtNumber(data.finalReading, 3)} ${unit}\nConsumo no período: ${fmtNumber(individualConsumption, 3)} ${unit}\nValor consumido: ${fmtCurrency(data.consumptionCost)}\nValor de rateio: ${fmtCurrency(data.rateioValue)}\nValor total: ${fmtCurrency(data.totalUnit)}\n\nCONSUMO DO CONDOMÍNIO\nConsumo medido: ${fmtNumber(data.condominiumConsumption, 3)} ${unit}\nValor da conta: ${fmtCurrency(data.condominiumBillValue)}\nConsumo por economia: ${fmtNumber(data.consumptionPerEconomy, 3)} ${unit}\n\nAcesse ${baseUrl} para consultar o extrato completo.${data.isErrata ? '\n\nERRATA\nPedimos desculpas pelo envio anterior desta filipeta: o extrato trazia a leitura anterior incorreta. Os dados desta mensagem estão corrigidos e são exatamente os que constam no sistema e na planilha do condomínio. Os valores a pagar continuam os mesmos.' : ''}`;
 
   return { subject, html, text };
 }
