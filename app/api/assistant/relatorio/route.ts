@@ -34,7 +34,17 @@ function arred(v: number): number {
 /** Consumo/valor conforme o tipo (mesma regra do resto do sistema). */
 function valores(item: any): { consumo: number; valor: number } {
   const t = String(item.utilityType || 'water');
-  if (t === 'gas') return { consumo: num(item.consumptionGasValue), valor: num(item.totalGasValue) };
+  if (t === 'gas') {
+    // O import grava gás nas colunas genéricas em parte dos condomínios
+    // (as colunas de gás ficam zeradas). Mesmo fallback usado no Levantamento
+    // e na Filipeta (lib/utils.ts getUtilityConsumption/getUtilityTotalValue).
+    const gas = num(item.consumptionGasValue);
+    const gasValor = num(item.totalGasValue);
+    return {
+      consumo: gas !== 0 ? gas : num(item.consumption),
+      valor: gasValor !== 0 ? gasValor : num(item.totalUnit),
+    };
+  }
   if (t === 'energy') return { consumo: num(item.consumptionEnergyValue), valor: num(item.totalEnergyValue) };
   return { consumo: num(item.consumption), valor: num(item.totalUnit) };
 }

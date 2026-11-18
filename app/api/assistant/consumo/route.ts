@@ -267,8 +267,12 @@ export async function POST(req: NextRequest): Promise<Response> {
       const chave = `${l.monthRef}/${l.yearRef}|${t}`;
       const atual = porMesTipo.get(chave) || { consumo: 0, valor: 0, unidades: new Set<string>() };
       if (t === 'gas') {
-        atual.consumo += numero(l.consumptionGasValue);
-        atual.valor += numero(l.totalGasValue);
+        // Fallback: em parte dos condomínios o import grava o gás nas colunas
+        // genéricas (consumption/totalUnit) e deixa as de gás zeradas.
+        const gasConsumo = numero(l.consumptionGasValue);
+        const gasValor = numero(l.totalGasValue);
+        atual.consumo += gasConsumo !== 0 ? gasConsumo : numero(l.consumption);
+        atual.valor += gasValor !== 0 ? gasValor : numero(l.totalUnit);
       } else if (t === 'energy') {
         atual.consumo += numero(l.consumptionEnergyValue);
         atual.valor += numero(l.totalEnergyValue);
