@@ -22,7 +22,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { isAssistantConfigured } from '@/lib/services/assistant/gemini';
-import { isBeta } from '@/lib/services/assistant/policy';
+import { modoAssistente } from '@/lib/services/assistant/policy';
 
 // Sempre executa no Node (o Prisma não roda no edge runtime).
 export const runtime = 'nodejs';
@@ -56,7 +56,7 @@ async function pingDatabase(): Promise<void> {
  */
 function assistantStatus() {
   try {
-    return { configured: isAssistantConfigured(), mode: isBeta() ? 'test' : 'public' };
+    return { configured: isAssistantConfigured(), mode: modoAssistente() };
   } catch {
     return { configured: false, mode: 'test' };
   }

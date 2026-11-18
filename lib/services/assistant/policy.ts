@@ -1,13 +1,21 @@
 /**
- * Política de liberação do assistente.
+ * Política de liberação do assistente (Mariana).
  *
- * Enquanto estiver em desenvolvimento, o assistente só aparece para quem está
- * autorizado — o resto dos usuários nem vê o botão (não é só uma tarja de aviso).
+ * PADRÃO ATUAL: LIBERADO PARA TODOS os usuários logados (virada oficial).
+ * O widget aparece para morador, síndico, programador e administrador — cada um
+ * vendo apenas os dados do próprio vínculo (o escopo continua sendo resolvido
+ * pelas ferramentas, nunca pelo cliente).
  *
  * Variáveis:
- *  - ASSISTANT_TEST_EMAILS: lista separada por vírgula dos e-mails liberados para teste.
- *  - ASSISTANT_BETA: 'false' libera para todos os usuários logados (virada oficial).
- *  - Sem ASSISTANT_TEST_EMAILS e sem ASSISTANT_BETA=false: somente administradores de sistema.
+ *  - ASSISTANT_ACESSO_RESTRITO=true: volta ao modo de teste controlado
+ *    (allowlist por e-mail e/ou somente administradores).
+ *  - ASSISTANT_TEST_EMAILS: lista separada por vírgula dos e-mails liberados
+ *    no modo restrito.
+ *  - ASSISTANT_BETA: 'true' mantém o aviso de "em desenvolvimento" no modo restrito.
+ *  - ASSISTANT_BANNER_TEXT: texto do aviso no modo restrito.
+ *
+ * A checagem roda no servidor (GET e POST de /api/assistant/chat), então não dá
+ * para furar a liberação pela API.
  */
 
 import { isAssistantConfigured } from './gemini';
@@ -29,19 +37,39 @@ function allowlist(): string[] {
     .filter(Boolean);
 }
 
-export function isBeta(): boolean {
+function isBeta(): boolean {
   return (process.env.ASSISTANT_BETA || 'true').toLowerCase() !== 'false';
+}
+
+/** Só restringe o acesso se alguém pedir explicitamente (modo de teste). */
+function acessoRestrito(): boolean {
+  return (process.env.ASSISTANT_ACESSO_RESTRITO || '').toLowerCase() === 'true';
+}
+
+/** 'public' = liberado para todos os logados; 'test' = modo restrito. */
+export function modoAssistente(): 'public' | 'test' {
+  return acessoRestrito() ? 'test' : 'public';
 }
 
 /** Decide se ESTE usuário pode usar o assistente. */
 export function avaliarAcesso(opts: { email?: string | null; isSystem?: boolean }): AssistantAccess {
-  const beta = isBeta();
-  const banner = beta ? (process.env.ASSISTANT_BANNER_TEXT || BANNER_PADRAO) : null;
-
   if (!isAssistantConfigured()) {
-    return { enabled: false, beta, banner, motivo: 'Assistente sem chave de IA configurada.' };
+    return {
+      enabled: false,
+      beta: isBeta(),
+      banner: isBeta() ? (process.env.ASSISTANT_BANNER_TEXT || BANNER_PADRAO) : null,
+      motivo: 'Assistente sem chave de IA configurada.',
+    };
   }
 
+  // Liberação geral: todo usuário logado vê e usa a Mariana, sem aviso de teste.
+  if (!acessoRestrito()) {
+    return { enabled: true, beta: false, banner: null };
+  }
+
+  // ── Modo restrito (teste controlado) ──────────────────────────────────────
+  const beta = isBeta();
+  const banner = beta ? (process.env.ASSISTANT_BANNER_TEXT || BANNER_PADRAO) : null;
   const lista = allowlist();
   const email = (opts.email || '').toLowerCase();
 

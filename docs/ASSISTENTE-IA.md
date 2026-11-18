@@ -142,21 +142,26 @@ automático no início), resumo do histórico do morador e alerta de SLA.
 | `app/api/assistant/chat/route.ts` | Rota do chat: valida sessão, roda até 4 rodadas de tool calling, limite de 40 mensagens/hora por usuário |
 | `components/assistant/AssistantWidget.tsx` | Botão flutuante + painel de conversa (montado em `app/(main)/layout.tsx`) |
 
-### Liberação controlada (modo teste)
+### Liberação do assistente
 
-O assistente **não aparece para todos**: o widget pergunta `GET /api/assistant/chat` se o
-usuário está liberado e, se não estiver, nem o botão é renderizado. A mesma regra é
-revalidada no `POST`, então não dá para furar pela API.
+**Estado atual: liberado para todos os usuários logados** (virada oficial). O widget
+aparece para morador, síndico, programador e administrador, sem aviso de "em
+desenvolvimento". Cada usuário continua vendo apenas os dados do próprio vínculo —
+o escopo é resolvido pelas ferramentas no servidor, nunca pelo cliente.
+
+O widget pergunta `GET /api/assistant/chat` se o usuário está liberado e, se não estiver,
+nem o botão é renderizado. A mesma regra é revalidada no `POST`, então não dá para furar
+pela API.
 
 | Variável | Efeito |
 |---|---|
-| `ASSISTANT_TEST_EMAILS` | Lista de e-mails (separada por vírgula) liberados para teste. Ex.: `giulia@...,morador.teste@...` |
-| `ASSISTANT_BETA` | `false` libera para todos os usuários logados (virada oficial). Padrão: `true`. |
-| `ASSISTANT_BANNER_TEXT` | Texto do aviso. Padrão: "Assistente em desenvolvimento. Confirme informações cruciais (valores, consumo e tarifa) com uma pessoa da equipe." |
+| `ASSISTANT_ACESSO_RESTRITO` | `true` volta ao modo de teste controlado (allowlist/admin). Padrão: acesso aberto. |
+| `ASSISTANT_TEST_EMAILS` | No modo restrito: e-mails (separados por vírgula) liberados para teste. Ex.: `giulia@...,morador.teste@...` |
+| `ASSISTANT_BETA` | No modo restrito: `true` (padrão) mantém o aviso de "em desenvolvimento" e limita a administradores quando não há allowlist. |
+| `ASSISTANT_BANNER_TEXT` | No modo restrito: texto do aviso. |
 
-Sem `ASSISTANT_TEST_EMAILS` e com `ASSISTANT_BETA=true`, só administradores de sistema veem o
-assistente. O aviso fica fixo no topo do painel e o modelo também é instruído a pedir
-confirmação humana quando a resposta envolve valores.
+Para restringir de novo (ex.: pausar um lançamento), basta `ASSISTANT_ACESSO_RESTRITO=true`
+na Vercel e redeployar.
 
 Para ligar: cadastrar `GEMINI_API_KEY` na Vercel (produção e preview) e redeployar.
 
