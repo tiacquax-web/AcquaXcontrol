@@ -19,6 +19,7 @@ import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
 import { generateFilipetaEmail } from '@/lib/services/filipeta-email-template';
 import { isBlockedEmailDomain } from '@/lib/services/filipeta-email-dispatcher';
 import { getConsumptionAnalysis } from '@/lib/services/consumption-analysis';
+import { buildFilipetaData, currentConsumptionOf, filipetaReportKey, previousMonthOf } from '@/lib/services/filipeta-context';
 import { buildManagementInsightEmail, cleanManagementInsightSubject, isManagementInsightJob } from '@/lib/services/management-insights-email';
 import { buildWelcomeEmail, buildResetPasswordEmail } from '@/lib/services/transactional-email-templates';
 import { isWithinSendWindow, isReferenceCategory, SEND_WINDOW_MONTHS } from '@/lib/services/email-queue';
@@ -47,24 +48,6 @@ const RUN_COOLDOWN_MS = Number(process.env.EMAIL_RUN_COOLDOWN_MS || 20000);
 const nextGapMs = () => GAP_MIN_MS + Math.floor(Math.random() * (GAP_MAX_MS - GAP_MIN_MS + 1));
 const isZohoBlocked = (err: string | undefined | null) => !!err && err.includes('Unusual sending activity');
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-function previousMonth(monthRef: string, yearRef: string) {
-  const date = new Date(Number(yearRef), Number(monthRef) - 2, 1);
-  return { monthRef: String(date.getMonth() + 1).padStart(2, '0'), yearRef: String(date.getFullYear()) };
-}
-
-function reportKey(apartmentId: string, monthRef: string, yearRef: string) {
-  return `${apartmentId}:${yearRef}:${monthRef.padStart(2, '0')}`;
-}
-
-function derivePeriodStart(value: string | null | undefined, totalDays: number | null | undefined) {
-  if (!value || totalDays == null || !Number.isFinite(Number(totalDays))) return undefined;
-  const raw = String(value);
-  const date = new Date(raw.includes('T') ? raw : `${raw.slice(0, 10)}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return undefined;
-  date.setDate(date.getDate() - Number(totalDays));
-  return date.toISOString().slice(0, 10);
-}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // ── Autenticação ──────────────────────────────────────────────────────────
@@ -169,10 +152,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     // Dados da conta do condomínio e do relatório anterior alimentam o extrato rico.
     const dealershipReadingIds = [...new Set(reports.map(r => r.dealershipReadingId).filter(Boolean))] as string[];
+    // O "mês anterior" é POR UTILIDADE: água e gás têm relatórios próprios na
+    // mesma competência; misturar dava índice inicial da água no extrato do gás.
     const previousRefs = activeJobs.map(job => {
-      const ref = previousMonth(job.monthRef, job.yearRef);
-      return { apartmentId: job.apartmentId, ...ref };
-    }).filter(ref => ref.apartmentId) as Array<{ apartmentId: string; monthRef: string; yearRef: string }>;
+      const ref = previousMonthOf(job.monthRef, job.yearRef);
+      const util = (job.apartmentConsumptionReportId ? reportMap.get(job.apartmentConsumptionReportId) : null)?.utilityType ?? null;
+      return { apartmentId: job.apartmentId, ...ref, utilityType: util as string | null };
+    }).filter(ref => ref.apartmentId) as Array<{ apartmentId: string; monthRef: string; yearRef: string; utilityType: string | null }>;
     const [dealershipReadings, previousReports] = await Promise.all([
       dealershipReadingIds.length > 0
         ? prisma.dealershipReading.findMany({ where: { id: { in: dealershipReadingIds } } })
@@ -180,15 +166,30 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       previousRefs.length > 0
         ? prisma.apartmentConsumptionReport.findMany({
             where: {
-              OR: previousRefs.map(ref => ({ apartmentId: ref.apartmentId, monthRef: ref.monthRef, yearRef: ref.yearRef })),
-              AND: [{ OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }],
-            },
+              OR: previousRefs.map(ref => ({
+                apartmentId: ref.apartmentId,
+                monthRef: ref.monthRef,
+                yearRef: ref.yearRef,
+                ...(ref.utilityType
+                  ? { utilityType: ref.utilityType as any }
+                  : { OR: [{ utilityType: null }, { utilityType: { isSet: false } }] } as any),
+              } as any)),
+              AND: [{ OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } as any],
+            } as any,
             include: { lastReading: { select: { reading: true, readAtDate: true } } },
           })
         : [],
     ]);
     const dealershipMap = new Map(dealershipReadings.map(reading => [reading.id, reading]));
-    const previousReportMap = new Map(previousReports.map(report => [reportKey(report.apartmentId, report.monthRef, report.yearRef), report]));
+    const previousReportMap = new Map(previousReports.map(report => [filipetaReportKey(report.apartmentId, report.monthRef, report.yearRef, report.utilityType), report]));
+    // Quantas unidades a conta atende (consumo por economia / média por unidade).
+    const unitsByReading = new Map<string, number>();
+    for (const drId of dealershipReadingIds) {
+      const total = await prisma.apartmentConsumptionReport.count({
+        where: { dealershipReadingId: drId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } as any,
+      } as any);
+      unitsByReading.set(drId, Number(total));
+    }
 
     // Verificar alertas ativos para os apartamentos (GlAlarm)
     let alarmCounts: Record<string, number> = {};
@@ -369,63 +370,40 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         const blockName = apartment.block?.name || '';
         const alertCount = alarmCounts[job.apartmentId || ''] || 0;
         const dealership = report.dealershipReadingId ? dealershipMap.get(report.dealershipReadingId) : null;
-        const previousRef = previousMonth(job.monthRef, job.yearRef);
+        const previousRef = previousMonthOf(job.monthRef, job.yearRef);
         const previousReport = job.apartmentId
-          ? previousReportMap.get(reportKey(job.apartmentId, previousRef.monthRef, previousRef.yearRef))
+          ? previousReportMap.get(filipetaReportKey(job.apartmentId, previousRef.monthRef, previousRef.yearRef, report.utilityType))
           : null;
+        const unitsCount = report.dealershipReadingId ? (unitsByReading.get(report.dealershipReadingId) ?? null) : null;
 
-        // Período: prioriza as leituras reais e usa o total de dias da conta como fallback.
-        const readingDate = report.lastReading?.readAtDate || dealership?.readingDate || null;
-        const periodEnd = readingDate ? String(readingDate).split(/[ T]/)[0] : undefined;
-        const periodStart = previousReport?.lastReading?.readAtDate
-          ? String(previousReport.lastReading.readAtDate).split(/[ T]/)[0]
-          : derivePeriodStart(periodEnd, dealership?.totalDays);
-        const nextReadingDate = report.lastReading?.nextReadingDate || dealership?.readingDateNext || undefined;
-
-        // Buscar análise de consumo histórico (comparação da unidade consigo mesma)
+        // Análise de consumo histórico — SEMPRE da mesma utilidade
+        // (antes o gás era comparado com o consumo de água da unidade).
         let analysis = undefined;
         try {
-          const currentConsumption = report.totalConsumption ?? report.consumption;
           analysis = await getConsumptionAnalysis(
             job.apartmentId || apartment.id,
             report.id,
-            currentConsumption,
+            currentConsumptionOf(report),
+            report.utilityType || null,
           );
         } catch (e) {
           console.warn(`[EmailCron] Erro ao buscar análise para apt ${apartment.id}:`, e);
         }
 
-        const { subject, html, text } = generateFilipetaEmail({
-          residentName: job.toName || 'Morador',
+        const { subject, html, text } = generateFilipetaEmail(buildFilipetaData({
+          residentName: job.toName || null,
           apartmentName: apartment.name || '',
           blockName,
           complexName: complex.socialName || '',
           monthRef: job.monthRef,
           yearRef: job.yearRef,
-          consumption: report.consumption,
-          totalConsumption: report.totalConsumption ?? undefined,
-          initialReading: previousReport?.lastReading?.reading ?? null,
-          finalReading: report.lastReading?.reading ?? null,
-          consumptionCost: report.consumptionCost,
-          sewageCost: report.sewageCost,
-          totalUnit: report.totalUnit,
-          rateioValue: report.partial ?? null,
-          kiteCarConsumption: report.kiteCarConsumption ?? undefined,
-          kiteCarCost: report.kiteCarCost ?? undefined,
-          utilityType: report.utilityType || undefined,
-          readingDate: readingDate ? String(readingDate) : undefined,
-          nextReadingDate,
-          periodStart,
-          periodEnd,
-          condominiumConsumption: dealership?.dealershipConsumption ?? null,
-          condominiumBillValue: dealership?.totalValue ?? null,
-          consumptionPerEconomy: dealership?.average ?? null,
-          hasAlerts: alertCount > 0,
-          alertMessage: alertCount > 0
-            ? `Sua unidade possui ${alertCount} alerta(s) recente(s) do sistema de monitoramento. Acesse o sistema para visualizar os detalhes.`
-            : undefined,
+          report,
+          dealership,
+          previousReport,
+          unitsCount,
           analysis,
-        });
+          alertCount,
+        }));
 
         const result = await sendEmail({
           to: job.toEmail,

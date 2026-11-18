@@ -28,6 +28,7 @@ export async function getConsumptionAnalysis(
   apartmentId: string,
   currentReportId: string,
   currentConsumption: number,
+  utilityType?: string | null,
 ): Promise<ConsumptionAnalysis> {
   // Buscar os últimos 7 relatórios do apartamento (excluindo o atual),
   // ordenados do mais recente para o mais antigo
@@ -36,6 +37,10 @@ export async function getConsumptionAnalysis(
       apartmentId,
       id: { not: currentReportId },
       deletedAt: null,
+      // A comparação é SEMPRE da mesma utilidade: água e gás têm relatórios
+      // separados na mesma competência e o histórico misturado invertia a
+      // análise do morador (gás comparado com a água da unidade).
+      ...(utilityType ? { utilityType: utilityType as any } : {}),
     },
     orderBy: [
       { yearRef: 'desc' },
@@ -48,7 +53,9 @@ export async function getConsumptionAnalysis(
       yearRef: true,
       consumption: true,
       totalConsumption: true,
-    },
+      consumptionGasValue: true,
+      utilityType: true,
+    } as any,
   });
 
   if (history.length === 0) {
@@ -66,14 +73,23 @@ export async function getConsumptionAnalysis(
   }
 
   // Mês anterior = primeiro da lista (mais recente depois do atual)
+  // No gás o m³ fica em consumptionGasValue (totalConsumption pode vir 0).
+  const consumptionOf = (row: any) => {
+    const isGas = String(utilityType || row?.utilityType || '').toLowerCase() === 'gas';
+    const value = isGas
+      ? row?.consumptionGasValue || row?.totalConsumption || row?.consumption
+      : row?.totalConsumption || row?.consumption;
+    const n = Number(value ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  };
   const previous = history[0];
-  const previousConsumption = previous.totalConsumption ?? previous.consumption;
+  const previousConsumption = consumptionOf(previous);
 
   // Média dos últimos 6 meses (ou quantos tiver, até 6)
   const historyForAvg = history.slice(1, 7); // pula o mês anterior, pega até 6
   // Se temos poucos meses, usar o mês anterior também na média para ter pelo menos 1 ponto
   const monthsForAvg = historyForAvg.length > 0 ? historyForAvg : [previous];
-  const avgConsumptions = monthsForAvg.map(h => h.totalConsumption ?? h.consumption);
+  const avgConsumptions = monthsForAvg.map(h => consumptionOf(h));
   const avg6Months = avgConsumptions.length > 0
     ? avgConsumptions.reduce((a, b) => a + b, 0) / avgConsumptions.length
     : null;

@@ -4,28 +4,11 @@ import { validateUserSession } from '@/lib/users';
 import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
 import { generateFilipetaEmail } from '@/lib/services/filipeta-email-template';
 import { getConsumptionAnalysis } from '@/lib/services/consumption-analysis';
+import { buildFilipetaData, currentConsumptionOf, filipetaReportKey, previousMonthOf } from '@/lib/services/filipeta-context';
 import { createEmailJobsForDealershipReading } from '@/lib/services/filipeta-email-dispatcher';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
-
-function previousMonth(monthRef: string, yearRef: string) {
-  const date = new Date(Number(yearRef), Number(monthRef) - 2, 1);
-  return { monthRef: String(date.getMonth() + 1).padStart(2, '0'), yearRef: String(date.getFullYear()) };
-}
-
-function reportKey(apartmentId: string, monthRef: string, yearRef: string) {
-  return `${apartmentId}:${yearRef}:${monthRef.padStart(2, '0')}`;
-}
-
-function derivePeriodStart(value: string | null | undefined, totalDays: number | null | undefined) {
-  if (!value || totalDays == null || !Number.isFinite(Number(totalDays))) return undefined;
-  const raw = String(value);
-  const date = new Date(raw.includes('T') ? raw : `${raw.slice(0, 10)}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return undefined;
-  date.setDate(date.getDate() - Number(totalDays));
-  return date.toISOString().slice(0, 10);
-}
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -109,10 +92,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const apartmentMap = new Map(apartments.map(a => [a.id, a]));
 
     const dealershipReadingIds = [...new Set(reports.map(r => r.dealershipReadingId).filter(Boolean))] as string[];
+    // O "mês anterior" é POR UTILIDADE (água e gás têm relatórios próprios na
+    // mesma competência; misturar colocava o índice da água no extrato do gás).
     const previousRefs = pendingJobs.map(job => {
-      const ref = previousMonth(job.monthRef, job.yearRef);
-      return { apartmentId: job.apartmentId, ...ref };
-    }).filter(ref => ref.apartmentId) as Array<{ apartmentId: string; monthRef: string; yearRef: string }>;
+      const ref = previousMonthOf(job.monthRef, job.yearRef);
+      const util = (job.apartmentConsumptionReportId ? reportMap.get(job.apartmentConsumptionReportId) : null)?.utilityType ?? null;
+      return { apartmentId: job.apartmentId, ...ref, utilityType: util as string | null };
+    }).filter(ref => ref.apartmentId) as Array<{ apartmentId: string; monthRef: string; yearRef: string; utilityType: string | null }>;
 
     const [dealershipReadings, previousReports] = await Promise.all([
       dealershipReadingIds.length > 0
@@ -121,15 +107,34 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       previousRefs.length > 0
         ? prisma.apartmentConsumptionReport.findMany({
             where: {
-              OR: previousRefs.map(ref => ({ apartmentId: ref.apartmentId, monthRef: ref.monthRef, yearRef: ref.yearRef })),
-              AND: [{ OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }],
-            },
+              OR: previousRefs.map(ref => ({
+                apartmentId: ref.apartmentId,
+                monthRef: ref.monthRef,
+                yearRef: ref.yearRef,
+                ...(ref.utilityType
+                  ? { utilityType: ref.utilityType as any }
+                  : { OR: [{ utilityType: null }, { utilityType: { isSet: false } }] } as any),
+              } as any)),
+              AND: [{ OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } as any],
+            } as any,
             include: { lastReading: { select: { reading: true, readAtDate: true } } },
           })
         : [],
     ]);
     const dealershipMap = new Map(dealershipReadings.map(reading => [reading.id, reading]));
-    const previousReportMap = new Map(previousReports.map(report => [reportKey(report.apartmentId, report.monthRef, report.yearRef), report]));
+    const previousReportMap = new Map(previousReports.map(report => [filipetaReportKey(report.apartmentId, report.monthRef, report.yearRef, report.utilityType), report]));
+    const complexIds = [...new Set(pendingJobs.map(j => j.complexId).filter(Boolean))] as string[];
+    const complexes = complexIds.length
+      ? await prisma.complex.findMany({ where: { id: { in: complexIds } }, select: { id: true, socialName: true } })
+      : [];
+    const complexMap = new Map(complexes.map(c => [c.id, c]));
+    const unitsByReading = new Map<string, number>();
+    for (const drId of dealershipReadingIds) {
+      const total = await prisma.apartmentConsumptionReport.count({
+        where: { dealershipReadingId: drId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] } as any,
+      } as any);
+      unitsByReading.set(drId, Number(total));
+    }
 
     let sent = 0;
     let failed = 0;
@@ -155,48 +160,31 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
         const blockName = apartment.block?.name || '';
         const dealership = report.dealershipReadingId ? dealershipMap.get(report.dealershipReadingId) : null;
-        const previousRef = previousMonth(job.monthRef, job.yearRef);
+        const previousRef = previousMonthOf(job.monthRef, job.yearRef);
         const previousReport = job.apartmentId
-          ? previousReportMap.get(reportKey(job.apartmentId, previousRef.monthRef, previousRef.yearRef))
+          ? previousReportMap.get(filipetaReportKey(job.apartmentId, previousRef.monthRef, previousRef.yearRef, report.utilityType))
           : null;
-
-        const readingDate = report.lastReading?.readAtDate || dealership?.readingDate || null;
-        const periodEnd = readingDate ? String(readingDate).split(/[ T]/)[0] : undefined;
-        const periodStart = previousReport?.lastReading?.readAtDate
-          ? String(previousReport.lastReading.readAtDate).split(/[ T]/)[0]
-          : derivePeriodStart(periodEnd, dealership?.totalDays);
-        const nextReadingDate = report.lastReading?.nextReadingDate || dealership?.readingDateNext || undefined;
+        const unitsCount = report.dealershipReadingId ? (unitsByReading.get(report.dealershipReadingId) ?? null) : null;
+        const complex = job.complexId ? complexMap.get(job.complexId) : null;
 
         let analysis;
         try {
-          analysis = await getConsumptionAnalysis(job.apartmentId || apartment.id, report.id, report.totalConsumption ?? report.consumption);
+          analysis = await getConsumptionAnalysis(job.apartmentId || apartment.id, report.id, currentConsumptionOf(report), report.utilityType || null);
         } catch (e) {}
 
-        const { subject, html, text } = generateFilipetaEmail({
-          residentName: job.toName || 'Morador',
+        const { subject, html, text } = generateFilipetaEmail(buildFilipetaData({
+          residentName: job.toName || null,
           apartmentName: apartment.name || '',
           blockName,
-          complexName: 'Condomínio',
+          complexName: complex?.socialName || '',
           monthRef: job.monthRef,
           yearRef: job.yearRef,
-          consumption: report.consumption,
-          totalConsumption: report.totalConsumption ?? undefined,
-          initialReading: previousReport?.lastReading?.reading ?? null,
-          finalReading: report.lastReading?.reading ?? null,
-          consumptionCost: report.consumptionCost,
-          sewageCost: report.sewageCost,
-          totalUnit: report.totalUnit,
-          rateioValue: report.partial ?? null,
-          utilityType: report.utilityType || undefined,
-          readingDate: readingDate ? String(readingDate) : undefined,
-          nextReadingDate,
-          periodStart,
-          periodEnd,
-          condominiumConsumption: dealership?.dealershipConsumption ?? null,
-          condominiumBillValue: dealership?.totalValue ?? null,
-          consumptionPerEconomy: dealership?.average ?? null,
+          report,
+          dealership,
+          previousReport,
+          unitsCount,
           analysis,
-        });
+        }));
 
         const res = await sendEmail({ to: job.toEmail, toName: job.toName || undefined, subject, html, text, log: { skipLog: true } });
         if (res.success) {
