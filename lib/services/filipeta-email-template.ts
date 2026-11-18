@@ -48,17 +48,62 @@ function escapeHtml(value: unknown): string {
     .replaceAll("'", '&#039;');
 }
 
-function generateEconomyTip(analysis?: ConsumptionAnalysis): string | undefined {
+/**
+ * Dicas de economia POR TIPO de utilidade.
+ *
+ * Antes existia uma única dica de água ('feche a torneira...'), que aparecia
+ * também nos extratos de gás e energia. Cada tipo tem seu próprio texto.
+ */
+type UtilityKind = 'water' | 'gas' | 'energy';
+
+function utilityKind(utilityType?: string | null): UtilityKind {
+  if (utilityType === 'gas') return 'gas';
+  if (utilityType === 'energy') return 'energy';
+  return 'water';
+}
+
+const ECONOMY_TIPS: Record<UtilityKind, {
+  aumentoForte: string;
+  aumento: string;
+  reducaoForte: string;
+  reducao: string;
+  estavel: string;
+}> = {
+  water: {
+    aumentoForte: 'Seu consumo de água subiu significativamente. Recomendamos verificar possíveis vazamentos em torneiras, válvulas de descarga e conexões.',
+    aumento: 'Seu consumo de água aumentou neste mês. Confira se houve mudança de rotina e, se não houver motivo aparente, verifique possíveis vazamentos.',
+    reducaoForte: 'Excelente! Seu consumo de água reduziu bastante este mês. Continue mantendo esses bons hábitos.',
+    reducao: 'Muito bem! Seu consumo de água diminuiu em relação ao mês anterior.',
+    estavel: 'Dica: feche a torneira enquanto escova os dentes e ensaboa as mãos, e prefira banhos mais curtos para reduzir o desperdício de água.',
+  },
+  gas: {
+    aumentoForte: 'Seu consumo de gás subiu significativamente. Verifique vazamentos nas conexões e no flexível do fogão, se o regulador está em bom estado e se algum queimador está com chama amarela (sinal de queima incompleta).',
+    aumento: 'Seu consumo de gás aumentou neste mês. Banhos mais longos e uso prolongado de água quente costumam explicar boa parte da variação.',
+    reducaoForte: 'Excelente! Seu consumo de gás reduziu bastante este mês. Continue mantendo esses bons hábitos.',
+    reducao: 'Muito bem! Seu consumo de gás diminuiu em relação ao mês anterior.',
+    estavel: 'Dica: banhos mais curtos e usar a água quente apenas quando necessário são as formas mais simples de reduzir o consumo de gás.',
+  },
+  energy: {
+    aumentoForte: 'Seu consumo de energia subiu significativamente. Confira ar-condicionado, chuveiro elétrico e equipamentos ligados sem uso — juntos, costumam responder pela maior parte da conta.',
+    aumento: 'Seu consumo de energia aumentou neste mês. Revise o tempo de ar-condicionado e chuveiro elétrico e desligue aparelhos em standby.',
+    reducaoForte: 'Excelente! Seu consumo de energia reduziu bastante este mês. Continue mantendo esses bons hábitos.',
+    reducao: 'Muito bem! Seu consumo de energia diminuiu em relação ao mês anterior.',
+    estavel: 'Dica: desligue aparelhos da tomada em vez de deixá-los em standby e prefira lâmpadas LED, que gastam menos para a mesma iluminação.',
+  },
+};
+
+function generateEconomyTip(analysis?: ConsumptionAnalysis, utilityType?: string | null): string | undefined {
   if (!analysis || analysis.trend === 'insufficient_data') return undefined;
+  const tips = ECONOMY_TIPS[utilityKind(utilityType)];
   if (analysis.trend === 'increase' && analysis.vsPreviousPct !== null) {
-    if (analysis.vsPreviousPct > 30) return 'Seu consumo subiu significativamente. Recomendamos verificar possíveis vazamentos em torneiras, válvulas de descarga e conexões.';
-    if (analysis.vsPreviousPct > 10) return 'Seu consumo aumentou neste mês. Confira se houve mudança de rotina e, se não houver motivo aparente, verifique possíveis vazamentos.';
+    if (analysis.vsPreviousPct > 30) return tips.aumentoForte;
+    if (analysis.vsPreviousPct > 10) return tips.aumento;
   }
   if (analysis.trend === 'decrease' && analysis.vsPreviousPct !== null) {
-    if (analysis.vsPreviousPct < -20) return 'Excelente! Seu consumo reduziu bastante este mês. Continue mantendo esses bons hábitos.';
-    if (analysis.vsPreviousPct < -10) return 'Muito bem! Seu consumo diminuiu em relação ao mês anterior.';
+    if (analysis.vsPreviousPct < -20) return tips.reducaoForte;
+    if (analysis.vsPreviousPct < -10) return tips.reducao;
   }
-  if (analysis.trend === 'stable') return 'Dica: feche a torneira enquanto escova os dentes e ensaboa as mãos para reduzir o desperdício.';
+  if (analysis.trend === 'stable') return tips.estavel;
   return undefined;
 }
 
@@ -93,7 +138,7 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
   const periodStr = `${fmtDate(data.periodStart)} a ${fmtDate(data.periodEnd)}`;
   const nextReading = fmtDate(data.nextReadingDate);
   const individualConsumption = data.totalConsumption ?? data.consumption;
-  const economyTip = data.economyTip || generateEconomyTip(data.analysis);
+  const economyTip = data.economyTip || generateEconomyTip(data.analysis, data.utilityType);
   const detailUrl = `${baseUrl}/login?redirect=/filipeta&apt=${encodeURIComponent(data.apartmentName)}&ref=${encodeURIComponent(`${data.monthRef}/${data.yearRef}`)}`;
 
   const alertSection = data.hasAlerts ? `
@@ -111,8 +156,8 @@ export function generateFilipetaEmail(data: FilipetaEmailData): { subject: strin
         <div style="padding:13px 16px;">
           <p style="margin:0 0 10px;font-size:14px;color:#334155;line-height:1.5;">${escapeHtml(data.analysis.trendEmoji)} ${escapeHtml(data.analysis.trendLabel)}</p>
           <table width="100%" cellpadding="0" cellspacing="0">
-            ${data.analysis.previousConsumption !== null ? `<tr><td style="padding:4px 0;font-size:12px;color:#64748b;">Mês anterior</td><td style="padding:4px 0;text-align:right;font-size:12px;font-weight:600;color:#334155;">${fmtNumber(data.analysis.previousConsumption)} m³</td></tr>` : ''}
-            ${data.analysis.avg6Months !== null ? `<tr><td style="padding:4px 0;font-size:12px;color:#64748b;">Média histórica</td><td style="padding:4px 0;text-align:right;font-size:12px;font-weight:600;color:#334155;">${fmtNumber(data.analysis.avg6Months)} m³</td></tr>` : ''}
+            ${data.analysis.previousConsumption !== null ? `<tr><td style="padding:4px 0;font-size:12px;color:#64748b;">Mês anterior</td><td style="padding:4px 0;text-align:right;font-size:12px;font-weight:600;color:#334155;">${fmtNumber(data.analysis.previousConsumption)} ${unit}</td></tr>` : ''}
+            ${data.analysis.avg6Months !== null ? `<tr><td style="padding:4px 0;font-size:12px;color:#64748b;">Média histórica</td><td style="padding:4px 0;text-align:right;font-size:12px;font-weight:600;color:#334155;">${fmtNumber(data.analysis.avg6Months)} ${unit}</td></tr>` : ''}
             ${data.analysis.vsPreviousPct !== null ? `<tr><td style="padding:4px 0;font-size:12px;color:#64748b;">Variação vs. mês anterior</td><td style="padding:4px 0;text-align:right;font-size:12px;font-weight:600;color:${data.analysis.vsPreviousPct > 10 ? '#c62828' : data.analysis.vsPreviousPct < -10 ? '#2e7d32' : '#475569'};">${data.analysis.vsPreviousPct > 0 ? '+' : ''}${data.analysis.vsPreviousPct}%</td></tr>` : ''}
           </table>
         </div>
