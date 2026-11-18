@@ -408,6 +408,13 @@ export function sanitizeImageUrl(url: string | null | undefined): string {
  *   energia→ consumo: consumption          | valor: consumptionEnergyValue
  *            (sim, NÃO é totalEnergyValue, apesar do nome sugerir isso)
  *
+ * Porém o import NÃO é consistente entre condomínios: parte dos relatórios de
+ * gás grava o consumo/valor nas colunas genéricas (consumption/totalUnit) e
+ * deixa as colunas de gás zeradas (ex.: Pop Art, out/2026 — consumption 3,82
+ * em vez de consumptionGasValue). Por isso a coluna do tipo é usada apenas
+ * quando tem valor; se estiver zerada/nula, cai para a coluna genérica. No
+ * banco essas colunas nunca conflitam (quando ambas têm valor, são iguais).
+ *
  * Usado por Levantamento e Filipeta para não exibir consumo/valor zerados nos
  * relatórios de gás/energia (que ficam com consumption/totalUnit = 0 no banco).
  */
@@ -419,9 +426,14 @@ export function getUtilityConsumption(
   utilityType?: string | null
 ): number | null {
   if (!report) return null;
-  if (utilityType === 'gas') return report.consumptionGasValue ?? null;
+  const generic = report.consumption ?? null;
+  if (utilityType === 'gas') {
+    const gas = report.consumptionGasValue ?? null;
+    // Import inconsistente: usa a coluna de gás só quando ela tem valor
+    return gas != null && gas !== 0 ? gas : generic;
+  }
   // água e energia usam o mesmo campo "consumption"
-  return report.consumption ?? null;
+  return generic;
 }
 
 export function getUtilityTotalValue(
@@ -433,7 +445,15 @@ export function getUtilityTotalValue(
   utilityType?: string | null
 ): number | null {
   if (!report) return null;
-  if (utilityType === 'gas') return report.totalGasValue ?? null;
-  if (utilityType === 'energy') return report.consumptionEnergyValue ?? null;
-  return report.totalUnit ?? null;
+  const generic = report.totalUnit ?? null;
+  if (utilityType === 'gas') {
+    const gas = report.totalGasValue ?? null;
+    // Import inconsistente: usa a coluna de gás só quando ela tem valor
+    return gas != null && gas !== 0 ? gas : generic;
+  }
+  if (utilityType === 'energy') {
+    const energy = report.consumptionEnergyValue ?? null;
+    return energy != null && energy !== 0 ? energy : generic;
+  }
+  return generic;
 }

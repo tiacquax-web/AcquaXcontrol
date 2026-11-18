@@ -267,7 +267,7 @@ function MeterPhoto({ url, alt, monthLabel }: { url: string; alt?: string; month
 // Exibe foto em tamanho grande com todos os dados abaixo
 function MeterPhotoCard({
   photoUrl, label, currReading, prevReading, consumption, totalUnit, partial, waterSewage,
-  periodStart, periodEnd, nextReadingDate, unit = 'm³', tarifa,
+  periodStart, periodEnd, nextReadingDate, unit = 'm³', tarifa, valueLabel,
 }: {
   photoUrl: string | null;
   label: string;
@@ -282,6 +282,8 @@ function MeterPhotoCard({
   nextReadingDate?: string | null;
   unit?: string;
   tarifa?: string | null;
+  /** Rótulo da linha de valor do tipo selecionado (Gás, Energia, Água/Esgoto) */
+  valueLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -367,7 +369,7 @@ function MeterPhotoCard({
           <div className="border-t border-gray-100 pt-2 flex flex-col gap-1">
             {waterSewage != null && (
               <div className="flex justify-between">
-                <span className="text-gray-400">Água/Esgoto</span>
+                <span className="text-gray-400">{valueLabel ?? 'Água/Esgoto'}</span>
                 <span className="font-medium text-gray-700">{fmtBRL(waterSewage)}</span>
               </div>
             )}
@@ -1076,6 +1078,7 @@ export default function LevantamentoPage() {
                   periodEnd={m.periodEnd}
                   nextReadingDate={m.nextReadingDate}
                   unit={utilityConfig.unit}
+                  valueLabel={selectedUtility === 'water' ? 'Água/Esgoto' : utilityConfig.label}
                 />
               ))}
             </div>
