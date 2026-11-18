@@ -113,6 +113,7 @@ export default function ConsumptionDashboardPage() {
   const [start, setStart] = useState(`${new Date().getFullYear()}-01`);
   const [end, setEnd] = useState(currentMonth());
   const [utilityType, setUtilityType] = useState('water');
+  const utilityLabel = utilityType === 'gas' ? 'Gás' : utilityType === 'energy' ? 'Energia' : 'Água/Esgoto';
   const [selectedMetrics, setSelectedMetrics] = useState<MetricKey[]>(['averageConsumption', 'comparison', 'commonAreaCost']);
   const [data, setData] = useState<AnalysisResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -240,9 +241,10 @@ export default function ConsumptionDashboardPage() {
   };
 
   const selectedComplexName = data?.complex?.socialName || data?.complex?.aliasName || complex?.socialName || 'Condomínio';
-  const visibleMetrics = isResident
+  const visibleMetrics = (isResident
     ? METRICS.filter((metric) => !['averageConsumption', 'commonAreaConsumption'].includes(metric.key))
-    : METRICS;
+    : METRICS
+  ).map((metric) => metric.key === 'unitCost' ? { ...metric, label: `Custo ${utilityLabel} da unidade` } : metric);
   const consumptionMetricsSelected = selectedMetrics.some((key) => METRICS.find((metric) => metric.key === key)?.axis === 'consumption');
   const costMetricsSelected = selectedMetrics.some((key) => METRICS.find((metric) => metric.key === key)?.axis === 'cost');
   const selectedComparison = data?.series.filter((item) => item.selectedConsumption != null) || [];
@@ -352,7 +354,7 @@ export default function ConsumptionDashboardPage() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><Droplets className="h-3.5 w-3.5 text-blue-600" /> Consumo no período</p><p className="text-2xl font-bold mt-1">{number(data.summary.totalConsumption)}</p><p className="text-xs text-muted-foreground">{data.summary.monthsWithData} meses com dados</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><DollarSign className="h-3.5 w-3.5 text-sky-600" /> Água/Esgoto</p><p className="text-2xl font-bold mt-1">{money(data.summary.totalUnitCost)}</p><p className="text-xs text-muted-foreground">valor das unidades</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><DollarSign className="h-3.5 w-3.5 text-sky-600" /> {utilityLabel}</p><p className="text-2xl font-bold mt-1">{money(data.summary.totalUnitCost)}</p><p className="text-xs text-muted-foreground">valor das unidades</p></CardContent></Card>
             <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><DollarSign className="h-3.5 w-3.5 text-green-600" /> Total a pagar</p><p className="text-2xl font-bold mt-1">{money(data.summary.totalCost)}</p><p className="text-xs text-muted-foreground">média mensal {money(data.summary.averageMonthlyCost)}</p></CardContent></Card>
             <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><TrendingUp className="h-3.5 w-3.5 text-orange-600" /> Área comum</p><p className="text-2xl font-bold mt-1">{money(data.summary.totalCommonAreaCost)}</p><p className="text-xs text-muted-foreground">{isResident ? 'rateio pago pela sua unidade' : `${number(data.summary.totalCommonAreaConsumption)} m³ no período`}</p></CardContent></Card>
             <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><BarChart3 className="h-3.5 w-3.5 text-purple-600" /> Comparação</p><p className="text-2xl font-bold mt-1">{hasComparisonData ? `${number(comparisonUnit)} / ${number(comparisonAverage)}` : '—'}</p><p className="text-xs text-muted-foreground">unidade / média</p></CardContent></Card>
@@ -380,7 +382,7 @@ export default function ConsumptionDashboardPage() {
                       {selectedMetrics.includes('comparison') && hasComparisonData && <><Line yAxisId="consumption" type="monotone" dataKey="comparisonAverage" name="Média do condomínio" stroke="#7c3aed" strokeDasharray="5 5" dot={false} /><Line yAxisId="consumption" type="monotone" dataKey="comparisonUnit" name={`Sua unidade${apartment?.name ? ` (${apartment.name})` : ''}`} stroke="#db2777" strokeWidth={2} dot={false} /></>}
                       {selectedMetrics.includes('totalConsumption') && <Bar yAxisId="consumption" dataKey="totalConsumption" name={isResident ? 'Seu consumo' : 'Consumo total'} fill="#0891b2" opacity={0.65} radius={[3, 3, 0, 0]} />}
                       {selectedMetrics.includes('commonAreaConsumption') && <Line yAxisId="consumption" type="monotone" dataKey="commonAreaConsumption" name="Consumo da área comum" stroke="#f97316" strokeWidth={2} dot={false} />}
-                      {selectedMetrics.includes('unitCost') && <Line yAxisId="cost" type="monotone" dataKey={apartment ? 'selectedUnitCost' : 'unitCost'} name={apartment ? 'Água/Esgoto da unidade' : 'Água/Esgoto das unidades'} stroke="#0ea5e9" strokeWidth={2} dot={false} />}
+                      {selectedMetrics.includes('unitCost') && <Line yAxisId="cost" type="monotone" dataKey={apartment ? 'selectedUnitCost' : 'unitCost'} name={apartment ? `Custo ${utilityLabel} da unidade` : `Custo ${utilityLabel} das unidades`} stroke="#0ea5e9" strokeWidth={2} dot={false} />}
                       {selectedMetrics.includes('commonAreaCost') && <Line yAxisId="cost" type="monotone" dataKey={apartment ? 'selectedCommonAreaCost' : 'commonAreaCost'} name={apartment ? 'Área comum da unidade' : 'Área comum do condomínio'} stroke="#ea580c" strokeWidth={2} dot={false} />}
                       {selectedMetrics.includes('totalCost') && <Line yAxisId="cost" type="monotone" dataKey="totalCost" name="Total a pagar" stroke="#16a34a" strokeWidth={2} dot={false} />}
                     </ComposedChart>

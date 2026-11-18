@@ -1236,6 +1236,7 @@ export default function LevantamentoPage() {
                       nextReadingDate={m.nextReadingDate}
                       unit={utilityConfig.unit}
                       tarifa={m.tarifa}
+                      valueLabel={selectedUtility === 'water' ? 'Água/Esgoto' : utilityConfig.label}
                     />
                   ))}
                 </div>
