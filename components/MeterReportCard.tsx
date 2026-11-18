@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl, getUtilityConsumption, getUtilityTotalValue } from '@/lib/utils';
+import { utilityAccent, type UtilityAccent } from '@/lib/utility-colors';
 import { Badge } from '@/components/ui/badge';
 import { Droplets, Calendar, Building2, DoorClosed, ZoomIn, X, Printer, Info, Tag } from 'lucide-react';
 
@@ -128,6 +129,9 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
   // já validado na aba "Contas"). Sem isso, unidades de gás/energia mostravam
   // consumo e valores zerados aqui.
   const utilityType = (report as any).utilityType as string | null | undefined;
+  // Paleta do tipo de medição (água = azul, gás = laranja, energia = verde), em tons foscos
+  const accent: UtilityAccent = utilityAccent(utilityType);
+  const isEnergy = utilityType === 'energy';
   const displayConsumption = getUtilityConsumption(report, utilityType);
   const displayTotalValue = getUtilityTotalValue(report, utilityType);
   const displayConsumptionUnit = utilityType === 'energy' ? 'kWh' : 'm³';
@@ -198,7 +202,7 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
       <div className="meter-report-card-print bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col w-full">
 
         {/* ── Header ──────────────────────────────────────────────────────────── */}
-        <div className="bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-2">
+        <div className={`${accent.header} text-white px-4 py-2.5 flex items-center justify-between gap-2`}>
           <div className="flex items-center gap-2 min-w-0">
             <Building2 className="w-4 h-4 shrink-0" />
             <span className="font-semibold text-sm truncate">{complexName}</span>
@@ -298,7 +302,7 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
           ) : (
             /* Placeholder quando não tem foto */
             <div className="w-full h-[140px] sm:h-[176px] bg-gray-100 border-b flex flex-col items-center justify-center gap-2">
-              <Droplets className="w-10 h-10 text-gray-300" />
+              <Droplets className={`w-10 h-10 ${accent.softText} opacity-70`} />
               <p className="text-gray-400 text-xs">Sem foto do medidor</p>
             </div>
           )}
@@ -318,17 +322,17 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
             </div>
             <div className="px-2 py-3">
               <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">Leitura Atual</p>
-              <p className="font-bold text-blue-700 text-sm leading-tight">
+              <p className={`font-bold ${accent.mid} text-sm leading-tight`}>
                 {lastReading?.reading?.toFixed(3) ?? '—'}
               </p>
-              <p className="text-blue-400 text-[10px]">m³</p>
+              <p className={`${accent.softText} text-[10px]`}>{isEnergy ? 'kWh' : 'm³'}</p>
             </div>
             <div className="px-2 py-3">
               <p className="text-gray-400 text-[11px] font-medium mb-1 leading-tight">Consumo</p>
-              <p className="font-bold text-teal-700 text-sm leading-tight">
+              <p className={`font-bold ${accent.mid} text-sm leading-tight`}>
                 {displayConsumption?.toFixed(3) ?? '—'}
               </p>
-              <p className="text-teal-400 text-[10px]">{displayConsumptionUnit}</p>
+              <p className={`${accent.softText} text-[10px]`}>{displayConsumptionUnit}</p>
             </div>
           </div>
 
@@ -368,9 +372,9 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
                   : '—'}
               </p>
             </div>
-            <div className="px-2 py-2.5 bg-blue-50">
-              <p className="text-blue-500 text-[11px] font-medium mb-1 leading-tight">Total a Pagar</p>
-              <p className="font-bold text-blue-700 text-xs">{formatCurrency(displayTotalValue)}</p>
+            <div className={`px-2 py-2.5 ${accent.bg}`}>
+              <p className={`${accent.mid} text-[11px] font-medium mb-1 leading-tight`}>Total a Pagar</p>
+              <p className={`font-bold ${accent.mid} text-xs`}>{formatCurrency(displayTotalValue)}</p>
             </div>
           </div>
 
@@ -402,12 +406,12 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
               return (
                 <div
                   key={i}
-                  className={`rounded-lg border px-2 py-2 ${isCurrentMonth ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}
+                  className={`rounded-lg border px-2 py-2 ${isCurrentMonth ? `${accent.bg} ${accent.border}` : 'bg-white border-gray-200'}`}
                 >
-                  <p className={`text-[11px] font-medium mb-0.5 ${isCurrentMonth ? 'text-blue-600' : 'text-gray-500'}`}>
+                  <p className={`text-[11px] font-medium mb-0.5 ${isCurrentMonth ? accent.mid : 'text-gray-500'}`}>
                     {mRef && yRef ? `${mRef}/${yRef}` : '—'}
                   </p>
-                  <p className={`font-bold text-sm ${isCurrentMonth ? 'text-blue-700' : 'text-gray-700'}`}>
+                  <p className={`font-bold text-sm ${isCurrentMonth ? accent.mid : 'text-gray-700'}`}>
                     {cons != null ? `${cons.toFixed(3)} ${displayConsumptionUnit}` : '—'}
                   </p>
                 </div>
@@ -419,7 +423,7 @@ const MeterReportCard: React.FC<MeterReportCardProps> = ({ report, showAddress =
         {/* ── Footer ──────────────────────────────────────────────────────────── */}
         <div className="border-t px-4 py-1.5 text-xs text-gray-400 flex justify-between items-center">
           <span>Emitido em {emissionDate}</span>
-          <span className="text-blue-500 font-medium">AcquaX</span>
+          <span className={`${accent.mid} font-medium`}>AcquaX</span>
         </div>
       </div>
     </>

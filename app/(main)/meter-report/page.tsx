@@ -16,6 +16,9 @@ import { useRolePreview } from '@/contexts/RolePreviewContext';
 import SelectComplex from '@/components/ComboboxComplex';
 import SelectBlock from '@/components/ComboboxBlock';
 import SelectApartment from '@/components/ComboboxApartment';
+import { UTILITY_ACCENTS, type UtilityKey } from '@/lib/utility-colors';
+
+const UTILITY_LABELS: Record<UtilityKey, string> = { water: 'Água', gas: 'Gás', energy: 'Energia' };
 
 // Build list of months: current month backwards 24 months
 function buildMonthOptions() {
@@ -57,6 +60,8 @@ export default function MeterReportPage() {
 
   // Selected utility type
   const [selectedUtility, setSelectedUtility] = useState<'water' | 'gas' | 'energy'>('water');
+  // Mesma paleta do Levantamento: água = azul, gás = laranja, energia = verde (tons foscos)
+  const accent = UTILITY_ACCENTS[selectedUtility];
 
   // Search text for filtering by apartment/block (admin/sindico only)
   const [searchText, setSearchText] = useState('');
@@ -186,8 +191,8 @@ export default function MeterReportPage() {
     <div className="flex flex-col gap-6 p-4 md:p-6">
       {/* Page Header */}
       <div className="flex items-center gap-3">
-        <div className="bg-blue-100 dark:bg-blue-900/40 p-2 rounded-lg">
-          <FileText className="w-5 h-5 text-blue-600" />
+        <div className={`${accent.bg} p-2 rounded-lg`}>
+          <FileText className={`w-5 h-5 ${accent.color}`} />
         </div>
         <div>
           <h1 className="text-xl font-bold text-foreground">Filipeta Medição</h1>
@@ -222,22 +227,25 @@ export default function MeterReportPage() {
           </Select>
         </div>
 
-        {/* Utility selector */}
+        {/* Tipo de Medição — chips com as cores do tipo (iguais ao Levantamento) */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tipo de Medição</label>
-          <Select
-            value={selectedUtility}
-            onValueChange={(val: any) => setSelectedUtility(val)}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="water">Água</SelectItem>
-              <SelectItem value="gas">Gás</SelectItem>
-              <SelectItem value="energy">Energia</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex gap-1.5">
+            {(Object.keys(UTILITY_ACCENTS) as UtilityKey[]).map(key => {
+              const opt = UTILITY_ACCENTS[key];
+              const active = selectedUtility === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSelectedUtility(key)}
+                  className={`h-10 px-3 rounded-md border text-sm font-medium transition-colors ${active ? opt.solid : opt.inactive}`}
+                >
+                  {UTILITY_LABELS[key]}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Complex selector — container visible immediately, even while the user context loads */}
@@ -361,7 +369,7 @@ export default function MeterReportPage() {
       {/* Loading state */}
       {loading && (
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+          <Loader2 className={`w-8 h-8 animate-spin ${accent.softIcon}`} />
           <span className="ml-3 text-muted-foreground">Carregando filipetas...</span>
         </div>
       )}
@@ -396,7 +404,7 @@ export default function MeterReportPage() {
                       <strong>{filteredList.length}</strong> de <strong>{data.totalCount}</strong> unidade{data.totalCount !== 1 ? 's' : ''}
                       {complexDisplayName ? ` em ${complexDisplayName}` : ''}
                       {' — '}<strong>{selectedMonthOption.label}</strong>
-                      {' '}<span className="text-blue-500">(filtrando por "{searchText}")</span>
+                      {' '}<span className={accent.mid}>(filtrando por "{searchText}")</span>
                     </>
                   ) : (
                     <>
@@ -407,8 +415,8 @@ export default function MeterReportPage() {
                   )}
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700">
-                    <Tag className="w-3.5 h-3.5 shrink-0" />
+                  <span className={`inline-flex max-w-full items-center gap-1.5 rounded-full border ${accent.border} ${accent.bg} px-2.5 py-1 text-xs font-medium ${accent.mid}`}>
+                    <Tag className={`w-3.5 h-3.5 shrink-0 ${accent.softIcon}`} />
                     <span className="shrink-0">Tarifa:</span>
                     <span className="min-w-0 truncate font-semibold">{monthTarifa || 'não informada'}</span>
                   </span>

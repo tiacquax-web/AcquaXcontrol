@@ -26,6 +26,7 @@ import { useUserContext } from '@/hooks/useUserContext';
 import { useRolePreview } from '@/contexts/RolePreviewContext';
 import { MeterReportItem } from '@/hooks/useMeterReport';
 import { sanitizeImageUrl, getUtilityConsumption, getUtilityTotalValue } from '@/lib/utils';
+import { UTILITY_ACCENTS, type UtilityAccent } from '@/lib/utility-colors';
 
 const API = '/api';
 
@@ -60,74 +61,10 @@ const UTILITY_OPTIONS: Record<UtilityType, {
   label: string;
   unit: string;
   icon: typeof Droplets;
-  color: string; // texto
-  bg: string; // fundo suave
-  border: string;
-  solid: string; // fundo sólido (botão ativo)
-  inactive: string; // classes completas do botão inativo (inclui hover)
-  header: string; // faixa sólida (badge do mês)
-  softBorder: string; // borda suave dos blocos
-  softIcon: string; // ícone suave
-  softText: string; // texto suave (unidade, legendas)
-  mid: string; // texto médio (valores)
-  strong: string; // texto forte (títulos)
-  hex: string; // cor para gráficos (stroke)
-  softHex: string; // fundo suave em hex (usado na impressão)
-}> = {
-  water: {
-    label: 'Água',
-    unit: 'm³',
-    icon: Droplets,
-    color: 'text-[#4E7BA3]',
-    bg: 'bg-[#F1F5FA]',
-    border: 'border-[#DEE8F2]',
-    solid: 'bg-[#5F8CB8] text-white border-[#5F8CB8]',
-    inactive: 'bg-white text-[#4E7BA3] border-[#DEE8F2] hover:bg-[#F1F5FA]',
-    header: 'bg-[#5F8CB8]',
-    softBorder: 'border-[#E8EFF6]',
-    softIcon: 'text-[#96B3CE]',
-    softText: 'text-[#A9BFD2]',
-    mid: 'text-[#4E7BA3]',
-    strong: 'text-[#3F6486]',
-    hex: '#5F8CB8',
-    softHex: '#F1F5FA',
-  },
-  gas: {
-    label: 'Gás',
-    unit: 'm³',
-    icon: Flame,
-    color: 'text-[#9C6540]',
-    bg: 'bg-[#FBF3EC]',
-    border: 'border-[#F2E3D5]',
-    solid: 'bg-[#B57A4E] text-white border-[#B57A4E]',
-    inactive: 'bg-white text-[#9C6540] border-[#F2E3D5] hover:bg-[#FBF3EC]',
-    header: 'bg-[#B57A4E]',
-    softBorder: 'border-[#F6EAE0]',
-    softIcon: 'text-[#D3A98A]',
-    softText: 'text-[#DCBB9F]',
-    mid: 'text-[#9C6540]',
-    strong: 'text-[#82502F]',
-    hex: '#B57A4E',
-    softHex: '#FBF3EC',
-  },
-  energy: {
-    label: 'Energia',
-    unit: 'kWh',
-    icon: GaugeCircle,
-    color: 'text-[#4C7E60]',
-    bg: 'bg-[#F0F6F2]',
-    border: 'border-[#DFEDE4]',
-    solid: 'bg-[#5E9672] text-white border-[#5E9672]',
-    inactive: 'bg-white text-[#4C7E60] border-[#DFEDE4] hover:bg-[#F0F6F2]',
-    header: 'bg-[#5E9672]',
-    softBorder: 'border-[#EAF2EC]',
-    softIcon: 'text-[#9BC0AC]',
-    softText: 'text-[#B0CDBB]',
-    mid: 'text-[#4C7E60]',
-    strong: 'text-[#3D6850]',
-    hex: '#5E9672',
-    softHex: '#F0F6F2',
-  },
+} & UtilityAccent> = {
+  water: { label: 'Água', unit: 'm³', icon: Droplets, ...UTILITY_ACCENTS.water },
+  gas: { label: 'Gás', unit: 'm³', icon: Flame, ...UTILITY_ACCENTS.gas },
+  energy: { label: 'Energia', unit: 'kWh', icon: GaugeCircle, ...UTILITY_ACCENTS.energy },
 };
 
 function fmt(v: number | null | undefined) {
