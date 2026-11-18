@@ -403,7 +403,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           unitsCount,
           analysis,
           alertCount,
-          isErrata: !!jobPayload?.errata,
+          // Reenvio corrigido: marcado pelo Field (subject com ERRATA) ou por payload.errata
+          isErrata: !!jobPayload?.errata || /errata/i.test(String(job.subject || '')),
         }));
 
         const result = await sendEmail({

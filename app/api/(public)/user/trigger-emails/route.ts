@@ -184,7 +184,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           previousReport,
           unitsCount,
           analysis,
-          isErrata: !!(job as any).payload?.errata,
+          isErrata: !!(job as any).payload?.errata || /errata/i.test(String(job.subject || '')),
         }));
 
         const res = await sendEmail({ to: job.toEmail, toName: job.toName || undefined, subject, html, text, log: { skipLog: true } });
