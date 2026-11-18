@@ -144,10 +144,10 @@ automático no início), resumo do histórico do morador e alerta de SLA.
 
 ### Liberação do assistente
 
-**Estado atual: liberado para todos os usuários logados** (virada oficial). O widget
-aparece para morador, síndico, programador e administrador, sem aviso de "em
-desenvolvimento". Cada usuário continua vendo apenas os dados do próprio vínculo —
-o escopo é resolvido pelas ferramentas no servidor, nunca pelo cliente.
+**Estado atual: liberado para todos os usuários logados, com o aviso de "assistente em
+desenvolvimento" no topo do painel.** O widget aparece para morador, síndico, programador
+e administrador. Cada usuário continua vendo apenas os dados do próprio vínculo — o
+escopo é resolvido pelas ferramentas no servidor, nunca pelo cliente.
 
 O widget pergunta `GET /api/assistant/chat` se o usuário está liberado e, se não estiver,
 nem o botão é renderizado. A mesma regra é revalidada no `POST`, então não dá para furar
@@ -156,9 +156,10 @@ pela API.
 | Variável | Efeito |
 |---|---|
 | `ASSISTANT_ACESSO_RESTRITO` | `true` volta ao modo de teste controlado (allowlist/admin). Padrão: acesso aberto. |
+| `ASSISTANT_BANNER_TEXT` | Texto do aviso de desenvolvimento (vale no acesso aberto e no modo restrito). |
+| `ASSISTANT_SEM_AVISO` | `true` esconde o aviso no acesso aberto. Padrão: aviso visível. |
 | `ASSISTANT_TEST_EMAILS` | No modo restrito: e-mails (separados por vírgula) liberados para teste. Ex.: `giulia@...,morador.teste@...` |
-| `ASSISTANT_BETA` | No modo restrito: `true` (padrão) mantém o aviso de "em desenvolvimento" e limita a administradores quando não há allowlist. |
-| `ASSISTANT_BANNER_TEXT` | No modo restrito: texto do aviso. |
+| `ASSISTANT_BETA` | No modo restrito: `true` (padrão) mantém o aviso e limita a administradores quando não há allowlist. |
 
 Para restringir de novo (ex.: pausar um lançamento), basta `ASSISTANT_ACESSO_RESTRITO=true`
 na Vercel e redeployar.

@@ -1,18 +1,20 @@
 /**
  * Política de liberação do assistente (Mariana).
  *
- * PADRÃO ATUAL: LIBERADO PARA TODOS os usuários logados (virada oficial).
- * O widget aparece para morador, síndico, programador e administrador — cada um
- * vendo apenas os dados do próprio vínculo (o escopo continua sendo resolvido
- * pelas ferramentas, nunca pelo cliente).
+ * PADRÃO ATUAL: LIBERADO PARA TODOS os usuários logados, mas COM o aviso de
+ * "assistente em desenvolvimento" no topo do painel (decisão da Giulia em
+ * 18/11/2026). O widget aparece para morador, síndico, programador e
+ * administrador — cada um vendo apenas os dados do próprio vínculo (o escopo
+ * continua sendo resolvido pelas ferramentas, nunca pelo cliente).
  *
  * Variáveis:
  *  - ASSISTANT_ACESSO_RESTRITO=true: volta ao modo de teste controlado
  *    (allowlist por e-mail e/ou somente administradores).
  *  - ASSISTANT_TEST_EMAILS: lista separada por vírgula dos e-mails liberados
  *    no modo restrito.
- *  - ASSISTANT_BETA: 'true' mantém o aviso de "em desenvolvimento" no modo restrito.
- *  - ASSISTANT_BANNER_TEXT: texto do aviso no modo restrito.
+ *  - ASSISTANT_BANNER_TEXT: texto do aviso (vale nos dois modos).
+ *  - ASSISTANT_SEM_AVISO=true: esconde o aviso de desenvolvimento (acesso aberto).
+ *  - ASSISTANT_BETA: 'true' mantém o aviso no modo restrito.
  *
  * A checagem roda no servidor (GET e POST de /api/assistant/chat), então não dá
  * para furar a liberação pela API.
@@ -62,9 +64,15 @@ export function avaliarAcesso(opts: { email?: string | null; isSystem?: boolean 
     };
   }
 
-  // Liberação geral: todo usuário logado vê e usa a Mariana, sem aviso de teste.
+  // Liberação geral: todo usuário logado vê e usa a Mariana. O aviso de
+  // desenvolvimento continua visível (a menos que ASSISTANT_SEM_AVISO=true).
   if (!acessoRestrito()) {
-    return { enabled: true, beta: false, banner: null };
+    const semAviso = (process.env.ASSISTANT_SEM_AVISO || '').toLowerCase() === 'true';
+    return {
+      enabled: true,
+      beta: true,
+      banner: semAviso ? null : (process.env.ASSISTANT_BANNER_TEXT || BANNER_PADRAO),
+    };
   }
 
   // ── Modo restrito (teste controlado) ──────────────────────────────────────
