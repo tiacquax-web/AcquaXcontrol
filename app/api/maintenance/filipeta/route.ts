@@ -52,7 +52,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       where: { complexId, ...(unitName ? { name: unitName } : {}), ...NOT_DELETED } as any,
       select: { id: true, name: true, block: { select: { name: true } } } as any,
       orderBy: { name: 'asc' } as any,
-      take: unitName ? 5 : 2,
+      take: (body as any).all === true ? 500 : unitName ? 5 : 2,
     } as any)) as any[];
     if (apartments.length === 0) return NextResponse.json({ error: `Unidade não encontrada: ${unitName}` }, { status: 404 });
 
@@ -127,7 +127,7 @@ export async function POST(req: NextRequest): Promise<Response> {
           analise: analysis ? { mesAnterior: analysis.previousConsumption, media: analysis.avg6Months, variacao: analysis.vsPreviousPct, tendencia: analysis.trend } : null,
         },
         assunto: rendered.subject,
-        html: (body as any).html === false ? undefined : rendered.html,
+        html: (body as any).html === false || (body as any).all === true ? undefined : rendered.html,
         texto: rendered.text,
       });
     }
