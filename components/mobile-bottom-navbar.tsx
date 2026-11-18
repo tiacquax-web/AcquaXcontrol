@@ -5,11 +5,14 @@ import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
 import { useUserContext } from "@/hooks/useUserContext"
 import { sidebarPermissionMap } from "./sidebar-permission-map"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useSupportBadge } from "@/hooks/useSupportBadge"
 
 export function MobileBottomNavbar() {
   const [drawerOpen, setDrawerOpen] = React.useState(false)
   const { permissions, loading } = usePermissionsContext();
   const { context: userContext } = useUserContext();
+  // No celular o Suporte fica dentro do menu "Mais": sinalizamos ali.
+  const supportBadge = useSupportBadge(!loading);
 
   // Só exibe abas de monitoramento em tempo real para quem tem GL/IoT
   const hasGLAccess = (() => {
@@ -65,12 +68,17 @@ export function MobileBottomNavbar() {
           <li>
             <button
               onClick={() => setDrawerOpen(true)}
-              className="flex flex-col items-center justify-center w-full h-full text-muted-foreground hover:text-foreground focus:outline-none"
-              aria-label="Abrir menu completo"
+              className="relative flex flex-col items-center justify-center w-full h-full text-muted-foreground hover:text-foreground focus:outline-none"
+              aria-label={supportBadge > 0 ? `Abrir menu completo — ${supportBadge} atendimento(s) de suporte aguardando` : 'Abrir menu completo'}
               type="button"
             >
               <Menu className="h-6 w-6" />
               <span className="text-xs mt-1">Mais</span>
+              {supportBadge > 0 && (
+                <span className="absolute right-3 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                  {supportBadge > 9 ? '9+' : supportBadge}
+                </span>
+              )}
             </button>
           </li>
         </ul>

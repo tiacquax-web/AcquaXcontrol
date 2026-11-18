@@ -5,11 +5,14 @@ import { usePermissionsContext } from "@/app/(main)/PermissionsContext"
 import { useUserContext } from "@/hooks/useUserContext"
 import { sidebarPermissionMap } from './sidebar-permission-map';
 import { items as sidebarItems, type ItemType } from "./app-sidebar"
+import { useSupportBadge } from "@/hooks/useSupportBadge"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 
 export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
   const { permissions } = usePermissionsContext();
   const { context: userContext } = useUserContext();
+  // Mesmo "numerozinho" do Suporte exibido no menu lateral do desktop.
+  const supportBadge = useSupportBadge(true);
 
   // Só exibe abas de monitoramento em tempo real para quem tem GL/IoT
   const hasGLAccess = (() => {
@@ -74,6 +77,14 @@ export function MobileSidebarDrawer({ open, onOpenChange }: { open: boolean, onO
                                 <span>{item.title}</span>
                               </a>
                             </SidebarMenuButton>
+                            {item.url === '/suporte' && supportBadge > 0 && (
+                              <span
+                                aria-label={`${supportBadge} atendimento(s) aguardando resposta`}
+                                className="pointer-events-none absolute right-1 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white"
+                              >
+                                {supportBadge > 9 ? '9+' : supportBadge}
+                              </span>
+                            )}
                           </SidebarMenuItem>
                         ))}
                     </div>

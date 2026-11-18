@@ -18,6 +18,7 @@ import { sidebarPermissionMap } from './sidebar-permission-map';
 import { RolePreviewSelector } from './RolePreviewSelector';
 import { useRolePreview, ROLE_LABELS } from '@/contexts/RolePreviewContext';
 import { getRoleTabVisibility } from '@/lib/role-tab-config';
+import { useSupportBadge } from '@/hooks/useSupportBadge';
 
 // ─── Menu items ───────────────────────────────────────────────────────────────
 // Regra: items sem requiresCreate aparecem para todos os perfis que têm
@@ -232,6 +233,8 @@ export function AppSidebar() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { permissions, loading } = usePermissionsContext();
   const { context: userContext, loading: ctxLoading } = useUserContext();
+  // "Numerozinho" do Suporte: atendimentos aguardando resposta (regra no backend).
+  const supportBadge = useSupportBadge(!loading);
 
   // ── Role Preview Mode ──
   const { isPreviewing, previewRole, effectivePermissions: previewPerms } = useRolePreview();
@@ -377,6 +380,15 @@ export function AppSidebar() {
                               <span>{item.title}</span>
                             </a>
                           </SidebarMenuButton>
+                          {item.url === '/suporte' && supportBadge > 0 && (
+                            <span
+                              aria-label={`${supportBadge} atendimento(s) aguardando resposta`}
+                              title={`${supportBadge} atendimento(s) aguardando resposta`}
+                              className="pointer-events-none absolute right-1 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white group-data-[collapsible=icon]:right-0.5 group-data-[collapsible=icon]:top-0.5 group-data-[collapsible=icon]:h-2 group-data-[collapsible=icon]:min-w-2 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:text-transparent"
+                            >
+                              {supportBadge > 9 ? '9+' : supportBadge}
+                            </span>
+                          )}
                         </SidebarMenuItem>
                       ))}
                   </div>
