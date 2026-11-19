@@ -548,11 +548,19 @@ export default function LevantamentoPage() {
     };
   }, []);
 
+  // Guarda de corrida: cada execucao do efeito (mudanca de condominio, mes ou
+  // TIPO) gera uma sequencia. Respostas de uma busca antiga sao descartadas —
+  // antes, uma resposta atrasada de gas podia sobrescrever a lista de agua e o
+  // card aparecia com foto/valores de outro tipo ate recarregar a pagina.
+  const buscaSeq = React.useRef(0);
+
   useEffect(() => {
     if (!selectedComplexId || selectedMonths.length === 0) {
       setMonthsData([]);
       return;
     }
+
+    const seq = ++buscaSeq.current;
 
     // Inicializa estado loading para cada mês
     setMonthsData(selectedMonths.map(m => ({
@@ -569,17 +577,25 @@ export default function LevantamentoPage() {
     selectedMonths.forEach(async (m, idx) => {
       try {
         const result = await fetchMonth(m.month, m.year, selectedComplexId!, apartmentIdFilter, selectedUtility);
+        // Resposta de uma selecao anterior (outro tipo/condominio/mes): ignora.
+        if (seq !== buscaSeq.current) return;
+        // Defesa extra: nunca renderiza um relatorio de outro tipo no card.
+        // (registros legados sem utilityType continuam passando)
+        const items = result.items.filter(
+          item => !item.utilityType || item.utilityType === selectedUtility
+        );
         setMonthsData(prev => {
           const next = [...prev];
           if (next[idx]) next[idx] = {
             ...next[idx],
-            items: result.items,
+            items,
             dealershipReading: result.dealershipReading,
             loading: false,
           };
           return next;
         });
       } catch (e: any) {
+        if (seq !== buscaSeq.current) return;
         setMonthsData(prev => {
           const next = [...prev];
           if (next[idx]) next[idx] = { ...next[idx], loading: false, error: e?.message ?? 'Erro' };

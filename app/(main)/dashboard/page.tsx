@@ -9,7 +9,7 @@ import {
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { clearCachedPermissions } from '@/lib/permissions-cache';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
@@ -167,6 +167,8 @@ function AreaCommonIndividualGraph({ apartmentId, utilityType = 'water' }: { apa
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
   const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  // Guarda de corrida: descarta resposta de uma busca antiga (troca de tipo/ano).
+  const buscaSeq = useRef(0);
 
   const yearOptions = useMemo(() =>
     Array.from({ length: 4 }, (_, i) => String(currentYear - i)),
@@ -174,16 +176,18 @@ function AreaCommonIndividualGraph({ apartmentId, utilityType = 'water' }: { apa
 
   useEffect(() => {
     if (!apartmentId) return;
+    const seq = ++buscaSeq.current;
     setLoading(true);
     fetch(`/api/dashboard/annual-consumption?apartment_id=${apartmentId}&year=${selectedYear}&utility_type=${utilityType}`, {
       credentials: 'include',
     })
       .then(r => r.ok ? r.json() : { months: [] })
       .then(data => {
+        if (seq !== buscaSeq.current) return;
         setChartData(data.months || []);
       })
-      .catch(() => setChartData([]))
-      .finally(() => setLoading(false));
+      .catch(() => { if (seq === buscaSeq.current) setChartData([]); })
+      .finally(() => { if (seq === buscaSeq.current) setLoading(false); });
   }, [apartmentId, selectedYear, utilityType]);
 
   const hasData = chartData.some(m => m.commonArea > 0);
@@ -243,6 +247,8 @@ function ConsumoAnualGraph({ apartmentId, utilityType = 'water' }: { apartmentId
   const [chartData, setChartData] = useState<{ month: string; consumption: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const [totalAnual, setTotalAnual] = useState<number | null>(null);
+  // Guarda de corrida: descarta resposta de uma busca antiga (troca de tipo/ano).
+  const buscaSeq = useRef(0);
 
   const yearOptions = useMemo(() =>
     Array.from({ length: 4 }, (_, i) => String(currentYear - i)),
@@ -250,6 +256,7 @@ function ConsumoAnualGraph({ apartmentId, utilityType = 'water' }: { apartmentId
 
   useEffect(() => {
     if (!apartmentId) return;
+    const seq = ++buscaSeq.current;
     setLoading(true);
 
     fetch(`/api/dashboard/annual-consumption?apartment_id=${apartmentId}&year=${selectedYear}&utility_type=${utilityType}`, {
@@ -257,15 +264,17 @@ function ConsumoAnualGraph({ apartmentId, utilityType = 'water' }: { apartmentId
     })
       .then(r => r.ok ? r.json() : { months: [], totalAnual: 0 })
       .then(data => {
+        if (seq !== buscaSeq.current) return;
         const monthsWithData = data.months.filter((m: any) => m.consumption > 0);
         setChartData(monthsWithData);
         setTotalAnual(data.totalAnual);
       })
       .catch(() => {
+        if (seq !== buscaSeq.current) return;
         setChartData([]);
         setTotalAnual(0);
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (seq === buscaSeq.current) setLoading(false); });
   }, [apartmentId, selectedYear, utilityType]);
 
   const maxVal = useMemo(() => Math.max(...chartData.map(d => d.consumption), 1), [chartData]);

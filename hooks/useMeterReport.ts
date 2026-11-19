@@ -123,6 +123,17 @@ export function useMeterReport({ month, year, complexId, blockId, apartmentId, u
         if (!cancelled) {
           let reportData = res.data;
 
+          // Defesa: se a resposta vier de outro tipo de utilidade (corrida entre
+          // requisicoes ao trocar Agua/Gas/Energia), descarta os itens em vez de
+          // renderizar foto e valores do tipo errado. Registros legados sem
+          // utilityType continuam passando.
+          if (utilityType && reportData?.list) {
+            reportData.list = reportData.list.filter(
+              (item: any) => !item.utilityType || item.utilityType === utilityType
+            );
+            reportData.totalCount = reportData.list.length;
+          }
+
           // FILTRAGEM DE SEGURANÇA NO PREVIEW MODE
           if (isPreviewing && effectiveContext) {
             const allowedComplexIds = effectiveContext.accessibleComplexIds || [];

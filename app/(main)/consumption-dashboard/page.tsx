@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, CalendarRange, ChevronDown, DollarSign, DoorClosed, Droplets, Loader2, RefreshCw, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -191,11 +191,16 @@ export default function ConsumptionDashboardPage() {
     }
   }, [period]);
 
+  // Guarda de corrida: ao trocar água/gás/energia, a resposta da busca antiga
+  // pode chegar depois e sobrescrever a análise com dados de outro tipo.
+  const loadSeq = useRef(0);
+
   const load = async () => {
     if (!complex?.id) {
       toast({ title: 'Selecione um condomínio', description: 'Escolha o condomínio antes de carregar a análise.', variant: 'destructive' });
       return;
     }
+    const seq = ++loadSeq.current;
     setLoading(true);
     try {
       const requestApartmentId = apartment?.id || (isResident && residentHasSingleApartment ? residentApartmentsInComplex[0]?.id : undefined);
@@ -203,13 +208,15 @@ export default function ConsumptionDashboardPage() {
       if (requestApartmentId) params.set('apartment_id', requestApartmentId);
       const response = await fetch(`/api/dashboard/consumption-analysis?${params.toString()}`, { credentials: 'include', cache: 'no-store' });
       const payload = await response.json();
+      if (seq !== loadSeq.current) return;
       if (!response.ok) throw new Error(payload.error || 'Não foi possível carregar a análise');
       setData(payload);
     } catch (error: any) {
+      if (seq !== loadSeq.current) return;
       setData(null);
       toast({ title: 'Erro ao carregar análise', description: error?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   };
 
