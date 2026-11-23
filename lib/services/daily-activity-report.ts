@@ -170,11 +170,23 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
   ];
 
   // Condomínios
+  // Quantos relatórios de consumo cada condomínio gerou hoje. Serve para o leitor
+  // ligar as duas seções: cadastro mexido não significa relatório gerado.
+  const relatoriosPorComplexo = new Map<string, number>();
+  for (const x of r.relatorios) {
+    if (!x.complexId) continue;
+    relatoriosPorComplexo.set(x.complexId, (relatoriosPorComplexo.get(x.complexId) || 0) + x._count._all);
+  }
+  const colunaRelatorios = (complexId: string | null | undefined) => {
+    const n = (complexId && relatoriosPorComplexo.get(complexId)) || 0;
+    return n ? td(String(n), '#047857') : td('0', '#94a3b8');
+  };
+
   const linhasCondominios = [
     ...r.condominiosCriados.map((c) =>
-      `<tr>${td(`<strong>${esc(c.socialName)}</strong>`)}${td('criado', '#047857')}${td(horaBRT(c.createdAt))}${td('—')}</tr>`),
+      `<tr>${td(`<strong>${esc(c.socialName)}</strong>`)}${td('criado', '#047857')}${td(horaBRT(c.createdAt))}${td('—')}${colunaRelatorios(c.id)}</tr>`),
     ...r.condominiosAtualizados.map((c) =>
-      `<tr>${td(`<strong>${esc(c.socialName)}</strong>`)}${td('atualizado', '#b45309')}${td(horaBRT(c.updatedAt))}${td(esc(c.updatedByUserId ? (r.nomeAutor.get(c.updatedByUserId) || 'não registrado') : 'não registrado'))}</tr>`),
+      `<tr>${td(`<strong>${esc(c.socialName)}</strong>`)}${td('atualizado', '#b45309')}${td(horaBRT(c.updatedAt))}${td(esc(c.updatedByUserId ? (r.nomeAutor.get(c.updatedByUserId) || 'não registrado') : 'não registrado'))}${colunaRelatorios(c.id)}</tr>`),
   ];
 
   // E-mails por categoria
@@ -235,7 +247,7 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
 
     ${secao('Usuários', `${r.usuariosCriados.length} criado(s) e ${r.usuariosAtualizados.length} atualizado(s)`, tabela(['Usuário', 'Ação', 'Hora', 'Responsável'], linhasUsuarios, 'Nenhum usuário criado ou alterado hoje.'), 'Cadastros de usuários criados ou alterados hoje.')}
 
-    ${secao('Condomínios — cadastro', `${r.condominiosCriados.length} criado(s) e ${r.condominiosAtualizados.length} atualizado(s)`, tabela(['Condomínio', 'Ação', 'Hora', 'Responsável'], linhasCondominios, 'Nenhum condomínio criado ou alterado hoje.'), 'Alterações no cadastro do condomínio (nome, endereço, dados). Não significa que gerou relatório de consumo hoje.')}
+    ${secao('Condomínios — cadastro', `${r.condominiosCriados.length} criado(s) e ${r.condominiosAtualizados.length} atualizado(s)`, tabela(['Condomínio', 'Ação', 'Hora', 'Responsável', 'Relatórios hoje'], linhasCondominios, 'Nenhum condomínio criado ou alterado hoje.'), 'Alterações no cadastro do condomínio (nome, endereço, dados). Não significa que gerou relatório de consumo hoje.')}
 
     ${secao('Envio de e-mails', `${totalEnviados} enviado(s) de ${totalEmails} processado(s)${r.pendentes ? ` · ${r.pendentes} ainda na fila` : ''}`, tabela(['Categoria', 'Total', 'Situação', 'Observação'], linhasEmails, 'Nenhum e-mail processado hoje.'))}
 
