@@ -153,10 +153,11 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
 
   const td = (txt: string, cor = '#1e293b') => `<td style="padding:9px 12px;border-top:1px solid #f1f5f9;color:${cor};">${txt}</td>`;
 
-  const secao = (titulo: string, subtitulo: string, corpo: string) => `
+  const secao = (titulo: string, subtitulo: string, corpo: string, explicacao?: string) => `
     <div style="margin:0 0 22px;">
       <h2 style="margin:0 0 2px;font-size:15px;color:#0f172a;">${esc(titulo)}</h2>
-      <p style="margin:0 0 10px;font-size:12px;color:#64748b;">${esc(subtitulo)}</p>
+      <p style="margin:0 0 4px;font-size:12px;color:#64748b;">${esc(subtitulo)}</p>
+      ${explicacao ? `<p style="margin:0 0 10px;font-size:11px;color:#94a3b8;font-style:italic;">${esc(explicacao)}</p>` : '<div style="height:6px"></div>'}
       ${corpo}
     </div>`;
 
@@ -232,15 +233,15 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
 
     ${cards}
 
-    ${secao('Usuários', `${r.usuariosCriados.length} criado(s) e ${r.usuariosAtualizados.length} atualizado(s)`, tabela(['Usuário', 'Ação', 'Hora', 'Responsável'], linhasUsuarios, 'Nenhum usuário criado ou alterado hoje.'))}
+    ${secao('Usuários', `${r.usuariosCriados.length} criado(s) e ${r.usuariosAtualizados.length} atualizado(s)`, tabela(['Usuário', 'Ação', 'Hora', 'Responsável'], linhasUsuarios, 'Nenhum usuário criado ou alterado hoje.'), 'Cadastros de usuários criados ou alterados hoje.')}
 
-    ${secao('Condomínios', `${r.condominiosCriados.length} criado(s) e ${r.condominiosAtualizados.length} atualizado(s)`, tabela(['Condomínio', 'Ação', 'Hora', 'Responsável'], linhasCondominios, 'Nenhum condomínio criado ou alterado hoje.'))}
+    ${secao('Condomínios — cadastro', `${r.condominiosCriados.length} criado(s) e ${r.condominiosAtualizados.length} atualizado(s)`, tabela(['Condomínio', 'Ação', 'Hora', 'Responsável'], linhasCondominios, 'Nenhum condomínio criado ou alterado hoje.'), 'Alterações no cadastro do condomínio (nome, endereço, dados). Não significa que gerou relatório de consumo hoje.')}
 
     ${secao('Envio de e-mails', `${totalEnviados} enviado(s) de ${totalEmails} processado(s)${r.pendentes ? ` · ${r.pendentes} ainda na fila` : ''}`, tabela(['Categoria', 'Total', 'Situação', 'Observação'], linhasEmails, 'Nenhum e-mail processado hoje.'))}
 
     ${r.falhas.length ? secao('Falhas de envio', `${r.falhas.length} e-mail(s) falharam hoje`, tabela(['Categoria', 'Destinatário', 'Hora', 'Erro'], linhasFalhas, '—')) : ''}
 
-    ${secao('Relatórios de consumo gerados', `${totalRelatorios} relatório(s)`, tabela(['Condomínio', 'Referência', 'Utilidade', 'Relatórios'], linhasRelatorios, 'Nenhum relatório gerado hoje.'))}
+    ${secao('Relatórios de consumo gerados', `${totalRelatorios} relatório(s)`, tabela(['Condomínio', 'Referência', 'Utilidade', 'Relatórios'], linhasRelatorios, 'Nenhum relatório gerado hoje.'), 'Relatórios de consumo (por unidade e mês) calculados hoje — é o que dispara as filipetas. Um condomínio pode aparecer aqui sem ter o cadastro alterado, e vice-versa.')}
 
     <p style="margin:18px 0 0;font-size:11px;color:#94a3b8;text-align:center;">
       Relatório automático do AcquaXcontrol · todos os dias às 19h30 (horário de Brasília)
