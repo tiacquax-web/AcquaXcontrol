@@ -20,6 +20,12 @@ function inicioDoDiaBRT(): Date {
   return new Date(`${partes}T00:00:00-03:00`);
 }
 
+function faixaHora(min?: Date | string | null, max?: Date | string | null): string {
+  if (!min && !max) return '—';
+  const a = horaBRT(min); const b = horaBRT(max);
+  return a === b ? a : `${a}–${b}`;
+}
+
 function horaBRT(d: Date | string | null | undefined): string {
   if (!d) return '—';
   return new Intl.DateTimeFormat('pt-BR', {
@@ -106,10 +112,17 @@ export async function montarResumo() {
 
   // ── 4. Relatórios de consumo gerados ──────────────────────────────────────
   const relatorios = await prisma.apartmentConsumptionReport.groupBy({
-    by: ['complexId', 'monthRef', 'yearRef', 'utilityType'],
+    by: ['complexId', 'monthRef', 'yearRef', 'utilityType', 'createdByUserId'],
     where: { createdAt: { gte: inicio } },
     _count: { _all: true },
+    _min: { createdAt: true },
+    _max: { createdAt: true },
   });
+  const autoresRelatorio = [...new Set(relatorios.map((x: any) => x.createdByUserId).filter(Boolean))] as string[];
+  if (autoresRelatorio.length) {
+    const us = await prisma.user.findMany({ where: { id: { in: autoresRelatorio } }, select: { id: true, name: true } });
+    for (const u of us) if (!nomeAutor.has(u.id)) nomeAutor.set(u.id, u.name);
+  }
   const complexosRelatorio = relatorios.length
     ? await prisma.complex.findMany({
         where: { id: { in: [...new Set(relatorios.map((r) => r.complexId).filter(Boolean))] as string[] } },
@@ -198,7 +211,9 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
       if (n.failed) partes.push(`${n.failed} falharam`);
       if (n.skipped) partes.push(`${n.skipped} ignorados`);
       const cor = n.failed ? '#b91c1c' : n.pending ? '#b45309' : '#047857';
-      return `<tr>${td(`<strong>${esc(cat)}</strong>`)}${td(String(n.total))}${td(partes.join(' · '), cor)}${td(n.failed ? 'ver falhas abaixo' : '—')}</tr>`;
+      const doDia = r.jobs.filter((j) => (j.category || 'outro') === cat).map((j) => new Date(j.createdAt).getTime());
+      const hora = doDia.length ? faixaHora(new Date(Math.min(...doDia)), new Date(Math.max(...doDia))) : '—';
+      return `<tr>${td(`<strong>${esc(cat)}</strong>`)}${td(String(n.total))}${td(partes.join(' · '), cor)}${td(hora)}${td(n.failed ? 'ver falhas abaixo' : '—')}</tr>`;
     });
 
   const totalEmails = r.jobs.length;
@@ -212,7 +227,7 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
   const linhasRelatorios = r.relatorios
     .sort((a, b) => nomeDoRelatorio(a.complexId).localeCompare(nomeDoRelatorio(b.complexId)))
     .map((x) =>
-      `<tr>${td(`<strong>${esc(nomeDoRelatorio(x.complexId) || '—')}</strong>`)}${td(`${esc(x.monthRef)}/${esc(x.yearRef)}`)}${td(esc(x.utilityType || '—'))}${td(String(x._count._all))}</tr>`);
+      `<tr>${td(`<strong>${esc(nomeDoRelatorio(x.complexId) || '—')}</strong>`)}${td(`${esc(x.monthRef)}/${esc(x.yearRef)}`)}${td(esc(x.utilityType || '—'))}${td(String(x._count._all))}${td(faixaHora((x as any)._min?.createdAt, (x as any)._max?.createdAt))}${td(esc(((x as any).createdByUserId && r.nomeAutor.get((x as any).createdByUserId)) || 'não registrado'))}</tr>`);
 
   const totalRelatorios = r.relatorios.reduce((s, x) => s + x._count._all, 0);
 
@@ -249,11 +264,11 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
 
     ${secao('Condomínios — cadastro', `${r.condominiosCriados.length} criado(s) e ${r.condominiosAtualizados.length} atualizado(s)`, tabela(['Condomínio', 'Ação', 'Hora', 'Responsável', 'Relatórios hoje'], linhasCondominios, 'Nenhum condomínio criado ou alterado hoje.'), 'Alterações no cadastro do condomínio (nome, endereço, dados). Não significa que gerou relatório de consumo hoje.')}
 
-    ${secao('Envio de e-mails', `${totalEnviados} enviado(s) de ${totalEmails} processado(s)${r.pendentes ? ` · ${r.pendentes} ainda na fila` : ''}`, tabela(['Categoria', 'Total', 'Situação', 'Observação'], linhasEmails, 'Nenhum e-mail processado hoje.'))}
+    ${secao('Envio de e-mails', `${totalEnviados} enviado(s) de ${totalEmails} processado(s)${r.pendentes ? ` · ${r.pendentes} ainda na fila` : ''}`, tabela(['Categoria', 'Total', 'Situação', 'Hora', 'Observação'], linhasEmails, 'Nenhum e-mail processado hoje.'))}
 
     ${r.falhas.length ? secao('Falhas de envio', `${r.falhas.length} e-mail(s) falharam hoje`, tabela(['Categoria', 'Destinatário', 'Hora', 'Erro'], linhasFalhas, '—')) : ''}
 
-    ${secao('Relatórios de consumo gerados', `${totalRelatorios} relatório(s)`, tabela(['Condomínio', 'Referência', 'Utilidade', 'Relatórios'], linhasRelatorios, 'Nenhum relatório gerado hoje.'), 'Relatórios de consumo (por unidade e mês) calculados hoje — é o que dispara as filipetas. Um condomínio pode aparecer aqui sem ter o cadastro alterado, e vice-versa.')}
+    ${secao('Relatórios de consumo gerados', `${totalRelatorios} relatório(s)`, tabela(['Condomínio', 'Referência', 'Utilidade', 'Relatórios', 'Hora', 'Gerado por'], linhasRelatorios, 'Nenhum relatório gerado hoje.'), 'Relatórios de consumo (por unidade e mês) calculados hoje — é o que dispara as filipetas. Um condomínio pode aparecer aqui sem ter o cadastro alterado, e vice-versa.')}
 
     <p style="margin:18px 0 0;font-size:11px;color:#94a3b8;text-align:center;">
       Relatório automático do AcquaXcontrol · todos os dias às 19h30 (horário de Brasília)
