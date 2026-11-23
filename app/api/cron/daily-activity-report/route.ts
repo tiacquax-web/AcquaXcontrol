@@ -13,7 +13,8 @@
  * Autenticação: igual aos outros crons — header do Vercel Cron ou
  * Authorization: Bearer <CRON_SECRET>.
  *
- * Destinatários: env DAILY_REPORT_TO (lista separada por vírgula).
+ * Destinatários: adm@acquaxdobrasil.com.br, ou env DAILY_REPORT_TO
+ * (lista separada por vírgula) para trocar/adicionar.
  * Padrão: giulia.melo@acquaxdobrasil.com.br
  */
 

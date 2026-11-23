@@ -9,7 +9,7 @@
 import prisma from '@/lib/prisma';
 
 export const TZ = 'America/Sao_Paulo';
-export const DESTINATARIOS_PADRAO = ['giulia.melo@acquaxdobrasil.com.br'];
+export const DESTINATARIOS_PADRAO = ['adm@acquaxdobrasil.com.br'];
 
 /** 00:00 de hoje no horário de Brasília, como instante UTC. */
 function inicioDoDiaBRT(): Date {
