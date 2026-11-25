@@ -221,14 +221,30 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
       <h2 style="margin:0 0 2px;font-size:15px;color:#0f172a;">Análise de produtividade — ${esc(p.colaborador.nome)}</h2>
       <p style="margin:0 0 4px;font-size:12px;color:#64748b;">${esc(p.dia)} (${esc(p.diaSemana)}) · jornada ${p.janela.inicio}h–${p.janela.almocoInicio}h e ${p.janela.almocoFim}h–${p.janela.fim}h</p>
       <p style="margin:0 0 10px;font-size:11px;color:#94a3b8;font-style:italic;">Conta o que foi registrado no AcquaXcontrol. Reuniões, telefone e planilhas fora do sistema não aparecem aqui.</p>
-      <table role="presentation" style="border-collapse:collapse;width:100%;margin-bottom:12px;">
+      <table role="presentation" style="border-collapse:collapse;width:100%;margin-bottom:6px;">
         <tr>
+          ${kpi('Tempo sem trabalho efetivo', mmss(p.minutosOciosos), p.minutosOciosos >= 120 ? '#b91c1c' : p.minutosOciosos >= 60 ? '#b45309' : '#047857')}
+          ${kpi('Do tempo de jornada', `${p.percentualSemTrabalho}%`, p.percentualSemTrabalho >= 30 ? '#b91c1c' : '#0f172a')}
+          ${kpi('Tempo com trabalho efetivo', mmss(p.minutosTrabalhoEfetivo))}
           ${kpi('Relatórios do dia', String(p.totais.relatorios))}
-          ${kpi('vs. mediana 3 semanas', p.percentualDaBase === null ? '—' : `${p.percentualDaBase}%`, corPct(p.percentualDaBase))}
-          ${kpi('Cadastros', String(p.totais.cadastros))}
-          ${kpi('Tempo sem registro', mmss(p.minutosOciosos))}
         </tr>
       </table>
+      <table role="presentation" style="border-collapse:collapse;width:100%;margin-bottom:6px;">
+        <tr>
+          ${kpi('Primeira alteração no sistema', p.primeiraAcao ? `${p.primeiraAcao.hora}` : 'nenhuma')}
+          ${kpi('Última alteração no sistema', p.ultimaAcao ? `${p.ultimaAcao.hora}` : 'nenhuma')}
+          ${kpi('vs. mediana 3 semanas', p.percentualDaBase === null ? '—' : `${p.percentualDaBase}%`, corPct(p.percentualDaBase))}
+          ${kpi('Cadastros', String(p.totais.cadastros))}
+        </tr>
+      </table>
+      <p style="margin:0 0 10px;font-size:12px;color:#475569;">
+        <strong>Sem trabalho efetivo</strong> = ${mmss(p.minutosOciosos)} de ${mmss(p.minutosUteis)} de jornada útil (${p.percentualSemTrabalho}%),
+        somando os intervalos acima de ${JORNADA_ALERTA} min sem nenhuma alteração no AcquaXcontrol, fora do almoço.
+        Primeira alteração ${p.primeiraAcao ? `<strong>${esc(p.primeiraAcao.hora)}</strong> (${esc(p.primeiraAcao.rotulo)})` : 'não houve'},
+        última ${p.ultimaAcao ? `<strong>${esc(p.ultimaAcao.hora)}</strong> (${esc(p.ultimaAcao.rotulo)})` : 'não houve'}.
+        ${p.minutosAntesPrimeira > 0 ? `Começou ${mmss(p.minutosAntesPrimeira)} depois do início da jornada.` : ''}
+        ${p.minutosDepoisUltima > 0 ? `Ficou ${mmss(p.minutosDepoisUltima)} sem registro antes do fim.` : ''}
+      </p>
       <table role="presentation" style="border-collapse:collapse;width:100%;font-size:13px;">
         <tr style="background:#f1f5f9;color:#334155;font-size:11px;text-transform:uppercase;letter-spacing:.04em;">
           <th style="padding:8px 12px;text-align:left;border:1px solid #e2e8f0;">Hora</th>
@@ -247,7 +263,7 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
         ${linhasLacunas}
       </table>
       ${alertas}
-      <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Referência: mediana de ${p.base.dias} dias com movimento (${p.base.mediana}/dia), melhor dia ${p.base.melhor}, média ${p.base.media}; ${p.base.diasSemRegistro} dia(s) sem nenhum registro nas últimas 3 semanas. Primeira atividade ${esc(p.primeiraAtividade || '—')}, última ${esc(p.ultimaAtividade || '—')}, ${p.horasComAtividade} de ${p.horasUteis} horas com atividade.</p>
+      <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Referência: mediana de ${p.base.dias} dias com movimento (${p.base.mediana}/dia), melhor dia ${p.base.melhor}, média ${p.base.media}; ${p.base.diasSemRegistro} dia(s) sem nenhum registro nas últimas 3 semanas. ${p.horasComAtividade} de ${p.horasUteis} horas da jornada tiveram atividade.</p>
     </div>`;
   };
 
@@ -345,7 +361,7 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
 
     ${r.falhas.length ? secao('Falhas de envio', `${r.falhas.length} e-mail(s) falharam hoje`, tabela(['Categoria', 'Destinatário', 'Hora', 'Erro'], linhasFalhas, '—')) : ''}
 
-    ${r.produtividade ? blocoProdutividade(r.produtividade) : ''}
+    ${r.produtividade ? blocoProdutividade(r.produtividade) : '<p style="font-size:12px;color:#b45309;margin:0 0 18px;">Análise de produtividade indisponível hoje (usuário do sistema não localizado).</p>'}
 
     ${secao('Relatórios de consumo gerados', `${totalRelatorios} relatório(s)`, tabela(['Condomínio', 'Referência', 'Utilidade', 'Relatórios', 'Hora', 'Gerado por'], linhasRelatorios, 'Nenhum relatório gerado hoje.'), 'Relatórios de consumo (por unidade e mês) calculados hoje — é o que dispara as filipetas. Um condomínio pode aparecer aqui sem ter o cadastro alterado, e vice-versa.')}
 

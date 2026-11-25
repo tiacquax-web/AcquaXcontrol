@@ -57,6 +57,15 @@ export interface AnaliseProdutividade {
   totais: { relatorios: number; cadastros: number; outros: number; total: number };
   primeiraAtividade: string | null;
   ultimaAtividade: string | null;
+  /** Primeira e última alteração do dia, com o tipo de registro. */
+  primeiraAcao: { hora: string; rotulo: string } | null;
+  ultimaAcao: { hora: string; rotulo: string } | null;
+  /** Trabalho efetivo = jornada útil menos o tempo sem registro. */
+  minutosTrabalhoEfetivo: number;
+  percentualSemTrabalho: number;
+  /** Minutos entre o início da jornada e a primeira ação / da última ação até o fim. */
+  minutosAntesPrimeira: number;
+  minutosDepoisUltima: number;
   horasComAtividade: number;
   horasUteis: number;
   minutosOciosos: number;
@@ -281,6 +290,21 @@ export async function analisarProdutividade(opts?: {
     }
   }
 
+  const minutosTrabalhoEfetivo = Math.max(0, minutosUteis - minutosOciosos);
+  const percentualSemTrabalho = minutosUteis > 0 ? Math.round((minutosOciosos / minutosUteis) * 100) : 0;
+
+  const emMinutosDoDia = (d: Date) => {
+    const h = horaBRT(d);
+    const m = Number(new Intl.DateTimeFormat('pt-BR', { timeZone: TZ_PROD, minute: '2-digit' }).format(d));
+    return h * 60 + m;
+  };
+  const minutosAntesPrimeira = dentroDaJanela.length
+    ? Math.max(0, emMinutosDoDia(dentroDaJanela[0].at) - JORNADA.inicio * 60)
+    : minutosUteis;
+  const minutosDepoisUltima = dentroDaJanela.length
+    ? Math.max(0, fim * 60 - emMinutosDoDia(dentroDaJanela[dentroDaJanela.length - 1].at))
+    : 0;
+
   return {
     colaborador: { id: usuario.id, nome: usuario.name || nome, email: usuario.email },
     dia: `${p.dia}/${p.mes}/${p.ano}`,
@@ -290,6 +314,12 @@ export async function analisarProdutividade(opts?: {
     totais,
     primeiraAtividade: eventos.length ? fmtHora(eventos[0].at) : null,
     ultimaAtividade: eventos.length ? fmtHora(eventos[eventos.length - 1].at) : null,
+    primeiraAcao: eventos.length ? { hora: fmtHora(eventos[0].at), rotulo: eventos[0].rotulo } : null,
+    ultimaAcao: eventos.length ? { hora: fmtHora(eventos[eventos.length - 1].at), rotulo: eventos[eventos.length - 1].rotulo } : null,
+    minutosTrabalhoEfetivo,
+    percentualSemTrabalho,
+    minutosAntesPrimeira,
+    minutosDepoisUltima,
     horasComAtividade,
     horasUteis: fim - JORNADA.inicio - (JORNADA.almocoFim - JORNADA.almocoInicio),
     minutosOciosos,
