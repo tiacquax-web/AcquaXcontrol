@@ -29,6 +29,15 @@ export const JORNADA = {
   lacunaContaMin: 15,
 } as const;
 
+/** A comparação com a média histórica só passa a valer a partir desta data. */
+export const COMPARACAO_VOLUME_DESDE = '2027-02-01';
+
+/** A comparação de volume está ativa? (a partir de fevereiro de 2027) */
+export function comparacaoVolumeAtiva(data: Date = new Date()): boolean {
+  const p = partesBRT(data);
+  return `${p.ano}-${p.mes}-${p.dia}` >= COMPARACAO_VOLUME_DESDE;
+}
+
 export const COLABORADOR_PADRAO = {
   nome: 'Gustavo Gomes',
   email: 'sistema@acquaxdobrasil.com.br',
@@ -71,6 +80,8 @@ export interface AnaliseProdutividade {
   minutosOciosos: number;
   minutosUteis: number;
   lacunas: Lacuna[];
+  /** false até 31/01/2027: sem comparação de volume com a média. */
+  comparacaoAtiva: boolean;
   base: { mediana: number; melhor: number; media: number; dias: number; diasSemRegistro: number };
   percentualDaBase: number | null;
   alertas: string[];
@@ -197,7 +208,12 @@ export async function analisarProdutividade(opts?: {
   const fim = sexta ? JORNADA.fimSexta : JORNADA.fim;
 
   const eventos = await coletarEventos(usuario.id, de, ate);
-  const base = await baseRelatorios(usuario.id, opts?.baseDias ?? 21);
+  // Até fevereiro de 2027 não há comparação de volume com a média: economiza
+  // as consultas da base e evita cobrança antes de existir régua combinada.
+  const comparacaoAtiva = comparacaoVolumeAtiva(referencia);
+  const base = comparacaoAtiva
+    ? await baseRelatorios(usuario.id, opts?.baseDias ?? 21)
+    : { mediana: 0, melhor: 0, media: 0, dias: 0, diasSemRegistro: 0 };
 
   const porHora = Array.from({ length: fim - JORNADA.inicio }, (_, i) => ({
     hora: JORNADA.inicio + i, relatorios: 0, cadastros: 0, outros: 0, total: 0,
@@ -268,7 +284,9 @@ export async function analisarProdutividade(opts?: {
   }
 
   const horasComAtividade = porHora.filter((h) => h.total > 0).length;
-  const percentualDaBase = base.mediana > 0 ? Math.round((totais.relatorios / base.mediana) * 100) : null;
+  const percentualDaBase = comparacaoAtiva && base.mediana > 0
+    ? Math.round((totais.relatorios / base.mediana) * 100)
+    : null;
 
   const alertas: string[] = [];
   if (!eventos.length) {
@@ -285,7 +303,7 @@ export async function analisarProdutividade(opts?: {
     for (const l of lacunas.filter((x) => x.minutos >= 60)) {
       alertas.push(`Sem registro entre ${l.de} e ${l.ate} (${Math.floor(l.minutos / 60)}h${String(l.minutos % 60).padStart(2, '0')}).`);
     }
-    if (percentualDaBase !== null && percentualDaBase < 70) {
+    if (comparacaoAtiva && percentualDaBase !== null && percentualDaBase < 70) {
       alertas.push(`Volume de relatórios em ${percentualDaBase}% da mediana das últimas 3 semanas (${base.mediana}/dia).`);
     }
   }
@@ -325,6 +343,7 @@ export async function analisarProdutividade(opts?: {
     minutosOciosos,
     minutosUteis,
     lacunas,
+    comparacaoAtiva,
     base,
     percentualDaBase,
     alertas,

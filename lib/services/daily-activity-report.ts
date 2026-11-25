@@ -233,7 +233,9 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
         <tr>
           ${kpi('Primeira alteração no sistema', p.primeiraAcao ? `${p.primeiraAcao.hora}` : 'nenhuma')}
           ${kpi('Última alteração no sistema', p.ultimaAcao ? `${p.ultimaAcao.hora}` : 'nenhuma')}
-          ${kpi('vs. mediana 3 semanas', p.percentualDaBase === null ? '—' : `${p.percentualDaBase}%`, corPct(p.percentualDaBase))}
+          ${p.comparacaoAtiva
+            ? kpi('vs. mediana 3 semanas', p.percentualDaBase === null ? '—' : `${p.percentualDaBase}%`, corPct(p.percentualDaBase))
+            : kpi('Horas com atividade', `${p.horasComAtividade} de ${p.horasUteis}`)}
           ${kpi('Cadastros', String(p.totais.cadastros))}
         </tr>
       </table>
@@ -263,7 +265,9 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
         ${linhasLacunas}
       </table>
       ${alertas}
-      <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Referência: mediana de ${p.base.dias} dias com movimento (${p.base.mediana}/dia), melhor dia ${p.base.melhor}, média ${p.base.media}; ${p.base.diasSemRegistro} dia(s) sem nenhum registro nas últimas 3 semanas. ${p.horasComAtividade} de ${p.horasUteis} horas da jornada tiveram atividade.</p>
+      <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">${p.comparacaoAtiva
+        ? `Referência: mediana de ${p.base.dias} dias com movimento (${p.base.mediana}/dia), melhor dia ${p.base.melhor}, média ${p.base.media}; ${p.base.diasSemRegistro} dia(s) sem nenhum registro nas últimas 3 semanas.`
+        : 'Sem comparação de volume por enquanto: a régua de média entra em fevereiro de 2027.'} ${p.horasComAtividade} de ${p.horasUteis} horas da jornada tiveram atividade.</p>
     </div>`;
   };
 
