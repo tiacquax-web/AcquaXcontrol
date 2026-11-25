@@ -25,8 +25,8 @@ export const JORNADA = {
   fimSexta: 17,
   /** lacuna mínima para virar alerta */
   lacunaMinimaMin: 30,
-  /** lacuna mínima para contar como tempo sem registro */
-  lacunaContaMin: 15,
+  /** lacuna mínima para contar como tempo sem trabalho efetivo (igual à da tabela) */
+  lacunaContaMin: 30,
 } as const;
 
 /** A comparação com a média histórica só passa a valer a partir desta data. */
@@ -75,6 +75,8 @@ export interface AnaliseProdutividade {
   /** Minutos entre o início da jornada e a primeira ação / da última ação até o fim. */
   minutosAntesPrimeira: number;
   minutosDepoisUltima: number;
+  /** Maior intervalo sem nenhuma alteração no dia (minutos). */
+  maiorLacuna: number;
   horasComAtividade: number;
   horasUteis: number;
   minutosOciosos: number;
@@ -273,14 +275,14 @@ export async function analisarProdutividade(opts?: {
       const depois = Math.max(0, f.getTime() - fimAlmoco.getTime());
       const total = Math.round((antes + depois) / 60000);
       if (total > JORNADA.lacunaMinimaMin) lacunas.push({ de: fmtHora(ini), ate: fmtHora(f), minutos: total });
-      if (total >= JORNADA.lacunaContaMin) minutosOciosos += total;
+      if (total > JORNADA.lacunaContaMin) minutosOciosos += total;
       continue;
     }
     const minutos = Math.round((f.getTime() - ini.getTime()) / 60000);
     if (minutos > JORNADA.lacunaMinimaMin) {
       lacunas.push({ de: fmtHora(ini), ate: fmtHora(f), minutos });
     }
-    if (minutos >= JORNADA.lacunaContaMin) minutosOciosos += minutos;
+    if (minutos > JORNADA.lacunaContaMin) minutosOciosos += minutos;
   }
 
   const horasComAtividade = porHora.filter((h) => h.total > 0).length;
@@ -309,6 +311,7 @@ export async function analisarProdutividade(opts?: {
   }
 
   const minutosTrabalhoEfetivo = Math.max(0, minutosUteis - minutosOciosos);
+  const maiorLacuna = lacunas.reduce((m, l) => Math.max(m, l.minutos), 0);
   const percentualSemTrabalho = minutosUteis > 0 ? Math.round((minutosOciosos / minutosUteis) * 100) : 0;
 
   const emMinutosDoDia = (d: Date) => {
@@ -338,6 +341,7 @@ export async function analisarProdutividade(opts?: {
     percentualSemTrabalho,
     minutosAntesPrimeira,
     minutosDepoisUltima,
+    maiorLacuna,
     horasComAtividade,
     horasUteis: fim - JORNADA.inicio - (JORNADA.almocoFim - JORNADA.almocoInicio),
     minutosOciosos,

@@ -225,7 +225,7 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
         <tr>
           ${kpi('Tempo sem trabalho efetivo', mmss(p.minutosOciosos), p.minutosOciosos >= 120 ? '#b91c1c' : p.minutosOciosos >= 60 ? '#b45309' : '#047857')}
           ${kpi('Do tempo de jornada', `${p.percentualSemTrabalho}%`, p.percentualSemTrabalho >= 30 ? '#b91c1c' : '#0f172a')}
-          ${kpi('Tempo com trabalho efetivo', mmss(p.minutosTrabalhoEfetivo))}
+          ${kpi('Tempo com registros no sistema', mmss(p.minutosTrabalhoEfetivo))}
           ${kpi('Relatórios do dia', String(p.totais.relatorios))}
         </tr>
       </table>
@@ -235,13 +235,14 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
           ${kpi('Última alteração no sistema', p.ultimaAcao ? `${p.ultimaAcao.hora}` : 'nenhuma')}
           ${p.comparacaoAtiva
             ? kpi('vs. mediana 3 semanas', p.percentualDaBase === null ? '—' : `${p.percentualDaBase}%`, corPct(p.percentualDaBase))
-            : kpi('Horas com atividade', `${p.horasComAtividade} de ${p.horasUteis}`)}
+            : kpi('Maior intervalo sem registro', p.maiorLacuna ? mmss(p.maiorLacuna) : '—', p.maiorLacuna >= 120 ? '#b91c1c' : '#0f172a')}
           ${kpi('Cadastros', String(p.totais.cadastros))}
         </tr>
       </table>
       <p style="margin:0 0 10px;font-size:12px;color:#475569;">
-        <strong>Sem trabalho efetivo</strong> = ${mmss(p.minutosOciosos)} de ${mmss(p.minutosUteis)} de jornada útil (${p.percentualSemTrabalho}%),
-        somando os intervalos acima de ${JORNADA_ALERTA} min sem nenhuma alteração no AcquaXcontrol, fora do almoço.
+        A jornada útil de ${mmss(p.minutosUteis)} fica dividida em duas partes: <strong>${mmss(p.minutosOciosos)} sem trabalho efetivo</strong>
+        (${p.percentualSemTrabalho}%, que é a soma dos intervalos acima de ${JORNADA_ALERTA} min sem nenhuma alteração no AcquaXcontrol, fora do almoço)
+        e <strong>${mmss(p.minutosTrabalhoEfetivo)} com registros no sistema</strong>.
         Primeira alteração ${p.primeiraAcao ? `<strong>${esc(p.primeiraAcao.hora)}</strong> (${esc(p.primeiraAcao.rotulo)})` : 'não houve'},
         última ${p.ultimaAcao ? `<strong>${esc(p.ultimaAcao.hora)}</strong> (${esc(p.ultimaAcao.rotulo)})` : 'não houve'}.
         ${p.minutosAntesPrimeira > 0 ? `Começou ${mmss(p.minutosAntesPrimeira)} depois do início da jornada.` : ''}
@@ -267,7 +268,7 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
       ${alertas}
       <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">${p.comparacaoAtiva
         ? `Referência: mediana de ${p.base.dias} dias com movimento (${p.base.mediana}/dia), melhor dia ${p.base.melhor}, média ${p.base.media}; ${p.base.diasSemRegistro} dia(s) sem nenhum registro nas últimas 3 semanas.`
-        : 'Sem comparação de volume por enquanto: a régua de média entra em fevereiro de 2027.'} ${p.horasComAtividade} de ${p.horasUteis} horas da jornada tiveram atividade.</p>
+        : 'Sem comparação de volume por enquanto: a régua de média entra em fevereiro de 2027.'}</p>
     </div>`;
   };
 
