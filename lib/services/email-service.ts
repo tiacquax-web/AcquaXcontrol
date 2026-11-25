@@ -12,17 +12,42 @@ export interface EmailConfig {
   fromEmail: string;
 }
 
+/**
+ * Configuração de SMTP, agnóstica de provedor.
+ *
+ * Precedência: SMTP_* (genérico) → ZOHO_* (legado) → EMAIL_* (legado).
+ * Assim dá para trocar de provedor (Zoho, Amazon SES, Resend SMTP, etc.)
+ * só mudando variáveis de ambiente, sem tocar no código.
+ *
+ * Amazon SES:
+ *   SMTP_HOST = email-smtp.<região>.amazonaws.com
+ *   SMTP_PORT = 587 (STARTTLS) ou 465 (SSL)
+ *   SMTP_USER/SMTP_PASS = credenciais SMTP geradas no console do SES
+ *   SMTP_FROM = remetente verificado no SES (domínio ou e-mail)
+ */
 function getEmailConfig(): EmailConfig {
-  const host = process.env.ZOHO_SMTP_HOST || process.env.EMAIL_HOST || 'smtp.zoho.com';
-  const rawPort = process.env.ZOHO_SMTP_PORT || process.env.EMAIL_PORT || '465';
+  const host =
+    process.env.SMTP_HOST || process.env.ZOHO_SMTP_HOST || process.env.EMAIL_HOST || 'smtp.zoho.com';
+  const rawPort = process.env.SMTP_PORT || process.env.ZOHO_SMTP_PORT || process.env.EMAIL_PORT || '465';
   const parsedPort = Number.parseInt(rawPort, 10);
   const port = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 465;
-  const user = process.env.ZOHO_SMTP_USER || process.env.EMAIL_USER || '';
-  const pass = process.env.ZOHO_SMTP_PASS || process.env.EMAIL_PASS || '';
-  const fromName = process.env.ZOHO_SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'AcquaX do Brasil';
-  const fromEmail = process.env.ZOHO_SMTP_FROM || process.env.EMAIL_FROM || user;
+  const user = process.env.SMTP_USER || process.env.ZOHO_SMTP_USER || process.env.EMAIL_USER || '';
+  const pass = process.env.SMTP_PASS || process.env.ZOHO_SMTP_PASS || process.env.EMAIL_PASS || '';
+  const fromName =
+    process.env.SMTP_FROM_NAME || process.env.ZOHO_SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'AcquaX do Brasil';
+  const fromEmail =
+    process.env.SMTP_FROM || process.env.ZOHO_SMTP_FROM || process.env.EMAIL_FROM || user;
 
   return { host, port, user, pass, fromName, fromEmail };
+}
+
+/** Nome do provedor em uso, só para diagnóstico/log. */
+export function getEmailProviderLabel(): string {
+  const host = (process.env.SMTP_HOST || process.env.ZOHO_SMTP_HOST || process.env.EMAIL_HOST || '').toLowerCase();
+  if (host.includes('amazonaws.com')) return 'Amazon SES';
+  if (host.includes('zoho')) return 'Zoho';
+  if (host.includes('resend')) return 'Resend';
+  return host || 'desconhecido';
 }
 
 function getTransporter(): nodemailer.Transporter {
@@ -31,14 +56,19 @@ function getTransporter(): nodemailer.Transporter {
   const config = getEmailConfig();
   if (!config.user || !config.pass) {
     throw new Error(
-      'SMTP não configurado: defina ZOHO_SMTP_USER/ZOHO_SMTP_PASS ou EMAIL_USER/EMAIL_PASS.',
+      'SMTP não configurado: defina SMTP_USER/SMTP_PASS (ou ZOHO_SMTP_USER/ZOHO_SMTP_PASS).',
     );
   }
+
+  const secureEnv = process.env.SMTP_SECURE;
+  const secure = secureEnv === undefined || secureEnv === ''
+    ? config.port === 465
+    : /^(1|true|yes)$/i.test(secureEnv);
 
   transporter = nodemailer.createTransport({
     host: config.host,
     port: config.port,
-    secure: config.port === 465,
+    secure,
     auth: { user: config.user, pass: config.pass },
     connectionTimeout: 30_000,
     greetingTimeout: 15_000,
