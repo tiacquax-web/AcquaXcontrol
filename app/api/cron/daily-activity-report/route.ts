@@ -23,7 +23,7 @@ import { sendEmail, isEmailConfigured } from '@/lib/services/email-service';
 import { montarResumo, montarHtml, textoPlano, dataBRT, DESTINATARIOS_PADRAO } from '@/lib/services/daily-activity-report';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
 
 async function autorizado(req: NextRequest): Promise<boolean> {

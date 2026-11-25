@@ -7,6 +7,7 @@
  */
 
 import prisma from '@/lib/prisma';
+import { analisarProdutividade, type AnaliseProdutividade } from '@/lib/services/team-productivity';
 
 export const TZ = 'America/Sao_Paulo';
 export const DESTINATARIOS_PADRAO = ['adm@acquaxdobrasil.com.br'];
@@ -40,6 +41,8 @@ export function dataBRT(d: Date): string {
 function esc(s: any): string {
   return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 }
+
+const JORNADA_ALERTA = 30;
 
 const ROTULO_STATUS: Record<string, string> = {
   sent: 'enviado', pending: 'na fila', failed: 'falhou', skipped: 'ignorado', processing: 'processando',
@@ -131,8 +134,17 @@ export async function montarResumo() {
     : [];
   const nomeComplexo = new Map(complexosRelatorio.map((c) => [c.id, c.socialName]));
 
+  // ── 5. Produtividade do responsável pela atualização do sistema ──────────
+  let produtividade: AnaliseProdutividade | null = null;
+  try {
+    produtividade = await analisarProdutividade();
+  } catch (e: any) {
+    console.warn('[daily-report] análise de produtividade falhou:', e?.message);
+  }
+
   return {
     inicio,
+    produtividade,
     usuariosCriados,
     usuariosAtualizados,
     condominiosCriados,
@@ -173,6 +185,71 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
       ${explicacao ? `<p style="margin:0 0 10px;font-size:11px;color:#94a3b8;font-style:italic;">${esc(explicacao)}</p>` : '<div style="height:6px"></div>'}
       ${corpo}
     </div>`;
+
+
+  // ── Produtividade ────────────────────────────────────────────────────────
+  const blocoProdutividade = (p: AnaliseProdutividade): string => {
+    const mmss = (m: number) => `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
+    const corPct = (v: number | null) => (v === null ? '#64748b' : v >= 90 ? '#047857' : v >= 70 ? '#b45309' : '#b91c1c');
+    const kpi = (rotulo: string, valor: string, cor = '#0f172a') =>
+      `<td style="padding:10px 12px;border:1px solid #e2e8f0;background:#fff;">
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;">${esc(rotulo)}</div>
+        <div style="font-size:16px;font-weight:700;color:${cor};margin-top:2px;">${esc(valor)}</div>
+      </td>`;
+
+    const maxHora = Math.max(1, ...p.porHora.map((h) => h.total));
+    const linhasHoras = p.porHora.map((h) => {
+      const largura = Math.round((h.total / maxHora) * 100);
+      const barra = `<div style="background:#e2e8f0;border-radius:3px;height:8px;width:100%;max-width:150px;">
+        <div style="background:${h.total ? '#0d9488' : '#e2e8f0'};height:8px;border-radius:3px;width:${largura}%;"></div></div>`;
+      return `<tr>${td(`<strong>${h.hora}h</strong>`)}${td(String(h.relatorios))}${td(String(h.cadastros))}${td(String(h.outros))}${td(barra)}</tr>`;
+    }).join('');
+
+    const linhasLacunas = p.lacunas.length
+      ? p.lacunas.map((l) => `<tr>${td(`${l.de} — ${l.ate}`)}${td(mmss(l.minutos), l.minutos >= 60 ? '#b91c1c' : '#b45309')}</tr>`).join('')
+      : `<tr><td colspan="2" style="padding:10px 12px;color:#94a3b8;font-size:13px;">Nenhuma lacuna acima de ${JORNADA_ALERTA} minutos.</td></tr>`;
+
+    const alertas = p.alertas.length
+      ? `<div style="border-left:4px solid #f59e0b;background:#fffbeb;padding:10px 14px;margin:12px 0 0;border-radius:4px;">
+          <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:4px;">Pontos de atenção</div>
+          <ul style="margin:0;padding-left:18px;font-size:13px;color:#78350f;">${p.alertas.map((a) => `<li style="margin:2px 0;">${esc(a)}</li>`).join('')}</ul>
+        </div>`
+      : `<div style="border-left:4px solid #10b981;background:#ecfdf5;padding:10px 14px;margin:12px 0 0;border-radius:4px;font-size:13px;color:#065f46;">Dia dentro do esperado: sem lacunas relevantes e volume próximo da referência.</div>`;
+
+    return `
+    <div style="margin:0 0 22px;">
+      <h2 style="margin:0 0 2px;font-size:15px;color:#0f172a;">Análise de produtividade — ${esc(p.colaborador.nome)}</h2>
+      <p style="margin:0 0 4px;font-size:12px;color:#64748b;">${esc(p.dia)} (${esc(p.diaSemana)}) · jornada ${p.janela.inicio}h–${p.janela.almocoInicio}h e ${p.janela.almocoFim}h–${p.janela.fim}h</p>
+      <p style="margin:0 0 10px;font-size:11px;color:#94a3b8;font-style:italic;">Conta o que foi registrado no AcquaXcontrol. Reuniões, telefone e planilhas fora do sistema não aparecem aqui.</p>
+      <table role="presentation" style="border-collapse:collapse;width:100%;margin-bottom:12px;">
+        <tr>
+          ${kpi('Relatórios do dia', String(p.totais.relatorios))}
+          ${kpi('vs. mediana 3 semanas', p.percentualDaBase === null ? '—' : `${p.percentualDaBase}%`, corPct(p.percentualDaBase))}
+          ${kpi('Cadastros', String(p.totais.cadastros))}
+          ${kpi('Tempo sem registro', mmss(p.minutosOciosos))}
+        </tr>
+      </table>
+      <table role="presentation" style="border-collapse:collapse;width:100%;font-size:13px;">
+        <tr style="background:#f1f5f9;color:#334155;font-size:11px;text-transform:uppercase;letter-spacing:.04em;">
+          <th style="padding:8px 12px;text-align:left;border:1px solid #e2e8f0;">Hora</th>
+          <th style="padding:8px 12px;text-align:left;border:1px solid #e2e8f0;">Relatórios</th>
+          <th style="padding:8px 12px;text-align:left;border:1px solid #e2e8f0;">Cadastros</th>
+          <th style="padding:8px 12px;text-align:left;border:1px solid #e2e8f0;">Outros</th>
+          <th style="padding:8px 12px;text-align:left;border:1px solid #e2e8f0;">Volume</th>
+        </tr>
+        ${linhasHoras}
+      </table>
+      <table role="presentation" style="border-collapse:collapse;width:100%;font-size:13px;margin-top:12px;">
+        <tr style="background:#f1f5f9;color:#334155;font-size:11px;text-transform:uppercase;letter-spacing:.04em;">
+          <th style="padding:8px 12px;text-align:left;border:1px solid #e2e8f0;">Período sem registro</th>
+          <th style="padding:8px 12px;text-align:left;border:1px solid #e2e8f0;">Duração</th>
+        </tr>
+        ${linhasLacunas}
+      </table>
+      ${alertas}
+      <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Referência: mediana de ${p.base.dias} dias com movimento (${p.base.mediana}/dia), melhor dia ${p.base.melhor}, média ${p.base.media}; ${p.base.diasSemRegistro} dia(s) sem nenhum registro nas últimas 3 semanas. Primeira atividade ${esc(p.primeiraAtividade || '—')}, última ${esc(p.ultimaAtividade || '—')}, ${p.horasComAtividade} de ${p.horasUteis} horas com atividade.</p>
+    </div>`;
+  };
 
   // Usuários
   const linhasUsuarios = [
@@ -267,6 +344,8 @@ export function montarHtml(r: Awaited<ReturnType<typeof montarResumo>>): string 
     ${secao('Envio de e-mails', `${totalEnviados} enviado(s) de ${totalEmails} processado(s)${r.pendentes ? ` · ${r.pendentes} ainda na fila` : ''}`, tabela(['Categoria', 'Total', 'Situação', 'Hora', 'Observação'], linhasEmails, 'Nenhum e-mail processado hoje.'))}
 
     ${r.falhas.length ? secao('Falhas de envio', `${r.falhas.length} e-mail(s) falharam hoje`, tabela(['Categoria', 'Destinatário', 'Hora', 'Erro'], linhasFalhas, '—')) : ''}
+
+    ${r.produtividade ? blocoProdutividade(r.produtividade) : ''}
 
     ${secao('Relatórios de consumo gerados', `${totalRelatorios} relatório(s)`, tabela(['Condomínio', 'Referência', 'Utilidade', 'Relatórios', 'Hora', 'Gerado por'], linhasRelatorios, 'Nenhum relatório gerado hoje.'), 'Relatórios de consumo (por unidade e mês) calculados hoje — é o que dispara as filipetas. Um condomínio pode aparecer aqui sem ter o cadastro alterado, e vice-versa.')}
 
